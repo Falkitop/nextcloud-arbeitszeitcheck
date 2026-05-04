@@ -49,8 +49,8 @@ $appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitch
 
 <?php include __DIR__ . '/common/navigation.php'; ?>
 
-<div id="app-content">
-    <div id="app-content-wrapper" role="main" aria-label="<?php p($l->t('Time Entries')); ?>">
+<main id="app-content" role="main" aria-label="<?php p($l->t('Time Entries')); ?>">
+    <div id="app-content-wrapper">
         <!-- Breadcrumb Navigation -->
         <div class="breadcrumb-container">
             <nav class="breadcrumb" aria-label="<?php p($l->t('Breadcrumb')); ?>">
@@ -65,7 +65,7 @@ $appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitch
         <header class="section page-header-section" aria-labelledby="time-entries-page-title">
             <div class="header-content">
                 <div class="header-text">
-                    <h2 id="time-entries-page-title"><?php
+                    <h1 id="time-entries-page-title"><?php
                         if ($mode === 'create') {
                             p($l->t('Add Time Entry'));
                         } elseif ($mode === 'edit') {
@@ -73,7 +73,7 @@ $appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitch
                         } else {
                             p($l->t('Time Entries'));
                         }
-                        ?></h2>
+                        ?></h1>
                     <p><?php
                         if ($mode === 'create') {
                             p($l->t('Record when you worked by entering the start and end times, and any breaks you took.'));
@@ -133,7 +133,7 @@ $appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitch
                 <?php if ($monthClosureEnabled): ?>
                 <section class="section month-closure-section" aria-labelledby="month-closure-heading">
                     <div class="month-closure-card card card--elevated" role="region" aria-labelledby="month-closure-heading">
-                        <h3 id="month-closure-heading" class="month-closure-section__title"><?php p($l->t('Monthly record (revision-safe)')); ?></h3>
+                        <h2 id="month-closure-heading" class="month-closure-section__title"><?php p($l->t('Monthly record (revision-safe)')); ?></h2>
                         <p class="month-closure-lead form-help" id="month-closure-intro"><?php p($l->t('Finalize a full calendar month after it has ended, when your times are complete. The app stores a cryptographic snapshot and a PDF you can archive.')); ?></p>
 
                         <div class="month-closure-layout">
@@ -222,7 +222,7 @@ $appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitch
 
                         <!-- Date and Time Section -->
                         <div class="form-section" role="group" aria-labelledby="date-time-section-title">
-                            <h3 id="date-time-section-title" class="form-section-title"><?php p($l->t('Date and time')); ?></h3>
+                            <h2 id="date-time-section-title" class="form-section-title"><?php p($l->t('Date and time')); ?></h2>
                             <div class="time-entry-form__date">
                                 <div class="form-group">
                                     <label for="entry-date" id="entry-date-label" class="form-label">
@@ -254,7 +254,7 @@ $appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitch
                                     <p id="entry-date-help" class="form-help">
                                         <?php p($l->t('Select the day you worked (format: dd.mm.yyyy, e.g., 15.01.2024). You can also click "Today" to quickly set today\'s date.')); ?>
                                     </p>
-                                    <div id="entry-date-error" role="alert" aria-live="polite" class="form-error-container" style="display: none;"></div>
+                                    <div id="entry-date-error" role="alert" class="form-error-container" style="display: none;"></div>
                                 </div>
                             </div>
 
@@ -319,7 +319,7 @@ $appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitch
                                     <p id="entry-start-time-help" class="form-help">
                                         <?php p($l->t('What time did you start working? (24-hour format, e.g., 09:00 for 9 AM or 17:30 for 5:30 PM)')); ?>
                                     </p>
-                                    <div id="entry-start-time-error" role="alert" aria-live="polite" class="form-error-container" style="display: none;"></div>
+                                    <div id="entry-start-time-error" role="alert" class="form-error-container" style="display: none;"></div>
                                 </div>
 
                                 <div class="form-group">
@@ -375,7 +375,7 @@ $appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitch
                                     <p id="entry-end-time-help" class="form-help">
                                         <?php p($l->t('What time did you finish working? (24-hour format, e.g., 17:00 for 5 PM. For night shifts, enter the next day\'s time)')); ?>
                                     </p>
-                                    <div id="entry-end-time-error" role="alert" aria-live="polite" class="form-error-container" style="display: none;"></div>
+                                    <div id="entry-end-time-error" role="alert" class="form-error-container" style="display: none;"></div>
                                 </div>
                                 <div class="time-pair-matrix__action time-pair-matrix__action--spacer" aria-hidden="true"></div>
                                 </div>
@@ -384,7 +384,7 @@ $appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitch
 
                         <!-- Break Section -->
                         <div class="form-section" role="group" aria-labelledby="break-section-title">
-                            <h3 id="break-section-title" class="form-section-title"><?php p($l->t('Break Information')); ?></h3>
+                            <h2 id="break-section-title" class="form-section-title"><?php p($l->t('Break Information')); ?></h2>
                             <p id="break-section-description" class="form-section-description">
                                 <?php p($l->t('Optional: Record your break times. German law requires breaks for work over 6 hours: 30 minutes for 6-9 hours, 45 minutes for 9+ hours. Shorter shifts have no break requirements. Automatic breaks are added when needed for compliance. You can add additional manual breaks.')); ?>
                             </p>
@@ -556,7 +556,7 @@ $appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitch
 
                         <!-- Description Section -->
                         <div class="form-section" role="group" aria-labelledby="description-section-title">
-                            <h3 id="description-section-title" class="form-section-title"><?php p($l->t('Additional Information')); ?></h3>
+                            <h2 id="description-section-title" class="form-section-title"><?php p($l->t('Additional Information')); ?></h2>
                             <div class="form-group">
                                 <label for="entry-description" id="entry-description-label" class="form-label">
                                     <span class="form-label-icon" aria-hidden="true">📝</span>
@@ -859,7 +859,7 @@ $appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitch
             </section>
         <?php endif; ?>
     </div>
-</div>
+</main>
 </div><!-- /#arbeitszeitcheck-app -->
 
 <?php include __DIR__ . '/common/main-ui-l10n.php'; ?>

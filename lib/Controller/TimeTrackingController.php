@@ -12,11 +12,11 @@ declare(strict_types=1);
 namespace OCA\ArbeitszeitCheck\Controller;
 
 use OCA\ArbeitszeitCheck\Service\TimeTrackingService;
+use OCA\ArbeitszeitCheck\Exception\BusinessRuleException;
 use OCA\ArbeitszeitCheck\Exception\MonthFinalizedException;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
-use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\IRequest;
 use OCP\IUserSession;
@@ -58,42 +58,35 @@ class TimeTrackingController extends Controller
 		return $user->getUID();
 	}
 
+	/**
+	 * Translate a service-level exception into a safe HTTP JSONResponse.
+	 *
+	 * Business-rule violations (typed via BusinessRuleException) carry a
+	 * message that the service has already translated for the current
+	 * IL10N locale; we forward it verbatim with HTTP 400. Auth failures
+	 * map to HTTP 401. Anything else is treated as an internal error
+	 * and replaced with a generic, localized message so we never leak
+	 * raw exception text (or PII) to end users.
+	 */
 	private function buildSafeErrorResponse(\Throwable $e): JSONResponse
 	{
-		$rawMessage = $e->getMessage();
-		if (strpos($rawMessage, 'User not authenticated') !== false) {
+		if ($e instanceof BusinessRuleException) {
 			return new JSONResponse([
 				'success' => false,
-				'error' => $this->l10n->t('User not authenticated')
-			], Http::STATUS_UNAUTHORIZED);
+				'error' => $e->getMessage(),
+			], Http::STATUS_BAD_REQUEST);
 		}
 
-		$businessRules = [
-			'User is already clocked in',
-			'Already clocked in',
-			'User is currently on break. End break first.',
-			'Project ID must not exceed',
-			'Selected project does not exist',
-			'Cannot clock in: Maximum daily working hours',
-			'User is not currently clocked in',
-			'No active time entry',
-			'Break is already started',
-			'User is not currently on break',
-			'No active break',
-			'Minimum rest period',
-		];
-		foreach ($businessRules as $needle) {
-			if (strpos($rawMessage, $needle) !== false) {
-				return new JSONResponse([
-					'success' => false,
-					'error' => $this->l10n->t($rawMessage),
-				], Http::STATUS_BAD_REQUEST);
-			}
+		if (strpos($e->getMessage(), 'User not authenticated') !== false) {
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('User not authenticated'),
+			], Http::STATUS_UNAUTHORIZED);
 		}
 
 		return new JSONResponse([
 			'success' => false,
-			'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.')
+			'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.'),
 		], Http::STATUS_INTERNAL_SERVER_ERROR);
 	}
 
@@ -101,7 +94,6 @@ class TimeTrackingController extends Controller
 	 * Clock in endpoint (called via AJAX with JSON)
 	 */
 	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	public function clockIn(?string $projectCheckProjectId = null, ?string $description = null): JSONResponse
 	{
 		try {
@@ -134,7 +126,6 @@ class TimeTrackingController extends Controller
 	 * Clock out endpoint (called via AJAX with JSON)
 	 */
 	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	public function clockOut(): JSONResponse
 	{
 		try {
@@ -184,10 +175,47 @@ class TimeTrackingController extends Controller
 	}
 
 	/**
+	 * Explicitly enforce the ArbZG §3 daily maximum for the current user.
+	 *
+	 * Called by the frontend timer when it detects that the 10h ceiling has
+	 * been crossed. Returns the resulting status so the caller can refresh
+	 * its UI without a blind page reload, eliminating reload loops.
+	 */
+	#[NoAdminRequired]
+	public function enforceDailyMaximum(): JSONResponse
+	{
+		try {
+			$userId = $this->getUserId();
+			$wasReachedBeforeEnforcement = $this->timeTrackingService->isAtOrAboveDailyMaximum($userId);
+
+			try {
+				$updatedEntry = $this->timeTrackingService->enforceDailyMaximumForUser($userId);
+			} catch (MonthFinalizedException $e) {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('Automatic clock-out blocked: this calendar month has been finalized. Please contact an administrator.'),
+					'status' => $this->timeTrackingService->getStatus($userId),
+				], Http::STATUS_CONFLICT);
+			}
+
+			$status = $this->timeTrackingService->getStatus($userId);
+
+			return new JSONResponse([
+				'success' => true,
+				'enforced' => $updatedEntry !== null,
+				'daily_maximum_reached' => $wasReachedBeforeEnforcement || $this->timeTrackingService->isAtOrAboveDailyMaximum($userId),
+				'status' => $status,
+			]);
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error('Error in TimeTrackingController::enforceDailyMaximum: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(), ["exception" => $e]);
+			return $this->buildSafeErrorResponse($e);
+		}
+	}
+
+	/**
 	 * Start break endpoint (called via AJAX with JSON)
 	 */
 	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	public function startBreak(): JSONResponse
 	{
 		try {
@@ -220,7 +248,6 @@ class TimeTrackingController extends Controller
 	 * End break endpoint (called via AJAX with JSON)
 	 */
 	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	public function endBreak(): JSONResponse
 	{
 		try {

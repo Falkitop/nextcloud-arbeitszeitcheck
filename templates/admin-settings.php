@@ -25,16 +25,16 @@ $adminUsersListUrl = $urlGenerator->linkToRoute('arbeitszeitcheck.admin.getUsers
 
 <?php include __DIR__ . '/common/navigation.php'; ?>
 
-<div id="app-content">
-    <div id="app-content-wrapper" role="main" aria-label="<?php p($l->t('Settings')); ?>">
+<main id="app-content" role="main" aria-label="<?php p($l->t('Settings')); ?>">
+    <div id="app-content-wrapper">
         <div class="section">
             <div class="section-header">
-                <h2><?php p($l->t('Settings for ArbeitszeitCheck')); ?></h2>
+                <h1><?php p($l->t('Settings for ArbeitszeitCheck')); ?></h1>
                 <p><?php p($l->t('Configure how time tracking and compliance checks work for all employees.')); ?></p>
             </div>
 
             <?php if (isset($_['error']) && !empty($_['error'])): ?>
-                <div class="alert alert--error" role="alert" aria-live="polite">
+                <div class="alert alert--error" role="alert">
                     <span class="alert-icon" aria-hidden="true">⚠️</span>
                     <div class="alert-content">
                         <strong class="alert-title"><?php p($l->t('An error occurred')); ?></strong>
@@ -633,7 +633,7 @@ $adminUsersListUrl = $urlGenerator->linkToRoute('arbeitszeitcheck.admin.getUsers
             </form>
         </div>
     </div>
-</div>
+</main>
 </div><!-- /#arbeitszeitcheck-app -->
 
 <script nonce="<?php p($_['cspNonce'] ?? ''); ?>">

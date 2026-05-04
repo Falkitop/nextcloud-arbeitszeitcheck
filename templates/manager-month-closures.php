@@ -43,7 +43,9 @@ foreach ($l10nKeys as $key) {
 
 <?php include __DIR__ . '/common/navigation.php'; ?>
 
-<div id="app-content"
+<main id="app-content"
+	role="main"
+	aria-label="<?php p($l->t('Month closures content')); ?>"
 	class="manager-month-closures-page"
 	<?php if (!$error): ?>
 	data-revision-pdf-available-months-url="<?php p($availableMonthsUrl); ?>"
@@ -117,4 +119,4 @@ foreach ($l10nKeys as $key) {
 			<?php endif; ?>
 		</div>
 	</div>
-</div>
+</main>

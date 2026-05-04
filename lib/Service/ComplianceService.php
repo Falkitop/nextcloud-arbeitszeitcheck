@@ -142,21 +142,46 @@ class ComplianceService
     }
 
     /**
-     * Check compliance after clocking out
+     * Check compliance after clocking out.
+     *
+     * Each individual rule is wrapped in its own try/catch so that a defect in one
+     * check (e.g. a malformed translation or an unexpected DB state) cannot stop the
+     * remaining checks from running. The caller is also expected to invoke this
+     * method OUTSIDE of any clock-out transaction so that — in the worst case — a
+     * compliance failure can never roll back the user's clock-out itself.
      *
      * @param TimeEntry $timeEntry
      * @return void
      */
     public function checkComplianceAfterClockOut(TimeEntry $timeEntry): void
     {
-        $this->checkMandatoryBreaks($timeEntry);
-        $this->checkExcessiveWorkingHours($timeEntry);
-        $this->checkNightWork($timeEntry);
-        $this->checkSundayAndHolidayWork($timeEntry);
-        
-        // Check 6-month average and weekly hours (ArbZG §3) - warnings to manager only
-        // These are warnings, not blocking violations
-        $this->checkSixMonthAverageAndWeeklyHours($timeEntry);
+        // Ordered list of (label, callable). The label is used for log correlation
+        // and never user-visible.
+        $checks = [
+            'mandatory_breaks'             => fn() => $this->checkMandatoryBreaks($timeEntry),
+            'excessive_working_hours'      => fn() => $this->checkExcessiveWorkingHours($timeEntry),
+            'night_work'                   => fn() => $this->checkNightWork($timeEntry),
+            'sunday_and_holiday_work'      => fn() => $this->checkSundayAndHolidayWork($timeEntry),
+            'six_month_and_weekly_average' => fn() => $this->checkSixMonthAverageAndWeeklyHours($timeEntry),
+        ];
+
+        foreach ($checks as $name => $check) {
+            try {
+                $check();
+            } catch (\Throwable $e) {
+                \OCP\Log\logger('arbeitszeitcheck')->error(
+                    'Compliance check "' . $name . '" failed for entry ' . (int)$timeEntry->getId() . ': ' . $e->getMessage(),
+                    [
+                        'exception' => $e,
+                        'user_id'   => $timeEntry->getUserId(),
+                        'entry_id'  => $timeEntry->getId(),
+                        'check'     => $name,
+                    ]
+                );
+                // Intentionally swallow: continue with the remaining checks so that
+                // one buggy check never silences the others.
+            }
+        }
     }
 
     /**
@@ -735,7 +760,12 @@ class ComplianceService
     }
 
     /**
-     * Check for night work (11 PM - 6 AM)
+     * Check for night work (23:00 – 06:00).
+     *
+     * Authoritative source of truth is {@see calculateNightHours()}: if the actual
+     * intersection with the night window is positive we record an INFO violation,
+     * otherwise we skip it (boundary cases like 22:00–23:00 or 06:00–14:00 must not
+     * produce a "0.00 hours" violation).
      *
      * @param TimeEntry $timeEntry
      * @return void
@@ -749,24 +779,25 @@ class ComplianceService
             return;
         }
 
-        $startHour = (int)$startTime->format('G');
-        $endHour = (int)$endTime->format('G');
+        $nightHours = $this->calculateNightHours($startTime, $endTime);
 
-        // Check if work spans night hours (23:00 - 06:00)
-        $isNightWork = ($startHour >= 23 || $startHour <= 5) || ($endHour >= 23 || $endHour <= 5);
-
-        if ($isNightWork) {
-            $nightHours = $this->calculateNightHours($startTime, $endTime);
-
-            $this->violationMapper->createViolation(
-                $timeEntry->getUserId(),
-                ComplianceViolation::TYPE_NIGHT_WORK,
-                sprintf($this->l10n->t('Night work detected: %.2f hours between 11 PM and 6 AM'), $nightHours),
-                $timeEntry->getEndTime(),
-                $timeEntry->getId(),
-                ComplianceViolation::SEVERITY_INFO
-            );
+        if ($nightHours <= 0.0) {
+            return;
         }
+
+        // CRITICAL: pass $nightHours as a parameter to t() so the L10NString carries
+        // the value into its internal vsprintf(). Calling sprintf() on the OUTSIDE of
+        // a parameterless t() corrupts the placeholder pipeline and triggers a
+        // ValueError in OC\L10N\L10NString::__toString() (see issue triggered on
+        // /api/clock/out for late-night shifts).
+        $this->violationMapper->createViolation(
+            $timeEntry->getUserId(),
+            ComplianceViolation::TYPE_NIGHT_WORK,
+            $this->l10n->t('Night work detected: %.2f hours between 11 PM and 6 AM', [$nightHours]),
+            $timeEntry->getEndTime(),
+            $timeEntry->getId(),
+            ComplianceViolation::SEVERITY_INFO
+        );
     }
 
     /**
@@ -784,74 +815,101 @@ class ComplianceService
             return;
         }
 
-        // Check if work was done on Sunday
-        $isSunday = (int)$startTime->format('w') === 0;
+        $userId = $timeEntry->getUserId();
+        $entryId = $timeEntry->getId();
 
-        if ($isSunday) {
-            $this->violationMapper->createViolation(
-                $timeEntry->getUserId(),
-                ComplianceViolation::TYPE_SUNDAY_WORK,
-                $this->l10n->t('Work performed on Sunday'),
-                $timeEntry->getStartTime(),
-                $timeEntry->getId(),
-                ComplianceViolation::SEVERITY_WARNING
-            );
-        }
+        // Every calendar day touched by the shift must be evaluated. Shifts that
+        // start on Saturday and end on Sunday must still flag Sunday work; the old
+        // logic only inspected the start date and missed that case.
+        $cursor = (clone $startTime)->setTime(0, 0, 0);
+        $lastCalendarDay = (clone $endTime)->setTime(0, 0, 0);
 
-        // Check if work was done on public holiday (state-aware, via HolidayService)
-        $isHoliday = false;
-        try {
-            $isHoliday = $this->holidayCalendarService->isHolidayForUser(
-                $timeEntry->getUserId(),
-                (clone $startTime)->setTime(0, 0, 0)
-            );
-        } catch (\Throwable) {
-            // If holiday lookup fails, we fall back to "not a holiday" to avoid false positives.
-        }
+        while ($cursor <= $lastCalendarDay) {
+            // $cursor is always normalized to 00:00:00 of the calendar day under test.
+            $occurredAt = $startTime > $cursor ? clone $startTime : clone $cursor;
 
-        if ($isHoliday) {
-            $this->violationMapper->createViolation(
-                $timeEntry->getUserId(),
-                ComplianceViolation::TYPE_HOLIDAY_WORK,
-                $this->l10n->t('Work performed on public holiday'),
-                $timeEntry->getStartTime(),
-                $timeEntry->getId(),
-                ComplianceViolation::SEVERITY_WARNING
-            );
+            if ((int)$cursor->format('w') === 0) {
+                $this->violationMapper->createViolation(
+                    $userId,
+                    ComplianceViolation::TYPE_SUNDAY_WORK,
+                    $this->l10n->t('Work performed on Sunday'),
+                    $occurredAt,
+                    $entryId,
+                    ComplianceViolation::SEVERITY_WARNING
+                );
+            }
+
+            $isHoliday = false;
+            try {
+                $isHoliday = $this->holidayCalendarService->isHolidayForUser(
+                    $userId,
+                    clone $cursor
+                );
+            } catch (\Throwable) {
+                // If holiday lookup fails, we fall back to "not a holiday" to avoid false positives.
+            }
+
+            if ($isHoliday) {
+                $this->violationMapper->createViolation(
+                    $userId,
+                    ComplianceViolation::TYPE_HOLIDAY_WORK,
+                    $this->l10n->t('Work performed on public holiday'),
+                    $occurredAt,
+                    $entryId,
+                    ComplianceViolation::SEVERITY_WARNING
+                );
+            }
+
+            $cursor->modify('+1 day');
         }
     }
 
     /**
-     * Calculate night hours worked (between 23:00 and 06:00)
+     * Calculate the total hours worked inside the night window (23:00 – 06:00).
      *
-     * @param \DateTime $start
-     * @param \DateTime $end
-     * @return float
+     * Each "night window" is the half-open interval [day X 23:00, day X+1 06:00).
+     * A work span can intersect with multiple night windows:
+     *   - the previous night that bleeds into "today" (e.g. a 02:00–04:00 shift
+     *     belongs entirely to the night that started at 23:00 the previous day),
+     *   - the upcoming night (e.g. a 22:00–02:00 shift),
+     *   - and — for unusually long shifts — additional ones in between.
+     *
+     * The previous implementation only considered the night window starting on the
+     * shift's start date, which incorrectly returned 0 for early-morning shifts that
+     * fell entirely inside the prior night.
+     *
+     * @param \DateTime $start Inclusive start of the work span.
+     * @param \DateTime $end   Exclusive end of the work span.
+     * @return float Hours of work that fell inside any night window (≥ 0).
      */
     private function calculateNightHours(\DateTime $start, \DateTime $end): float
     {
-        $nightStart = clone $start;
-        $nightEnd = clone $start;
-
-        // Set night time boundaries for the start date
-        $nightStart->setTime(23, 0, 0);
-        $nightEnd->setTime(6, 0, 0);
-        $nightEnd->modify('+1 day');
-
-        // If the work period doesn't overlap with night hours, return 0
-        if ($end <= $nightStart || $start >= $nightEnd) {
+        if ($end <= $start) {
             return 0.0;
         }
 
-        // Calculate overlap
-        $overlapStart = max($start, $nightStart);
-        $overlapEnd = min($end, $nightEnd);
+        // Iterate from the calendar day BEFORE $start through $end so we never miss
+        // the previous-night window for early-morning shifts. For typical shifts
+        // (≤ 24h) this loop runs at most three times.
+        $totalSeconds = 0;
+        $iter = (clone $start)->setTime(0, 0, 0)->modify('-1 day');
+        $stopDay = (clone $end)->setTime(0, 0, 0);
 
-        if ($overlapEnd <= $overlapStart) {
-            return 0.0;
+        while ($iter <= $stopDay) {
+            $windowStart = (clone $iter)->setTime(23, 0, 0);
+            $windowEnd = (clone $iter)->modify('+1 day')->setTime(6, 0, 0);
+
+            $overlapStart = max($start, $windowStart);
+            $overlapEnd = min($end, $windowEnd);
+
+            if ($overlapEnd > $overlapStart) {
+                $totalSeconds += $overlapEnd->getTimestamp() - $overlapStart->getTimestamp();
+            }
+
+            $iter->modify('+1 day');
         }
 
-        return ($overlapEnd->getTimestamp() - $overlapStart->getTimestamp()) / 3600;
+        return $totalSeconds / 3600;
     }
 
     /**

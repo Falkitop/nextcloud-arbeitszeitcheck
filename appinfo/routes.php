@@ -25,6 +25,7 @@ return [
 		['name' => 'time_tracking#clockIn', 'url' => '/api/clock/in', 'verb' => 'POST'],
 		['name' => 'time_tracking#clockOut', 'url' => '/api/clock/out', 'verb' => 'POST'],
 		['name' => 'time_tracking#getStatus', 'url' => '/api/clock/status', 'verb' => 'GET'],
+		['name' => 'time_tracking#enforceDailyMaximum', 'url' => '/api/clock/enforce-daily-maximum', 'verb' => 'POST'],
 		['name' => 'time_tracking#startBreak', 'url' => '/api/break/start', 'verb' => 'POST'],
 		['name' => 'time_tracking#endBreak', 'url' => '/api/break/end', 'verb' => 'POST'],
 		['name' => 'time_tracking#getBreakStatus', 'url' => '/api/break/status', 'verb' => 'GET'],

@@ -255,7 +255,10 @@ class SettingsControllerTest extends TestCase
 	}
 
 	/**
-	 * Test update settings returns error when user not authenticated
+	 * Test update settings returns 401 when user not authenticated
+	 *
+	 * Auth failures must surface as 401 Unauthorized so the frontend can
+	 * distinguish them from generic validation errors and prompt for re-login.
 	 */
 	public function testUpdateSettingsReturnsErrorWhenNotAuthenticated(): void
 	{
@@ -266,7 +269,7 @@ class SettingsControllerTest extends TestCase
 		$response = $this->controller->update();
 
 		$this->assertInstanceOf(JSONResponse::class, $response);
-		$this->assertEquals(Http::STATUS_BAD_REQUEST, $response->getStatus());
+		$this->assertEquals(Http::STATUS_UNAUTHORIZED, $response->getStatus());
 		$data = $response->getData();
 		$this->assertFalse($data['success']);
 		$this->assertStringContainsString('not authenticated', $data['error']);

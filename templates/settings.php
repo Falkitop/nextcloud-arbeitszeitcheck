@@ -34,7 +34,7 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
 
 <?php include __DIR__ . '/common/navigation.php'; ?>
 
-<div id="app-content">
+<main id="app-content" role="main" aria-label="<?php p($l->t('Settings content')); ?>">
     <div id="app-content-wrapper">
         <!-- Breadcrumb Navigation -->
         <div class="breadcrumb-container">
@@ -50,7 +50,7 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
         <header class="section page-header-section" aria-labelledby="settings-page-title">
             <div class="header-content">
                 <div class="header-text">
-                    <h2 id="settings-page-title"><?php p($l->t('Settings')); ?></h2>
+                    <h1 id="settings-page-title"><?php p($l->t('Settings')); ?></h1>
                     <p><?php p($l->t('Manage your personal preferences and notification settings')); ?></p>
                 </div>
             </div>
@@ -140,7 +140,7 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
                                 </label>
                             </div>
                             <p id="missing-clock-in-reminders-help" class="form-help">
-                                <?php p($l->t('Sie erhalten diese Erinnerung nur an regulären Arbeitstagen. An Wochenenden, Feiertagen oder bei genehmigten Abwesenheiten wird keine Erinnerung versendet.')); ?>
+                                <?php p($l->t('You receive this reminder only on regular working days. No reminder is sent on weekends, holidays, or approved absences.')); ?>
                             </p>
                         </div>
 
@@ -209,7 +209,7 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
             </div>
         </section>
     </div>
-</div>
+</main>
 </div><!-- /#arbeitszeitcheck-app -->
 
 <!-- Initialize JavaScript -->

@@ -390,4 +390,106 @@ class TimeTrackingServiceTest extends TestCase {
 
 		$this->service->clockIn($userId);
 	}
+
+	/**
+	 * Auto-completion at the daily maximum must:
+	 *  - cap the entry's end time so working hours == max,
+	 *  - mark the entry as completed,
+	 *  - record the audit-trail reason ENDED_REASON_AUTO_DAILY_MAX, and
+	 *  - record the policy 'arbzg_daily_maximum'.
+	 */
+	public function testCompleteEntryIfDailyMaximumReachedSetsAuditFields(): void
+	{
+		$userId = 'testuser';
+
+		// Entry started 11 hours ago → already past the 10h ceiling.
+		$start = (new \DateTime())->modify('-11 hours');
+
+		$entry = new TimeEntry();
+		$entry->setId(42);
+		$entry->setUserId($userId);
+		$entry->setStatus(TimeEntry::STATUS_ACTIVE);
+		$entry->setStartTime($start);
+		$entry->setEndTime(null);
+		$entry->setBreaks(json_encode([]));
+		$entry->setIsManualEntry(false);
+		$entry->setCreatedAt(new \DateTime());
+		$entry->setUpdatedAt(new \DateTime());
+
+		// No previously-completed entries today
+		$this->timeEntryMapper->method('findByUserAndDateRange')->willReturn([]);
+
+		$capturedEntry = null;
+		$this->timeEntryMapper->expects($this->once())
+			->method('update')
+			->willReturnCallback(static function (TimeEntry $arg) use (&$capturedEntry): TimeEntry {
+				$capturedEntry = $arg;
+				return $arg;
+			});
+
+		$this->auditLogMapper->expects($this->once())
+			->method('logAction')
+			->with(
+				$userId,
+				'time_entry_auto_completed_daily_max',
+				'time_entry',
+				42,
+				$this->anything(),
+				$this->anything(),
+				'system'
+			);
+
+		$result = $this->service->completeEntryIfDailyMaximumReached($entry);
+
+		$this->assertTrue($result, 'Entry must be reported as auto-completed.');
+		$this->assertInstanceOf(TimeEntry::class, $capturedEntry);
+		/** @var TimeEntry $capturedEntry */
+		$this->assertSame(TimeEntry::STATUS_COMPLETED, $capturedEntry->getStatus());
+		$this->assertSame(TimeEntry::ENDED_REASON_AUTO_DAILY_MAX, $capturedEntry->getEndedReason());
+		$this->assertSame('arbzg_daily_maximum', $capturedEntry->getPolicyApplied());
+		$endTime = $capturedEntry->getEndTime();
+		$this->assertInstanceOf(\DateTime::class, $endTime, 'End time must be set.');
+
+		// Working duration must not exceed the configured daily maximum (10h)
+		// allowing for a small floating-point tolerance from break recalculation.
+		$workingSeconds = $endTime->getTimestamp() - $start->getTimestamp();
+		$workingHoursIncludingBreak = $workingSeconds / 3600;
+		$breakHours = $capturedEntry->getBreakDurationHours();
+		$netWorkingHours = $workingHoursIncludingBreak - $breakHours;
+		$this->assertLessThanOrEqual(10.001, $netWorkingHours);
+	}
+
+	/**
+	 * Below the maximum, completeEntryIfDailyMaximumReached must NOT auto-complete.
+	 */
+	public function testCompleteEntryIfDailyMaximumReachedIsNoOpBelowMax(): void
+	{
+		$userId = 'testuser';
+
+		// Entry started 4 hours ago → well below the 10h ceiling.
+		$start = (new \DateTime())->modify('-4 hours');
+
+		$entry = new TimeEntry();
+		$entry->setId(7);
+		$entry->setUserId($userId);
+		$entry->setStatus(TimeEntry::STATUS_ACTIVE);
+		$entry->setStartTime($start);
+		$entry->setEndTime(null);
+		$entry->setBreaks(json_encode([]));
+		$entry->setIsManualEntry(false);
+		$entry->setCreatedAt(new \DateTime());
+		$entry->setUpdatedAt(new \DateTime());
+
+		$this->timeEntryMapper->method('findByUserAndDateRange')->willReturn([]);
+
+		// Must not write to the database under the threshold.
+		$this->timeEntryMapper->expects($this->never())->method('update');
+		$this->auditLogMapper->expects($this->never())->method('logAction');
+
+		$result = $this->service->completeEntryIfDailyMaximumReached($entry);
+
+		$this->assertFalse($result, 'Below the daily maximum, no auto-completion may occur.');
+		$this->assertNull($entry->getEndedReason(), 'Reason must remain unset below the threshold.');
+		$this->assertSame(TimeEntry::STATUS_ACTIVE, $entry->getStatus());
+	}
 }

@@ -47,8 +47,8 @@ $useAppTeams = $_['useAppTeams'] ?? false;
 
 <?php include __DIR__ . '/common/navigation.php'; ?>
 
-<div id="app-content">
-    <div id="app-content-wrapper" role="main" aria-label="<?php p($l->t('Absences')); ?>">
+<main id="app-content" role="main" aria-label="<?php p($l->t('Absences')); ?>">
+    <div id="app-content-wrapper">
         <!-- Breadcrumb Navigation -->
         <div class="breadcrumb-container">
             <nav class="breadcrumb" aria-label="<?php p($l->t('Breadcrumb')); ?>">
@@ -72,7 +72,7 @@ $useAppTeams = $_['useAppTeams'] ?? false;
         <header class="section page-header-section" aria-labelledby="page-title">
             <div class="header-content">
                 <div class="header-text">
-                    <h2 id="page-title" class="page-title"><?php 
+                    <h1 id="page-title" class="page-title"><?php 
                         if ($mode === 'create') {
                             p($l->t('Request Time Off'));
                         } elseif ($mode === 'edit') {
@@ -82,7 +82,7 @@ $useAppTeams = $_['useAppTeams'] ?? false;
                         } else {
                             p($l->t('Absences'));
                         }
-                    ?></h2>
+                    ?></h1>
                     <p><?php 
                         if ($mode === 'create') {
                             if ($useAppTeams && !$employeeHasAssignableManager) {
@@ -124,7 +124,7 @@ $useAppTeams = $_['useAppTeams'] ?? false;
             <div class="section section--approval-hint" role="region" aria-labelledby="approval-hint-title">
                 <div class="alert alert--info" role="status" aria-live="polite">
                     <div class="alert-content">
-                        <h3 id="approval-hint-title" class="alert-title"><?php p($l->t('How your request is approved')); ?></h3>
+                        <h2 id="approval-hint-title" class="alert-title"><?php p($l->t('How your request is approved')); ?></h2>
                         <p class="alert-message"><?php p($l->t('No approver is assigned to your team in the app. Requests you submit without a substitute are approved automatically when you send them.')); ?></p>
                     </div>
                 </div>
@@ -134,7 +134,7 @@ $useAppTeams = $_['useAppTeams'] ?? false;
         <?php if ($mode === 'list'): ?>
             <!-- Filter section (hidden by default, toggled by Filter button) -->
             <section id="filter-section" class="section section--filter" aria-labelledby="filter-title" style="display: none;">
-                <h3 id="filter-title" class="section__title visually-hidden"><?php p($l->t('Filter absence requests')); ?></h3>
+                <h2 id="filter-title" class="section__title visually-hidden"><?php p($l->t('Filter absence requests')); ?></h2>
                 <?php
                         $filterStartDate = $_['filterStartDate'] ?? '';
                         $filterEndDate = $_['filterEndDate'] ?? '';
@@ -170,13 +170,13 @@ $useAppTeams = $_['useAppTeams'] ?? false;
         <?php if ($mode === 'create' || $mode === 'edit'): ?>
             <!-- Create/Edit Form -->
             <section class="section section--form" aria-labelledby="form-title" aria-describedby="form-desc">
-                <h3 id="form-title" class="section__title visually-hidden"><?php p($l->t('Absence request details')); ?></h3>
+                <h2 id="form-title" class="section__title visually-hidden"><?php p($l->t('Absence request details')); ?></h2>
                 <p id="form-desc" class="section__desc visually-hidden"><?php p($l->t('Fill in the type, dates, and optional reason and substitute.')); ?></p>
                 <p class="form-required-note" aria-hidden="false">
                     <span class="form-required" aria-hidden="true">*</span>
                     <?php p($l->t('Required field')); ?>
                 </p>
-                <div class="alert alert--error" role="alert" aria-live="polite" id="absence-form-error"<?php echo $error ? '' : ' style="display: none;"'; ?>>
+                <div class="alert alert--error" role="alert" id="absence-form-error"<?php echo $error ? '' : ' style="display: none;"'; ?>>
                     <p id="absence-form-error-text"><?php echo $error ? htmlspecialchars($error, ENT_QUOTES, 'UTF-8') : ''; ?></p>
                 </div>
                 
@@ -324,7 +324,7 @@ $useAppTeams = $_['useAppTeams'] ?? false;
             ?>
             <!-- Read-only Absence Details -->
             <section class="section section--detail absence-detail-view" aria-labelledby="detail-title">
-                <h3 id="detail-title" class="section__title visually-hidden"><?php p($l->t('Absence details')); ?></h3>
+                <h2 id="detail-title" class="section__title visually-hidden"><?php p($l->t('Absence details')); ?></h2>
 
                 <?php if ($absence->getStatus() === 'pending' && $useAppTeams && !$employeeHasAssignableManager): ?>
                     <div class="absence-detail-stuck-callout">
@@ -426,7 +426,7 @@ $useAppTeams = $_['useAppTeams'] ?? false;
                 ?>
                 <?php if ($canShorten): ?>
                 <div class="absence-detail-section absence-detail-shorten" role="region" aria-labelledby="shorten-heading">
-                    <h4 id="shorten-heading" class="absence-detail-section__title"><?php p($l->t('I returned early')); ?></h4>
+                    <h3 id="shorten-heading" class="absence-detail-section__title"><?php p($l->t('I returned early')); ?></h3>
                     <p class="absence-detail-shorten__desc"><?php p($l->t('Set the actual last day of your absence so your records and your substitute\'s calendar stay accurate.')); ?></p>
                     <form id="form-shorten-absence" class="form form--inline absence-detail-shorten__form" method="POST"
                           action="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.absence.shortenForm', ['id' => $absence->getId()])); ?>">
@@ -459,7 +459,7 @@ $useAppTeams = $_['useAppTeams'] ?? false;
 
                 <!-- Dates & Duration -->
                 <div class="absence-detail-section" role="region" aria-labelledby="absence-detail-dates-heading">
-                    <h4 id="absence-detail-dates-heading" class="absence-detail-section__title"><?php p($l->t('Dates and duration')); ?></h4>
+                    <h3 id="absence-detail-dates-heading" class="absence-detail-section__title"><?php p($l->t('Dates and duration')); ?></h3>
                     <dl class="absence-detail-list">
                         <div class="absence-detail-row">
                             <dt class="absence-detail-label"><?php p($l->t('Period')); ?></dt>
@@ -474,7 +474,7 @@ $useAppTeams = $_['useAppTeams'] ?? false;
 
                 <!-- Details: Reason, Substitute, Approval comment -->
                 <div class="absence-detail-section" role="region" aria-labelledby="absence-detail-info-heading">
-                    <h4 id="absence-detail-info-heading" class="absence-detail-section__title"><?php p($l->t('Details')); ?></h4>
+                    <h3 id="absence-detail-info-heading" class="absence-detail-section__title"><?php p($l->t('Details')); ?></h3>
                     <dl class="absence-detail-list">
                         <div class="absence-detail-row">
                             <dt class="absence-detail-label"><?php p($l->t('Reason')); ?></dt>
@@ -499,7 +499,7 @@ $useAppTeams = $_['useAppTeams'] ?? false;
 
                 <!-- Audit trail: Created, Last updated, Approved at -->
                 <div class="absence-detail-section" role="region" aria-labelledby="absence-detail-audit-heading">
-                    <h4 id="absence-detail-audit-heading" class="absence-detail-section__title"><?php p($l->t('History')); ?></h4>
+                    <h3 id="absence-detail-audit-heading" class="absence-detail-section__title"><?php p($l->t('History')); ?></h3>
                     <dl class="absence-detail-list">
                         <div class="absence-detail-row">
                             <dt class="absence-detail-label"><?php p($l->t('Created')); ?></dt>
@@ -527,9 +527,9 @@ $useAppTeams = $_['useAppTeams'] ?? false;
         <?php else: ?>
             <!-- Stats Cards: Vacation only (sick leave etc. excluded) -->
             <section class="section section--stats vacation-stats" aria-labelledby="stats-title">
-                <h3 id="stats-title" class="section__title stats-section-title">
+                <h2 id="stats-title" class="section__title stats-section-title">
                     <?php p($l->t('Vacation balance') . ' ' . (string)($stats['vacation_year'] ?? date('Y'))); ?>
-                </h3>
+                </h2>
                 <p id="stats-desc" class="stats-section-desc visually-hidden">
                     <?php p($l->t('Remaining vacation days for this year (annual entitlement plus carryover minus approved vacation). Sick leave and other absences are not deducted.')); ?>
                 </p>
@@ -606,7 +606,7 @@ $useAppTeams = $_['useAppTeams'] ?? false;
 
             <!-- Absences List -->
             <section class="section section--list" aria-labelledby="list-title">
-                <h3 id="list-title" class="section__title visually-hidden"><?php p($l->t('Your absence requests')); ?></h3>
+                <h2 id="list-title" class="section__title visually-hidden"><?php p($l->t('Your absence requests')); ?></h2>
                 <div class="table-container">
                     <table class="table table--hover absences-table" id="absences-table" role="table" aria-labelledby="list-title">
                         <thead>
@@ -744,7 +744,7 @@ $useAppTeams = $_['useAppTeams'] ?? false;
             </section>
         <?php endif; ?>
     </div>
-</div>
+</main>
 </div><!-- /#arbeitszeitcheck-app -->
 
 <?php include __DIR__ . '/common/main-ui-l10n.php'; ?>

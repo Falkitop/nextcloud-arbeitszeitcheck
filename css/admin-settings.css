@@ -270,6 +270,11 @@
   outline: none;
 }
 
+#admin-settings-form .user-picker__item:focus-visible {
+  outline: 2px solid var(--arbeitszeitcheck-color-primary, var(--color-primary));
+  outline-offset: -2px;
+}
+
 #admin-settings-form .user-picker__item--muted {
   cursor: default;
   color: var(--arbeitszeitcheck-color-text-lighter, var(--color-text-lighter));

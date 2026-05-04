@@ -69,5 +69,22 @@ class HolidayServiceTest extends TestCase
 		$this->assertSame(5.0, $perYear[2024]);
 		$this->assertSame(2.0, $perYear[2025]);
 	}
+
+	/**
+	 * Company / custom half-day holidays (extra weights) must reduce that weekday by 0.5.
+	 */
+	public function testComputeWorkingDaysAppliesHalfDayExtraWeights(): void
+	{
+		// Mon 2024-01-08 .. Wed 2024-01-10 — three weekdays, no statutory holiday on these dates.
+		$start = new \DateTime('2024-01-08');
+		$end = new \DateTime('2024-01-10');
+		$extra = [
+			'2024-01-09' => 0.5,
+		];
+		$this->assertSame(2.5, HolidayService::computeWorkingDays($start, $end, $extra));
+
+		$perYear = HolidayService::computeWorkingDaysPerYear($start, $end, $extra);
+		$this->assertSame(2.5, $perYear[2024]);
+	}
 }
 

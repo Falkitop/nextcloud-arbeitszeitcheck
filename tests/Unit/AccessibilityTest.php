@@ -43,9 +43,20 @@ class AccessibilityTest extends TestCase {
 			// Do not hard-require role= or landmarks here, because many templates pull
 			// semantic landmarks via PHP includes (not visible in raw file content).
 
-			// Check for proper button elements (not just divs with click handlers)
-			$this->assertStringContainsString('<button', $content,
-				"Template should use proper button elements: $templateFile");
+			// Forbid the "div with onclick" anti-pattern (interactive non-button div).
+			// Note: this is a coarse check - it allows onclick on actual <button>/<a>.
+			$this->assertDoesNotMatchRegularExpression(
+				'/<div[^>]*\bonclick=/i',
+				$content,
+				"Template must not use <div onclick=...> in place of <button>/<a>: $templateFile"
+			);
+
+			// Verify each template offers at least one focusable interactive element
+			// (button OR anchor with href), so keyboard users always have something to act on.
+			$hasButton = strpos($content, '<button') !== false;
+			$hasLink = preg_match('/<a\s[^>]*\bhref=/i', $content) === 1;
+			$this->assertTrue($hasButton || $hasLink,
+				"Template should expose at least one interactive control (<button> or <a href>): $templateFile");
 
 			// Check for form labels only when the template contains form controls.
 			// Not all pages include forms/inputs (e.g. dashboard tables).

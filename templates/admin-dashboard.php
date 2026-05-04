@@ -17,41 +17,41 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 
 <?php include __DIR__ . '/common/navigation.php'; ?>
 
-<div id="app-content" class="admin-dashboard">
+<main id="app-content" role="main" aria-label="<?php p($l->t('Admin dashboard content')); ?>" class="admin-dashboard">
     <div id="app-content-wrapper">
         <div class="section">
             <div class="section-header">
-                <h2><?php p($l->t('Verwaltung – Status')); ?></h2>
-                <p><?php p($l->t('Aktuelle Kennzahlen und offene Probleme mit Arbeitszeitregeln. Detaileinstellungen finden Sie im linken Navigationsbereich.')); ?></p>
+                <h1><?php p($l->t('Administration - Status')); ?></h1>
+                <p><?php p($l->t('Current key metrics and open working-time compliance issues. Detailed settings are available in the left navigation.')); ?></p>
             </div>
 
             <!-- Statistics Cards -->
             <div class="stats-grid">
                 <div class="stat-card" 
-                     title="<?php p($l->t('Gesamtzahl der Mitarbeitenden mit Zugriff auf die Zeiterfassung')); ?>"
+                     title="<?php p($l->t('Total number of employees with access to time tracking')); ?>"
                      aria-label="<?php p($l->t('Total employees: %s', [$_['statistics']['total_users'] ?? 0])); ?>">
                     <div class="stat-number"><?php p($_['statistics']['total_users'] ?? 0); ?></div>
-                    <div class="stat-label"><?php p($l->t('Mitarbeitende gesamt')); ?></div>
+                    <div class="stat-label"><?php p($l->t('Total employees')); ?></div>
                 </div>
                 <div class="stat-card"
-                     title="<?php p($l->t('Anzahl der Mitarbeitenden mit Buchung heute')); ?>"
+                     title="<?php p($l->t('Number of employees with bookings today')); ?>"
                      aria-label="<?php p($l->t('Employees active today: %s', [$_['statistics']['active_users_today'] ?? 0])); ?>">
                     <div class="stat-number"><?php p($_['statistics']['active_users_today'] ?? 0); ?></div>
-                    <div class="stat-label"><?php p($l->t('Heute aktiv')); ?></div>
+                    <div class="stat-label"><?php p($l->t('Active today')); ?></div>
                 </div>
                 <div class="stat-card"
-                     title="<?php p($l->t('Anzahl offener Verstöße gegen Arbeitszeitregeln')); ?>"
+                     title="<?php p($l->t('Number of open working-time compliance violations')); ?>"
                      aria-label="<?php p($l->t('Unresolved violations: %s', [$_['statistics']['unresolved_violations'] ?? 0])); ?>">
                     <div class="stat-number"><?php p($_['statistics']['unresolved_violations'] ?? 0); ?></div>
-                    <div class="stat-label"><?php p($l->t('Offene Probleme')); ?></div>
+                    <div class="stat-label"><?php p($l->t('Open issues')); ?></div>
                 </div>
             </div>
 
             <!-- Recent Violations -->
             <div class="section admin-dashboard-problems">
                 <div class="section-header">
-                    <h3><?php p($l->t('Aktuelle Probleme')); ?></h3>
-                    <p><?php p($l->t('Verstöße gegen Arbeitszeitregeln, die Ihre Aufmerksamkeit benötigen')); ?></p>
+                    <h2><?php p($l->t('Current issues')); ?></h2>
+                    <p><?php p($l->t('Working-time compliance violations that require your attention')); ?></p>
                 </div>
 
                 <?php if (empty($_['recent_violations'])): ?>
@@ -69,7 +69,7 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
                                     <th scope="col"><?php p($l->t('Employee')); ?></th>
                                     <th scope="col"><?php p($l->t('Problem Type')); ?></th>
                                     <th scope="col"><?php p($l->t('How Serious')); ?></th>
-                                    <th scope="col"><?php p($l->t('Datum')); ?></th>
+                                    <th scope="col"><?php p($l->t('Date')); ?></th>
                                     <th scope="col"><?php p($l->t('Fixed?')); ?></th>
                                 </tr>
                             </thead>
@@ -126,5 +126,5 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
             </div>
         </div>
     </div>
-</div>
+</main>
 </div><!-- /#arbeitszeitcheck-app -->

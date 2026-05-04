@@ -9,7 +9,7 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 
 <?php include __DIR__ . '/common/navigation.php'; ?>
 
-<div id="app-content" class="manager-time-entries-page">
+<main id="app-content" role="main" aria-label="<?php p($l->t('Employee absences content')); ?>" class="manager-time-entries-page">
 	<div id="app-content-wrapper">
 		<div class="section manager-time-entries-page__content">
 			<header class="section-header manager-time-entries-page__header">
@@ -108,7 +108,7 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 			</section>
 		</div>
 	</div>
-</div>
+</main>
 </div>
 
 <script nonce="<?php p($_['cspNonce'] ?? ''); ?>">

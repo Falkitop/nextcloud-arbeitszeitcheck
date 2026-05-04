@@ -14,6 +14,7 @@ namespace OCA\ArbeitszeitCheck\Controller;
 use OCA\ArbeitszeitCheck\Constants;
 use OCA\ArbeitszeitCheck\Db\TimeEntryMapper;
 use OCA\ArbeitszeitCheck\Db\AbsenceMapper;
+use OCA\ArbeitszeitCheck\Db\UserSettingsMapper;
 use OCA\ArbeitszeitCheck\Service\OvertimeService;
 use OCA\ArbeitszeitCheck\Service\TimeTrackingService;
 use OCA\ArbeitszeitCheck\Service\AbsenceService;
@@ -46,6 +47,7 @@ class PageController extends Controller
 	private AbsenceService $absenceService;
 	private TimeEntryMapper $timeEntryMapper;
 	private AbsenceMapper $absenceMapper;
+	private UserSettingsMapper $userSettingsMapper;
 	private TeamResolverService $teamResolver;
 	private IUserSession $userSession;
 	private IGroupManager $groupManager;
@@ -77,6 +79,7 @@ class PageController extends Controller
 		AbsenceService $absenceService,
 		TimeEntryMapper $timeEntryMapper,
 		AbsenceMapper $absenceMapper,
+		UserSettingsMapper $userSettingsMapper,
 		TeamResolverService $teamResolver,
 		IUserSession $userSession,
 		IGroupManager $groupManager,
@@ -93,6 +96,7 @@ class PageController extends Controller
 		$this->absenceService = $absenceService;
 		$this->timeEntryMapper = $timeEntryMapper;
 		$this->absenceMapper = $absenceMapper;
+		$this->userSettingsMapper = $userSettingsMapper;
 		$this->teamResolver = $teamResolver;
 		$this->userSession = $userSession;
 		$this->groupManager = $groupManager;
@@ -116,6 +120,22 @@ class PageController extends Controller
 			throw new \Exception('User not authenticated');
 		}
 		return $user->getUID();
+	}
+
+	/**
+	 * Build a sanitized, user-facing error message for the page error fallback.
+	 *
+	 * Internal exception details (database errors, file paths, stack hints) must never reach
+	 * the rendered HTML even though the template itself escapes output. We only surface a
+	 * known-safe sentinel for unauthenticated sessions; everything else collapses to a
+	 * generic, localized message. The full exception is still recorded via the logger.
+	 */
+	private function buildSafePageErrorMessage(\Throwable $e): string
+	{
+		if (strpos($e->getMessage(), 'User not authenticated') !== false) {
+			return $this->l10n->t('User not authenticated');
+		}
+		return $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.');
 	}
 
 	/**
@@ -200,8 +220,16 @@ class PageController extends Controller
 			$timeEntryCount = $this->timeEntryMapper->countByUser($userId);
 			$absenceCount = $this->absenceMapper->countByUser($userId);
 
-			// Check if this is a first-time user (no time entries yet)
-			$isFirstTimeUser = $timeEntryCount === 0;
+			// Check onboarding state:
+			// welcome card is shown only if there are no time entries and onboarding was not dismissed yet.
+			$onboardingCompleted = false;
+			try {
+				$onboardingSetting = $this->userSettingsMapper->getSetting($userId, 'onboarding_completed');
+				$onboardingCompleted = $onboardingSetting !== null && $onboardingSetting->getSettingValue() === '1';
+			} catch (\Throwable $e) {
+				$onboardingCompleted = false;
+			}
+			$isFirstTimeUser = $timeEntryCount === 0 && !$onboardingCompleted;
 
 			$navFlags = $this->getNavigationFlags($userId);
 
@@ -237,10 +265,7 @@ class PageController extends Controller
 			return $this->configureCSP($response);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in PageController::dashboard: ' . $e->getMessage(), ["exception" => $e]);
-			$errorMessage = $e->getMessage();
-			if (strpos($errorMessage, 'User not authenticated') !== false) {
-				$errorMessage = $this->l10n->t('User not authenticated');
-			}
+			$errorMessage = $this->buildSafePageErrorMessage($e);
 			$response = new TemplateResponse('arbeitszeitcheck', 'dashboard', [
 				'status' => [],
 				'overtime' => [],
@@ -318,10 +343,7 @@ class PageController extends Controller
 			return $this->configureCSP($response);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in PageController::timeEntries: ' . $e->getMessage(), ["exception" => $e]);
-			$errorMessage = $e->getMessage();
-			if (strpos($errorMessage, 'User not authenticated') !== false) {
-				$errorMessage = $this->l10n->t('User not authenticated');
-			}
+			$errorMessage = $this->buildSafePageErrorMessage($e);
 			$response = new TemplateResponse('arbeitszeitcheck', 'time-entries', [
 				'entries' => [],
 				'error' => $errorMessage,
@@ -468,10 +490,7 @@ class PageController extends Controller
 			return $this->configureCSP($response);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in PageController::absences: ' . $e->getMessage(), ["exception" => $e]);
-			$errorMessage = $e->getMessage();
-			if (strpos($errorMessage, 'User not authenticated') !== false) {
-				$errorMessage = $this->l10n->t('User not authenticated');
-			}
+			$errorMessage = $this->buildSafePageErrorMessage($e);
 			$response = new TemplateResponse('arbeitszeitcheck', 'absences', [
 				'absences' => [],
 				'computedWorkingDays' => [],
@@ -541,10 +560,7 @@ class PageController extends Controller
 			return $this->configureCSP($response);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in PageController::reports: ' . $e->getMessage(), ["exception" => $e]);
-			$errorMessage = $e->getMessage();
-			if (strpos($errorMessage, 'User not authenticated') !== false) {
-				$errorMessage = $this->l10n->t('User not authenticated');
-			}
+			$errorMessage = $this->buildSafePageErrorMessage($e);
 			$response = new TemplateResponse('arbeitszeitcheck', 'reports', [
 				'error' => $errorMessage,
 				'stats' => ['total_time_entries' => 0, 'total_absences' => 0],
@@ -602,10 +618,7 @@ class PageController extends Controller
 			return $this->configureCSP($response);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in PageController::calendar: ' . $e->getMessage(), ["exception" => $e]);
-			$errorMessage = $e->getMessage();
-			if (strpos($errorMessage, 'User not authenticated') !== false) {
-				$errorMessage = $this->l10n->t('User not authenticated');
-			}
+			$errorMessage = $this->buildSafePageErrorMessage($e);
 			$response = new TemplateResponse('arbeitszeitcheck', 'calendar', [
 				'error' => $errorMessage,
 				'stats' => ['total_time_entries' => 0, 'total_absences' => 0],
@@ -652,10 +665,7 @@ class PageController extends Controller
 			return $this->configureCSP($response);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in PageController::timeline: ' . $e->getMessage(), ["exception" => $e]);
-			$errorMessage = $e->getMessage();
-			if (strpos($errorMessage, 'User not authenticated') !== false) {
-				$errorMessage = $this->l10n->t('User not authenticated');
-			}
+			$errorMessage = $this->buildSafePageErrorMessage($e);
 			$response = new TemplateResponse('arbeitszeitcheck', 'timeline', [
 				'error' => $errorMessage,
 				'stats' => ['total_time_entries' => 0, 'total_absences' => 0],
@@ -702,10 +712,7 @@ class PageController extends Controller
 			return $this->configureCSP($response);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in PageController::settings: ' . $e->getMessage(), ["exception" => $e]);
-			$errorMessage = $e->getMessage();
-			if (strpos($errorMessage, 'User not authenticated') !== false) {
-				$errorMessage = $this->l10n->t('User not authenticated');
-			}
+			$errorMessage = $this->buildSafePageErrorMessage($e);
 			$response = new TemplateResponse('arbeitszeitcheck', 'settings', [
 				'error' => $errorMessage,
 				'stats' => ['total_time_entries' => 0, 'total_absences' => 0],

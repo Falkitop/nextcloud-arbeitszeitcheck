@@ -68,6 +68,7 @@ class TimeEntry extends Entity
 	public const STATUS_REJECTED = 'rejected';
 	public const ENDED_REASON_MANUAL_CLOCK_OUT = 'manual_clock_out';
 	public const ENDED_REASON_AUTO_BREAK_FALLBACK = 'auto_break_fallback';
+	public const ENDED_REASON_AUTO_DAILY_MAX = 'auto_daily_max';
 
 	/** @var string */
 	protected $userId;

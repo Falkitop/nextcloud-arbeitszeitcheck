@@ -12,6 +12,7 @@ declare(strict_types=1);
 
 namespace OCA\ArbeitszeitCheck\Controller;
 
+use OCA\ArbeitszeitCheck\Exception\BusinessRuleException;
 use OCA\ArbeitszeitCheck\Service\AbsenceService;
 use OCA\ArbeitszeitCheck\Service\CSPService;
 use OCA\ArbeitszeitCheck\Db\AbsenceMapper;
@@ -75,6 +76,56 @@ class SubstituteController extends Controller
 			throw new \Exception($this->l10n->t('User not authenticated'));
 		}
 		return $user->getUID();
+	}
+
+	/**
+	 * Translate a service-level exception into a safe user-facing message.
+	 *
+	 * Business-rule errors raised by AbsenceService use plain \Exception with
+	 * a localized message; {@see BusinessRuleException} is also forwarded when safe.
+	 * Anything else (or any
+	 * message that smells like a leak from a deeper layer) collapses to a
+	 * generic localized message so we never expose stack traces, SQL state,
+	 * or internal class names to end users.
+	 */
+	private function getSafeErrorMessage(\Throwable $e): string
+	{
+		$generic = $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.');
+		$forwardUserMessage = (get_class($e) === \Exception::class) || ($e instanceof BusinessRuleException);
+		if (!$forwardUserMessage) {
+			return $generic;
+		}
+		$msg = trim((string)$e->getMessage());
+		if ($msg === '' || strlen($msg) > 500) {
+			return $generic;
+		}
+		$lower = strtolower($msg);
+		$blocked = [
+			'sqlstate[',
+			'syntax error',
+			'pdoexception',
+			'doctrine\\',
+			'stack trace',
+			' in /var/',
+			' in /home/',
+			' in /usr/',
+			'/lib/',
+			'/vendor/',
+			'oc\\',
+			'oca\\',
+			'ocp\\',
+			'fatal error',
+			'argument #',
+			'must be of type',
+			'must be an instance of',
+			'has not been initialized',
+		];
+		foreach ($blocked as $needle) {
+			if (str_contains($lower, $needle)) {
+				return $generic;
+			}
+		}
+		return $msg;
 	}
 
 	private function getDisplayName(string $userId): string
@@ -188,7 +239,6 @@ class SubstituteController extends Controller
 	 * Approve substitution request
 	 */
 	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	public function approve(int $absenceId): JSONResponse
 	{
 		try {
@@ -204,6 +254,8 @@ class SubstituteController extends Controller
 				'success' => false,
 				'error' => $this->l10n->t('Absence not found'),
 			], Http::STATUS_NOT_FOUND);
+		} catch (\Exception $e) {
+			return $this->handleSubstituteException($e, 'approve', $absenceId);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('SubstituteController::approve: ' . $e->getMessage(), ['exception' => $e]);
 			return new JSONResponse([
@@ -214,10 +266,45 @@ class SubstituteController extends Controller
 	}
 
 	/**
+	 * Map a service-level \Exception to the right HTTP status:
+	 * - "User not authenticated" -> 401 (kept generic to avoid log scraping)
+	 * - Known business rule (clean message) -> 400
+	 * - Anything that smells like a leak -> 500 with a generic message
+	 */
+	private function handleSubstituteException(\Exception $e, string $op, int $absenceId): JSONResponse
+	{
+		$generic = $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.');
+
+		if (strpos($e->getMessage(), 'User not authenticated') !== false) {
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('User not authenticated'),
+			], Http::STATUS_UNAUTHORIZED);
+		}
+
+		\OCP\Log\logger('arbeitszeitcheck')->info(
+			'SubstituteController::' . $op . ' business rule rejected: ' . $e->getMessage(),
+			['exception' => $e, 'absenceId' => $absenceId]
+		);
+
+		$message = $this->getSafeErrorMessage($e);
+		if ($message === $generic) {
+			return new JSONResponse([
+				'success' => false,
+				'error' => $generic,
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+
+		return new JSONResponse([
+			'success' => false,
+			'error' => $message,
+		], Http::STATUS_BAD_REQUEST);
+	}
+
+	/**
 	 * Decline substitution request
 	 */
 	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	public function decline(int $absenceId, ?string $comment = null): JSONResponse
 	{
 		try {
@@ -238,6 +325,8 @@ class SubstituteController extends Controller
 				'success' => false,
 				'error' => $this->l10n->t('Absence not found'),
 			], Http::STATUS_NOT_FOUND);
+		} catch (\Exception $e) {
+			return $this->handleSubstituteException($e, 'decline', $absenceId);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('SubstituteController::decline: ' . $e->getMessage(), ['exception' => $e]);
 			return new JSONResponse([

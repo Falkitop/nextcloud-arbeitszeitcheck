@@ -21,12 +21,12 @@ $endDate = $_['endDate'] ?? date('Y-m-d');
 
 <?php include __DIR__ . '/common/navigation.php'; ?>
 
-<div id="app-content">
+<main id="app-content" role="main" aria-label="<?php p($l->t('Compliance reports content')); ?>">
     <div id="app-content-wrapper">
         <?php include __DIR__ . '/common/compliance-tabs.php'; ?>
         <div class="section">
             <div class="section-header">
-                <h2><?php p($l->t('Working Time Reports')); ?></h2>
+                <h1><?php p($l->t('Working Time Reports')); ?></h1>
                 <p><?php p($l->t('See statistics about working time problems and how well employees follow the rules')); ?></p>
             </div>
 
@@ -134,5 +134,5 @@ $endDate = $_['endDate'] ?? date('Y-m-d');
             <?php endif; ?>
         </div>
     </div>
-</div>
+</main>
 </div><!-- /#arbeitszeitcheck-app -->

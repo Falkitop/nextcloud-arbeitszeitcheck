@@ -12,6 +12,9 @@ $l = $l ?? ($_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck'));
 $mainUiStringIds = [
 	'CRITICAL: Maximum daily working hours (10h) exceeded! Automatically clocking out to comply with German labor law (ArbZG §3).',
 	'Note: You are approaching the maximum working hours. Extended hours must be compensated within 6 months (ArbZG §3).',
+	'Automatically clocked out to comply with German labor law (ArbZG §3).',
+	'Automatic clock-out (ArbZG §3) could not be completed. Please clock out manually.',
+	'Automatic clock-out (ArbZG §3) failed repeatedly. Please clock out manually or contact your administrator.',
 	'Are you sure you want to delete this item?',
 	'Are you sure you want to delete this time entry?',
 	'Time entry deleted successfully',

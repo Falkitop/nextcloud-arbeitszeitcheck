@@ -70,6 +70,18 @@
 			}, 100);
 		}
 
+		// Helper: show a visible inline error in preview area and announce it.
+		function showDownloadError(message) {
+			const previewSection = document.getElementById('report-preview');
+			const previewContent = document.getElementById('report-preview-content');
+			if (previewSection && previewContent) {
+				previewContent.innerHTML = `<p class="report-error" role="alert">${esc(message)}</p>`;
+				previewSection.style.display = 'block';
+				previewSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+			}
+			announceToScreenReader(message);
+		}
+
 		// Helper: escape HTML
 		function esc(s) {
 			if (s == null) {
@@ -621,7 +633,9 @@
 			const endDate = toISO(endDateInput ? endDateInput.value : '');
 			const previewSection = document.getElementById('report-preview');
 			const previewContent = document.getElementById('report-preview-content');
-			if (!previewSection || !previewContent) return;
+			if (!previewSection || !previewContent) {
+				return Promise.resolve({ success: false });
+			}
 			if (!reportType || !startDate || !endDate) {
 				const errMsg =
 					(A.l10n && A.l10n.reportParamsRequired) ||
@@ -633,7 +647,7 @@
 				previewSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 				const h = document.getElementById('report-preview-heading');
 				if (h) h.focus();
-				return;
+				return Promise.resolve({ success: false });
 			}
 
 			// Validate date range: start must be <= end
@@ -645,7 +659,7 @@
 				previewContent.innerHTML = `<p class="report-error" role="alert">${esc(dateMsg)}</p>`;
 				previewSection.style.display = 'block';
 				previewSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-				return;
+				return Promise.resolve({ success: false });
 			}
 
 			// Validate scope before building URL
@@ -658,7 +672,7 @@
 				previewContent.innerHTML = `<p class="report-error" role="alert">${esc(scopeMsg)}</p>`;
 				previewSection.style.display = 'block';
 				previewSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-				return;
+				return Promise.resolve({ success: false });
 			}
 
 			const scopeResolution = resolveScopeAndApi(reportType, startDate, endDate);
@@ -670,7 +684,7 @@
 				previewContent.innerHTML = `<p class="report-error" role="alert">${esc(typeMsg)}</p>`;
 				previewSection.style.display = 'block';
 				previewSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-				return;
+				return Promise.resolve({ success: false });
 			}
 
 			// If a team-specific scope is selected, ensure a team is chosen
@@ -684,7 +698,7 @@
 					previewContent.innerHTML = `<p class="report-error" role="alert">${esc(teamMsg)}</p>`;
 					previewSection.style.display = 'block';
 					previewSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-					return;
+					return Promise.resolve({ success: false });
 				}
 			}
 			if (reportScopeInput.value === 'manager_single_team') {
@@ -695,7 +709,7 @@
 					previewContent.innerHTML = `<p class="report-error" role="alert">${esc(teamMsg)}</p>`;
 					previewSection.style.display = 'block';
 					previewSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-					return;
+					return Promise.resolve({ success: false });
 				}
 			}
 
@@ -737,7 +751,7 @@
 			)}</p>`;
 			previewSection.style.display = 'block';
 			announceToScreenReader((A.l10n && A.l10n.generating) || 'Generating report...');
-			fetch(url, { method: 'GET', headers: { requesttoken: requestToken } })
+			return fetch(url, { method: 'GET', headers: { requesttoken: requestToken } })
 				.then((res) =>
 					res.text().then((text) => ({
 						ok: res.ok,
@@ -766,6 +780,15 @@
 						const scope = reportScopeInput ? reportScopeInput.value : '';
 						const isTeamScope = teamScopes.includes(scope) || reportType === 'team';
 						const isOrganizationScope = scope === 'organization';
+						const orgUserIds =
+							isOrganizationScope && data.report && Array.isArray(data.report.users)
+								? data.report.users
+										.map((u) => (u && u.user_id ? String(u.user_id).trim() : ''))
+										.filter((uid) => uid !== '')
+								: [];
+						if (_reportTeamUsersInput) {
+							_reportTeamUsersInput.value = orgUserIds.join(',');
+						}
 						let html = `<p class="report-success">${esc(
 							(A.l10n && A.l10n.reportReady) || 'Report generated successfully.',
 						)}</p>`;
@@ -793,7 +816,7 @@
 						} else if (isOrganizationScope) {
 							html += `<p class="report-info" role="status">${esc(
 								(A.l10n && A.l10n.exportOrganizationScopeNotice) ||
-								'Export for organization scope is not yet available. Use Preview to view the report.',
+								'For organization scope, download is available for working time export.',
 							)}</p>`;
 						}
 						html += renderReportHtml(data.report);
@@ -804,6 +827,7 @@
 						previewSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 						const heading = document.getElementById('report-preview-heading');
 						if (heading) heading.focus();
+						return { success: true, report: data.report };
 					} else {
 						let msg = (data && data.error) || '';
 						if (!msg) {
@@ -818,6 +842,7 @@
 						previewContent.innerHTML = `<p class="report-error" role="alert">${esc(msg)}</p>`;
 						announceToScreenReader(msg);
 						previewSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+						return { success: false };
 					}
 				})
 				.catch(() => {
@@ -835,11 +860,12 @@
 						'An error occurred. Please try again.';
 					previewContent.innerHTML = `<p class="report-error" role="alert">${esc(msg)}</p>`;
 					announceToScreenReader(msg);
+					return { success: false };
 				});
 		}
 
 		// Trigger a real file download using the export endpoints
-		function downloadReport() {
+		function downloadReport(previewPayload) {
 			const reportType = reportTypeInput ? reportTypeInput.value : '';
 			if (!reportType || !startDateInput || !endDateInput) {
 				return;
@@ -857,13 +883,67 @@
 			const scope = reportScopeInput ? reportScopeInput.value : '';
 			const teamScopes = ['admin_team', 'manager_team', 'manager_single_team'];
 
-			// Organization-wide download is not implemented (export endpoints are per-user today).
-			// To avoid silently downloading the wrong data, block the download and instruct the user.
+			// Organization-wide download is supported for working-time exports via team endpoint.
 			if (scope === 'organization') {
-				const msg =
-					(A.l10n && A.l10n.exportOrganizationScopeNotice) ||
-					'Export for organization scope is not yet available. Use Preview to view the report.';
-				announceToScreenReader(msg);
+				if (reportType !== 'monthly') {
+					const msg =
+						(A.l10n && A.l10n.teamDownloadWorkingTimeOnly) ||
+						'Organization download is only available for the working time export.';
+					showDownloadError(msg);
+					return;
+				}
+				const report = previewPayload && previewPayload.report ? previewPayload.report : null;
+				const userIds = report && Array.isArray(report.users)
+					? report.users
+							.map((u) => (u && u.user_id ? String(u.user_id).trim() : ''))
+							.filter((uid) => uid !== '')
+					: ((_reportTeamUsersInput && _reportTeamUsersInput.value)
+						? _reportTeamUsersInput.value.split(',').map((s) => s.trim()).filter((s) => s !== '')
+						: []);
+				if (userIds.length === 0) {
+					const msg =
+						(A.l10n && A.l10n.exportOrganizationEmpty) ||
+						(A.l10n && A.l10n.exportOrganizationScopeNotice) ||
+						'No organization members had time entries in the selected period; nothing to download.';
+					showDownloadError(msg);
+					return;
+				}
+				const apiMap = A.apiUrl || {};
+				const teamApi = apiMap.team;
+				if (!teamApi) {
+					return;
+				}
+				try {
+					const urlObj = new URL(teamApi, window.location.origin);
+					urlObj.searchParams.set('startDate', startIso);
+					urlObj.searchParams.set('endDate', endIso);
+					urlObj.searchParams.set('download', '1');
+					urlObj.searchParams.set('userIds', userIds.join(','));
+					if (format) {
+						urlObj.searchParams.set('format', format);
+					}
+					const teamVar = teamVariantSelect ? teamVariantSelect.value : 'summary';
+					if (teamVar) {
+						urlObj.searchParams.set('variant', teamVar);
+					}
+					const layoutVal = exportLayoutSelect ? exportLayoutSelect.value : 'long';
+					if (
+						teamVar === 'time_entries' &&
+						layoutVal &&
+						(format === 'csv' || format === 'json')
+					) {
+						urlObj.searchParams.set('layout', layoutVal);
+					}
+					const a = document.createElement('a');
+					a.href = urlObj.toString();
+					a.style.display = 'none';
+					a.setAttribute('download', '');
+					document.body.appendChild(a);
+					a.click();
+					document.body.removeChild(a);
+				} catch (e) {
+					// no-op
+				}
 				return;
 			}
 
@@ -872,7 +952,7 @@
 				const msg =
 					(A.l10n && A.l10n.teamDownloadWorkingTimeOnly) ||
 					'Team download is only available for the working time export. Switch to personal scope to download absence or compliance data.';
-				announceToScreenReader(msg);
+				showDownloadError(msg);
 				return;
 			}
 
@@ -968,10 +1048,12 @@
 		}
 
 		if (reportForm) {
-			reportForm.addEventListener('submit', (e) => {
+			reportForm.addEventListener('submit', async (e) => {
 				e.preventDefault();
-				fetchAndShowReport();
-				downloadReport();
+				const previewPayload = await fetchAndShowReport();
+				if (previewPayload && previewPayload.success) {
+					downloadReport(previewPayload);
+				}
 			});
 		}
 		if (previewBtn) {

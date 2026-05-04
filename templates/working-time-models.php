@@ -19,43 +19,43 @@ $models = $_['models'] ?? [];
 
 <?php include __DIR__ . '/common/navigation.php'; ?>
 
-<div id="app-content">
+<main id="app-content" role="main" aria-label="<?php p($l->t('Working time models content')); ?>">
     <div id="app-content-wrapper">
         <div class="section">
             <div class="section-header">
-                <h2><?php p($l->t('Arbeitszeitmodelle')); ?></h2>
-                <p><?php p($l->t('Legen Sie verschiedene Arbeitszeitmodelle an (z. B. Vollzeit, Teilzeit) und weisen Sie diese Mitarbeitenden zu.')); ?></p>
+                <h1><?php p($l->t('Working time models')); ?></h1>
+                <p><?php p($l->t('Create different working-time models (e.g., full-time, part-time) and assign them to employees.')); ?></p>
             </div>
 
             <div class="section-content mb-3">
                 <button type="button" 
                         id="create-model" 
                         class="btn btn--primary"
-                        aria-label="<?php p($l->t('Neues Arbeitszeitmodell anlegen')); ?>"
-                        title="<?php p($l->t('Neues Arbeitszeitmodell anlegen, z. B. für Vollzeit (8 Stunden/Tag) oder Teilzeit (4 Stunden/Tag).')); ?>">
-                    <?php p($l->t('Neues Arbeitszeitmodell')); ?>
+                        aria-label="<?php p($l->t('Create new working time model')); ?>"
+                        title="<?php p($l->t('Create a new working time model, e.g., full-time (8 hours/day) or part-time (4 hours/day).')); ?>">
+                    <?php p($l->t('New working time model')); ?>
                 </button>
             </div>
 
             <!-- Models Table -->
-            <div class="table-container" role="region" aria-label="<?php p($l->t('Arbeitszeitmodelle')); ?>">
-                <table class="table table--hover" id="models-table" role="table" aria-label="<?php p($l->t('Arbeitszeitmodelle')); ?>">
+            <div class="table-container" role="region" aria-label="<?php p($l->t('Working time models')); ?>">
+                <table class="table table--hover" id="models-table" role="table" aria-label="<?php p($l->t('Working time models')); ?>">
                 <thead>
                     <tr>
                         <th scope="col"><?php p($l->t('Name')); ?></th>
-                        <th scope="col"><?php p($l->t('Typ')); ?></th>
-                        <th scope="col"><?php p($l->t('Wochenstunden')); ?></th>
-                        <th scope="col"><?php p($l->t('Tagesstunden')); ?></th>
-                        <th scope="col"><?php p($l->t('Arbeitstage/Woche')); ?></th>
-                        <th scope="col"><?php p($l->t('Standard')); ?></th>
-                        <th scope="col"><?php p($l->t('Aktionen')); ?></th>
+                        <th scope="col"><?php p($l->t('Type')); ?></th>
+                        <th scope="col"><?php p($l->t('Weekly hours')); ?></th>
+                        <th scope="col"><?php p($l->t('Daily hours')); ?></th>
+                        <th scope="col"><?php p($l->t('Work days/week')); ?></th>
+                        <th scope="col"><?php p($l->t('Default')); ?></th>
+                        <th scope="col"><?php p($l->t('Actions')); ?></th>
                     </tr>
                 </thead>
                 <tbody id="models-tbody">
                     <?php if (empty($models)): ?>
                         <tr>
                             <td colspan="7" class="text-center">
-                                <?php p($l->t('Keine Arbeitszeitmodelle vorhanden')); ?>
+                                <?php p($l->t('No working time models available')); ?>
                             </td>
                         </tr>
                     <?php else: ?>
@@ -66,11 +66,11 @@ $models = $_['models'] ?? [];
                                     <?php
                                     $typeKey = $model['type'] ?? '';
                                     $typeLabel = match ($typeKey) {
-                                        \OCA\ArbeitszeitCheck\Db\WorkingTimeModel::TYPE_FULL_TIME => $l->t('Vollzeit'),
-                                        \OCA\ArbeitszeitCheck\Db\WorkingTimeModel::TYPE_PART_TIME => $l->t('Teilzeit'),
-                                        \OCA\ArbeitszeitCheck\Db\WorkingTimeModel::TYPE_FLEXIBLE => $l->t('Flexibel'),
-                                        \OCA\ArbeitszeitCheck\Db\WorkingTimeModel::TYPE_TRUST_BASED => $l->t('Vertrauensarbeitszeit'),
-                                        \OCA\ArbeitszeitCheck\Db\WorkingTimeModel::TYPE_SHIFT_WORK => $l->t('Schichtarbeit'),
+                                        \OCA\ArbeitszeitCheck\Db\WorkingTimeModel::TYPE_FULL_TIME => $l->t('Full-time'),
+                                        \OCA\ArbeitszeitCheck\Db\WorkingTimeModel::TYPE_PART_TIME => $l->t('Part-time'),
+                                        \OCA\ArbeitszeitCheck\Db\WorkingTimeModel::TYPE_FLEXIBLE => $l->t('Flexible'),
+                                        \OCA\ArbeitszeitCheck\Db\WorkingTimeModel::TYPE_TRUST_BASED => $l->t('Trust-based'),
+                                        \OCA\ArbeitszeitCheck\Db\WorkingTimeModel::TYPE_SHIFT_WORK => $l->t('Shift work'),
                                         default => $typeKey,
                                     };
                                     p($typeLabel);
@@ -81,9 +81,9 @@ $models = $_['models'] ?? [];
                                 <td><?php p((string)($model['workDaysPerWeek'] ?? 5)); ?></td>
                                 <td>
                                     <?php if ($model['isDefault']): ?>
-                                        <span class="badge badge--success"><?php p($l->t('Ja')); ?></span>
+                                        <span class="badge badge--success"><?php p($l->t('Yes')); ?></span>
                                     <?php else: ?>
-                                        <span class="badge"><?php p($l->t('Nein')); ?></span>
+                                        <span class="badge"><?php p($l->t('No')); ?></span>
                                     <?php endif; ?>
                                 </td>
                                 <td>
@@ -120,7 +120,7 @@ $models = $_['models'] ?? [];
             </div>
         </div>
     </div>
-</div>
+</main>
 </div><!-- /#arbeitszeitcheck-app -->
 
 <!-- Initialize JavaScript -->

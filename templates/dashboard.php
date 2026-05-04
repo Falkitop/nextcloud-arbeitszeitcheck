@@ -33,7 +33,9 @@ Util::addScript('arbeitszeitcheck', 'arbeitszeitcheck-main');
 $status = $_['status'] ?? [];
 $overtime = $_['overtime'] ?? [];
 $overtimeTrafficLight = is_array($_['overtimeTrafficLight'] ?? null) ? $_['overtimeTrafficLight'] : ['enabled' => false, 'state' => 'green'];
+$maxDailyHours = (float)\OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitcheck', 'max_daily_hours', '10');
 $recentEntries = $_['recentEntries'] ?? [];
+$dashboardError = isset($_['error']) && is_string($_['error']) ? trim($_['error']) : '';
 $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class);
 $dashStats = $_['stats'] ?? [];
 $appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitcheck', 'app_timezone', 'Europe/Berlin');
@@ -65,7 +67,7 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
 
 <?php include __DIR__ . '/common/navigation.php'; ?>
 
-<div id="app-content">
+<main id="app-content" role="main" aria-label="<?php p($l->t('Dashboard content')); ?>">
     <div id="app-content-wrapper">
         <!-- Breadcrumb Navigation -->
         <div class="breadcrumb-container">
@@ -80,16 +82,24 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
         <div class="section page-header-section">
             <div class="header-content">
                 <div class="header-text">
-                    <h2><?php p($l->t('Dashboard')); ?></h2>
+                    <h1><?php p($l->t('Dashboard')); ?></h1>
                     <p><?php p($l->t('See your current work status, today\'s hours, and recent time entries')); ?></p>
                 </div>
             </div>
         </div>
+        <?php if ($dashboardError !== ''): ?>
+            <div class="section dashboard-error-section">
+                <div class="alert alert--error" role="alert" aria-live="assertive">
+                    <strong><?php p($l->t('Some dashboard data could not be loaded.')); ?></strong>
+                    <p><?php p($dashboardError); ?></p>
+                </div>
+            </div>
+        <?php endif; ?>
 
         <!-- Welcome Message for First-Time Users -->
         <?php if (($_['isFirstTimeUser'] ?? false) === true): ?>
             <div class="section">
-                <div class="card alert alert--info" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
+                <div class="card alert alert--info" role="region" aria-labelledby="welcome-title">
                     <div class="card-header">
                         <h3 id="welcome-title" class="card-title">
                             <span class="alert-icon" aria-hidden="true">👋</span>
@@ -182,7 +192,7 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                                  aria-label="<?php p($l->t('Configured timezone')); ?>"
                                  title="<?php p($l->t('All times are shown and exported in this timezone.')); ?>">
                                 <span class="timezone-badge__icon" aria-hidden="true">🕐</span>
-                                <span class="timezone-badge__label"><?php p($appTimezone); ?> (MEZ/MESZ)</span>
+                                <span class="timezone-badge__label"><?php p($appTimezone); ?></span>
                             </div>
                         </div>
                         <div class="badge badge--<?php p($statusBadgeVariant); ?>">
@@ -219,7 +229,7 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                         <?php if ($statusKeySafe !== 'clocked_out'): ?>
                             <?php if ($statusKeySafe === 'break'): ?>
                                 <!-- Break Timer (shown when on break) -->
-                                <div class="break-timer dashboard-status-card__timer" data-break-start-time="<?php p($status['current_entry']['breakStartTime'] ?? ''); ?>">
+                                <div class="break-timer dashboard-status-card__timer" data-break-start-time="<?php p($status['current_entry']['breakStartTime'] ?? ''); ?>" role="status" aria-live="polite">
                                     <span class="timer-label"><?php p($l->t('Break Time:')); ?></span>
                                     <span class="timer-value" id="break-timer-value"><?php p($breakDurationFormatted); ?></span>
                                     <?php if ($breakStartTime !== null): ?>
@@ -238,13 +248,13 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                                     <?php endif; ?>
                                 </div>
                                 <!-- Frozen working-time counter below the break timer -->
-                                <div class="session-timer dashboard-status-card__timer dashboard-status-card__timer--paused" data-start-time="<?php p($status['current_entry']['startTime'] ?? ''); ?>" style="opacity: 0.6; margin-top: 1rem;">
+                                <div class="session-timer dashboard-status-card__timer dashboard-status-card__timer--paused" data-start-time="<?php p($status['current_entry']['startTime'] ?? ''); ?>" style="opacity: 0.6; margin-top: 1rem;" role="status" aria-live="polite">
                                     <span class="timer-label"><?php p($l->t('Working Time:')); ?></span>
                                     <span class="timer-value" id="session-timer-value"><?php p($durationFormatted); ?></span>
                                 </div>
                             <?php elseif ($statusKeySafe === 'paused'): ?>
                                 <!-- Paused: frozen working-time display (no live counter) -->
-                                <div class="session-timer dashboard-status-card__timer dashboard-status-card__timer--paused" data-start-time="<?php p($status['current_entry']['startTime'] ?? ''); ?>">
+                                <div class="session-timer dashboard-status-card__timer dashboard-status-card__timer--paused" data-start-time="<?php p($status['current_entry']['startTime'] ?? ''); ?>" role="status" aria-live="polite">
                                     <span class="timer-label"><?php p($l->t('Working Time:')); ?></span>
                                     <span class="timer-value" id="session-timer-value"><?php p($durationFormatted); ?></span>
                                 </div>
@@ -255,7 +265,7 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                                 <?php endif; ?>
                             <?php else: ?>
                                 <!-- Working Timer (shown when active) -->
-                                <div class="session-timer dashboard-status-card__timer" data-start-time="<?php p($status['current_entry']['startTime'] ?? ''); ?>">
+                                <div class="session-timer dashboard-status-card__timer" data-start-time="<?php p($status['current_entry']['startTime'] ?? ''); ?>" role="status" aria-live="polite">
                                     <span class="timer-label"><?php p($l->t('Current Session:')); ?></span>
                                     <span class="timer-value" id="session-timer-value"><?php p($durationFormatted); ?></span>
                                     <?php if ($startedAt !== null): ?>
@@ -274,7 +284,7 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                                     type="button"
                                     aria-label="<?php p($statusKeySafe === 'paused' ? $l->t('Resume working – continues your paused time entry') : $l->t('Clock in to start tracking your working time')); ?>"
                                     title="<?php p($statusKeySafe === 'paused' ? $l->t('Resume working – continues your paused time entry') : $l->t('Click to clock in and start tracking your working time')); ?>">
-                                    <?php p($statusKeySafe === 'paused' ? $l->t('clock_in_resume') : $l->t('Clock In')); ?>
+                                    <?php p($statusKeySafe === 'paused' ? $l->t('Resume after break') : $l->t('Clock In')); ?>
                                 </button>
                             <?php elseif (($status['status'] ?? 'clocked_out') === 'active'): ?>
                                 <button id="btn-start-break"
@@ -434,6 +444,7 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
 
             <div class="table-container" role="region" aria-label="<?php p($l->t('Recent time entries')); ?>">
                 <table class="table table--hover" role="table" aria-label="<?php p($l->t('Recent time entries')); ?>">
+                    <caption class="sr-only"><?php p($l->t('Recent time entries with date, start, end, duration, break, status and actions')); ?></caption>
                     <thead>
                         <tr>
                             <th scope="col"><?php p($l->t('Date')); ?></th>
@@ -635,7 +646,7 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
             </div>
         </section>
     </div>
-</div>
+</main>
 </div><!-- /#arbeitszeitcheck-app -->
 
 <?php include __DIR__ . '/common/main-ui-l10n.php'; ?>
@@ -646,6 +657,7 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
     window.ArbeitszeitCheck = window.ArbeitszeitCheck || {};
     window.ArbeitszeitCheck.status = <?php echo json_encode($status, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.overtime = <?php echo json_encode($overtime, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.maxDailyHours = <?php echo json_encode($maxDailyHours, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.page = 'dashboard';
 
     // L10n strings
@@ -662,7 +674,8 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
         clockOut: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.time_tracking.clockOut'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
         startBreak: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.time_tracking.startBreak'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
         endBreak: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.time_tracking.endBreak'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
-        status: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.time_tracking.getStatus'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>
+        status: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.time_tracking.getStatus'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
+        onboardingComplete: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.settings.setOnboardingCompleted'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>
     };
 
     // Handle welcome message dismissal
@@ -672,11 +685,14 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
             const welcomeCard = this.closest('.card');
             if (welcomeCard) {
                 welcomeCard.style.display = 'none';
-                // Store dismissal in localStorage
-                try {
-                    localStorage.setItem('arbeitszeitcheck-welcome-dismissed', 'true');
-                } catch (e) {
-                    // Ignore localStorage errors
+                const completeUrl = (window.ArbeitszeitCheck.apiUrl && window.ArbeitszeitCheck.apiUrl.onboardingComplete)
+                    ? window.ArbeitszeitCheck.apiUrl.onboardingComplete
+                    : null;
+                if (completeUrl && window.ArbeitszeitCheckUtils && typeof window.ArbeitszeitCheckUtils.ajax === 'function') {
+                    window.ArbeitszeitCheckUtils.ajax(completeUrl, {
+                        method: 'POST',
+                        data: { completed: true }
+                    });
                 }
             }
         });

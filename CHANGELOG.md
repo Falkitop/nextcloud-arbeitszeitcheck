@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## 1.2.8 - 2026-04-30
+
+### Security
+
+- **CSRF protection on all state-changing endpoints**: Removed `#[NoCSRFRequired]` from POST/PUT/DELETE methods in `AbsenceController`, `TimeEntryController`, `TimeTrackingController`, `ComplianceController`, `SubstituteController`, `SettingsController`, `MonthClosureController`, `GdprController`, and `AdminController`. The frontend already submits `requesttoken` consistently via `ArbeitszeitCheckUtils.ajax`, so all mutating routes now reject cross-site requests by default. GET-only endpoints intentionally remain `#[NoCSRFRequired]` (CSRF is irrelevant for read-only GETs in Nextcloud's framework).
+- **No raw exception leakage in JSON responses**: Hardened `AbsenceController::getSafeErrorMessage` so that exception messages are only forwarded when they are explicit business-rule `\Exception` instances; messages containing technical fingerprints (SQL fragments, file paths, stack traces, oversized payloads) are replaced with a generic localized error. Applied the hardened helper to `AbsenceController::store`/`update`. Replaced direct `getMessage()` leakage in `AdminController::getTeams`, `SettingsController::index_api`, and `PageController` page-render error paths with sanitized localized messages.
+- **Correct HTTP status for authentication errors**: `SettingsController::update` now returns `HTTP 401 Unauthorized` (was `HTTP 400 Bad Request`) when the request is unauthenticated, matching what API clients and load balancers expect.
+
+### Changed
+
+- **Organization-scope monthly report downloads**: `reports.js` now forwards user IDs resolved during preview to the `report.team` endpoint and falls back to a clear "no organization members had time entries in the selected period" message instead of the misleading "preview first" hint when an organization-wide preview yields zero results.
+- **Sanitized dashboard load errors**: `dashboard.js`/`dashboard.css` now surface a localized "Some dashboard data could not be loaded." live-region message instead of raw widget exceptions.
+- **Resume-after-break clarity**: Clock-in copy and l10n unified around "Resume after break" instead of the legacy `clock_in_resume` placeholder.
+
+### Accessibility (WCAG 2.1 AA)
+
+- **Main landmark on every page**: 17 page templates now expose a single, properly labelled `<main id="app-content" role="main" aria-label="...">` landmark for assistive technologies (`dashboard`, `index`, `timeline`, `calendar`, `settings`, `personal-settings`, `reports`, `compliance-dashboard`, `compliance-reports`, `compliance-violations`, `working-time-models`, `admin-dashboard`, `admin-teams`, `admin-users`, `admin-holidays`, `manager-dashboard`, `manager-time-entries`, `manager-absences`, `manager-month-closures`).
+- **Skip link / `<main>` consistency**: `time-entries`, `absences`, `admin-settings`, `admin-notifications`, `substitution-requests`, and `audit-log` previously had `id="app-content"` on a plain `<div>` while `role="main"` lived on a child wrapper, so the "Skip to main content" target landed on a non-landmark. All six now use `<main id="app-content" role="main">` directly. Removed redundant `role="banner"` from the `<header>` inside `audit-log`'s main region.
+- **Accessible names on all data tables**: Added `aria-label`/`aria-labelledby` and screen-reader captions to the holiday list table and to the two notification-matrix tables that previously had no accessible name.
+- **Live error announcement on dashboard**: Dashboard error section now lives inside an `aria-live` region so partial widget failures are announced without disrupting focus.
+- **Manager dashboard team metrics now announced**: Stat numbers (Team Members / Active Today / Hours Today / Pending Absences) had `aria-hidden="true"` on the value spans, which silenced every metric for screen reader users. Each card now exposes a single, fully readable accessible name (e.g. "5 team members active today") via a `role="group"` wrapper while keeping the visual layout intact.
+- **Alert vs live-region conflicts resolved**: Removed conflicting `aria-live="polite"` from `role="alert"` containers in `absences.php` (form error), `admin-settings.php` (global error banner), and three time-entry inline form errors. `role="alert"` already implies assertive announcements, so the previous `polite` override could delay critical validation feedback for assistive technology.
+- **Page heading hierarchy normalized**: Every primary page template now exposes exactly one `<h1>` (dashboard, time-entries, absences, calendar, timeline, reports, settings, personal-settings, compliance-dashboard, compliance-reports, compliance-violations, working-time-models, admin-dashboard, admin-users, admin-holidays, admin-settings, admin-notifications, manager-dashboard). Previously most pages started at `<h2>`. Subordinate section headings in time-entries and absences were promoted to `h2`/`h3` so the ladder no longer skips levels. CSS rules for `.section-header h1` were added to inherit the existing `h2` styling.
+- **Manager dashboard breadcrumb**: Added the standard "Dashboard › Manager Dashboard" breadcrumb to align with all other primary pages and improve orientation for keyboard and screen reader users.
+- **Calendar loading state announced**: The "Loading calendar…" placeholder now uses `role="status"` with `aria-live="polite"` so the loading and ready transitions are announced. The decorative spinner is `aria-hidden`.
+- **Focus indicators restored**: `outline: none` was used on the timeline filter checkboxes and the admin user-picker items, breaking keyboard focus visibility. Added `:focus-visible` outlines using the primary color for both, preserving hover styling.
+- **Mobile touch targets**: `.btn--sm` was 36 × 36 px on mobile, below WCAG 2.5.5's 44 × 44 advisory. The mobile media query now enforces 44 × 44 px on small buttons; desktop sizing is unchanged.
+- **Empty-state row for legacy `index.php` time-entries view**: Restored the missing empty-state row when no entries exist (parity with the other table views in the same template).
+- **Reports access fallback navigation**: Replaced an inline `onclick` redirect in `reports.php`'s no-access empty state with a real `<a>` anchor so the dashboard fallback works without JavaScript and inherits standard link semantics.
+
+### Removed
+
+- **Stale Nextcloud personal-settings panel placeholder**: The old `personal-settings.php` panel rendered inside Nextcloud's user-settings shell with hardcoded vacation-days / working-hours fields and reminder checkboxes that were never wired to any backend. Replaced it with a clean, accurate panel pointing the user to the in-app personal settings page (where these preferences are actually persisted via `SettingsController::update`) plus a short GDPR data-rights note. Kept the legacy `index.php` "settings" branch (dead code, but still in the file) but pulled the previously hardcoded `1.0.1` version string from `IAppManager::getAppVersion('arbeitszeitcheck')`.
+
+### Tests
+
+- **AccessibilityTest hardened**: Replaced the "must contain `<button>`" assertion (which permitted pages without keyboard-reachable controls and false-flagged link-only panels) with two stricter checks: (1) explicitly forbid the `<div onclick=…>` anti-pattern and (2) require at least one `<button>` or `<a href>` per audited template. Total suite: 455 tests, 1 652 assertions, all green.
+
 ## 1.2.7 - 2026-04-27
 
 ### Added

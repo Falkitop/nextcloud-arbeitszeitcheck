@@ -153,6 +153,7 @@
     padding-bottom: var(--space-4);
   }
 
+  .section-header h1,
   .section-header h2,
   .section-header h3 {
     font-size: var(--arbeitszeitcheck-font-size-xl);
@@ -369,10 +370,10 @@
     min-width: 24px;
   }
 
-  /* Small buttons still accessible */
+  /* Small buttons still accessible: meet WCAG 2.5.5 minimum on touch devices */
   .btn--sm {
-    min-height: 36px;
-    min-width: 36px;
+    min-height: 44px;
+    min-width: 44px;
   }
 
   /* Increase spacing between touch targets */

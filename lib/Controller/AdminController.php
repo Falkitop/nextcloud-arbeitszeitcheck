@@ -636,7 +636,6 @@ class AdminController extends Controller
 	 *
 	 * @return JSONResponse
 	 */
-	#[NoCSRFRequired]
 	public function saveCompanyHoliday(): JSONResponse
 	{
 		try {
@@ -712,7 +711,6 @@ class AdminController extends Controller
 	 *
 	 * @return JSONResponse
 	 */
-	#[NoCSRFRequired]
 	public function deleteCompanyHoliday(): JSONResponse
 	{
 		try {
@@ -854,7 +852,6 @@ class AdminController extends Controller
 	 *
 	 * @return JSONResponse
 	 */
-	#[NoCSRFRequired]
 	public function saveStateHoliday(): JSONResponse
 	{
 		try {
@@ -986,7 +983,6 @@ class AdminController extends Controller
 	 * @param int $id
 	 * @return JSONResponse
 	 */
-	#[NoCSRFRequired]
 	public function deleteStateHoliday(int $id): JSONResponse
 	{
 		try {
@@ -1363,7 +1359,6 @@ class AdminController extends Controller
 	 *
 	 * @return JSONResponse
 	 */
-	#[NoCSRFRequired]
 	public function updateAdminSettings(): JSONResponse
 	{
 		try {
@@ -1538,7 +1533,6 @@ class AdminController extends Controller
 		}
 	}
 
-	#[NoCSRFRequired]
 	public function updateNotificationSettings(): JSONResponse
 	{
 		try {
@@ -2300,7 +2294,6 @@ class AdminController extends Controller
 	 * @param string $userId
 	 * @return JSONResponse
 	 */
-	#[NoCSRFRequired]
 	public function updateUserWorkingTimeModel(string $userId): JSONResponse
 	{
 		try {
@@ -2637,7 +2630,6 @@ class AdminController extends Controller
 	 *
 	 * @return JSONResponse
 	 */
-	#[NoCSRFRequired]
 	public function createWorkingTimeModel(): JSONResponse
 	{
 		try {
@@ -2727,7 +2719,6 @@ class AdminController extends Controller
 	 * @param int $id
 	 * @return JSONResponse
 	 */
-	#[NoCSRFRequired]
 	public function updateWorkingTimeModel(int $id): JSONResponse
 	{
 		try {
@@ -2835,7 +2826,6 @@ class AdminController extends Controller
 	 * @param int $id
 	 * @return JSONResponse
 	 */
-	#[NoCSRFRequired]
 	public function deleteWorkingTimeModel(int $id): JSONResponse
 	{
 		try {
@@ -2912,7 +2902,6 @@ class AdminController extends Controller
 		}
 	}
 
-	#[NoCSRFRequired]
 	public function createTariffRuleSet(): JSONResponse
 	{
 		try {
@@ -2963,7 +2952,6 @@ class AdminController extends Controller
 		}
 	}
 
-	#[NoCSRFRequired]
 	public function updateTariffRuleSet(int $id): JSONResponse
 	{
 		try {
@@ -3025,7 +3013,6 @@ class AdminController extends Controller
 		}
 	}
 
-	#[NoCSRFRequired]
 	public function activateTariffRuleSet(int $id): JSONResponse
 	{
 		try {
@@ -3071,7 +3058,6 @@ class AdminController extends Controller
 		}
 	}
 
-	#[NoCSRFRequired]
 	public function retireTariffRuleSet(int $id): JSONResponse
 	{
 		try {
@@ -3085,7 +3071,6 @@ class AdminController extends Controller
 		}
 	}
 
-	#[NoCSRFRequired]
 	public function assignVacationPolicy(string $userId): JSONResponse
 	{
 		try {
@@ -3179,7 +3164,6 @@ class AdminController extends Controller
 		}
 	}
 
-	#[NoCSRFRequired]
 	public function simulateVacationPolicy(): JSONResponse
 	{
 		try {
@@ -3621,14 +3605,16 @@ class AdminController extends Controller
 			$tree = $this->buildTeamTree($teams, null);
 			return new JSONResponse(['success' => true, 'teams' => $tree]);
 		} catch (\Throwable $e) {
-			// Table oc_at_teams may not exist if migration hasn't run yet
 			$msg = $e->getMessage();
 			if (str_contains($msg, "doesn't exist") || str_contains($msg, 'at_teams')) {
 				\OCP\Log\logger('arbeitszeitcheck')->info('Admin teams table not found, returning empty: ' . $msg);
 				return new JSONResponse(['success' => true, 'teams' => []]);
 			}
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in AdminController::getTeams: ' . $msg, ['exception' => $e]);
-			return new JSONResponse(['success' => false, 'error' => $msg], Http::STATUS_INTERNAL_SERVER_ERROR);
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.'),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}
 
@@ -3688,7 +3674,6 @@ class AdminController extends Controller
 		return $out;
 	}
 
-	#[NoCSRFRequired]
 	public function createTeam(): JSONResponse
 	{
 		try {
@@ -3725,7 +3710,6 @@ class AdminController extends Controller
 		}
 	}
 
-	#[NoCSRFRequired]
 	public function updateTeam(int $id): JSONResponse
 	{
 		try {
@@ -3768,7 +3752,6 @@ class AdminController extends Controller
 		}
 	}
 
-	#[NoCSRFRequired]
 	public function deleteTeam(int $id): JSONResponse
 	{
 		try {
@@ -3820,7 +3803,6 @@ class AdminController extends Controller
 		}
 	}
 
-	#[NoCSRFRequired]
 	public function addTeamMember(int $id): JSONResponse
 	{
 		try {
@@ -3859,7 +3841,6 @@ class AdminController extends Controller
 		}
 	}
 
-	#[NoCSRFRequired]
 	public function removeTeamMember(int $id, string $userId): JSONResponse
 	{
 		try {
@@ -3898,7 +3879,6 @@ class AdminController extends Controller
 		}
 	}
 
-	#[NoCSRFRequired]
 	public function addTeamManager(int $id): JSONResponse
 	{
 		try {
@@ -3937,7 +3917,6 @@ class AdminController extends Controller
 		}
 	}
 
-	#[NoCSRFRequired]
 	public function removeTeamManager(int $id, string $userId): JSONResponse
 	{
 		try {
@@ -3966,7 +3945,6 @@ class AdminController extends Controller
 		return new JSONResponse(['success' => true, 'useAppTeams' => $use]);
 	}
 
-	#[NoCSRFRequired]
 	public function setTeamsUseAppTeams(): JSONResponse
 	{
 		$params = $this->request->getParams();

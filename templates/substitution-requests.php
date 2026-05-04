@@ -21,8 +21,8 @@ $apiDeclineUrl = $urlGenerator->linkToRoute('arbeitszeitcheck.substitute.decline
 
 <?php include __DIR__ . '/common/navigation.php'; ?>
 
-<div id="app-content" class="substitution-requests-page">
-    <div id="app-content-wrapper" role="main" aria-label="<?php p($l->t('Substitution requests')); ?>">
+<main id="app-content" role="main" aria-label="<?php p($l->t('Substitution requests')); ?>" class="substitution-requests-page">
+    <div id="app-content-wrapper">
         <!-- Breadcrumb -->
         <div class="breadcrumb-container">
             <nav class="breadcrumb" aria-label="<?php p($l->t('Breadcrumb')); ?>">
@@ -53,7 +53,7 @@ $apiDeclineUrl = $urlGenerator->linkToRoute('arbeitszeitcheck.substitute.decline
             </div>
         </section>
     </div>
-</div>
+</main>
 </div><!-- /#arbeitszeitcheck-app -->
 
 <script nonce="<?php p($_['cspNonce'] ?? ''); ?>">

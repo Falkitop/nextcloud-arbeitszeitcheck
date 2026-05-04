@@ -34,7 +34,7 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
 
 <?php include __DIR__ . '/common/navigation.php'; ?>
 
-<div id="app-content">
+<main id="app-content" role="main" aria-label="<?php p($l->t('Timeline content')); ?>">
     <div id="app-content-wrapper">
         <!-- Breadcrumb Navigation -->
         <div class="breadcrumb-container">
@@ -50,7 +50,7 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
         <header class="section page-header-section" aria-labelledby="timeline-page-title">
             <div class="header-content">
                 <div class="header-text">
-                    <h2 id="timeline-page-title"><?php p($l->t('Timeline')); ?></h2>
+                    <h1 id="timeline-page-title"><?php p($l->t('Timeline')); ?></h1>
                     <p><?php p($l->t('View your working time history in chronological order')); ?></p>
                 </div>
                 <div class="header-actions">
@@ -88,7 +88,7 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
             </div>
         </section>
     </div>
-</div>
+</main>
 </div><!-- /#arbeitszeitcheck-app -->
 
 <?php include __DIR__ . '/common/main-ui-l10n.php'; ?>

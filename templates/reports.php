@@ -43,7 +43,7 @@ $useAppTeams = $config->getAppValue('arbeitszeitcheck', 'use_app_teams', '0') ==
 
 <?php include __DIR__ . '/common/navigation.php'; ?>
 
-<div id="app-content">
+<main id="app-content" role="main" aria-label="<?php p($l->t('Reports content')); ?>">
     <div id="app-content-wrapper">
         <!-- Breadcrumb Navigation -->
         <div class="breadcrumb-container">
@@ -59,7 +59,7 @@ $useAppTeams = $config->getAppValue('arbeitszeitcheck', 'use_app_teams', '0') ==
         <header class="section page-header-section" aria-labelledby="reports-page-title">
             <div class="header-content">
                 <div class="header-text">
-                    <h2 id="reports-page-title"><?php p($l->t('Reports')); ?></h2>
+                    <h1 id="reports-page-title"><?php p($l->t('Reports')); ?></h1>
                     <p><?php p($l->t('Generate and export working time reports')); ?></p>
                 </div>
             </div>
@@ -74,11 +74,10 @@ $useAppTeams = $config->getAppValue('arbeitszeitcheck', 'use_app_teams', '0') ==
                         <?php p($l->t('If you need to generate reports, please contact your administrator or manager.')); ?>
                     </p>
                     <p class="empty-state__actions">
-                        <button type="button"
-                                class="btn btn--primary"
-                                onclick="window.location.href=<?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.page.index'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>">
+                        <a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.page.index')); ?>"
+                           class="btn btn--primary">
                             <?php p($l->t('Dashboard')); ?>
-                        </button>
+                        </a>
                     </p>
                 </div>
             <?php else: ?>
@@ -370,7 +369,7 @@ $useAppTeams = $config->getAppValue('arbeitszeitcheck', 'use_app_teams', '0') ==
             <?php endif; ?>
         </section>
     </div>
-</div>
+</main>
 </div><!-- /#arbeitszeitcheck-app -->
 
 <?php include __DIR__ . '/common/main-ui-l10n.php'; ?>
@@ -416,7 +415,8 @@ $useAppTeams = $config->getAppValue('arbeitszeitcheck', 'use_app_teams', '0') ==
     window.ArbeitszeitCheck.l10n.dateRangeInvalid = <?php echo json_encode($l->t('Start date must be before or equal to end date.'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.exportScopeNotice = <?php echo json_encode($l->t('The download contains one row per team member for the selected period.'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.exportScopeNoticeTimeEntries = <?php echo json_encode($l->t('The download lists each time entry line for your team (several rows per person if there are multiple entries; overnight shifts may appear as two rows when midnight split is enabled).'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
-    window.ArbeitszeitCheck.l10n.exportOrganizationScopeNotice = <?php echo json_encode($l->t('Export for organization scope is not yet available. Use Preview to view the report.'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.exportOrganizationScopeNotice = <?php echo json_encode($l->t('For organization scope, download is available for working time export after preview.'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.exportOrganizationEmpty = <?php echo json_encode($l->t('No organization members had time entries in the selected period; nothing to download.'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.teamDownloadWorkingTimeOnly = <?php echo json_encode($l->t('Team download is only available for the working time export. Switch to personal scope to download absence or compliance data.'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.teamPreviewWorkingTimeOnly = <?php echo json_encode($l->t('With team scope, this preview shows the team working time summary, not absence or compliance.'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.teamDownloadOnlyWorkingTimeExport = <?php echo json_encode($l->t('Team file download is only available for the working time export.'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;

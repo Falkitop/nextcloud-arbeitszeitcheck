@@ -19,6 +19,7 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 $status = $_['status'] ?? [];
 $overtime = $_['overtime'] ?? [];
 $recentEntries = $_['recentEntries'] ?? [];
+$maxDailyHours = (float)\OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitcheck', 'max_daily_hours', '10');
 
 // Current session duration calculation for display
 $currentSessionDuration = $status['current_session_duration'] ?? 0;
@@ -41,7 +42,7 @@ $content = '';
 
 <?php include __DIR__ . '/common/navigation.php'; ?>
 
-<div id="app-content">
+<main id="app-content" role="main" aria-label="<?php p($l->t('Dashboard content')); ?>">
     <div id="app-content-wrapper">
         <div class="arbeitszeitcheck-content section">
             <?php if ($_['view'] === 'dashboard'): ?>
@@ -197,31 +198,37 @@ $content = '';
                             </tr>
                         </thead>
                         <tbody>
-                            <?php foreach ($_['entries'] ?? [] as $entry): ?>
+                            <?php if (empty($_['entries'] ?? [])): ?>
                                 <tr>
-                                    <td><?php p($entry->getStartTime()->format('d.m.Y')); ?></td>
-                                    <td><?php p($entry->getStartTime()->format('H:i')); ?></td>
-                                    <td><?php p($entry->getEndTime() ? $entry->getEndTime()->format('H:i') : '-'); ?></td>
-                                    <td><?php p(round($entry->getWorkingDurationHours() ?? 0, 2)); ?> h</td>
-                                    <td><span class="badge badge--<?php 
-                                        echo match($entry->getStatus()) {
-                                            'completed' => 'success',
-                                            'active' => 'primary',
-                                            'pending_approval' => 'warning',
-                                            default => 'secondary'
-                                        };
-                                    ?>"><?php 
-                                        $statusKey = $entry->getStatus();
-                                        $statusLabel = match($statusKey) {
-                                            'completed' => $l->t('Completed'),
-                                            'active' => $l->t('Active'),
-                                            'pending_approval' => $l->t('Pending Approval'),
-                                            default => $statusKey
-                                        };
-                                        p($statusLabel);
-                                    ?></span></td>
+                                    <td colspan="5" class="empty-state"><?php p($l->t('No time entries found')); ?></td>
                                 </tr>
-                            <?php endforeach; ?>
+                            <?php else: ?>
+                                <?php foreach ($_['entries'] as $entry): ?>
+                                    <tr>
+                                        <td><?php p($entry->getStartTime()->format('d.m.Y')); ?></td>
+                                        <td><?php p($entry->getStartTime()->format('H:i')); ?></td>
+                                        <td><?php p($entry->getEndTime() ? $entry->getEndTime()->format('H:i') : '-'); ?></td>
+                                        <td><?php p(round($entry->getWorkingDurationHours() ?? 0, 2)); ?> h</td>
+                                        <td><span class="badge badge--<?php
+                                            echo match($entry->getStatus()) {
+                                                'completed' => 'success',
+                                                'active' => 'primary',
+                                                'pending_approval' => 'warning',
+                                                default => 'secondary'
+                                            };
+                                        ?>"><?php
+                                            $statusKey = $entry->getStatus();
+                                            $statusLabel = match($statusKey) {
+                                                'completed' => $l->t('Completed'),
+                                                'active' => $l->t('Active'),
+                                                'pending_approval' => $l->t('Pending Approval'),
+                                                default => $statusKey
+                                            };
+                                            p($statusLabel);
+                                        ?></span></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
                         </tbody>
                     </table>
                 </div>
@@ -285,7 +292,10 @@ $content = '';
                     <h2><?php p($l->t('Settings')); ?></h2>
                 </div>
                 <div class="arbeitszeitcheck-card">
-                    <p><?php p($l->t('ArbeitszeitCheck version:')); ?> 1.0.1</p>
+                    <p>
+                        <?php p($l->t('ArbeitszeitCheck version:')); ?>
+                        <?php p(\OCP\Server::get(\OCP\App\IAppManager::class)->getAppVersion('arbeitszeitcheck')); ?>
+                    </p>
                     <p><?php p($l->t('User:')); ?> <?php $user = \OCP\Server::get(\OCP\IUserSession::class)->getUser(); p($user ? $user->getDisplayName() : ''); ?> (<?php p($user ? $user->getUID() : ''); ?>)</p>
                 </div>
 
@@ -297,7 +307,7 @@ $content = '';
             <?php endif; ?>
         </div>
     </div>
-</div>
+</main>
 </div><!-- /#arbeitszeitcheck-app -->
 
 <!-- Initialize JavaScript -->
@@ -305,6 +315,7 @@ $content = '';
     // Pass essential data to JS
     window.ArbeitszeitCheck = window.ArbeitszeitCheck || {};
     window.ArbeitszeitCheck.status = <?php echo json_encode($status, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.maxDailyHours = <?php echo json_encode($maxDailyHours, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n = window.ArbeitszeitCheck.l10n || {};
     window.ArbeitszeitCheck.l10n.clockIn = <?php echo json_encode($l->t('Clock In'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.clockOut = <?php echo json_encode($l->t('Clock Out'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;

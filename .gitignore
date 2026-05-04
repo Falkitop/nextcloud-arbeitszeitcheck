@@ -54,4 +54,5 @@ release/APPSTORE-SIGNATURE*.txt
 release/*.b64
 
 # Local dev scripts (e.g. signing helper, not for public repo)
-scripts/
+scripts/*
+!scripts/check-l10n-placeholders.php

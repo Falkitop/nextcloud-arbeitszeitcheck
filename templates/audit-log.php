@@ -22,10 +22,10 @@ $endDate = $_['endDate'] ?? '';
 
 <?php include __DIR__ . '/common/navigation.php'; ?>
 
-<div id="app-content" class="audit-log-page">
+<main id="app-content" role="main" aria-label="<?php p($l->t('Activity log')); ?>" class="audit-log-page">
     <div id="app-content-wrapper">
-        <main class="audit-log-main" role="main">
-            <header class="audit-log-header" role="banner">
+        <div class="audit-log-main">
+            <header class="audit-log-header">
                 <h1 class="audit-log-title"><?php p($l->t('Activity log')); ?></h1>
                 <p class="audit-log-subtitle"><?php p($l->t('Log of all actions in the time tracking system (who changed what and when).')); ?></p>
             </header>
@@ -109,9 +109,9 @@ $endDate = $_['endDate'] ?? '';
                     <?php p($l->t('Showing %1$d of %2$d entries', [count($logs ?? []), $total ?? 0])); ?>
                 </p>
             </section>
-        </main>
+        </div>
     </div>
-</div>
+</main>
 </div><!-- /#arbeitszeitcheck-app -->
 
 <?php

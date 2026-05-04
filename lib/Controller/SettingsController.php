@@ -112,7 +112,10 @@ class SettingsController extends Controller
 				return new JSONResponse(['success' => true, 'settings' => []]);
 			}
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in SettingsController::index_api: ' . $msg, ['exception' => $e]);
-			return new JSONResponse(['success' => false, 'error' => $msg], Http::STATUS_INTERNAL_SERVER_ERROR);
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.'),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}
 
@@ -188,10 +191,12 @@ class SettingsController extends Controller
 	}
 
 	/**
-	 * Update personal settings (called via AJAX with JSON; NoCSRFRequired for same reason as absence/time entry endpoints)
+	 * Update personal settings (called via AJAX with JSON).
+	 *
+	 * CSRF protection is enabled (default) — the frontend AJAX wrapper sends
+	 * the requesttoken header on every state-changing call.
 	 */
 	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	public function update(): JSONResponse
 	{
 		try {
@@ -260,15 +265,17 @@ class SettingsController extends Controller
 			]);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in SettingsController::update: ' . $e->getMessage(), ["exception" => $e]);
-			// Check if it's an authentication error
-			$errorMessage = $e->getMessage();
-			if (strpos($errorMessage, 'User not authenticated') !== false) {
-				$errorMessage = $this->l10n->t('User not authenticated');
+			$rawMessage = $e->getMessage();
+			if (strpos($rawMessage, 'User not authenticated') !== false) {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('User not authenticated')
+				], Http::STATUS_UNAUTHORIZED);
 			}
 			return new JSONResponse([
 				'success' => false,
-				'error' => $errorMessage
-			], Http::STATUS_BAD_REQUEST);
+				'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.')
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}
 
@@ -325,7 +332,6 @@ class SettingsController extends Controller
 	 * @return JSONResponse
 	 */
 	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	public function setOnboardingCompleted(): JSONResponse
 	{
 		try {

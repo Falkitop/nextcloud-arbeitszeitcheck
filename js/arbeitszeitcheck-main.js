@@ -127,7 +127,22 @@
                         if (status.working_today_hours !== null && status.working_today_hours !== undefined) {
                             workingTodayHours = parseFloat(status.working_today_hours) || 0.0;
                         }
+                        /* Anchor session duration from the same moment workingTodayHours last came from the API.
+                           Lets us extrapolate total daily hours between polls (otherwise workingTodayHours can be
+                           stale for up to STATUS_CHECK_INTERVAL while the counter keeps ticking past time that
+                           will be clipped at the legal maximum — confusing UX). */
+                        let lastWtSyncSessionSeconds = null;
+                        if (workingTodayHours > 0) {
+                            lastWtSyncSessionSeconds = (status.current_session_duration !== null
+                                    && status.current_session_duration !== undefined)
+                                ? Math.floor(status.current_session_duration)
+                                : baseWorkingSeconds;
+                        }
                         const STATUS_CHECK_INTERVAL = 5000; // Check status every 5 seconds
+                        const configuredMaxDailyHours = (() => {
+                            const raw = parseFloat(this.config.maxDailyHours);
+                            return Number.isFinite(raw) ? Math.max(1, Math.min(24, raw)) : 10;
+                        })();
 
                         // Clear any existing timer
                         if (this.timers.session) {
@@ -156,9 +171,16 @@
                                             const newStatus = response.status.status || 'clocked_out';
                                             isClockedIn = (newStatus === 'active' || newStatus === 'break');
                                             isOnBreak   = (newStatus === 'break');
+                                            if (response.status.working_today_hours !== null
+                                                    && response.status.working_today_hours !== undefined) {
+                                                workingTodayHours = parseFloat(response.status.working_today_hours) || 0.0;
+                                            }
                                             if (response.status.current_session_duration !== null
                                                     && response.status.current_session_duration !== undefined) {
                                                 baseWorkingSeconds = Math.floor(response.status.current_session_duration);
+                                                if (workingTodayHours > 0) {
+                                                    lastWtSyncSessionSeconds = baseWorkingSeconds;
+                                                }
                                             }
                                             lastUpdateTime = new Date().getTime();
                                         }
@@ -195,7 +217,12 @@
                                             if (response.status.working_today_hours !== null && response.status.working_today_hours !== undefined) {
                                                 workingTodayHours = parseFloat(response.status.working_today_hours) || 0.0;
                                             }
-                                            
+                                            if (response.status.current_session_duration !== null
+                                                    && response.status.current_session_duration !== undefined
+                                                    && workingTodayHours > 0) {
+                                                lastWtSyncSessionSeconds = Math.floor(response.status.current_session_duration);
+                                            }
+
                                             // CRITICAL: Stop timer if user clocked out or paused
                                             if (wasClockedIn && !isClockedIn) {
                                                 // User clocked out or paused - stop the timer immediately
@@ -221,6 +248,9 @@
                                                 // Update baseWorkingSeconds from backend if available
                                                 if (response.status.current_session_duration !== null && response.status.current_session_duration !== undefined) {
                                                     baseWorkingSeconds = Math.floor(response.status.current_session_duration);
+                                                    if (workingTodayHours > 0) {
+                                                        lastWtSyncSessionSeconds = baseWorkingSeconds;
+                                                    }
                                                 }
                                             }
                                         }
@@ -258,6 +288,20 @@
                             // Ensure non-negative
                             workingSeconds = Math.max(0, workingSeconds);
 
+                            const maxWorkingHours = configuredMaxDailyHours;
+
+                            /* Stop counting once the legal daily maximum is reached: session time beyond what fits in
+                               the remaining allowance would only be clipped by auto-completion anyway. */
+                            if (workingTodayHours > 0 && lastWtSyncSessionSeconds !== null) {
+                                const maxSessionSecondsAllowed = lastWtSyncSessionSeconds
+                                    + Math.max(0, (maxWorkingHours - workingTodayHours) * 3600);
+                                if (workingSeconds > maxSessionSecondsAllowed) {
+                                    workingSeconds = Math.floor(maxSessionSecondsAllowed);
+                                    baseWorkingSeconds = workingSeconds;
+                                    lastUpdateTime = now;
+                                }
+                            }
+
                             const hours = Math.floor(workingSeconds / 3600);
                             const minutes = Math.floor((workingSeconds % 3600) / 60);
                             const seconds = workingSeconds % 60;
@@ -272,20 +316,15 @@
                             // IMPORTANT: Check TOTAL daily working hours (previous entries + current session)
                             // not just the current session hours
                             const currentSessionHours = workingSeconds / 3600;
-                            const maxWorkingHours = 10; // ArbZG §3 maximum
-                            
-                            // Calculate total daily working hours
-                            // Note: workingTodayHours from status API already includes the current session
-                            // if it's active, so we use it directly. If status check hasn't run yet,
-                            // we calculate it manually from current session hours.
+
+                            // Calculate total daily working hours (extrapolate between polls when API values are anchored)
                             let totalDailyHours;
-                            if (workingTodayHours > 0) {
-                                // Use the backend value which is more accurate
-                                // It includes all completed entries + current session duration
+                            if (workingTodayHours > 0 && lastWtSyncSessionSeconds !== null) {
+                                totalDailyHours = workingTodayHours
+                                    + (workingSeconds - lastWtSyncSessionSeconds) / 3600;
+                            } else if (workingTodayHours > 0) {
                                 totalDailyHours = workingTodayHours;
                             } else {
-                                // Fallback: use only current session if status hasn't been fetched yet
-                                // This is conservative and will trigger once status is fetched
                                 totalDailyHours = currentSessionHours;
                             }
                             
@@ -298,36 +337,25 @@
                                 if (sessionTimerEl) {
                                     sessionTimerEl.classList.add('timer-exceeded');
                                 }
-                                
-                                // AUTOMATIC CLOCK-OUT: Stop timer and clock out automatically (ArbZG §3)
-                                // This ensures compliance with German labor law - maximum 10 hours per day
+
+                                // AUTOMATIC CLOCK-OUT: stop timer and let the BACKEND complete the
+                                // entry (ArbZG §3 – max 10h/day). Multi-layer guard so we can never
+                                // get into a reload loop, regardless of network or backend state:
+                                //   1. dataset flag → blocks repeats within this page-load
+                                //   2. sessionStorage day-key → blocks re-fire across reloads
+                                //   3. attempt counter → at most 1 successful attempt + bounded retries
+                                //   4. on permanent failure: stop, show error, never reload
                                 if (!timerEl.dataset.autoClockOutTriggered) {
                                     timerEl.dataset.autoClockOutTriggered = 'true';
-                                    
-                                    // Stop the timer
+
+                                    // Stop the live timer immediately to prevent any further
+                                    // re-entry into this branch within this page-load.
                                     if (this.timers.session) {
                                         clearInterval(this.timers.session);
                                         this.timers.session = null;
                                     }
-                                    
-                                    // Show critical notification
-                                    if (window.OC && OC.Notification) {
-                                        const criticalMsg = mainT('CRITICAL: Maximum daily working hours (10h) exceeded! Automatically clocking out to comply with German labor law (ArbZG §3).');
-                                        OC.Notification.showTemporary(criticalMsg, { 
-                                            type: 'error', 
-                                            timeout: 20000 
-                                        });
-                                    }
-                                    
-                                    // Automatically complete the entry (set endTime and mark as completed)
-                                    // Instead of just clocking out, we complete it to enforce the 10h limit
-                                    // The backend getStatus() will automatically complete entries at 10h
-                                    // So we just reload to trigger the backend check
-                                    setTimeout(() => {
-                                        // Reload to trigger backend automatic completion
-                                        // The backend will automatically set endTime and STATUS_COMPLETED
-                                        window.location.reload();
-                                    }, 2000); // 2 second delay to show notification
+
+                                    this.triggerAutomaticDailyMaximumClockOut();
                                 }
                             } else if (totalDailyHours >= 8) {
                                 // Approaching 10 hours (8+ hours) - show warning state
@@ -879,6 +907,132 @@
             this.callApi('/apps/arbeitszeitcheck/api/clock/out', 'POST').catch((err) => {
                 this.showError(err && err.message ? err.message : (this.config.l10n?.error || 'An error occurred'));
             });
+        },
+
+        /**
+         * sessionStorage-based guard so the auto-clockout flow can never loop
+         * across reloads inside the same browser session. Keyed per local day
+         * so a fresh day naturally starts with a clean slate.
+         *
+         * Stored value: integer attempt counter as string. The flow tolerates
+         * a small number of transient failures (e.g. flaky network) but stops
+         * cold once the bound is reached, and surfaces a permanent error.
+         */
+        AUTO_CLOCKOUT_MAX_ATTEMPTS: 3,
+
+        getAutoClockoutGuardKey: function() {
+            const d = new Date();
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return 'arbeitszeitcheck-auto-clockout-' + y + '-' + m + '-' + day;
+        },
+
+        readAutoClockoutAttempts: function() {
+            try {
+                if (typeof window === 'undefined' || !window.sessionStorage) {
+                    return 0;
+                }
+                const raw = window.sessionStorage.getItem(this.getAutoClockoutGuardKey());
+                const n = parseInt(raw || '0', 10);
+                return Number.isFinite(n) && n >= 0 ? n : 0;
+            } catch (e) {
+                return 0;
+            }
+        },
+
+        bumpAutoClockoutAttempts: function() {
+            try {
+                if (typeof window === 'undefined' || !window.sessionStorage) {
+                    return 1;
+                }
+                const next = this.readAutoClockoutAttempts() + 1;
+                window.sessionStorage.setItem(this.getAutoClockoutGuardKey(), String(next));
+                return next;
+            } catch (e) {
+                return 1;
+            }
+        },
+
+        /**
+         * Drive the ArbZG §3 automatic clock-out via the backend.
+         *
+         * Replaces the previous "show notification + window.location.reload()"
+         * pattern that would loop forever whenever the backend hadn't actually
+         * completed the entry yet. We now:
+         *   - Bound the number of attempts via sessionStorage (no infinite loops).
+         *   - Call the explicit /api/clock/enforce-daily-maximum endpoint so the
+         *     backend transactionally completes the entry (ArbZG §3 audit reason).
+         *   - Reload the page exactly ONCE on success to refresh the status card.
+         *   - On failure: surface a clear, sticky error and stop. The user can
+         *     still manually clock out via the button.
+         */
+        triggerAutomaticDailyMaximumClockOut: function() {
+            const attempts = this.bumpAutoClockoutAttempts();
+
+            const showCritical = (msg, opts) => {
+                if (window.OC && OC.Notification && OC.Notification.showTemporary) {
+                    OC.Notification.showTemporary(msg, Object.assign({ type: 'error', timeout: 20000 }, opts || {}));
+                }
+            };
+
+            if (attempts > this.AUTO_CLOCKOUT_MAX_ATTEMPTS) {
+                /* Hard stop: too many attempts in this session. Never reload again.
+                   The user is informed and can clock out manually. */
+                const giveUpMsg = mainT('Automatic clock-out (ArbZG §3) failed repeatedly. Please clock out manually or contact your administrator.');
+                showCritical(giveUpMsg, { timeout: 0 });
+                this.showError(giveUpMsg);
+                return;
+            }
+
+            const criticalMsg = mainT('CRITICAL: Maximum daily working hours (10h) exceeded! Automatically clocking out to comply with German labor law (ArbZG §3).');
+            showCritical(criticalMsg);
+
+            this.callApi('/apps/arbeitszeitcheck/api/clock/enforce-daily-maximum', 'POST', null, false)
+                .then((response) => {
+                    if (response && response.success) {
+                        const statusAfter = response.status && response.status.status ? String(response.status.status) : '';
+                        const stillClockedIn = statusAfter === 'active' || statusAfter === 'break';
+                        const enforced = response.enforced === true;
+                        const dailyMaximumReached = response.daily_maximum_reached === true;
+
+                        if (enforced || !stillClockedIn) {
+                            const successMsg = mainT('Automatically clocked out to comply with German labor law (ArbZG §3).');
+                            if (window.OC && OC.Notification && OC.Notification.showTemporary) {
+                                OC.Notification.showTemporary(successMsg, { type: 'success', timeout: 10000 });
+                            }
+                            /* Refresh exactly once so the dashboard re-renders
+                               with the clocked_out state. The sessionStorage guard
+                               prevents this branch from being entered again on the
+                               reloaded page even if the user happens to still see
+                               workingTodayHours >= 10 (e.g. during the brief
+                               interval before status data updates client-side). */
+                            setTimeout(() => { window.location.reload(); }, 1500);
+                        } else if (!dailyMaximumReached) {
+                            /* Edge case: client-side extrapolation reached the threshold slightly
+                               before the backend did. Do NOT treat this as a failure. Re-arm once. */
+                            const timerValueEl = document.querySelector('.session-timer .timer-value');
+                            if (timerValueEl && timerValueEl.dataset) {
+                                delete timerValueEl.dataset.autoClockOutTriggered;
+                            }
+                            this.initTimer();
+                        } else {
+                            const errMsg = mainT('Automatic clock-out (ArbZG §3) could not be completed. Please clock out manually.');
+                            showCritical(errMsg, { timeout: 0 });
+                        }
+                    } else {
+                        const errMsg = (response && response.error)
+                            ? String(response.error)
+                            : mainT('Automatic clock-out (ArbZG §3) could not be completed. Please clock out manually.');
+                        showCritical(errMsg, { timeout: 0 });
+                    }
+                })
+                .catch((err) => {
+                    const errMsg = (err && err.message)
+                        ? String(err.message)
+                        : mainT('Automatic clock-out (ArbZG §3) could not be completed. Please clock out manually.');
+                    showCritical(errMsg, { timeout: 0 });
+                });
         },
 
         /**

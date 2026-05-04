@@ -792,4 +792,68 @@ class TimeEntryControllerTest extends TestCase
 		$this->assertFalse($data['success']);
 		$this->assertStringContainsString('Either (date and hours) or (startTime and endTime) are required', $data['error']);
 	}
+
+	public function testApiStoreAcceptsBreaksArrayPayload(): void
+	{
+		$userId = 'testuser';
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn($userId);
+		$this->userSession->method('getUser')->willReturn($user);
+
+		$this->request->method('getParams')->willReturn([
+			'date' => '2024-01-15',
+			'startTime' => '09:00',
+			'endTime' => '17:00',
+			'breaks' => [
+				['start' => '12:00', 'end' => '12:30'],
+			],
+		]);
+
+		$savedEntry = new TimeEntry();
+		$savedEntry->setId(1);
+		$savedEntry->setUserId($userId);
+		$savedEntry->setStatus(TimeEntry::STATUS_COMPLETED);
+		$savedEntry->setIsManualEntry(true);
+		$savedEntry->setStartTime(new \DateTime('2024-01-15T09:00:00'));
+		$savedEntry->setEndTime(new \DateTime('2024-01-15T17:00:00'));
+		$savedEntry->setCreatedAt(new \DateTime());
+		$savedEntry->setUpdatedAt(new \DateTime());
+
+		$this->timeEntryMapper->expects($this->once())
+			->method('insert')
+			->willReturn($savedEntry);
+
+		$response = $this->controller->apiStore();
+		$this->assertSame(Http::STATUS_CREATED, $response->getStatus());
+		$this->assertTrue($response->getData()['success']);
+	}
+
+	public function testUpdateAcceptsGermanDateFormatInLegacyMode(): void
+	{
+		$userId = 'testuser';
+		$entryId = 1;
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn($userId);
+		$this->userSession->method('getUser')->willReturn($user);
+
+		$entry = new TimeEntry();
+		$entry->setId($entryId);
+		$entry->setUserId($userId);
+		$entry->setIsManualEntry(true);
+		$entry->setStatus(TimeEntry::STATUS_COMPLETED);
+		$entry->setJustification('Initial manual entry justification');
+		$entry->setStartTime((new \DateTime())->modify('-1 day')->setTime(9, 0, 0));
+		$entry->setEndTime((new \DateTime())->modify('-1 day')->setTime(17, 0, 0));
+		$entry->setCreatedAt(new \DateTime());
+		$entry->setUpdatedAt(new \DateTime());
+
+		$this->timeEntryMapper->method('find')->willReturn($entry);
+		$this->request->method('getParams')->willReturn([]);
+		$this->timeEntryMapper->expects($this->once())
+			->method('update')
+			->willReturn($entry);
+
+		$response = $this->controller->update($entryId, (new \DateTime('yesterday'))->format('d.m.Y'), 8.0);
+		$this->assertTrue($response->getData()['success']);
+	}
 }

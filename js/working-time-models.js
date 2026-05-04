@@ -42,11 +42,6 @@
         }).join('');
     }
 
-    function isGermanLocale() {
-        const locale = String(window.ArbeitszeitCheck?.dateLocale || document.documentElement.lang || '').toLowerCase();
-        return locale.startsWith('de');
-    }
-
     function parseLocalizedDecimal(value, fallback) {
         if (value === null || value === undefined || value === '') {
             return fallback;
@@ -591,24 +586,17 @@
         const rawName = row?.querySelector('td:first-child')?.textContent?.trim();
         const modelName = rawName || window.ArbeitszeitCheck?.l10n?.thisWorkSchedule || (window.t && window.t('arbeitszeitcheck', 'this work schedule')) || 'this work schedule';
 
-        const titleFromL10n = window.ArbeitszeitCheck?.l10n?.deleteModelTitle ||
+        const title = window.ArbeitszeitCheck?.l10n?.deleteModelTitle ||
             (window.t && window.t('arbeitszeitcheck', 'Delete working time model')) ||
             'Delete working time model';
-        const title = (isGermanLocale() && titleFromL10n === 'Delete working time model')
-            ? 'Arbeitszeitmodell löschen'
-            : titleFromL10n;
 
-        const bodyTemplateFromL10n = window.ArbeitszeitCheck?.l10n?.confirmDeleteModelWithName ||
+        const bodyTemplate = window.ArbeitszeitCheck?.l10n?.confirmDeleteModelWithName ||
             window.ArbeitszeitCheck?.l10n?.confirmDeleteModel ||
             (window.t && window.t(
                 'arbeitszeitcheck',
                 'Are you sure you want to delete "{name}"?\n\nThis will permanently remove this work schedule. If any employees are using this schedule, you should assign them to a different schedule first.\n\nThis action cannot be undone.'
             )) ||
             'Are you sure you want to delete "{name}"?\n\nThis will permanently remove this work schedule. If any employees are using this schedule, you should assign them to a different schedule first.\n\nThis action cannot be undone.';
-        const germanFallbackTemplate = 'Möchten Sie „{name}“ wirklich löschen?\n\nDieses Arbeitszeitmodell wird dauerhaft entfernt. Wenn Mitarbeitende dieses Modell verwenden, weisen Sie ihnen vorher ein anderes Modell zu.\n\nDiese Aktion kann nicht rückgängig gemacht werden.';
-        const bodyTemplate = (isGermanLocale() && bodyTemplateFromL10n.includes('Are you sure you want to delete'))
-            ? germanFallbackTemplate
-            : bodyTemplateFromL10n;
 
         const body = String(bodyTemplate)
             .replace(/\{name\}/g, modelName)

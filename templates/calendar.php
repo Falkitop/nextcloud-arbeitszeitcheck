@@ -35,7 +35,7 @@ $currentMonth = $_['currentMonth'] ?? date('Y-m');
 
 <?php include __DIR__ . '/common/navigation.php'; ?>
 
-<div id="app-content">
+<main id="app-content" role="main" aria-label="<?php p($l->t('Calendar content')); ?>">
     <div id="app-content-wrapper">
         <!-- Breadcrumb Navigation -->
         <div class="breadcrumb-container">
@@ -51,7 +51,7 @@ $currentMonth = $_['currentMonth'] ?? date('Y-m');
         <header class="section page-header-section" aria-labelledby="calendar-page-title calendar-page-desc">
             <div class="header-content">
                 <div class="header-text">
-                    <h2 id="calendar-page-title"><?php p($l->t('Calendar')); ?></h2>
+                    <h1 id="calendar-page-title"><?php p($l->t('Calendar')); ?></h1>
                     <p id="calendar-page-desc" class="page-description"><?php p($l->t('See your working hours and absences at a glance. Click a day for details.')); ?></p>
                 </div>
                 <div class="header-actions">
@@ -96,8 +96,8 @@ $currentMonth = $_['currentMonth'] ?? date('Y-m');
             <div id="calendar-container" class="calendar-container">
                 <div class="calendar-grid" id="calendar-month-view">
                     <!-- Calendar will be rendered here by JavaScript -->
-                    <div class="calendar-loading">
-                        <div class="loading-spinner"></div>
+                    <div class="calendar-loading" role="status" aria-live="polite">
+                        <div class="loading-spinner" aria-hidden="true"></div>
                         <p><?php p($l->t('Loading calendar...')); ?></p>
                     </div>
                 </div>
@@ -154,7 +154,7 @@ $currentMonth = $_['currentMonth'] ?? date('Y-m');
             </div>
         </section>
     </div>
-</div>
+</main>
 </div><!-- /#arbeitszeitcheck-app -->
 
 <?php include __DIR__ . '/common/main-ui-l10n.php'; ?>

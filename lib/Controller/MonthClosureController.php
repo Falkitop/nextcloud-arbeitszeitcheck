@@ -5,9 +5,8 @@ declare(strict_types=1);
 /**
  * API for revision-safe month closure (finalize, status, PDF, admin reopen).
  *
- * JSON POST bodies are not decoded before the CSRF middleware runs, so mutating routes use
- * {@see NoCSRFRequired} (same pattern as other app JSON APIs). Clients must still send a valid
- * session; the frontend includes `requesttoken` in headers where applicable.
+ * Mutating routes (finalize, reopen) require a valid session and a CSRF token.
+ * The frontend AJAX wrapper sends `requesttoken` in headers automatically.
  *
  * @copyright Copyright (c) 2026
  * @license AGPL-3.0-or-later
@@ -237,7 +236,6 @@ class MonthClosureController extends Controller
 	}
 
 	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	public function finalize(): JSONResponse
 	{
 		try {
@@ -367,7 +365,6 @@ class MonthClosureController extends Controller
 	}
 
 	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	public function reopen(): JSONResponse
 	{
 		try {

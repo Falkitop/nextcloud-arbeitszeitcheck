@@ -207,17 +207,54 @@ class SubstituteControllerTest extends TestCase
 	}
 
 	/**
-	 * Test approve returns 500 when unauthenticated
+	 * Test approve returns 401 when unauthenticated
 	 */
-	public function testApproveReturns500WhenUnauthenticated(): void
+	public function testApproveReturnsUnauthorizedWhenNotLoggedIn(): void
 	{
 		$this->userSession->method('getUser')->willReturn(null);
 
 		$response = $this->controller->approve(1);
 
+		$this->assertEquals(Http::STATUS_UNAUTHORIZED, $response->getStatus());
+		$data = $response->getData();
+		$this->assertFalse($data['success']);
+	}
+
+	/**
+	 * Service-level business rule (e.g. wrong substitute) returns 400 with the
+	 * localized error so the user can fix the problem, not 500.
+	 */
+	public function testApproveReturns400OnBusinessRule(): void
+	{
+		$this->mockAuthenticatedUser('substitute1');
+		$this->absenceService->expects($this->once())
+			->method('approveBySubstitute')
+			->willThrowException(new \Exception('Absence is not awaiting substitute approval'));
+
+		$response = $this->controller->approve(7);
+
+		$this->assertEquals(Http::STATUS_BAD_REQUEST, $response->getStatus());
+		$data = $response->getData();
+		$this->assertFalse($data['success']);
+		$this->assertEquals('Absence is not awaiting substitute approval', $data['error']);
+	}
+
+	/**
+	 * Technical exceptions must collapse to a generic 500 message, never leak.
+	 */
+	public function testApproveCollapsesTechnicalExceptionToGeneric500(): void
+	{
+		$this->mockAuthenticatedUser('substitute1');
+		$this->absenceService->expects($this->once())
+			->method('approveBySubstitute')
+			->willThrowException(new \RuntimeException('SQLSTATE[42S02]: leak'));
+
+		$response = $this->controller->approve(7);
+
 		$this->assertEquals(Http::STATUS_INTERNAL_SERVER_ERROR, $response->getStatus());
 		$data = $response->getData();
 		$this->assertFalse($data['success']);
+		$this->assertStringNotContainsString('SQLSTATE', $data['error']);
 	}
 
 	/**

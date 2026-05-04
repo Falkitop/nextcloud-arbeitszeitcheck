@@ -222,8 +222,8 @@ class ComplianceControllerTest extends TestCase
 		$this->violationMapper->expects($this->once())
 			->method('findByDateRange')
 			->with(
-				$this->isInstanceOf(\DateTime::class),
-				$this->isInstanceOf(\DateTime::class),
+				$this->callback(static fn (\DateTime $d): bool => $d->format('Y-m-d H:i:s') === '2024-01-01 00:00:00'),
+				$this->callback(static fn (\DateTime $d): bool => $d->format('Y-m-d H:i:s') === '2024-02-01 00:00:00'),
 				$userId,
 				null
 			)
@@ -664,10 +664,35 @@ class ComplianceControllerTest extends TestCase
 
 		$response = $this->controller->getViolations();
 
-		$this->assertEquals(Http::STATUS_BAD_REQUEST, $response->getStatus());
+		$this->assertEquals(Http::STATUS_UNAUTHORIZED, $response->getStatus());
 		$data = $response->getData();
 		$this->assertFalse($data['success']);
 		$this->assertStringContainsString('not authenticated', $data['error']);
+	}
+
+	public function testGetViolationsNormalizesInvalidPaginationInput(): void
+	{
+		$userId = 'testuser';
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn($userId);
+		$this->userSession->method('getUser')->willReturn($user);
+
+		$violation = new ComplianceViolation();
+		$violation->setId(1);
+		$violation->setUserId($userId);
+		$violation->setViolationType(ComplianceViolation::TYPE_MISSING_BREAK);
+		$violation->setSeverity(ComplianceViolation::SEVERITY_WARNING);
+		$violation->setDescription('Missing break');
+		$violation->setDate(new \DateTime('2024-01-01'));
+		$violation->setCreatedAt(new \DateTime());
+
+		$this->violationMapper->method('findByUser')->willReturn([$violation]);
+
+		$response = $this->controller->getViolations(null, null, null, null, null, null, -99, -10);
+		$data = $response->getData();
+
+		$this->assertTrue($data['success']);
+		$this->assertCount(1, $data['violations']);
 	}
 
 	/**

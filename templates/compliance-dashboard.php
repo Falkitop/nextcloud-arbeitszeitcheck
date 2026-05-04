@@ -23,12 +23,12 @@ $hasData = $complianceStatus['has_data'] ?? true;
 
 <?php include __DIR__ . '/common/navigation.php'; ?>
 
-<div id="app-content">
+<main id="app-content" role="main" aria-label="<?php p($l->t('Compliance dashboard content')); ?>">
     <div id="app-content-wrapper">
         <?php include __DIR__ . '/common/compliance-tabs.php'; ?>
         <div class="section">
             <div class="section-header">
-                <h2><?php p($l->t('Compliance Dashboard')); ?></h2>
+                <h1><?php p($l->t('Compliance Dashboard')); ?></h1>
                 <p><?php p($l->t('Check if your working time follows German labor law and see any problems that need fixing')); ?></p>
             </div>
 
@@ -190,5 +190,5 @@ $hasData = $complianceStatus['has_data'] ?? true;
             </div>
         </div>
     </div>
-</div>
+</main>
 </div><!-- /#arbeitszeitcheck-app -->

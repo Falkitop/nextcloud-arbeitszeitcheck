@@ -1,5 +1,43 @@
 ## [Unreleased]
 
+## 1.2.8 – 2026-04-30
+
+### Sicherheit
+
+- **CSRF-Schutz auf allen mutierenden Endpunkten**: `#[NoCSRFRequired]` wurde auf POST/PUT/DELETE-Methoden in `AbsenceController`, `TimeEntryController`, `TimeTrackingController`, `ComplianceController`, `SubstituteController`, `SettingsController`, `MonthClosureController`, `GdprController` und `AdminController` entfernt. Das Frontend sendet `requesttoken` bereits konsistent über `ArbeitszeitCheckUtils.ajax`; mutierende Routen lehnen Cross-Site-Anfragen damit per Default ab. Reine GET-Endpunkte bleiben bewusst `#[NoCSRFRequired]` (CSRF ist für Read-Only-GETs im Nextcloud-Framework nicht relevant).
+- **Keine ungefilterten Exception-Texte mehr in JSON-Antworten**: `AbsenceController::getSafeErrorMessage` wurde gehärtet – Exception-Nachrichten werden nur dann weitergereicht, wenn sie aus expliziten Business-Rule-`\Exception`-Klassen stammen; Texte mit technischen Indikatoren (SQL-Fragmente, Pfade, Stacktraces, übergroße Payloads) werden durch eine generische lokalisierte Fehlermeldung ersetzt. Der gehärtete Helper wird in `AbsenceController::store/update` verwendet. Direkte `getMessage()`-Leaks in `AdminController::getTeams`, `SettingsController::index_api` und in den Page-Render-Fehlerpfaden des `PageController` wurden durch sanitisierte, übersetzte Texte ersetzt.
+- **Korrekter HTTP-Status bei Auth-Fehlern**: `SettingsController::update` liefert bei unauthentifizierten Aufrufen jetzt `HTTP 401 Unauthorized` (vorher `HTTP 400 Bad Request`), damit API-Clients und Loadbalancer das richtige Verhalten erkennen.
+
+### Geändert
+
+- **Organisations-weiter Monats-Report-Download**: `reports.js` reicht die im Preview ermittelten User-IDs an den `report.team`-Endpunkt weiter und zeigt bei leerem Organisations-Preview die klare Meldung „Im gewählten Zeitraum hat keine Person der Organisation Arbeitszeit erfasst – es gibt nichts herunterzuladen." statt des irreführenden Hinweises auf einen erforderlichen Preview.
+- **Sanitisierte Dashboard-Fehleranzeige**: `dashboard.js`/`dashboard.css` zeigen statt roher Widget-Exceptions eine lokalisierte Live-Region-Meldung „Einige Dashboard-Daten konnten nicht geladen werden.".
+- **„Resume after break" vereinheitlicht**: Clock-In-Texte und l10n verwenden konsistent „Resume after break" anstelle des Platzhalters `clock_in_resume`.
+
+### Barrierefreiheit (WCAG 2.1 AA)
+
+- **Landmark `<main>` auf allen Seiten**: 17 Page-Templates exponieren jetzt jeweils genau ein `<main id="app-content" role="main" aria-label="...">`-Landmark für Hilfstechnologien (`dashboard`, `index`, `timeline`, `calendar`, `settings`, `personal-settings`, `reports`, `compliance-dashboard`, `compliance-reports`, `compliance-violations`, `working-time-models`, `admin-dashboard`, `admin-teams`, `admin-users`, `admin-holidays`, `manager-dashboard`, `manager-time-entries`, `manager-absences`, `manager-month-closures`).
+- **Skip-Link / `<main>`-Konsistenz**: `time-entries`, `absences`, `admin-settings`, `admin-notifications`, `substitution-requests` und `audit-log` hatten `id="app-content"` auf einem reinen `<div>`, während `role="main"` auf dem Kind-Wrapper saß – der Skip-Link „Zum Hauptinhalt springen" landete dadurch auf einem Nicht-Landmark. Alle sechs Templates verwenden jetzt direkt `<main id="app-content" role="main">`. Das überflüssige `role="banner"` auf dem `<header>` innerhalb der Main-Region von `audit-log` wurde entfernt.
+- **Zugängliche Namen auf allen Datentabellen**: Die Feiertagsliste und die beiden Benachrichtigungs-Matrix-Tabellen erhalten `aria-label`/`aria-labelledby` plus eine Screenreader-`<caption>`; sie hatten zuvor keinen zugänglichen Namen.
+- **Live-Fehlermeldung im Dashboard**: Der Dashboard-Fehlerbereich liegt in einer `aria-live`-Region; teilweise Widget-Fehler werden angekündigt, ohne den Fokus zu stören.
+- **Manager-Dashboard-Kennzahlen jetzt vorlesbar**: Die Statistik-Werte (Teammitglieder / Heute aktiv / Stunden heute / Offene Anträge) hatten `aria-hidden="true"` auf den Wert-Spans – Screenreader-Nutzer:innen verloren damit jede einzelne Zahl. Jede Karte exponiert jetzt einen vollständig vorlesbaren Namen (z. B. „5 Teammitglieder heute aktiv") über einen `role="group"`-Wrapper; das visuelle Layout bleibt identisch.
+- **Konflikt zwischen `role="alert"` und `aria-live="polite"` aufgelöst**: Das überschreibende `aria-live="polite"` wurde in `absences.php` (Formularfehler), `admin-settings.php` (globaler Fehlerbanner) und drei Inline-Fehlern im Time-Entry-Formular entfernt. `role="alert"` impliziert bereits assertive Ankündigungen; `polite` hatte kritisches Validierungsfeedback für Hilfstechnologien verzögert.
+- **Heading-Hierarchie normalisiert**: Jedes Hauptseiten-Template hat jetzt genau ein `<h1>` (dashboard, time-entries, absences, calendar, timeline, reports, settings, personal-settings, compliance-dashboard, compliance-reports, compliance-violations, working-time-models, admin-dashboard, admin-users, admin-holidays, admin-settings, admin-notifications, manager-dashboard). Die meisten Seiten begannen vorher bei `<h2>`. Untergeordnete Section-Überschriften in time-entries und absences wurden auf `h2`/`h3` angehoben, sodass keine Ebene mehr übersprungen wird. Eine Stilregel für `.section-header h1` wurde ergänzt, damit die bestehende `h2`-Optik erhalten bleibt.
+- **Breadcrumb im Manager-Dashboard**: Standard-Breadcrumb „Dashboard › Manager Dashboard" ergänzt – konsistent mit allen anderen Hauptseiten und besser orientiert für Tastatur- und Screenreader-Nutzer:innen.
+- **Kalender-Ladezustand wird angekündigt**: Der „Kalender wird geladen…"-Platzhalter nutzt jetzt `role="status"` mit `aria-live="polite"`; Lade- und Fertig-Übergänge werden angekündigt, der dekorative Spinner ist `aria-hidden`.
+- **Fokus-Indikatoren wiederhergestellt**: `outline: none` auf den Timeline-Filter-Checkboxen und den Admin-Userpicker-Items hatte die Tastatur-Fokussichtbarkeit unterdrückt. Beide haben jetzt `:focus-visible`-Outlines in der Primärfarbe; Hover-Stile bleiben erhalten.
+- **Touch-Ziele auf Mobile**: `.btn--sm` war auf Mobilgeräten 36 × 36 px – unterhalb der WCAG-2.5.5-Empfehlung von 44 × 44 px. Die Mobile-Media-Query erzwingt jetzt 44 × 44 px für kleine Buttons; Desktop-Größen bleiben unverändert.
+- **Empty-State-Zeile im Legacy-`index.php`-Time-Entries-View**: Fehlende Empty-State-Zeile bei leerer Liste wiederhergestellt (Parität mit den anderen Tabellen-Views im selben Template).
+- **Reports-Zugang: Fallback-Navigation**: Inline-`onclick`-Redirect in der „Kein Zugriff"-Empty-State von `reports.php` durch einen echten `<a>`-Link ersetzt – funktioniert auch ohne JavaScript und folgt Standard-Link-Semantik.
+
+### Entfernt
+
+- **Veraltetes Personal-Settings-Panel im Nextcloud-Settings-Bereich**: Das alte `personal-settings.php`-Panel im Nextcloud-User-Settings-Bereich enthielt hartcodierte Felder für Urlaubstage / tägliche Arbeitszeit und Erinnerungs-Checkboxen, die nie an ein Backend angebunden waren. Ersetzt durch ein klares Info-Panel, das die Nutzer:innen zur In-App-Personal-Settings-Seite (dort werden Einstellungen real über `SettingsController::update` persistiert) leitet, plus einem kurzen DSGVO-Hinweis. Im Legacy-`index.php`-Settings-Branch (toter Code, aber noch im Code) wurde der hartcodierte Versionsstring `1.0.1` durch `IAppManager::getAppVersion('arbeitszeitcheck')` ersetzt.
+
+### Tests
+
+- **AccessibilityTest gehärtet**: Die Assertion „muss `<button>` enthalten" (die Seiten ohne tastaturerreichbare Steuerelemente erlaubte und reine Link-Panels fälschlich beanstandete) wurde durch zwei strengere Prüfungen ersetzt: (1) `<div onclick=…>`-Anti-Pattern explizit verbieten und (2) mindestens ein `<button>` oder `<a href>` pro auditiertem Template erzwingen. Gesamte Suite: 455 Tests, 1 652 Assertions, alle grün.
+
 ## 1.2.7 – 2026-04-27
 
 ### Hinzugefügt

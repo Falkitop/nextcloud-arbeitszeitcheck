@@ -454,6 +454,88 @@ class ComplianceServiceTest extends TestCase
 	}
 
 	/**
+	 * Saturday 22:00 → Sunday 02:00: Sunday work must be recorded even though the shift started on Saturday.
+	 */
+	public function testCheckComplianceAfterClockOutSundayWorkWhenShiftStartedSaturday(): void
+	{
+		$userId = 'testuser';
+		$timeEntry = new TimeEntry();
+		$timeEntry->setId(777);
+		$timeEntry->setUserId($userId);
+		$timeEntry->setStartTime(new \DateTime('2024-01-06 22:00:00'));
+		$timeEntry->setEndTime(new \DateTime('2024-01-07 02:00:00'));
+		$timeEntry->setBreaks(json_encode([]));
+		$timeEntry->setStatus(TimeEntry::STATUS_COMPLETED);
+		$timeEntry->setIsManualEntry(false);
+		$timeEntry->setCreatedAt(new \DateTime());
+		$timeEntry->setUpdatedAt(new \DateTime());
+
+		$calls = [];
+		$this->violationMapper->method('createViolation')->willReturnCallback(function (...$args) use (&$calls): ComplianceViolation {
+			$calls[] = $args;
+			$v = new ComplianceViolation();
+			$v->setId(count($calls));
+			return $v;
+		});
+
+		$this->service->checkComplianceAfterClockOut($timeEntry);
+
+		$sunday = array_values(array_filter(
+			$calls,
+			static fn (array $a): bool => $a[1] === ComplianceViolation::TYPE_SUNDAY_WORK
+		));
+		$this->assertCount(1, $sunday, 'Expected exactly one Sunday-work violation for a Sat→Sun night span');
+		$this->assertSame(
+			'2024-01-07 00:00:00',
+			$sunday[0][3]->format('Y-m-d H:i:s'),
+			'Violation timestamp for Sunday should anchor to the start of the Sunday calendar day'
+		);
+	}
+
+	/**
+	 * Public holiday only on the second calendar day of a span must still create a holiday violation.
+	 */
+	public function testCheckComplianceAfterClockOutHolidayWorkSecondCalendarDayOnly(): void
+	{
+		$this->holidayCalendarService->method('isHolidayForUser')
+			->willReturnCallback(static function (string $uid, \DateTime $day): bool {
+				return $day->format('Y-m-d') === '2025-01-02';
+			});
+
+		$userId = 'testuser';
+		$timeEntry = new TimeEntry();
+		$timeEntry->setId(778);
+		$timeEntry->setUserId($userId);
+		$timeEntry->setStartTime(new \DateTime('2025-01-01 20:00:00'));
+		$timeEntry->setEndTime(new \DateTime('2025-01-02 04:00:00'));
+		$timeEntry->setBreaks(json_encode([]));
+		$timeEntry->setStatus(TimeEntry::STATUS_COMPLETED);
+		$timeEntry->setIsManualEntry(false);
+		$timeEntry->setCreatedAt(new \DateTime());
+		$timeEntry->setUpdatedAt(new \DateTime());
+
+		$calls = [];
+		$this->violationMapper->method('createViolation')->willReturnCallback(function (...$args) use (&$calls): ComplianceViolation {
+			$calls[] = $args;
+			$v = new ComplianceViolation();
+			$v->setId(count($calls));
+			return $v;
+		});
+
+		$this->service->checkComplianceAfterClockOut($timeEntry);
+
+		$holiday = array_values(array_filter(
+			$calls,
+			static fn (array $a): bool => $a[1] === ComplianceViolation::TYPE_HOLIDAY_WORK
+		));
+		$this->assertCount(1, $holiday, 'Expected exactly one public-holiday violation when only the second day is a holiday');
+		$this->assertSame(
+			'2025-01-02 00:00:00',
+			$holiday[0][3]->format('Y-m-d H:i:s')
+		);
+	}
+
+	/**
 	 * Test night work detection through checkComplianceAfterClockOut
 	 */
 	public function testCheckComplianceAfterClockOutNightWork(): void
@@ -491,6 +573,226 @@ class ComplianceServiceTest extends TestCase
 			->willReturn($violation);
 
 		$this->service->checkComplianceAfterClockOut($timeEntry);
+	}
+
+	/**
+	 * Regression test for the production ValueError observed on /api/clock/out:
+	 *   "The arguments array must contain 1 items, 0 given"
+	 *
+	 * Root cause: night-work formatting used `sprintf($l10n->t('Night work detected: %.2f …'), $value)`
+	 * which calls `t()` without parameters, leaving the L10NString to invoke
+	 * `vsprintf($text, [])` on first cast to string. PHP 8 throws ValueError there.
+	 *
+	 * This test pins down the ARCHITECTURAL contract: any translation string with a
+	 * placeholder must receive its values via the second argument of `t()` so the
+	 * L10NString carries them into its internal vsprintf. If anyone reintroduces the
+	 * outer-sprintf pattern, the captured `parameters` will be empty here and this
+	 * assertion fails — long before production runs into the L10NString cast.
+	 */
+	public function testCheckNightWorkPassesPlaceholderValueAsTranslationParameter(): void
+	{
+		$userId = 'testuser';
+
+		// Spans 22:00 → 03:00 next day (5h, 4h of which fall inside 23:00–06:00).
+		$timeEntry = new TimeEntry();
+		$timeEntry->setId(987);
+		$timeEntry->setUserId($userId);
+		$timeEntry->setStartTime(new \DateTime('2026-05-02 22:00:00'));
+		$timeEntry->setEndTime(new \DateTime('2026-05-03 03:00:00'));
+		$timeEntry->setBreaks(json_encode([]));
+		$timeEntry->setStatus(TimeEntry::STATUS_COMPLETED);
+		$timeEntry->setIsManualEntry(false);
+		$timeEntry->setCreatedAt(new \DateTime());
+		$timeEntry->setUpdatedAt(new \DateTime());
+
+		// Capture every t() invocation so we can assert on the night-work call shape.
+		// Also exercise vsprintf so a missing-parameter regression surfaces here too.
+		$observed = [];
+		$this->l10n = $this->createMock(IL10N::class);
+		$this->l10n->method('t')
+			->willReturnCallback(function (string $text, array $parameters = []) use (&$observed): string {
+				$observed[] = ['text' => $text, 'parameters' => $parameters];
+				return $parameters === [] ? $text : vsprintf($text, $parameters);
+			});
+
+		// Rebuild the service so it picks up our instrumented IL10N.
+		$service = new ComplianceService(
+			$this->timeEntryMapper,
+			$this->violationMapper,
+			$this->workingTimeModelMapper,
+			$this->userWorkingTimeModelMapper,
+			$this->userManager,
+			$this->l10n,
+			$this->notificationService,
+			$this->holidayCalendarService,
+			$this->config,
+			$this->permissionService
+		);
+
+		$violation = new ComplianceViolation();
+		$violation->setId(1);
+		$this->violationMapper->expects($this->atLeastOnce())
+			->method('createViolation')
+			->willReturn($violation);
+
+		$service->checkComplianceAfterClockOut($timeEntry);
+
+		$nightCalls = array_values(array_filter(
+			$observed,
+			static fn (array $c): bool => str_starts_with($c['text'], 'Night work detected')
+		));
+
+		$this->assertNotEmpty($nightCalls, 'Expected at least one night-work translation lookup');
+		foreach ($nightCalls as $call) {
+			$this->assertNotEmpty(
+				$call['parameters'],
+				'Night-work translation must be invoked with parameters; outer sprintf() on a parameterless t() breaks the L10NString pipeline.'
+			);
+			$this->assertCount(1, $call['parameters'], 'Night-work translation expects exactly one positional parameter');
+			$this->assertGreaterThan(
+				0.0,
+				(float)$call['parameters'][0],
+				'Computed night hours for a 22:00→03:00 shift must be > 0'
+			);
+		}
+	}
+
+	/**
+	 * Regression test for the early-morning shift bug:
+	 *   A shift entirely inside the previous night (e.g. 02:00–04:00) belongs to the
+	 *   night window that opened at 23:00 the day BEFORE. The previous implementation
+	 *   only considered the night window starting on the shift's own date and thus
+	 *   reported 0 hours of night work, suppressing the violation entirely.
+	 */
+	public function testCheckNightWorkDetectsEarlyMorningShiftFromPreviousNightWindow(): void
+	{
+		$userId = 'testuser';
+
+		$timeEntry = new TimeEntry();
+		$timeEntry->setId(555);
+		$timeEntry->setUserId($userId);
+		// Use a weekday so Sunday-work detection does not add a second violation.
+		$timeEntry->setStartTime(new \DateTime('2026-05-06 02:00:00'));
+		$timeEntry->setEndTime(new \DateTime('2026-05-06 04:00:00'));
+		$timeEntry->setBreaks(json_encode([]));
+		$timeEntry->setStatus(TimeEntry::STATUS_COMPLETED);
+		$timeEntry->setIsManualEntry(false);
+		$timeEntry->setCreatedAt(new \DateTime());
+		$timeEntry->setUpdatedAt(new \DateTime());
+
+		$violation = new ComplianceViolation();
+		$violation->setId(456);
+
+		$this->violationMapper->expects($this->once())
+			->method('createViolation')
+			->with(
+				$userId,
+				ComplianceViolation::TYPE_NIGHT_WORK,
+				$this->stringContains('Night work'),
+				$this->isInstanceOf(\DateTime::class),
+				555,
+				ComplianceViolation::SEVERITY_INFO
+			)
+			->willReturn($violation);
+
+		$this->service->checkComplianceAfterClockOut($timeEntry);
+	}
+
+	/**
+	 * Boundary safeguard: a shift that ends at exactly 23:00 must NOT generate a
+	 * "Night work detected: 0.00 hours" violation. The old hour-based heuristic
+	 * triggered on `endHour >= 23` and produced misleading zero-hour entries.
+	 */
+	public function testCheckNightWorkSkipsZeroOverlapBoundaryShift(): void
+	{
+		$userId = 'testuser';
+
+		$timeEntry = new TimeEntry();
+		$timeEntry->setId(444);
+		$timeEntry->setUserId($userId);
+		$timeEntry->setStartTime(new \DateTime('2026-05-02 14:00:00'));
+		$timeEntry->setEndTime(new \DateTime('2026-05-02 23:00:00'));
+		$timeEntry->setBreaks(json_encode([[
+			'start' => '2026-05-02T18:00:00+00:00',
+			'end'   => '2026-05-02T18:45:00+00:00',
+		]]));
+		$timeEntry->setStatus(TimeEntry::STATUS_COMPLETED);
+		$timeEntry->setIsManualEntry(false);
+		$timeEntry->setCreatedAt(new \DateTime());
+		$timeEntry->setUpdatedAt(new \DateTime());
+
+		// No night-work violation should be created for a shift that touches but does
+		// not enter the 23:00–06:00 window. Other checks may still create violations,
+		// so we filter rather than asserting "never".
+		$calls = [];
+		$this->violationMapper->method('createViolation')->willReturnCallback(function (...$args) use (&$calls): ComplianceViolation {
+			$calls[] = $args;
+			$violation = new ComplianceViolation();
+			$violation->setId(count($calls));
+			return $violation;
+		});
+
+		$this->service->checkComplianceAfterClockOut($timeEntry);
+
+		$night = array_filter(
+			$calls,
+			static fn (array $a): bool => $a[1] === ComplianceViolation::TYPE_NIGHT_WORK
+		);
+		$this->assertSame(
+			[],
+			array_values($night),
+			'A 14:00→23:00 shift must not produce a night-work violation'
+		);
+	}
+
+	/**
+	 * Resilience contract: a defect inside one compliance rule must NEVER prevent
+	 * the remaining rules from running. We simulate a fatal Throwable from
+	 * violationMapper::createViolation when called for the first violation type and
+	 * assert that subsequent calls still happen.
+	 */
+	public function testCheckComplianceAfterClockOutContinuesWhenIndividualCheckFails(): void
+	{
+		$userId = 'testuser';
+
+		// Sunday + night-spanning shift exceeds 10h with no breaks — guarantees that
+		// at least three independent rules want to record violations:
+		//   1) excessive working hours
+		//   2) night work
+		//   3) Sunday work
+		$timeEntry = new TimeEntry();
+		$timeEntry->setId(321);
+		$timeEntry->setUserId($userId);
+		$timeEntry->setStartTime(new \DateTime('2026-05-03 18:00:00')); // Sunday
+		$timeEntry->setEndTime(new \DateTime('2026-05-04 06:00:00'));
+		$timeEntry->setBreaks(json_encode([]));
+		$timeEntry->setStatus(TimeEntry::STATUS_COMPLETED);
+		$timeEntry->setIsManualEntry(false);
+		$timeEntry->setCreatedAt(new \DateTime());
+		$timeEntry->setUpdatedAt(new \DateTime());
+
+		$callCount = 0;
+		$this->violationMapper->method('createViolation')
+			->willReturnCallback(function () use (&$callCount): ComplianceViolation {
+				$callCount++;
+				if ($callCount === 1) {
+					// First check throws (e.g. simulated DB blip or a future bug).
+					throw new \RuntimeException('Simulated downstream failure');
+				}
+				$violation = new ComplianceViolation();
+				$violation->setId($callCount);
+				return $violation;
+			});
+
+		// Must NOT propagate — clock-out callers depend on this method returning
+		// cleanly even when an individual rule blows up.
+		$this->service->checkComplianceAfterClockOut($timeEntry);
+
+		$this->assertGreaterThan(
+			1,
+			$callCount,
+			'Subsequent compliance rules must still run after one check fails'
+		);
 	}
 
 	/**

@@ -925,7 +925,7 @@ class AbsenceServiceTest extends TestCase
 
 		$this->auditLogMapper->expects($this->once())
 			->method('logAction')
-			->with($approverId, 'absence_approved', 'absence', $absenceId, $this->isType('array'), $this->isType('array'), $approverId);
+			->with($userId, 'absence_approved', 'absence', $absenceId, $this->isType('array'), $this->isType('array'), $approverId);
 
 		$this->notificationService->expects($this->once())
 			->method('notifyAbsenceApproved')
@@ -1032,7 +1032,7 @@ class AbsenceServiceTest extends TestCase
 
 		$this->auditLogMapper->expects($this->once())
 			->method('logAction')
-			->with($approverId, 'absence_rejected', 'absence', $absenceId, $this->isType('array'), $this->isType('array'), $approverId);
+			->with($userId, 'absence_rejected', 'absence', $absenceId, $this->isType('array'), $this->isType('array'), $approverId);
 
 		$this->notificationService->expects($this->once())
 			->method('notifyAbsenceRejected')
@@ -1177,7 +1177,7 @@ class AbsenceServiceTest extends TestCase
 
 		$this->auditLogMapper->expects($this->once())
 			->method('logAction')
-			->with($substituteUserId, 'absence_substitute_approved', 'absence', $absenceId, $this->isType('array'), $this->isType('array'), $substituteUserId);
+			->with($employeeUserId, 'absence_substitute_approved', 'absence', $absenceId, $this->isType('array'), $this->isType('array'), $substituteUserId);
 
 		$this->notificationService->expects($this->once())
 			->method('notifySubstituteApproved')
@@ -1319,7 +1319,7 @@ class AbsenceServiceTest extends TestCase
 
 		$this->auditLogMapper->expects($this->once())
 			->method('logAction')
-			->with($substituteUserId, 'absence_substitute_declined', 'absence', $absenceId, $this->isType('array'), $this->isType('array'), $substituteUserId);
+			->with($employeeUserId, 'absence_substitute_declined', 'absence', $absenceId, $this->isType('array'), $this->isType('array'), $substituteUserId);
 
 		$this->notificationService->expects($this->once())
 			->method('notifySubstituteDeclined')

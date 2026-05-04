@@ -38,11 +38,11 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 
 <?php include __DIR__ . '/common/navigation.php'; ?>
 
-<div id="app-content">
-	<div id="app-content-wrapper" role="main">
+<main id="app-content" role="main" aria-label="<?php p($l->t('Notification settings')); ?>">
+	<div id="app-content-wrapper">
 		<div class="section">
 			<div class="section-header">
-				<h2><?php p($l->t('Notification settings')); ?></h2>
+				<h1><?php p($l->t('Notification settings')); ?></h1>
 				<p><?php p($l->t('Configure HR office email notifications by absence type and workflow event.')); ?></p>
 			</div>
 
@@ -293,7 +293,8 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 						<?php p($l->t('Choose which severity levels should trigger notifications for overtime and undertime.')); ?>
 					</p>
 					<div class="table-responsive">
-						<table class="grid-table admin-notifications-matrix">
+						<table class="grid-table admin-notifications-matrix" role="table" aria-labelledby="block-trafficlight-matrix-heading">
+							<caption class="sr-only"><?php p($l->t('Severity levels that trigger notifications for overtime and undertime')); ?></caption>
 							<thead>
 								<tr>
 									<th scope="col"><?php p($l->t('Direction')); ?></th>
@@ -374,7 +375,8 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 						<?php p($l->t('Activate exactly which event should trigger an HR email for each absence type. Disabled cells mean no email is sent for that combination.')); ?>
 					</p>
 					<div class="table-responsive">
-						<table class="grid-table admin-notifications-matrix">
+						<table class="grid-table admin-notifications-matrix" role="table" aria-labelledby="notification-matrix-heading">
+							<caption class="sr-only"><?php p($l->t('Notification rules by absence type and event')); ?></caption>
 							<thead>
 								<tr>
 									<th scope="col"><?php p($l->t('Absence type')); ?></th>
@@ -423,7 +425,7 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 			</form>
 		</div>
 	</div>
-</div>
+</main>
 </div><!-- /#arbeitszeitcheck-app -->
 
 <script nonce="<?php p($_['cspNonce'] ?? ''); ?>">

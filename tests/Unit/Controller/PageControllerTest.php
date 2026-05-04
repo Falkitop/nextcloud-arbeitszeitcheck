@@ -14,6 +14,8 @@ namespace OCA\ArbeitszeitCheck\Tests\Unit\Controller;
 use OCA\ArbeitszeitCheck\Controller\PageController;
 use OCA\ArbeitszeitCheck\Db\AbsenceMapper;
 use OCA\ArbeitszeitCheck\Db\TimeEntryMapper;
+use OCA\ArbeitszeitCheck\Db\UserSetting;
+use OCA\ArbeitszeitCheck\Db\UserSettingsMapper;
 use OCA\ArbeitszeitCheck\Service\AbsenceService;
 use OCA\ArbeitszeitCheck\Service\CSPService;
 use OCA\ArbeitszeitCheck\Service\OvertimeService;
@@ -49,6 +51,8 @@ class PageControllerTest extends TestCase
 		$absenceService = $this->createMock(AbsenceService::class);
 		$timeEntryMapper = $this->createMock(TimeEntryMapper::class);
 		$absenceMapper = $this->createMock(AbsenceMapper::class);
+		$userSettingsMapper = $this->createMock(UserSettingsMapper::class);
+		$userSettingsMapper->method('getSetting')->willReturn(new UserSetting());
 		$teamResolver = $this->createMock(TeamResolverService::class);
 		$teamResolver->method('getColleagueIds')->willReturn([]);
 		$userSession = $this->createMock(IUserSession::class);
@@ -87,6 +91,7 @@ class PageControllerTest extends TestCase
 			$absenceService,
 			$timeEntryMapper,
 			$absenceMapper,
+			$userSettingsMapper,
 			$teamResolver,
 			$userSession,
 			$groupManager,

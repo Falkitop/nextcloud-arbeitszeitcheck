@@ -18,29 +18,29 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
 
 <?php include __DIR__ . '/common/navigation.php'; ?>
 
-<div id="app-content">
+<main id="app-content" role="main" aria-label="<?php p($l->t('Admin teams content')); ?>">
     <div id="app-content-wrapper" class="admin-teams">
         <header class="section section--teams-header" role="banner">
-            <h1 id="admin-teams-title" class="section__title"><?php p($l->t('Organisationsstruktur')); ?></h1>
+            <h1 id="admin-teams-title" class="section__title"><?php p($l->t('Organization structure')); ?></h1>
             <p id="admin-teams-desc" class="section__desc">
-                <?php p($l->t('Teams, Abteilungen oder andere Organisationseinheiten in einer flexiblen Hierarchie definieren. Mitglieder und Leitungen zuweisen. Wenn unten aktiviert, können Leitungen Abwesenheiten und Zeitkorrekturen ihrer Einheiten freigeben.')); ?>
+                <?php p($l->t('Define teams, departments, or other organizational units in a flexible hierarchy. Assign members and managers. If enabled below, managers can approve absences and time corrections for their units.')); ?>
             </p>
         </header>
 
         <!-- Use app teams toggle -->
         <section class="section section--config" aria-labelledby="teams-config-heading">
-            <h2 id="teams-config-heading" class="section__heading"><?php p($l->t('Leitungszuordnung')); ?></h2>
+            <h2 id="teams-config-heading" class="section__heading"><?php p($l->t('Manager assignment')); ?></h2>
             <div class="config-card">
                 <div class="form-checkbox form-checkbox--switch">
                     <input type="checkbox" id="use-app-teams" name="useAppTeams" class="config-toggle"
                            aria-describedby="use-app-teams-desc"
-                           aria-label="<?php p($l->t('ArbeitszeitCheck-Teams statt Nextcloud-Gruppen verwenden')); ?>">
+                           aria-label="<?php p($l->t('Use ArbeitszeitCheck teams instead of Nextcloud groups')); ?>">
                     <label for="use-app-teams" class="form-label">
-                        <?php p($l->t('ArbeitszeitCheck-Teams für Freigaben verwenden')); ?>
+                        <?php p($l->t('Use ArbeitszeitCheck teams for approvals')); ?>
                     </label>
                 </div>
                 <p id="use-app-teams-desc" class="form-help">
-                    <?php p($l->t('Wenn aktiviert: Leitungen werden aus den unten definierten ArbeitszeitCheck-Teams ermittelt. Wenn deaktiviert: Leitungen werden aus gemeinsamen Nextcloud-Gruppen ermittelt (Standardverhalten).')); ?>
+                    <?php p($l->t('If enabled: managers are resolved from ArbeitszeitCheck teams defined below. If disabled: managers are resolved from shared Nextcloud groups (default behavior).')); ?>
                 </p>
             </div>
         </section>
@@ -50,13 +50,13 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
             <div class="section__header flex flex--between flex--wrap flex--gap">
                 <h2 id="teams-list-heading" class="section__heading"><?php p($l->t('Structure')); ?></h2>
                 <button type="button" id="admin-teams-add" class="btn btn--primary"
-                        aria-label="<?php p($l->t('Neue Organisationseinheit hinzufügen')); ?>">
-                    <?php p($l->t('Einheit hinzufügen')); ?>
+                        aria-label="<?php p($l->t('Add new organizational unit')); ?>">
+                    <?php p($l->t('Add unit')); ?>
                 </button>
             </div>
-            <div id="admin-teams-tree" class="teams-tree org-tree" role="tree" aria-label="<?php p($l->t('Organisationsstruktur')); ?>">
+            <div id="admin-teams-tree" class="teams-tree org-tree" role="tree" aria-label="<?php p($l->t('Organization structure')); ?>">
                 <p id="teams-loading" class="teams-loading" aria-live="polite"><?php p($l->t('Loading…')); ?></p>
-                <p id="teams-empty" class="teams-empty hidden" aria-live="polite"><?php p($l->t('Noch keine Einheiten vorhanden. Fügen Sie eine Einheit hinzu, um die Organisationsstruktur aufzubauen.')); ?></p>
+                <p id="teams-empty" class="teams-empty hidden" aria-live="polite"><?php p($l->t('No units yet. Add a unit to build your organization structure.')); ?></p>
             </div>
         </section>
 
@@ -91,7 +91,7 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
             </div>
         </section>
     </div>
-</div>
+</main>
 </div><!-- /#arbeitszeitcheck-app -->
 
 <div role="status" aria-live="polite" id="admin-teams-status" class="visually-hidden"></div>

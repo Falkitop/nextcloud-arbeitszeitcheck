@@ -20,33 +20,33 @@ $total = $_['total'] ?? 0;
 
 <?php include __DIR__ . '/common/navigation.php'; ?>
 
-<div id="app-content">
+<main id="app-content" role="main" aria-label="<?php p($l->t('Admin users content')); ?>">
     <div id="app-content-wrapper">
         <div class="section">
             <div class="section-header">
-                <h2><?php p($l->t('Mitarbeitende verwalten')); ?></h2>
-                <p><?php p($l->t('Mitarbeitende für die Zeiterfassung einrichten und Arbeitszeitmodelle zuweisen.')); ?></p>
+                <h1><?php p($l->t('Manage employees')); ?></h1>
+                <p><?php p($l->t('Set up employees for time tracking and assign working-time models.')); ?></p>
             </div>
 
             <!-- Search and Filters -->
             <div class="section-content">
                 <div class="flex flex--between flex--gap mb-3">
-                    <label for="user-search" class="visually-hidden"><?php p($l->t('Mitarbeitende suchen')); ?></label>
+                    <label for="user-search" class="visually-hidden"><?php p($l->t('Search employees')); ?></label>
                     <input type="text" id="user-search" class="form-input" 
-                        placeholder="<?php p($l->t('Mitarbeitende suchen...')); ?>">
+                        placeholder="<?php p($l->t('Search employees...')); ?>">
                     <button type="button" id="refresh-users" class="btn btn--secondary">
-                        <?php p($l->t('Aktualisieren')); ?>
+                        <?php p($l->t('Refresh')); ?>
                     </button>
                 </div>
 
                 <!-- Users Table -->
-                <div class="table-responsive" role="region" aria-label="<?php p($l->t('Mitarbeitendenliste')); ?>">
-                    <table class="table" id="users-table" role="table" aria-label="<?php p($l->t('Mitarbeitendenliste')); ?>">
+                <div class="table-responsive" role="region" aria-label="<?php p($l->t('Employee list')); ?>">
+                    <table class="table" id="users-table" role="table" aria-label="<?php p($l->t('Employee list')); ?>">
                         <thead>
                             <tr>
                                 <th scope="col"><?php p($l->t('Name')); ?></th>
-                                <th scope="col"><?php p($l->t('E-Mail')); ?></th>
-                                <th scope="col"><?php p($l->t('Arbeitszeitmodell')); ?></th>
+                                <th scope="col"><?php p($l->t('Email')); ?></th>
+                                <th scope="col"><?php p($l->t('Working Time Model')); ?></th>
                                 <th scope="col"><?php p($l->t('Vacation days')); ?></th>
                                 <th scope="col"><?php p($l->t('Valid from / to')); ?></th>
                                 <th scope="col"><?php p($l->t('Status')); ?></th>
@@ -102,7 +102,7 @@ $total = $_['total'] ?? 0;
                                                         data-user-id="<?php p($user['userId']); ?>"
                                                         data-user-name="<?php p($user['displayName']); ?>"
                                                         aria-label="<?php p($l->t('View assignment history for %s', [$user['displayName']])); ?>"
-                                                        title="<?php p($l->t('Verlauf der Modellzuweisungen ansehen')); ?>">
+                                                        title="<?php p($l->t('View model assignment history')); ?>">
                                                     <?php p($l->t('History')); ?>
                                                 </button>
                                                 <button type="button" 
@@ -123,12 +123,12 @@ $total = $_['total'] ?? 0;
                 </div>
 
                 <div class="pagination-info">
-                    <p><?php p($l->t('Zeige %d von %d Mitarbeitenden', [count($users), $total])); ?></p>
+                    <p><?php p($l->t('Showing %d of %d employees', [count($users), $total])); ?></p>
                 </div>
             </div>
         </div>
     </div>
-</div>
+</main>
 </div><!-- /#arbeitszeitcheck-app -->
 
 <?php

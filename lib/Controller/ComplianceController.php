@@ -403,6 +403,20 @@ class ComplianceController extends Controller
 		));
 	}
 
+	private function normalizeLimit(?int $limit): int
+	{
+		$value = $limit ?? Constants::DEFAULT_LIST_LIMIT;
+		if ($value < 1) {
+			return Constants::DEFAULT_LIST_LIMIT;
+		}
+		return min($value, Constants::MAX_LIST_LIMIT);
+	}
+
+	private function normalizeOffset(?int $offset): int
+	{
+		return max(0, (int)($offset ?? 0));
+	}
+
 	/**
 	 * Get compliance violations API endpoint
 	 *
@@ -431,6 +445,8 @@ class ComplianceController extends Controller
 			$currentUserId = $this->getUserId();
 			$targetUserId = $userId ?? $currentUserId;
 			$this->ensureCanAccessUserCompliance($currentUserId, $targetUserId);
+			$limit = $this->normalizeLimit($limit);
+			$offset = $this->normalizeOffset($offset);
 
 			// Parse and validate date params (Y-m-d format)
 			$startDt = $this->parseDateParam($startDate, 'start_date');
@@ -451,9 +467,10 @@ class ComplianceController extends Controller
 			// Get violations using mapper methods
 			if ($startDt || $endDt) {
 				$start = $startDt ?: new \DateTime('1970-01-01');
+				$start->setTime(0, 0, 0);
 				$end = $endDt ? clone $endDt : new \DateTime('2099-12-31');
-				$end->setTime(23, 59, 59);
-				$end->modify('+1 day'); // Make exclusive for findByDateRange
+				$end->setTime(0, 0, 0);
+				$end->modify('+1 day'); // Exclusive upper bound: next day midnight
 				$allViolations = $this->violationMapper->findByDateRange($start, $end, $targetUserId, $resolved);
 			} else {
 				$allViolations = $this->violationMapper->findByUser($targetUserId, $resolved);
@@ -479,7 +496,7 @@ class ComplianceController extends Controller
 			$allViolations = array_values($allViolations);
 
 			// Apply pagination
-			$violations = array_slice($allViolations, $offset ?? 0, $limit ?? 25);
+			$violations = array_slice($allViolations, $offset, $limit);
 
 			// Safely map violations to summaries
 			$violationSummaries = [];
@@ -502,12 +519,14 @@ class ComplianceController extends Controller
 			$raw = $e->getMessage();
 			if (strpos($raw, 'User not authenticated') !== false) {
 				$errorMessage = $this->l10n->t('User not authenticated');
+				$status = Http::STATUS_UNAUTHORIZED;
 			} elseif (strpos($raw, 'Access denied') !== false) {
 				$errorMessage = $this->l10n->t('Access denied');
+				$status = Http::STATUS_FORBIDDEN;
 			} else {
 				$errorMessage = $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.');
+				$status = Http::STATUS_BAD_REQUEST;
 			}
-			$status = strpos($raw, 'Access denied') !== false ? Http::STATUS_FORBIDDEN : Http::STATUS_BAD_REQUEST;
 			return new JSONResponse([
 				'success' => false,
 				'error' => $errorMessage
@@ -550,13 +569,14 @@ class ComplianceController extends Controller
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in ComplianceController: ' . $e->getMessage(), ["exception" => $e]);
 			$raw = $e->getMessage();
-			$errorMessage = strpos($raw, 'User not authenticated') !== false
+			$isUnauthenticated = strpos($raw, 'User not authenticated') !== false;
+			$errorMessage = $isUnauthenticated
 				? $this->l10n->t('User not authenticated')
 				: $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.');
 			return new JSONResponse([
 				'success' => false,
 				'error' => $errorMessage
-			], Http::STATUS_BAD_REQUEST);
+			], $isUnauthenticated ? Http::STATUS_UNAUTHORIZED : Http::STATUS_BAD_REQUEST);
 		}
 	}
 
@@ -567,7 +587,6 @@ class ComplianceController extends Controller
 	 * @return JSONResponse
 	 */
 	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	public function resolveViolation(int $id): JSONResponse
 	{
 		try {
@@ -648,13 +667,14 @@ class ComplianceController extends Controller
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in ComplianceController: ' . $e->getMessage(), ["exception" => $e]);
 			// Check if it's an authentication error
 			$raw = $e->getMessage();
-			$errorMessage = strpos($raw, 'User not authenticated') !== false
+			$isUnauthenticated = strpos($raw, 'User not authenticated') !== false;
+			$errorMessage = $isUnauthenticated
 				? $this->l10n->t('User not authenticated')
 				: $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.');
 			return new JSONResponse([
 				'success' => false,
 				'error' => $errorMessage
-			], Http::STATUS_BAD_REQUEST);
+			], $isUnauthenticated ? Http::STATUS_UNAUTHORIZED : Http::STATUS_BAD_REQUEST);
 		}
 	}
 
@@ -720,13 +740,14 @@ class ComplianceController extends Controller
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in ComplianceController: ' . $e->getMessage(), ["exception" => $e]);
 			// Check if it's an authentication error
 			$raw = $e->getMessage();
-			$errorMessage = strpos($raw, 'User not authenticated') !== false
+			$isUnauthenticated = strpos($raw, 'User not authenticated') !== false;
+			$errorMessage = $isUnauthenticated
 				? $this->l10n->t('User not authenticated')
 				: $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.');
 			return new JSONResponse([
 				'success' => false,
 				'error' => $errorMessage
-			], Http::STATUS_BAD_REQUEST);
+			], $isUnauthenticated ? Http::STATUS_UNAUTHORIZED : Http::STATUS_BAD_REQUEST);
 		}
 	}
 
@@ -776,7 +797,6 @@ class ComplianceController extends Controller
 	 * @return JSONResponse
 	 */
 	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	public function runCheck(): JSONResponse
 	{
 		try {

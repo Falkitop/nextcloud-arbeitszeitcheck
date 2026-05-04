@@ -13,6 +13,7 @@ namespace OCA\ArbeitszeitCheck\Tests\Unit\Controller;
 
 use OCA\ArbeitszeitCheck\Controller\TimeTrackingController;
 use OCA\ArbeitszeitCheck\Db\TimeEntry;
+use OCA\ArbeitszeitCheck\Exception\BusinessRuleException;
 use OCA\ArbeitszeitCheck\Service\TimeTrackingService;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\JSONResponse;
@@ -151,7 +152,7 @@ class TimeTrackingControllerTest extends TestCase
 
 		$this->timeTrackingService->expects($this->once())
 			->method('clockIn')
-			->willThrowException(new \Exception('Already clocked in'));
+			->willThrowException(new BusinessRuleException('User is already clocked in'));
 
 		$response = $this->controller->clockIn();
 
@@ -159,7 +160,31 @@ class TimeTrackingControllerTest extends TestCase
 		$this->assertEquals(Http::STATUS_BAD_REQUEST, $response->getStatus());
 		$data = $response->getData();
 		$this->assertFalse($data['success']);
-		$this->assertEquals('Already clocked in', $data['error']);
+		$this->assertEquals('User is already clocked in', $data['error']);
+	}
+
+	/**
+	 * Generic, non-business-rule exceptions must NOT leak to the client.
+	 * They map to a sanitized 500 with a localized generic message.
+	 */
+	public function testClockInGenericExceptionMapsTo500(): void
+	{
+		$userId = 'testuser';
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn($userId);
+
+		$this->userSession->method('getUser')->willReturn($user);
+
+		$this->timeTrackingService->expects($this->once())
+			->method('clockIn')
+			->willThrowException(new \RuntimeException('SQLSTATE[42S02]: leak'));
+
+		$response = $this->controller->clockIn();
+
+		$this->assertEquals(Http::STATUS_INTERNAL_SERVER_ERROR, $response->getStatus());
+		$data = $response->getData();
+		$this->assertFalse($data['success']);
+		$this->assertStringNotContainsString('SQLSTATE', $data['error']);
 	}
 
 	/**
@@ -208,13 +233,14 @@ class TimeTrackingControllerTest extends TestCase
 
 		$this->timeTrackingService->expects($this->once())
 			->method('clockOut')
-			->willThrowException(new \Exception('No active time entry'));
+			->willThrowException(new BusinessRuleException('User is not currently clocked in'));
 
 		$response = $this->controller->clockOut();
 
 		$this->assertEquals(Http::STATUS_BAD_REQUEST, $response->getStatus());
 		$data = $response->getData();
 		$this->assertFalse($data['success']);
+		$this->assertEquals('User is not currently clocked in', $data['error']);
 	}
 
 	/**
@@ -313,13 +339,14 @@ class TimeTrackingControllerTest extends TestCase
 
 		$this->timeTrackingService->expects($this->once())
 			->method('startBreak')
-			->willThrowException(new \Exception('No active time entry'));
+			->willThrowException(new BusinessRuleException('User is not currently clocked in'));
 
 		$response = $this->controller->startBreak();
 
 		$this->assertEquals(Http::STATUS_BAD_REQUEST, $response->getStatus());
 		$data = $response->getData();
 		$this->assertFalse($data['success']);
+		$this->assertEquals('User is not currently clocked in', $data['error']);
 	}
 
 	/**
@@ -335,12 +362,13 @@ class TimeTrackingControllerTest extends TestCase
 
 		$this->timeTrackingService->expects($this->once())
 			->method('endBreak')
-			->willThrowException(new \Exception('No active break'));
+			->willThrowException(new BusinessRuleException('User is not currently on break'));
 
 		$response = $this->controller->endBreak();
 
 		$this->assertEquals(Http::STATUS_BAD_REQUEST, $response->getStatus());
 		$data = $response->getData();
 		$this->assertFalse($data['success']);
+		$this->assertEquals('User is not currently on break', $data['error']);
 	}
 }

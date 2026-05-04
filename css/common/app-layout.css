@@ -242,6 +242,7 @@
   border-bottom: 2px solid var(--arbeitszeitcheck-color-border);
 }
 
+#app-content-wrapper .section-header h1,
 #app-content-wrapper .section-header h2,
 #app-content-wrapper .section-header h3 {
   font-size: var(--arbeitszeitcheck-font-size-xl);

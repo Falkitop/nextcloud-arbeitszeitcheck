@@ -58,6 +58,21 @@
     line-height: var(--arbeitszeitcheck-line-height-relaxed);
 }
 
+.dashboard-error-section {
+    padding: 0;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+}
+
+.dashboard-error-section .alert {
+    margin: 0;
+}
+
+.dashboard-error-section .alert p {
+    margin: var(--space-2) 0 0;
+}
+
 /* Section Header - Clear visual separation (easy to identify sections, WCAG heading hierarchy) */
 .section-header {
     display: flex;

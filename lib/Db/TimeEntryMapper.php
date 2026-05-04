@@ -579,7 +579,13 @@ class TimeEntryMapper extends QBMapper
 
 	/**
 	 * Find time entries that overlap with the given time range for a user
-	 * Two entries overlap if they have any time in common
+	 * Two entries overlap if they have any time in common.
+	 *
+	 * Active and on-break entries (which have a start_time but no end_time yet)
+	 * are considered to extend up to "now" so manual entries cannot accidentally
+	 * be inserted on top of an in-progress live session. Legacy paused entries
+	 * are treated the same way using their last update timestamp as the implicit
+	 * end. Pure draft rows without any start_time are skipped.
 	 *
 	 * @param string $userId
 	 * @param \DateTime $startTime
@@ -594,36 +600,82 @@ class TimeEntryMapper extends QBMapper
 		$entryDateStart->setTime(0, 0, 0);
 		$entryDateEnd = clone $endTime;
 		$entryDateEnd->setTime(23, 59, 59);
-		
+
 		// Extend date range to catch entries that might span across day boundaries
 		$entryDateStart->modify('-1 day');
 		$entryDateEnd->modify('+1 day');
-		
+
 		$allEntries = $this->findByUserAndDateRange($userId, $entryDateStart, $entryDateEnd);
-		
-		// Filter and check for overlaps
+
+		// Active/break entries can also start outside the day-bucket window (e.g.
+		// a session that started yesterday and is still running). Make sure they
+		// are evaluated regardless of where their start_time falls.
+		$active = $this->findActiveByUser($userId);
+		$break = $this->findOnBreakByUser($userId);
+		$seenIds = [];
+		foreach ($allEntries as $entry) {
+			$seenIds[(int)$entry->getId()] = true;
+		}
+		foreach ([$active, $break] as $live) {
+			if ($live !== null && !isset($seenIds[(int)$live->getId()])) {
+				$allEntries[] = $live;
+				$seenIds[(int)$live->getId()] = true;
+			}
+		}
+
 		$overlapping = [];
 		$newStartTs = $startTime->getTimestamp();
 		$newEndTs = $endTime->getTimestamp();
-		
+		$nowTs = (new \DateTime())->getTimestamp();
+
 		foreach ($allEntries as $entry) {
 			// Exclude the entry being updated if provided
 			if ($excludeId !== null && $entry->getId() === $excludeId) {
 				continue;
 			}
-			
-			// Only check completed or pending entries with end times
-			if (!in_array($entry->getStatus(), [TimeEntry::STATUS_COMPLETED, TimeEntry::STATUS_PENDING_APPROVAL])) {
+
+			$status = $entry->getStatus();
+			$entryStart = $entry->getStartTime();
+			$entryEnd = $entry->getEndTime();
+
+			// A row with no start time cannot overlap with anything.
+			if (!$entryStart) {
 				continue;
 			}
-			
-			if (!$entry->getStartTime() || !$entry->getEndTime()) {
+
+			// Determine the effective end timestamp for overlap detection.
+			//
+			// - completed / pending_approval: must have a real end_time
+			// - active / break             : extend to "now" so live sessions
+			//                                 protect their slot from manual
+			//                                 entries
+			// - paused (legacy)             : extend to updated_at (when the row
+			//                                 was paused) and fall back to "now"
+			//                                 if missing so the row is still
+			//                                 considered occupied
+			$effectiveEnd = null;
+			if ($entryEnd !== null) {
+				$effectiveEnd = $entryEnd;
+			} elseif (in_array($status, [TimeEntry::STATUS_ACTIVE, TimeEntry::STATUS_BREAK], true)) {
+				$effectiveEnd = new \DateTime();
+			} elseif ($status === TimeEntry::STATUS_PAUSED) {
+				$effectiveEnd = $entry->getUpdatedAt() ?? new \DateTime();
+			} else {
+				// Unknown / draft state – skip rather than guess.
 				continue;
 			}
-			
-			$entryStartTs = $entry->getStartTime()->getTimestamp();
-			$entryEndTs = $entry->getEndTime()->getTimestamp();
-			
+
+			// Guard against malformed rows where an end is somehow before the start.
+			$entryStartTs = $entryStart->getTimestamp();
+			$entryEndTs = max($entryStartTs, $effectiveEnd->getTimestamp());
+
+			// For live (active/break) sessions we never want to consider an end
+			// in the past – clamp to now so a clock skew on an old row cannot
+			// silently disable overlap detection.
+			if (in_array($status, [TimeEntry::STATUS_ACTIVE, TimeEntry::STATUS_BREAK], true)) {
+				$entryEndTs = max($entryEndTs, $nowTs);
+			}
+
 			// Entries overlap if: new_start < entry_end AND new_end > entry_start
 			if ($newStartTs < $entryEndTs && $newEndTs > $entryStartTs) {
 				$overlapping[] = $entry;

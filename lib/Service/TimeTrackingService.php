@@ -18,6 +18,7 @@ use OCA\ArbeitszeitCheck\Db\UserWorkingTimeModelMapper;
 use OCA\ArbeitszeitCheck\Db\WorkingTimeModelMapper;
 use OCA\ArbeitszeitCheck\Db\ComplianceViolationMapper;
 use OCA\ArbeitszeitCheck\Db\AuditLogMapper;
+use OCA\ArbeitszeitCheck\Exception\BusinessRuleException;
 use OCA\ArbeitszeitCheck\Service\ProjectCheckIntegrationService;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\IConfig;
@@ -85,6 +86,17 @@ class TimeTrackingService
 	}
 
 	/**
+	 * Whether the configured daily maximum is reached/exceeded for the given user.
+	 *
+	 * This uses getTodayHours(), which already applies overlap-safe calculation and
+	 * includes active sessions.
+	 */
+	public function isAtOrAboveDailyMaximum(string $userId): bool
+	{
+		return $this->getTodayHours($userId) >= $this->getMaxDailyHours();
+	}
+
+	/**
 	 * Clock in a user (start working)
 	 *
 	 * @param string $userId
@@ -102,12 +114,12 @@ class TimeTrackingService
 				$this->monthClosureGuard->assertUserDayMutable($userId, new \DateTime());
 				$activeEntry = $this->timeEntryMapper->findActiveByUser($userId);
 				if ($activeEntry !== null) {
-					throw new \Exception($this->l10n->t('User is already clocked in'));
+					throw new BusinessRuleException($this->l10n->t('User is already clocked in'));
 				}
 
 				$breakEntry = $this->timeEntryMapper->findOnBreakByUser($userId);
 				if ($breakEntry !== null) {
-					throw new \Exception($this->l10n->t('User is currently on break. End break first.'));
+					throw new BusinessRuleException($this->l10n->t('User is currently on break. End break first.'));
 				}
 
 				$pausedTodayEntry = $this->timeEntryMapper->findPausedOrUnfinishedTodayByUser($userId);
@@ -118,10 +130,10 @@ class TimeTrackingService
 				}
 
 				if ($projectCheckProjectId !== null && mb_strlen($projectCheckProjectId) > TimeEntry::PROJECT_CHECK_PROJECT_ID_MAX_LENGTH) {
-					throw new \Exception($this->l10n->t('Project ID must not exceed %d characters', [TimeEntry::PROJECT_CHECK_PROJECT_ID_MAX_LENGTH]));
+					throw new BusinessRuleException($this->l10n->t('Project ID must not exceed %d characters', [TimeEntry::PROJECT_CHECK_PROJECT_ID_MAX_LENGTH]));
 				}
 				if ($projectCheckProjectId && !$this->projectCheckService->projectExists($projectCheckProjectId)) {
-					throw new \Exception($this->l10n->t('Selected project does not exist'));
+					throw new BusinessRuleException($this->l10n->t('Selected project does not exist'));
 				}
 
 				$this->checkComplianceBeforeClockIn($userId);
@@ -132,7 +144,7 @@ class TimeTrackingService
 				$todayHours = $this->timeEntryMapper->getTotalHoursByUserAndDateRange($userId, $today, $tomorrow);
 				$maxDailyHours = $this->getMaxDailyHours();
 				if ($todayHours >= $maxDailyHours) {
-					throw new \Exception($this->l10n->t(
+					throw new BusinessRuleException($this->l10n->t(
 						'Cannot clock in: Maximum daily working hours (%1$dh) already reached. You have already worked %2$.1f hours today (ArbZG §3).',
 						[(int)$maxDailyHours, $todayHours]
 					));
@@ -160,6 +172,7 @@ class TimeTrackingService
 					null,
 					$this->safeGetSummary($savedEntry, $userId)
 				);
+				$this->clearAutoClockoutNotice($userId);
 				$this->db->commit();
 				return $savedEntry;
 			} catch (\Throwable $e) {
@@ -186,13 +199,17 @@ class TimeTrackingService
 	{
 		$lockKey = $this->acquireUserMutationLock($userId);
 		try {
+			// Phase 1: persist the clock-out atomically. Compliance checks are
+			// deliberately kept OUT of this transaction so a defect or transient
+			// error in a downstream check can never roll back the clock-out itself
+			// (clock-out is the user's right; compliance is a best-effort side effect).
 			$this->db->beginTransaction();
 			try {
 				$activeEntry = $this->timeEntryMapper->findActiveByUser($userId);
 				$breakEntry = $this->timeEntryMapper->findOnBreakByUser($userId);
 				$currentEntry = $activeEntry ?: $breakEntry;
 				if ($currentEntry === null) {
-					throw new \Exception($this->l10n->t('User is not currently clocked in'));
+					throw new BusinessRuleException($this->l10n->t('User is not currently clocked in'));
 				}
 
 				$this->monthClosureGuard->assertTimeEntryMutable($currentEntry);
@@ -212,7 +229,6 @@ class TimeTrackingService
 				$this->calculateAndSetAutomaticBreak($currentEntry);
 
 				$updatedEntry = $this->timeEntryMapper->update($currentEntry);
-				$this->checkComplianceAfterClockOut($updatedEntry);
 				$this->auditLogMapper->logAction(
 					$userId,
 					'clock_out',
@@ -222,11 +238,29 @@ class TimeTrackingService
 					$this->safeGetSummary($updatedEntry, $userId)
 				);
 				$this->db->commit();
-				return $updatedEntry;
 			} catch (\Throwable $e) {
 				$this->db->rollBack();
 				throw $e;
 			}
+
+			// Phase 2: best-effort compliance evaluation. Each individual rule is
+			// already isolated inside ComplianceService::checkComplianceAfterClockOut,
+			// but we still wrap the call defensively so that absolutely no failure
+			// here can prevent the clock-out from being reported as successful.
+			try {
+				$this->checkComplianceAfterClockOut($updatedEntry);
+			} catch (\Throwable $complianceError) {
+				\OCP\Log\logger('arbeitszeitcheck')->warning(
+					'Compliance check after manual clock-out failed: ' . $complianceError->getMessage(),
+					[
+						'exception' => $complianceError,
+						'user_id'   => $userId,
+						'entry_id'  => $updatedEntry->getId(),
+					]
+				);
+			}
+
+			return $updatedEntry;
 		} finally {
 			$this->releaseUserMutationLock($lockKey);
 		}
@@ -257,7 +291,7 @@ class TimeTrackingService
 		$todayHours   = $this->timeEntryMapper->getTotalHoursByUserAndDateRange($userId, $today, $tomorrow);
 		$maxDailyHours = $this->getMaxDailyHours();
 		if ($todayHours >= $maxDailyHours) {
-			throw new \Exception($this->l10n->t(
+			throw new BusinessRuleException($this->l10n->t(
 				'Cannot clock in: Maximum daily working hours (%1$dh) already reached. You have already worked %2$.1f hours today (ArbZG §3).',
 				[(int)$maxDailyHours, $todayHours]
 			));
@@ -294,6 +328,8 @@ class TimeTrackingService
 			$this->safeGetSummary($resumed, $userId)
 		);
 
+		$this->clearAutoClockoutNotice($userId);
+
 		return $resumed;
 	}
 
@@ -312,11 +348,11 @@ class TimeTrackingService
 			try {
 				$activeEntry = $this->timeEntryMapper->findActiveByUser($userId);
 				if ($activeEntry === null) {
-					throw new \Exception($this->l10n->t('User is not currently clocked in'));
+					throw new BusinessRuleException($this->l10n->t('User is not currently clocked in'));
 				}
 				$this->monthClosureGuard->assertTimeEntryMutable($activeEntry);
 				if ($activeEntry->getBreakStartTime() !== null && $activeEntry->getBreakEndTime() === null) {
-					throw new \Exception($this->l10n->t('Break is already started'));
+					throw new BusinessRuleException($this->l10n->t('Break is already started'));
 				}
 
 				$oldSummary = $this->safeGetSummary($activeEntry, $userId);
@@ -365,7 +401,7 @@ class TimeTrackingService
 			try {
 				$breakEntry = $this->timeEntryMapper->findOnBreakByUser($userId);
 				if ($breakEntry === null) {
-					throw new \Exception($this->l10n->t('User is not currently on break'));
+					throw new BusinessRuleException($this->l10n->t('User is not currently on break'));
 				}
 
 				$this->monthClosureGuard->assertTimeEntryMutable($breakEntry);
@@ -403,6 +439,12 @@ class TimeTrackingService
 	public function getStatus(string $userId): array
 	{
 		try {
+			// Self-healing: if the user has crossed the ArbZG §3 daily maximum,
+			// auto-complete the active entry on read so the frontend timer
+			// observes a consistent state and never enters a reload loop.
+			// This deliberately runs BEFORE we look up the entry below.
+			$this->maybeAutoCompleteAtDailyMaximum($userId);
+
 			$activeEntry = $this->timeEntryMapper->findActiveByUser($userId);
 			$breakEntry = $this->timeEntryMapper->findOnBreakByUser($userId);
 
@@ -650,7 +692,7 @@ class TimeTrackingService
 			$criticalIssues = array_filter($issues, fn($issue) => $issue['severity'] === 'error');
 			if (!empty($criticalIssues)) {
 				$firstIssue = reset($criticalIssues);
-				throw new \Exception($firstIssue['message']);
+				throw new BusinessRuleException((string)$firstIssue['message']);
 			}
 		}
 	}
@@ -912,14 +954,27 @@ class TimeTrackingService
 				$newEndTime->modify('+' . round($maxTotalHours * 3600) . ' seconds');
 			}
 			
+			// Archive any open break interval before completing, so working-time math stays correct.
+			if ($timeEntry->getStatus() === TimeEntry::STATUS_BREAK
+				&& $timeEntry->getBreakStartTime() !== null
+				&& $timeEntry->getBreakEndTime() === null
+			) {
+				$breakEnd = ($timeEntry->getBreakStartTime() < $newEndTime) ? $newEndTime : $timeEntry->getBreakStartTime();
+				$this->archiveBreakToJson($timeEntry, $timeEntry->getBreakStartTime(), $breakEnd);
+				$timeEntry->setBreakStartTime(null);
+				$timeEntry->setBreakEndTime(null);
+			}
+
 			// Set end time so calculateAndSetAutomaticBreak can work with it
 			$timeEntry->setEndTime($newEndTime);
-			
+
 			// Calculate and set automatic break if needed (needs endTime to be set)
 			$this->calculateAndSetAutomaticBreak($timeEntry);
-			
-			// Mark entry as completed
+
+			// Mark entry as completed and capture reason for the audit trail (ArbZG §3).
 			$timeEntry->setStatus(TimeEntry::STATUS_COMPLETED);
+			$timeEntry->setEndedReason(TimeEntry::ENDED_REASON_AUTO_DAILY_MAX);
+			$timeEntry->setPolicyApplied('arbzg_daily_maximum');
 			$timeEntry->setUpdatedAt($now);
 			
 			// Save the entry (with endTime, breaks, and status all set)
@@ -1263,6 +1318,16 @@ class TimeTrackingService
 					'at' => $now->format('c'),
 				]));
 				$this->db->commit();
+
+				try {
+					$this->checkComplianceAfterClockOut($updated);
+				} catch (\Throwable $complianceError) {
+					\OCP\Log\logger('arbeitszeitcheck')->warning(
+						'Compliance check after auto daily-maximum clock-out failed: ' . $complianceError->getMessage(),
+						['exception' => $complianceError, 'user_id' => $userId, 'entry_id' => $updated->getId()]
+					);
+				}
+
 				return $updated;
 			} catch (\Throwable $e) {
 				$this->db->rollBack();
@@ -1270,6 +1335,57 @@ class TimeTrackingService
 			}
 		} finally {
 			$this->releaseUserMutationLock($lockKey);
+		}
+	}
+
+	/**
+	 * Best-effort auto-completion when the daily maximum has already been crossed.
+	 *
+	 * This is invoked from read-paths like {@see getStatus()} so that the frontend
+	 * never observes a session above the ArbZG §3 ceiling without a corresponding
+	 * completion. It performs a cheap precheck (no lock) and only escalates to the
+	 * locked transactional path when needed. All errors are swallowed and logged –
+	 * the read-path must remain reliable even if enforcement fails (e.g. when the
+	 * containing month has been finalised in the meantime).
+	 */
+	private function maybeAutoCompleteAtDailyMaximum(string $userId): void
+	{
+		try {
+			$activeEntry = $this->timeEntryMapper->findActiveByUser($userId);
+			$breakEntry = $this->timeEntryMapper->findOnBreakByUser($userId);
+			if ($activeEntry === null && $breakEntry === null) {
+				return;
+			}
+
+			if ($this->getTodayHours($userId) < $this->getMaxDailyHours()) {
+				return;
+			}
+
+			$this->enforceDailyMaximumForUser($userId);
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->warning(
+				'Self-healing daily-maximum enforcement skipped: ' . $e->getMessage(),
+				['exception' => $e, 'user_id' => $userId]
+			);
+		}
+	}
+
+	/**
+	 * Clear any stored auto-clockout banner for the user.
+	 *
+	 * Used when a fresh working session starts (clock-in / resume) so that a
+	 * banner from a previous day cannot accidentally re-appear in the new
+	 * session, which would otherwise be confusing for the user.
+	 */
+	private function clearAutoClockoutNotice(string $userId): void
+	{
+		try {
+			$this->config->deleteUserValue($userId, 'arbeitszeitcheck', 'auto_clockout_notice');
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->warning(
+				'Could not clear auto_clockout_notice: ' . $e->getMessage(),
+				['exception' => $e, 'user_id' => $userId]
+			);
 		}
 	}
 

@@ -615,7 +615,7 @@ class AbsenceService
 			$updatedAbsence = $this->absenceMapper->update($absence);
 
 			$this->auditLogMapper->logAction(
-				$approverId,
+				$updatedAbsence->getUserId(),
 				'absence_approved',
 				'absence',
 				$updatedAbsence->getId(),
@@ -691,7 +691,7 @@ class AbsenceService
 			$updatedAbsence = $this->absenceMapper->update($absence);
 
 			$this->auditLogMapper->logAction(
-				$approverId,
+				$updatedAbsence->getUserId(),
 				'absence_rejected',
 				'absence',
 				$updatedAbsence->getId(),
@@ -806,7 +806,7 @@ class AbsenceService
 			$updatedAbsence = $this->absenceMapper->update($absence);
 
 			$this->auditLogMapper->logAction(
-				$substituteUserId,
+				$updatedAbsence->getUserId(),
 				'absence_substitute_approved',
 				'absence',
 				$updatedAbsence->getId(),
@@ -925,7 +925,7 @@ class AbsenceService
 			$updatedAbsence = $this->absenceMapper->update($absence);
 
 			$this->auditLogMapper->logAction(
-				$substituteUserId,
+				$updatedAbsence->getUserId(),
 				'absence_substitute_declined',
 				'absence',
 				$updatedAbsence->getId(),

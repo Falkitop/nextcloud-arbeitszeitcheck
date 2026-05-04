@@ -273,6 +273,30 @@ class TimeEntryController extends Controller
 	}
 
 	/**
+	 * Accept breaks payloads from form-encoded and JSON clients.
+	 *
+	 * @param mixed $payload
+	 * @return array<int, array<string, mixed>>|null
+	 */
+	private function decodeBreaksPayload(mixed $payload): ?array
+	{
+		if ($payload === null || $payload === '') {
+			return null;
+		}
+
+		if (is_array($payload)) {
+			return $payload;
+		}
+
+		if (!is_string($payload)) {
+			return null;
+		}
+
+		$decoded = json_decode($payload, true);
+		return is_array($decoded) ? $decoded : null;
+	}
+
+	/**
 	 * Get time entries endpoint
 	 *
 	 * Retrieves time entries for the current user with optional filtering by date range and status.
@@ -904,10 +928,9 @@ class TimeEntryController extends Controller
 				}
 
 				// Handle breaks: prefer breaks JSON (multiple breaks) over single break fields
-				if ($breaksJson) {
-					// Validate and set breaks JSON (multiple breaks)
-					$breaks = json_decode($breaksJson, true);
-					if (is_array($breaks) && !empty($breaks)) {
+				$breaks = $this->decodeBreaksPayload($breaksJson);
+				if ($breaks !== null) {
+					if (!empty($breaks)) {
 						// Filter out breaks shorter than 15 minutes (ArbZG §4)
 						$validBreaks = [];
 						foreach ($breaks as $break) {
@@ -972,7 +995,7 @@ class TimeEntryController extends Controller
 							$entry->setBreakEndTime(null);
 						}
 					} else {
-						// Invalid breaks JSON, clear everything
+						// Empty breaks payload, clear everything
 						$entry->setBreaks(null);
 						$entry->setBreakStartTime(null);
 						$entry->setBreakEndTime(null);
@@ -1029,7 +1052,14 @@ class TimeEntryController extends Controller
 			// Old format: date and hours (backward compatibility)
 			else {
 				if ($date) {
-					$entry->setStartTime(new \DateTime($date));
+					try {
+						$entry->setStartTime($this->parseDate($date));
+					} catch (\Throwable $e) {
+						return new JSONResponse([
+							'success' => false,
+							'error' => $this->l10n->t('Invalid date: %s', [$date]),
+						], Http::STATUS_BAD_REQUEST);
+					}
 				}
 				if ($hours !== null) {
 					if ($hours <= 0 || $hours > 24) {
@@ -1890,10 +1920,9 @@ class TimeEntryController extends Controller
 
 				// Handle breaks: prefer breaks JSON (multiple breaks) over single break fields
 				$breaksJson = $params['breaks'] ?? null;
-				if ($breaksJson) {
-					// Validate and set breaks JSON (multiple breaks)
-					$breaks = json_decode($breaksJson, true);
-					if (is_array($breaks) && !empty($breaks)) {
+				$breaks = $this->decodeBreaksPayload($breaksJson);
+				if ($breaks !== null) {
+					if (!empty($breaks)) {
 						// Filter out breaks shorter than 15 minutes (ArbZG §4)
 						$validBreaks = [];
 						foreach ($breaks as $break) {
@@ -1958,7 +1987,7 @@ class TimeEntryController extends Controller
 							$timeEntry->setBreakEndTime(null);
 						}
 					} else {
-						// Invalid breaks JSON, clear everything
+						// Empty breaks payload, clear everything
 						$timeEntry->setBreaks(null);
 						$timeEntry->setBreakStartTime(null);
 						$timeEntry->setBreakEndTime(null);

@@ -246,7 +246,6 @@ class GdprController extends Controller
 	 * Note: This respects legal retention periods (2 years minimum for time records per German labor law)
 	 */
 	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	public function delete(): JSONResponse
 	{
 		try {

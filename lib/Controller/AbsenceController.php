@@ -19,6 +19,7 @@ use OCA\ArbeitszeitCheck\Service\CSPService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCA\ArbeitszeitCheck\Service\TeamResolverService;
 use OCA\ArbeitszeitCheck\Service\MonthClosureService;
+use OCA\ArbeitszeitCheck\Exception\BusinessRuleException;
 use OCA\ArbeitszeitCheck\Exception\MonthFinalizedException;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Db\DoesNotExistException;
@@ -96,14 +97,58 @@ class AbsenceController extends Controller
 
 	/**
 	 * Get a safe user-facing error message from an exception.
-	 * Business logic exceptions (\Exception) contain user-safe messages; other Throwables use generic text.
+	 *
+	 * Defense in depth:
+	 *  1. Only accept exceptions whose concrete class is exactly \Exception, or
+	 *     {@see BusinessRuleException} (typed business rules with a pre-translated message).
+	 *     The absence service layer primarily uses bare \Exception for localized business-rule
+	 *     errors. Subclasses such as \PDOException, \TypeError, \Doctrine\DBAL\Exception, etc.,
+	 *     are treated as technical and get a generic message.
+	 *  2. Even for plain \Exception, the message content is inspected for common leakage
+	 *     indicators (SQL state codes, namespaced class names, file system paths, stack
+	 *     trace hints). Anything matching collapses to the generic message.
+	 *
+	 * The full original exception (including class, message and trace) is logged separately
+	 * by the calling controller via OCP\Log\logger(...).
 	 */
 	private function getSafeErrorMessage(\Throwable $e): string
 	{
-		if ($e instanceof \Exception && $e->getMessage() !== '') {
-			return $e->getMessage();
+		$generic = $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.');
+		$forwardUserMessage = (get_class($e) === \Exception::class) || ($e instanceof BusinessRuleException);
+		if (!$forwardUserMessage) {
+			return $generic;
 		}
-		return $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.');
+		$msg = trim((string)$e->getMessage());
+		if ($msg === '' || strlen($msg) > 500) {
+			return $generic;
+		}
+		$lower = strtolower($msg);
+		$blocked = [
+			'sqlstate[',
+			'syntax error',
+			'pdoexception',
+			'doctrine\\',
+			'stack trace',
+			' in /var/',
+			' in /home/',
+			' in /usr/',
+			'/lib/',
+			'/vendor/',
+			'oc\\',
+			'oca\\',
+			'ocp\\',
+			'fatal error',
+			'argument #',
+			'must be of type',
+			'must be an instance of',
+			'has not been initialized',
+		];
+		foreach ($blocked as $needle) {
+			if (str_contains($lower, $needle)) {
+				return $generic;
+			}
+		}
+		return $msg;
 	}
 
 	/**
@@ -175,7 +220,6 @@ class AbsenceController extends Controller
 	 * @return JSONResponse
 	 */
 	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	public function apiStore(): JSONResponse
 	{
 		return $this->store();
@@ -220,7 +264,6 @@ class AbsenceController extends Controller
 	 * @return JSONResponse
 	 */
 	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	public function apiUpdate(int $id): JSONResponse
 	{
 		$params = $this->request->getParams();
@@ -241,7 +284,6 @@ class AbsenceController extends Controller
 	 * @return JSONResponse
 	 */
 	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	public function apiDelete(int $id): JSONResponse
 	{
 		return $this->delete($id);
@@ -262,7 +304,6 @@ class AbsenceController extends Controller
 	 * @return JSONResponse|RedirectResponse
 	 */
 	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	public function cancel(int $id): JSONResponse|RedirectResponse
 	{
 		try {
@@ -317,7 +358,6 @@ class AbsenceController extends Controller
 	 * @return JSONResponse
 	 */
 	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	public function shorten(int $id): JSONResponse
 	{
 		$params = $this->request->getParams();
@@ -358,7 +398,6 @@ class AbsenceController extends Controller
 	 * @return RedirectResponse|TemplateResponse
 	 */
 	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	public function shortenForm(int $id)
 	{
 		$endDate = trim((string)($this->request->getParam('end_date') ?? ''));
@@ -722,7 +761,6 @@ class AbsenceController extends Controller
 	 * @return JSONResponse|RedirectResponse
 	 */
 	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	public function store(): JSONResponse|RedirectResponse
 	{
 		try {
@@ -777,14 +815,11 @@ class AbsenceController extends Controller
 				'success' => true,
 				'absence' => $absence->getSummary()
 			], Http::STATUS_CREATED);
-		} catch (\Exception $e) {
-			$msg = trim((string)$e->getMessage());
-			$error = $msg !== '' ? $msg : $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.');
-			return new JSONResponse(['success' => false, 'error' => $error], Http::STATUS_BAD_REQUEST);
 		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error('Error in AbsenceController::store: ' . $e->getMessage(), ['exception' => $e]);
 			return new JSONResponse([
 				'success' => false,
-				'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.')
+				'error' => $this->getSafeErrorMessage($e)
 			], Http::STATUS_BAD_REQUEST);
 		}
 	}
@@ -796,7 +831,6 @@ class AbsenceController extends Controller
 	 * @return JSONResponse|RedirectResponse
 	 */
 	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	public function updatePost(int $id): JSONResponse|RedirectResponse
 	{
 		$params = $this->request->getParams();
@@ -821,7 +855,6 @@ class AbsenceController extends Controller
 	 * @return JSONResponse|RedirectResponse
 	 */
 	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	public function update(int $id, ?string $start_date = null, ?string $end_date = null, ?string $reason = null, ?string $substitute_user_id = null): JSONResponse|RedirectResponse
 	{
 		try {
@@ -874,14 +907,11 @@ class AbsenceController extends Controller
 				'success' => true,
 				'absence' => $absence->getSummary()
 			]);
-		} catch (\Exception $e) {
-			$msg = trim((string)$e->getMessage());
-			$error = $msg !== '' ? $msg : $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.');
-			return new JSONResponse(['success' => false, 'error' => $error], Http::STATUS_BAD_REQUEST);
 		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error('Error in AbsenceController::update: ' . $e->getMessage(), ['exception' => $e]);
 			return new JSONResponse([
 				'success' => false,
-				'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.')
+				'error' => $this->getSafeErrorMessage($e)
 			], Http::STATUS_BAD_REQUEST);
 		}
 	}
@@ -893,7 +923,6 @@ class AbsenceController extends Controller
 	 * @return JSONResponse
 	 */
 	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	public function delete(int $id): JSONResponse
 	{
 		try {
@@ -980,7 +1009,6 @@ class AbsenceController extends Controller
 	 * @return JSONResponse
 	 */
 	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	public function approve(int $id, ?string $comment = null): JSONResponse
 	{
 		try {
@@ -1021,7 +1049,6 @@ class AbsenceController extends Controller
 	 * @return JSONResponse
 	 */
 	#[NoAdminRequired]
-	#[NoCSRFRequired]
 	public function reject(int $id, ?string $comment = null): JSONResponse
 	{
 		try {

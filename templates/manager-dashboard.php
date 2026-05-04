@@ -13,6 +13,8 @@ declare(strict_types=1);
 /** @var array $_ */
 /** @var \OCP\IL10N $l */
 $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
+/** @var \OCP\IURLGenerator $urlGenerator */
+$urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class);
 
 $teamStats = $_['teamStats'] ?? [];
 $teamMembers = $_['teamMembers'] ?? [];
@@ -38,8 +40,17 @@ $teamMembers = $_['teamMembers'] ?? [];
 
 <?php include __DIR__ . '/common/navigation.php'; ?>
 
-<div id="app-content" class="manager-dashboard">
+<main id="app-content" role="main" aria-label="<?php p($l->t('Manager dashboard content')); ?>" class="manager-dashboard">
     <div id="app-content-wrapper">
+        <!-- Breadcrumb Navigation -->
+        <div class="breadcrumb-container">
+            <nav class="breadcrumb" aria-label="<?php p($l->t('Breadcrumb')); ?>">
+                <ol>
+                    <li><a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.page.index')); ?>"><?php p($l->t('Dashboard')); ?></a></li>
+                    <li aria-current="page"><?php p($l->t('Manager Dashboard')); ?></li>
+                </ol>
+            </nav>
+        </div>
         <div class="section manager-dashboard__content">
             <header class="manager-dashboard__header section-header">
                 <h1 class="manager-dashboard__title"><?php p($l->t('Manager Dashboard')); ?></h1>
@@ -50,21 +61,31 @@ $teamMembers = $_['teamMembers'] ?? [];
             <section class="manager-dashboard__stats section" aria-labelledby="stats-heading">
                 <h2 id="stats-heading" class="visually-hidden"><?php p($l->t('Team statistics')); ?></h2>
                 <div class="stats-grid manager-stats-grid">
-                    <div class="stat-card manager-stat-card">
-                        <span class="stat-number" aria-hidden="true"><?php p($teamStats['total_members'] ?? 0); ?></span>
-                        <span class="stat-label"><?php p($l->t('Team Members')); ?></span>
+                    <?php
+                    $totalMembers   = (int)($teamStats['total_members'] ?? 0);
+                    $activeToday    = (int)($teamStats['active_today'] ?? 0);
+                    $hoursToday     = round((float)($teamStats['total_hours_today'] ?? 0), 1);
+                    $pendingAbsences = (int)($teamStats['pending_absences'] ?? 0);
+                    ?>
+                    <div class="stat-card manager-stat-card" role="group"
+                        aria-label="<?php p($l->n('%n team member', '%n team members', $totalMembers)); ?>">
+                        <span class="stat-number" aria-hidden="true"><?php p($totalMembers); ?></span>
+                        <span class="stat-label" aria-hidden="true"><?php p($l->t('Team Members')); ?></span>
                     </div>
-                    <div class="stat-card manager-stat-card">
-                        <span class="stat-number" aria-hidden="true"><?php p($teamStats['active_today'] ?? 0); ?></span>
-                        <span class="stat-label"><?php p($l->t('Active Today')); ?></span>
+                    <div class="stat-card manager-stat-card" role="group"
+                        aria-label="<?php p($l->n('%n team member active today', '%n team members active today', $activeToday)); ?>">
+                        <span class="stat-number" aria-hidden="true"><?php p($activeToday); ?></span>
+                        <span class="stat-label" aria-hidden="true"><?php p($l->t('Active Today')); ?></span>
                     </div>
-                    <div class="stat-card manager-stat-card">
-                        <span class="stat-number" aria-hidden="true"><?php p(round($teamStats['total_hours_today'] ?? 0, 1)); ?>h</span>
-                        <span class="stat-label"><?php p($l->t('Hours Today')); ?></span>
+                    <div class="stat-card manager-stat-card" role="group"
+                        aria-label="<?php p($l->t('%s hours worked today by the team', [(string)$hoursToday])); ?>">
+                        <span class="stat-number" aria-hidden="true"><?php p($hoursToday); ?>h</span>
+                        <span class="stat-label" aria-hidden="true"><?php p($l->t('Hours Today')); ?></span>
                     </div>
-                    <div class="stat-card manager-stat-card">
-                        <span class="stat-number" aria-hidden="true"><?php p($teamStats['pending_absences'] ?? 0); ?></span>
-                        <span class="stat-label"><?php p($l->t('Pending Absences')); ?></span>
+                    <div class="stat-card manager-stat-card" role="group"
+                        aria-label="<?php p($l->n('%n pending absence request', '%n pending absence requests', $pendingAbsences)); ?>">
+                        <span class="stat-number" aria-hidden="true"><?php p($pendingAbsences); ?></span>
+                        <span class="stat-label" aria-hidden="true"><?php p($l->t('Pending Absences')); ?></span>
                     </div>
                 </div>
             </section>
@@ -154,7 +175,7 @@ $teamMembers = $_['teamMembers'] ?? [];
             </section>
         </div>
     </div>
-</div>
+</main>
 </div><!-- /#arbeitszeitcheck-app -->
 
 <script nonce="<?php p($_['cspNonce'] ?? ''); ?>">

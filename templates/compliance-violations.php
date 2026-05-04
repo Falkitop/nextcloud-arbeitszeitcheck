@@ -20,12 +20,12 @@ $total = $_['total'] ?? 0;
 
 <?php include __DIR__ . '/common/navigation.php'; ?>
 
-<div id="app-content">
+<main id="app-content" role="main" aria-label="<?php p($l->t('Compliance violations content')); ?>">
     <div id="app-content-wrapper">
         <?php include __DIR__ . '/common/compliance-tabs.php'; ?>
         <div class="section">
             <div class="section-header">
-                <h2><?php p($l->t('Compliance Violations')); ?></h2>
+                <h1><?php p($l->t('Compliance Violations')); ?></h1>
                 <p><?php p($l->t('See when working time rules were not followed and what needs to be fixed')); ?></p>
             </div>
 
@@ -133,7 +133,7 @@ $total = $_['total'] ?? 0;
             </div>
         </div>
     </div>
-</div>
+</main>
 </div><!-- /#arbeitszeitcheck-app -->
 
 <?php
