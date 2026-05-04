@@ -2,6 +2,8 @@
 
 End-to-end steps to produce the **archive**, **checksums**, and **code signature** you need at [apps.nextcloud.com](https://apps.nextcloud.com) (developer account → your app → new version).
 
+Generic checklist, byte-identity gate, and repo layout: **[ready2publish/APPSTORE-RELEASE.md](../../../ready2publish/APPSTORE-RELEASE.md)**, **[REPOSITORY-LAYOUT.md](../../../ready2publish/REPOSITORY-LAYOUT.md)**.
+
 Replace `X.Y.Z` with the real version (e.g. `1.1.6`).
 
 ---
@@ -37,15 +39,19 @@ If `make release-signed` fails on the host because `occ` cannot run (for example
 
 ### Docker signing fallback (recommended when using the local Nextcloud container)
 
-Use this after creating `release/arbeitszeitcheck-X.Y.Z.tar.gz`:
+Run `make release` first so the unsigned archive exists at **`build/release/arbeitszeitcheck-X.Y.Z.tar.gz`** (same path `make release-signed` and `gh release create` use — see [ready2publish/APPSTORE-RELEASE.md](../../../ready2publish/APPSTORE-RELEASE.md) for the generic checklist).
+
+From the **monorepo root** (directory that contains `apps/`):
 
 ```bash
 VERSION=X.Y.Z
 APPID=arbeitszeitcheck
 CONTAINER=nextcloud-app
+HOST_ARCHIVE="apps/${APPID}/build/release/${APPID}-${VERSION}.tar.gz"
 
-# 1) Copy key material into container tmp
+# 1) Copy unsigned archive + key material into the container
 #    Set APP_CERT_KEY_PATH and APP_CERT_CRT_PATH in your shell first.
+docker cp "${HOST_ARCHIVE}" "${CONTAINER}:/tmp/${APPID}-unsigned-${VERSION}.tar.gz"
 docker cp "${APP_CERT_KEY_PATH}" "${CONTAINER}:/tmp/${APPID}.key"
 docker cp "${APP_CERT_CRT_PATH}" "${CONTAINER}:/tmp/${APPID}.crt"
 docker exec "${CONTAINER}" sh -lc "chown www-data:www-data /tmp/${APPID}.key /tmp/${APPID}.crt && chmod 600 /tmp/${APPID}.key && chmod 644 /tmp/${APPID}.crt"
@@ -53,7 +59,7 @@ docker exec "${CONTAINER}" sh -lc "chown www-data:www-data /tmp/${APPID}.key /tm
 # 2) Sign extracted archive payload with occ (as www-data), repack to /tmp
 docker exec -u www-data "${CONTAINER}" sh -lc "
   set -e
-  ARCHIVE=/var/www/html/custom_apps/${APPID}/release/${APPID}-${VERSION}.tar.gz
+  ARCHIVE=/tmp/${APPID}-unsigned-${VERSION}.tar.gz
   STAGING=\$(mktemp -d)
   tar -xzf \"\$ARCHIVE\" -C \"\$STAGING\"
   php /var/www/html/occ integrity:sign-app \
@@ -64,16 +70,16 @@ docker exec -u www-data "${CONTAINER}" sh -lc "
   rm -rf \"\$STAGING\"
 "
 
-# 3) Copy signed archive back and clean temporary secrets
-docker cp "${CONTAINER}:/tmp/${APPID}-signed-${VERSION}.tar.gz" "apps/${APPID}/release/${APPID}-${VERSION}.tar.gz"
-docker exec "${CONTAINER}" sh -lc "rm -f /tmp/${APPID}.key /tmp/${APPID}.crt /tmp/${APPID}-signed-${VERSION}.tar.gz"
+# 3) Copy signed archive back (overwrites unsigned at canonical path) and clean secrets
+docker cp "${CONTAINER}:/tmp/${APPID}-signed-${VERSION}.tar.gz" "${HOST_ARCHIVE}"
+docker exec "${CONTAINER}" sh -lc "rm -f /tmp/${APPID}.key /tmp/${APPID}.crt /tmp/${APPID}-unsigned-${VERSION}.tar.gz /tmp/${APPID}-signed-${VERSION}.tar.gz"
 ```
 
 Validate the result before continuing:
 
 ```bash
-cd apps/arbeitszeitcheck/release
-tar -tzf "arbeitszeitcheck-${VERSION}.tar.gz" | grep "appinfo/signature.json"
+cd apps/arbeitszeitcheck
+tar -tzf "build/release/arbeitszeitcheck-${VERSION}.tar.gz" | grep "appinfo/signature.json"
 ```
 
 Manual fallback (advanced, use only if you cannot run `make release-signed` or Docker signing):
@@ -127,10 +133,12 @@ By default, it now requires `--occ` so integrity checks cannot be silently skipp
 
 ## 3. SHA-256 / SHA-512 (app store + checksum file)
 
+Use the **same** archive path as the GitHub release asset (`build/release/…` after `make release-signed` or the Docker fallback above).
+
 ```bash
-cd apps/arbeitszeitcheck/release
-sha256sum "arbeitszeitcheck-${VERSION}.tar.gz"
-sha512sum "arbeitszeitcheck-${VERSION}.tar.gz"
+cd apps/arbeitszeitcheck
+sha256sum "build/release/arbeitszeitcheck-${VERSION}.tar.gz"
+sha512sum "build/release/arbeitszeitcheck-${VERSION}.tar.gz"
 ```
 
 - The app store form usually asks for **SHA-256** of the uploaded archive.
@@ -142,11 +150,20 @@ sha512sum "arbeitszeitcheck-${VERSION}.tar.gz"
 
 The store expects a **base64-encoded** RSA signature over the **exact** `.tar.gz` bytes (SHA-512 digest signed with your app certificate key).
 
-**One line** (copy output into the store’s signature field):
+**Recommended** (validates RSA-4096 signature length and that key/cert match the archive — same rules as [ready2publish/scripts/sign-nextcloud-appstore-archive.sh](../../../ready2publish/scripts/sign-nextcloud-appstore-archive.sh)):
 
 ```bash
-openssl dgst -sha512 -sign "${APP_CERT_KEY_PATH}" \
-  "arbeitszeitcheck-${VERSION}.tar.gz" | openssl base64 | tr -d '\n'
+cd apps/arbeitszeitcheck
+make sign-tarball
+```
+
+Or **manually** (set `KEY` to your `.key` path, same bytes as `make sign-tarball`):
+
+```bash
+cd apps/arbeitszeitcheck
+KEY="${APP_CERT_KEY_PATH:-${HOME}/.nextcloud/certificates/arbeitszeitcheck.key}"
+openssl dgst -sha512 -sign "${KEY}" \
+  "build/release/arbeitszeitcheck-${VERSION}.tar.gz" | openssl base64 | tr -d '\n'
 ```
 
 If you prefer wrapped output, omit `| tr -d '\n'`.
@@ -162,10 +179,11 @@ If you prefer wrapped output, omit `| tr -d '\n'`.
 Not required by the app store; useful for mirrors or GitHub releases.
 
 ```bash
-gpg --detach-sign --armor "arbeitszeitcheck-${VERSION}.tar.gz"
+cd apps/arbeitszeitcheck
+gpg --detach-sign --armor "build/release/arbeitszeitcheck-${VERSION}.tar.gz"
 ```
 
-Produces `arbeitszeitcheck-X.Y.Z.tar.gz.asc` — **ignored** by git.
+Produces `build/release/arbeitszeitcheck-X.Y.Z.tar.gz.asc` — **ignored** by git.
 
 ---
 

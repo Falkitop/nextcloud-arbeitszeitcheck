@@ -7,6 +7,10 @@ version = $(shell grep '^\s*<version>' appinfo/info.xml | sed 's/.*<version>\([0
 archive_name = $(app_name)-$(version).tar.gz
 archive_path = $(release_dir)/$(archive_name)
 occ = ../../occ
+# Override with APP_CERT_KEY_PATH / APP_CERT_CRT_PATH (see release/APPSTORE-RELEASE.md, ready2publish/APPSTORE-RELEASE.md).
+SIGN_KEY := $(if $(strip $(APP_CERT_KEY_PATH)),$(APP_CERT_KEY_PATH),$(HOME)/.nextcloud/certificates/$(app_name).key)
+SIGN_CRT := $(if $(strip $(APP_CERT_CRT_PATH)),$(APP_CERT_CRT_PATH),$(HOME)/.nextcloud/certificates/$(app_name).crt)
+ready2publish_sign = ../../ready2publish/scripts/sign-nextcloud-appstore-archive.sh
 
 .PHONY: release verify-release verify-signature-manifest sign-release release-signed clean test-security-role-gating-docker
 
@@ -53,27 +57,27 @@ verify-signature-manifest:
 clean:
 	rm -rf $(build_dir)
 
-# Generate tarball signature for App Store upload (single-line base64, no line breaks)
+# Generate tarball signature for App Store upload (single-line base64; verifies RSA length + key matches cert)
 # Paste the output into the App Store upload form's "Signature" field
 sign-tarball:
-	@test -f ~/.nextcloud/certificates/$(app_name).key || (echo "Error: Missing ~/.nextcloud/certificates/$(app_name).key"; exit 1)
 	@test -f $(archive_path) || (echo "Error: Run 'make release' first"; exit 1)
-	@openssl dgst -sha512 -sign $$HOME/.nextcloud/certificates/$(app_name).key $(archive_path) 2>/dev/null | base64 | tr -d '\n'; echo
+	@test -f $(ready2publish_sign) || (echo "Error: Missing $(ready2publish_sign)"; exit 1)
+	@APPSTORE_SIGNING_KEY="$(SIGN_KEY)" APPSTORE_SIGNING_CERT="$(SIGN_CRT)" bash "$(ready2publish_sign)" $(app_name) $(archive_path)
 
 # Sign the release archive payload with Nextcloud app signature
 # This signs the extracted archive tree (not your local dev checkout), then repacks it.
 # Generate cert: openssl req -nodes -newkey rsa:4096 -keyout ~/.nextcloud/certificates/arbeitszeitcheck.key -out ~/.nextcloud/certificates/arbeitszeitcheck.csr -subj "/CN=arbeitszeitcheck"
 # Store signed cert as ~/.nextcloud/certificates/arbeitszeitcheck.crt
 sign-release: verify-release
-	@test -f ~/.nextcloud/certificates/$(app_name).key || (echo "Error: Missing ~/.nextcloud/certificates/$(app_name).key (see https://github.com/nextcloud/app-certificate-requests)"; exit 1)
-	@test -f ~/.nextcloud/certificates/$(app_name).crt || (echo "Error: Store signed certificate at ~/.nextcloud/certificates/$(app_name).crt"; exit 1)
+	@test -f "$(SIGN_KEY)" || (echo "Error: Missing signing key: $(SIGN_KEY) (set APP_CERT_KEY_PATH or install under ~/.nextcloud/certificates/ — see https://github.com/nextcloud/app-certificate-requests)"; exit 1)
+	@test -f "$(SIGN_CRT)" || (echo "Error: Missing certificate: $(SIGN_CRT) (set APP_CERT_CRT_PATH or store at ~/.nextcloud/certificates/$(app_name).crt)"; exit 1)
 	@test -f $(occ) || (echo "Error: occ not found at $(occ). Override with 'make sign-release occ=/path/to/occ'"; exit 1)
 	@staging=$$(mktemp -d) && \
 		trap 'rm -rf "$$staging"' EXIT && \
 		tar -xzf $(archive_path) -C "$$staging" && \
 		php $(occ) integrity:sign-app \
-			--privateKey=$$HOME/.nextcloud/certificates/$(app_name).key \
-			--certificate=$$HOME/.nextcloud/certificates/$(app_name).crt \
+			--privateKey="$(SIGN_KEY)" \
+			--certificate="$(SIGN_CRT)" \
 			--path="$$staging/$(app_name)" && \
 		tar -czf $(archive_path) -C "$$staging" $(app_name)
 	@echo "Signed archive updated at $(archive_path)"
