@@ -28,7 +28,7 @@ class EmployeeStatusWidgetTest extends TestCase {
 		);
 
 		$this->urlGenerator = $this->createMock(IURLGenerator::class);
-		$this->urlGenerator->method('imagePath')->willReturn('/apps/arbeitszeitcheck/img/app.svg');
+		$this->urlGenerator->method('imagePath')->willReturn('/apps/arbeitszeitcheck/img/app-dark.svg');
 		$this->urlGenerator->method('linkToRoute')->willReturn('/apps/arbeitszeitcheck/dashboard');
 		$this->urlGenerator->method('getAbsoluteURL')->willReturnCallback(
 			static fn (string $v): string => 'https://example.local' . $v

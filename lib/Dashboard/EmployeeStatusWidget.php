@@ -48,7 +48,7 @@ class EmployeeStatusWidget implements IAPIWidgetV2, IButtonWidget, IIconWidget, 
 	}
 
 	public function getIconUrl(): string {
-		return $this->urlGenerator->getAbsoluteURL($this->urlGenerator->imagePath(Application::APP_ID, 'app.svg'));
+		return $this->urlGenerator->getAbsoluteURL($this->urlGenerator->imagePath(Application::APP_ID, 'app-dark.svg'));
 	}
 
 	public function getUrl(): ?string {
