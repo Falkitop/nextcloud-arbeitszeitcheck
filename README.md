@@ -84,12 +84,12 @@ Weitere interne Arbeits‑ und Compliance‑Dokumente (z. B. erweiterte Rollen
 ### Projekt & Support
 
 ArbeitszeitCheck wird von **Software by Design** entwickelt und gepflegt.  
-Weitere Informationen zu Projekten, Leistungen und Kontaktmöglichkeiten finden Sie auf der Website: https://software-by-design.de/  
+Weitere Informationen zu Projekten, Leistungen und Kontaktmöglichkeiten finden Sie auf der Website: http://nextcloud.software-by-design.de/  
 Für Anfragen per E-Mail erreichen Sie uns unter: info@software-by-design.de
 
 > **Maintainer & Support (EN):**  
 > ArbeitszeitCheck is developed and maintained by **Software by Design**.  
-> For more information about projects, services and how to get in touch, visit: https://software-by-design.de/  
+> For more information about projects, services and how to get in touch, visit: http://nextcloud.software-by-design.de/  
 > You can also contact us via e-mail: info@software-by-design.de
 
 ### Nextcloud App Store Assets
