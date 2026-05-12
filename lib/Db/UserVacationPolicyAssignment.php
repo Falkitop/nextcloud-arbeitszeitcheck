@@ -30,6 +30,8 @@ use OCP\AppFramework\Db\Entity;
  * @method void setCreatedAt(?\DateTime $createdAt)
  * @method \DateTime|null getUpdatedAt()
  * @method void setUpdatedAt(?\DateTime $updatedAt)
+ * @method bool getInheritLowerLayers()
+ * @method void setInheritLowerLayers(bool $inheritLowerLayers)
  */
 class UserVacationPolicyAssignment extends Entity {
 	protected string $userId = '';
@@ -42,6 +44,7 @@ class UserVacationPolicyAssignment extends Entity {
 	protected string $createdBy = 'system';
 	protected ?\DateTime $createdAt = null;
 	protected ?\DateTime $updatedAt = null;
+	protected bool $inheritLowerLayers = false;
 
 	public function __construct() {
 		$this->addType('userId', 'string');
@@ -54,6 +57,20 @@ class UserVacationPolicyAssignment extends Entity {
 		$this->addType('createdBy', 'string');
 		$this->addType('createdAt', 'datetime');
 		$this->addType('updatedAt', 'datetime');
+		$this->addType('inheritLowerLayers', 'boolean');
+	}
+
+	/**
+	 * True iff this L3 row defers entitlement resolution to lower layers
+	 * (L2 team → L1 model → L0 organisation). Accepts both representations
+	 * tolerated by the API: the explicit boolean column **and** the sentinel
+	 * `vacation_mode = 'inherit'`. Either is sufficient.
+	 */
+	public function isInherit(): bool {
+		if ($this->inheritLowerLayers) {
+			return true;
+		}
+		return $this->vacationMode === Constants::VACATION_MODE_INHERIT;
 	}
 
 	public function validate(): array {
@@ -63,18 +80,24 @@ class UserVacationPolicyAssignment extends Entity {
 			Constants::VACATION_MODE_MODEL_BASED_SIMPLE,
 			Constants::VACATION_MODE_TARIFF_RULE_BASED,
 			Constants::VACATION_MODE_MANUAL_EXCEPTION,
+			Constants::VACATION_MODE_INHERIT,
 		];
 		if (!in_array($this->vacationMode, $validModes, true)) {
 			$errors['vacationMode'] = 'Invalid vacation mode';
 		}
-		if (($this->vacationMode === Constants::VACATION_MODE_MANUAL_FIXED || $this->vacationMode === Constants::VACATION_MODE_MANUAL_EXCEPTION) && $this->manualDays === null) {
-			$errors['manualDays'] = 'Manual days are required for manual modes';
-		}
-		if ($this->vacationMode === Constants::VACATION_MODE_TARIFF_RULE_BASED && $this->tariffRuleSetId === null) {
-			$errors['tariffRuleSetId'] = 'Tariff rule set is required for tariff mode';
-		}
-		if ($this->vacationMode === Constants::VACATION_MODE_MANUAL_EXCEPTION && trim((string)$this->overrideReason) === '') {
-			$errors['overrideReason'] = 'Override reason is required for manual exception mode';
+
+		$isInherit = $this->isInherit();
+
+		if (!$isInherit) {
+			if (($this->vacationMode === Constants::VACATION_MODE_MANUAL_FIXED || $this->vacationMode === Constants::VACATION_MODE_MANUAL_EXCEPTION) && $this->manualDays === null) {
+				$errors['manualDays'] = 'Manual days are required for manual modes';
+			}
+			if ($this->vacationMode === Constants::VACATION_MODE_TARIFF_RULE_BASED && $this->tariffRuleSetId === null) {
+				$errors['tariffRuleSetId'] = 'Tariff rule set is required for tariff mode';
+			}
+			if ($this->vacationMode === Constants::VACATION_MODE_MANUAL_EXCEPTION && trim((string)$this->overrideReason) === '') {
+				$errors['overrideReason'] = 'Override reason is required for manual exception mode';
+			}
 		}
 		if ($this->manualDays !== null && ($this->manualDays < 0.0 || $this->manualDays > 366.0)) {
 			$errors['manualDays'] = 'Manual days must be between 0 and 366';
@@ -88,4 +111,3 @@ class UserVacationPolicyAssignment extends Entity {
 		return $errors;
 	}
 }
-

@@ -19,6 +19,7 @@ use OCA\ArbeitszeitCheck\Service\CSPService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCA\ArbeitszeitCheck\Service\TeamResolverService;
 use OCA\ArbeitszeitCheck\Service\MonthClosureService;
+use OCA\ArbeitszeitCheck\Service\VacationEntitlementEngine;
 use OCA\ArbeitszeitCheck\Exception\BusinessRuleException;
 use OCA\ArbeitszeitCheck\Exception\MonthFinalizedException;
 use OCP\AppFramework\Controller;
@@ -53,6 +54,7 @@ class AbsenceController extends Controller
 	private IL10N $l10n;
 	private IConfig $config;
 	private MonthClosureService $monthClosureService;
+	private VacationEntitlementEngine $vacationEntitlementEngine;
 
 	public function __construct(
 		string $appName,
@@ -67,7 +69,8 @@ class AbsenceController extends Controller
 		CSPService $cspService,
 		IL10N $l10n,
 		IConfig $config,
-		MonthClosureService $monthClosureService
+		MonthClosureService $monthClosureService,
+		VacationEntitlementEngine $vacationEntitlementEngine
 	) {
 		parent::__construct($appName, $request);
 		$this->absenceService = $absenceService;
@@ -80,6 +83,7 @@ class AbsenceController extends Controller
 		$this->l10n = $l10n;
 		$this->config = $config;
 		$this->monthClosureService = $monthClosureService;
+		$this->vacationEntitlementEngine = $vacationEntitlementEngine;
 		$this->setCspService($cspService);
 	}
 
@@ -1170,6 +1174,45 @@ class AbsenceController extends Controller
 			return new JSONResponse([
 				'success' => false,
 				'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.')
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	/**
+	 * Employee-facing "How is my vacation entitlement computed?" explainer.
+	 *
+	 * Resolves the entitlement for the current user as of the requested date
+	 * (defaults to today) and returns a **redacted** trace suitable for
+	 * end-user display. The redaction in
+	 * {@see VacationEntitlementEngine::redactTraceForUser()} strips internal
+	 * IDs and HR descriptions to prevent the explainer from leaking other
+	 * employees' / teams' policy metadata (REQ-SEC-05).
+	 */
+	#[NoAdminRequired]
+	public function entitlementTrace(): JSONResponse
+	{
+		try {
+			$user = $this->userSession->getUser();
+			if ($user === null) {
+				return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Not authenticated')], Http::STATUS_UNAUTHORIZED);
+			}
+			$userId = $user->getUID();
+			$asOfRaw = (string)($this->request->getParam('asOfDate') ?? date('Y-m-d'));
+			$asOfDate = new \DateTime($asOfRaw);
+			$result = $this->vacationEntitlementEngine->computeForDate($userId, $asOfDate);
+			$redactedTrace = $this->vacationEntitlementEngine->redactTraceForUser($result['trace']);
+			return new JSONResponse([
+				'success' => true,
+				'asOfDate' => $asOfDate->format('Y-m-d'),
+				'effectiveEntitlementDays' => (float)$result['days'],
+				'matchedLayer' => $result['matchedLayer'],
+				'trace' => $redactedTrace,
+			]);
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error('Error in AbsenceController::entitlementTrace: ' . $e->getMessage(), ['exception' => $e]);
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('Could not load entitlement explanation')
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}

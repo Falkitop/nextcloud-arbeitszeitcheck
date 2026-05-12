@@ -41,6 +41,44 @@ final class Constants
 	public const VACATION_MODE_TARIFF_RULE_BASED = 'tariff_rule_based';
 	public const VACATION_MODE_MANUAL_EXCEPTION = 'manual_exception';
 
+	/**
+	 * Sentinel L3 mode: "the user has an L3 row but it explicitly defers to
+	 * the layered resolution chain (L2 → L1 → L0)". Used by the layered
+	 * vacation entitlement engine. Stored verbatim in
+	 * `at_user_vacation_policies.vacation_mode` when `inherit_lower_layers = 1`
+	 * is impractical (e.g. when a tenant wants the inherit decision visible in
+	 * the column instead of a separate flag) and accepted on read in both
+	 * representations.
+	 */
+	public const VACATION_MODE_INHERIT = 'inherit';
+
+	/**
+	 * Layered vacation entitlement: feature flag (app config). When "1"
+	 * (default), {@see \OCA\ArbeitszeitCheck\Service\VacationEntitlementEngine}
+	 * consults L0/L1/L2 defaults before falling back to legacy resolution.
+	 * Setting to "0" forces the legacy code path (per-user assignments only),
+	 * which is the documented escape hatch for tenants who want to disable
+	 * the feature post-rollout. See
+	 * `pm/app-ideas/arbeitszeitcheck/vacation-entitlement-hierarchy.md`
+	 * §Migration §REQ-DAT-07.
+	 */
+	public const CONFIG_LAYERED_ENTITLEMENTS_ENABLED = 'layered_entitlements_enabled';
+
+	/**
+	 * Algorithm version emitted in {@see VacationEntitlementEngine} traces.
+	 * Increment when changing arithmetic or precedence so payroll auditors
+	 * can replay a snapshot deterministically against the algorithm of the
+	 * day. NEVER reuse a version number for a different algorithm.
+	 */
+	public const ENTITLEMENT_ALGORITHM_VERSION = 1;
+
+	/**
+	 * Audit-log entity types used by the layered entitlement admin flows.
+	 */
+	public const AUDIT_ENTITY_ORG_VACATION_DEFAULT = 'org_vacation_default';
+	public const AUDIT_ENTITY_MODEL_VACATION_DEFAULT = 'model_vacation_default';
+	public const AUDIT_ENTITY_TEAM_VACATION_POLICY = 'team_vacation_policy';
+
 	public const TARIFF_RULE_SET_STATUS_DRAFT = 'draft';
 	public const TARIFF_RULE_SET_STATUS_ACTIVE = 'active';
 	public const TARIFF_RULE_SET_STATUS_RETIRED = 'retired';

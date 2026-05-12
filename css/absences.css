@@ -262,6 +262,84 @@
 	line-height: 1.4;
 }
 
+/* "How is this calculated?" affordance on entitlement card */
+.stat-card__action {
+	margin-top: var(--space-2, 0.5rem);
+	display: inline-flex;
+	align-items: center;
+	background: transparent;
+	border: 0;
+	padding: 0;
+	color: var(--color-primary-element);
+	font-size: 0.8125rem;
+	font-weight: 500;
+	cursor: pointer;
+	text-decoration: underline;
+	text-underline-offset: 3px;
+}
+.stat-card__action:focus-visible {
+	outline: 2px solid var(--color-primary-element);
+	outline-offset: 2px;
+	border-radius: 4px;
+}
+
+/* Entitlement explainer dialog */
+.entitlement-explain-dialog {
+	border: 1px solid var(--color-border);
+	border-radius: var(--border-radius-large, 8px);
+	max-width: min(560px, 96vw);
+	padding: 0;
+	background: var(--color-main-background);
+	color: var(--color-main-text);
+	box-shadow: var(--arbeitszeitcheck-shadow-xl, 0 10px 30px rgba(0,0,0,.15));
+}
+.entitlement-explain-dialog::backdrop {
+	background: color-mix(in srgb, var(--color-main-text) 50%, transparent);
+}
+.entitlement-explain-dialog__form {
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+	padding: 1.25rem 1.5rem 1.5rem;
+}
+.entitlement-explain-dialog__title {
+	margin: 0;
+	font-size: 1.125rem;
+	font-weight: 600;
+	color: var(--color-main-text);
+}
+.entitlement-explain-dialog__intro {
+	margin: 0;
+	color: var(--color-text-maxcontrast);
+	line-height: 1.5;
+}
+.entitlement-explain-dialog__body {
+	padding-top: 0.25rem;
+}
+.entitlement-explain-dialog__steps {
+	margin: 0.5rem 0 0.75rem;
+	padding-left: 1.25rem;
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+}
+.entitlement-explain-dialog__placeholder {
+	margin: 0;
+	color: var(--color-text-maxcontrast);
+	font-style: italic;
+}
+.entitlement-explain-dialog__hint {
+	margin: 0;
+	font-size: 0.875rem;
+	color: var(--color-text-maxcontrast);
+}
+.entitlement-explain-dialog__actions {
+	display: flex;
+	justify-content: flex-end;
+	border-top: 1px solid var(--color-border);
+	padding-top: 0.5rem;
+}
+
 /* Stats Grid */
 .section--stats {
 	margin-bottom: var(--space-8, 2rem);

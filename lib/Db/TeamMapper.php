@@ -74,6 +74,61 @@ class TeamMapper extends QBMapper
 	}
 
 	/**
+	 * Build an in-memory tree of `[id => parent_id|null]` for the full team
+	 * universe. Used by depth-aware tie-breakers (layered vacation
+	 * entitlement, reporting). One round-trip — small teams universes (≪10k
+	 * rows) keep this cheap; for very large universes the engine can be
+	 * adjusted to walk parents lazily.
+	 *
+	 * @return array<int, int|null>
+	 */
+	public function getParentMap(): array
+	{
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('id', 'parent_id')
+			->from($this->getTableName());
+		$result = $qb->executeQuery();
+		$map = [];
+		while ($row = $result->fetch()) {
+			$id = (int)$row['id'];
+			$parent = $row['parent_id'] !== null && $row['parent_id'] !== '' ? (int)$row['parent_id'] : null;
+			$map[$id] = $parent;
+		}
+		$result->closeCursor();
+		return $map;
+	}
+
+	/**
+	 * Compute the depth of a team in the tree (root = 0). Returns `-1` for
+	 * unknown / circular teams; the layered entitlement engine treats `-1`
+	 * as "not in tree" and falls back to id-based ordering. Hard caps the
+	 * walk at 64 levels to prevent infinite loops if the table accidentally
+	 * contains a cycle (validator rejects cycles at write time; this is a
+	 * defence-in-depth read-side guard).
+	 */
+	public function computeDepth(int $teamId, array $parentMap): int
+	{
+		if (!isset($parentMap[$teamId])) {
+			return -1;
+		}
+		$depth = 0;
+		$current = $teamId;
+		$seen = [$current => true];
+		while (($parent = $parentMap[$current] ?? null) !== null) {
+			if (isset($seen[$parent])) {
+				return -1;
+			}
+			$depth++;
+			if ($depth > 64) {
+				return -1;
+			}
+			$seen[$parent] = true;
+			$current = $parent;
+		}
+		return $depth;
+	}
+
+	/**
 	 * All team IDs that are the given team or any descendant (recursive).
 	 *
 	 * @return int[]

@@ -14,7 +14,7 @@ Die App läuft vollständig innerhalb Ihrer selbst gehosteten Nextcloud‑Instan
   - Ruhezeiten (11h) mit Blockierung von Clock‑In und manuellen Einträgen
   - Erkennung von Nacht‑, Sonn‑ und Feiertagsarbeit inkl. Dokumentation
 - **Abwesenheitsmanagement**: Urlaub, Krankheit, Sonderurlaub, unbezahlter Urlaub mit Genehmigungsworkflow; **Resturlaub / Vorjahres‑Tage** mit konfigurierbarem Ablaufdatum (z. B. 31.03.), FIFO‑Verbrauch, Admin‑Pflege und optional CSV‑Import (`occ arbeitszeitcheck:import-vacation-balance`)
-- **Urlaubsanspruch-Engine (neu erweitert)**: Pro Mitarbeitenden konfigurierbarer Modus (manuell, modellbasiert oder tarif-/regelbasiert), zeitlich gültige Policy-Zuordnungen, aktive Regelwerk-Versionierung und nachvollziehbare Berechnungs-Trace-Daten inkl. Snapshot-Ablage für Auswertungen
+- **Urlaubsanspruch-Engine (neu erweitert)**: Pro Mitarbeitenden konfigurierbarer Modus (manuell, modellbasiert oder tarif-/regelbasiert), zeitlich gültige Policy-Zuordnungen (L3), optional **geschichtete Defaults** für Organisation (L0), Arbeitszeitmodell (L1) und Team (L2) mit deterministischer Reihenfolge und Prüf-Trace; aktive Regelwerk-Versionierung; Snapshot-Ablage für Auswertungen. **Rückwärtskompatibel:** ohne Konfiguration der neuen Layer oder bei App-Config `layered_entitlements_enabled = 0` gilt das bisherige L3- plus Legacy-Fallback-Verhalten (siehe `docs/Developer-Documentation.en.md`).
 - **Team‑ und Manager‑Ansicht**: Genehmigungen, Team‑Übersichten, Compliance‑Status
 - **Berichte & Exporte**: Tages/Wochen/Monats‑Reports, Overtime‑Reports, Absenzberichte, DATEV‑Export
 - **Audit‑Logs**: Lückenlose Nachvollziehbarkeit von Änderungen an Zeiten, Abwesenheiten und Einstellungen

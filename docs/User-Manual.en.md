@@ -54,7 +54,13 @@ Only users in Nextcloud's `admin` group are eligible in this picker.
 - **HR office notifications** can be enabled with recipient list plus a matrix per absence type/event (for example: request created, substitute approved, manager approved/rejected, employee cancelled/shortened).
 - **Overtime/undertime traffic light notifications** can be enabled with separate yellow/red thresholds for both directions, a dedicated recipient list, and a direction-level matrix (`over|under` x `yellow|red`).
 - The same page contains practical controls for carryover expiry, optional carryover cap, rollover behavior, substitute-required absence types, and iCal/substitution e-mail toggles.
-- Vacation entitlement can now be assigned per user with policy modes (manual, model-based, tariff-rule based, manual exception). If your organization uses tariff rules, administrators can manage rule-set versions and activation windows via admin APIs/integration tooling.
+- Vacation entitlement can now be assigned **per user** (L3) with policy modes (manual, model-based, tariff-rule based, manual exception, and **inherit** to follow organisation/model/team defaults when you do not want a fixed override). If your organization uses tariff rules, administrators can manage rule-set versions and activation windows via admin APIs/integration tooling.
+- **Layered defaults (optional):** Under **ArbeitszeitCheck → Vacation entitlement** (administration submenu), app administrators can maintain **organisation-wide** (L0), **per working-time-model** (L1), and **per team** (L2) defaults with effective dates, plus a **simulator** that shows which layer wins for a given employee and date. Until you create rows there, behaviour stays the same as for “L3 + legacy fallback only” installs.
+- **Emergency rollback:** Your hoster can set the app config key `layered_entitlements_enabled` to `0` (same as `occ config:app:set arbeitszeitcheck layered_entitlements_enabled --value=0`) to disable evaluation of L0/L1/L2 while keeping individual (L3) policies and the legacy numeric fallback unchanged.
+
+### For employees: “How is my annual vacation calculated?”
+
+On **My absences** (or equivalent), next to the annual entitlement figure, use **How is this calculated?** when shown. The dialog loads a **redacted** explanation (which layer applied, no internal HR-only identifiers) so you can see *that* the number comes from a configured rule without exposing other people’s data.
 
 ---
 
@@ -69,7 +75,7 @@ Only users in Nextcloud's `admin` group are eligible in this picker.
   - If an entry is in **Paused** state, the dashboard shows **Resume after break** on clock-in and continues the same-day entry instead of creating a duplicate.
   - Paused entries are editable/deletable again within the normal 14-day edit window (as long as they are not already approved).
   - When saved with an end time, a paused entry is finalized automatically as **Completed**.
-- **Absences**: Create requests; wait for approval if your workflow requires it. Vacation balances and carryover (**Resturlaub**) may be shown if your admin configured them.
+- **Absences**: Create requests; wait for approval if your workflow requires it. Vacation balances and carryover (**Resturlaub**) may be shown if your admin configured them. Where offered, **How is this calculated?** opens a short, redacted explanation of your annual vacation entitlement (no other employees’ data).
   - **App teams (recommended setup):** If your organization uses **app-managed teams** and **no manager is assigned** to your team in the app, requests you submit **without** a substitute are **approved automatically** when you send them—there is nobody who could approve them in the manager workflow. If you **do** pick a substitute, the substitute step still runs first. The UI may show a short explanation when this applies.
   - **Legacy group-based setup:** Behavior follows the older “same group” model; your admin should ensure approvals remain workable for your organization.
 - **Manager dashboard** (if you are a team lead): Under **Pending approvals**, you can switch between **Absences** and **Time entry corrections** tabs. Absence requests list each person with the **absence type in your language** (e.g. vacation vs sick leave), not raw internal codes. Where enabled, **Employee absences** provides a dedicated list/filter view of team absences.

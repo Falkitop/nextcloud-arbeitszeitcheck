@@ -76,6 +76,9 @@ class AbsenceControllerTest extends TestCase
 	/** @var MonthClosureService|\PHPUnit\Framework\MockObject\MockObject */
 	private $monthClosureService;
 
+	/** @var \OCA\ArbeitszeitCheck\Service\VacationEntitlementEngine|\PHPUnit\Framework\MockObject\MockObject */
+	private $vacationEntitlementEngine;
+
 	protected function setUp(): void
 	{
 		parent::setUp();
@@ -104,6 +107,7 @@ class AbsenceControllerTest extends TestCase
 			return '';
 		});
 
+		$this->vacationEntitlementEngine = $this->createMock(\OCA\ArbeitszeitCheck\Service\VacationEntitlementEngine::class);
 		$this->controller = new AbsenceController(
 			'arbeitszeitcheck',
 			$this->request,
@@ -117,7 +121,8 @@ class AbsenceControllerTest extends TestCase
 			$this->cspService,
 			$this->l10n,
 			$this->config,
-			$this->monthClosureService
+			$this->monthClosureService,
+			$this->vacationEntitlementEngine
 		);
 	}
 

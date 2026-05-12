@@ -48,6 +48,7 @@ $isAdminUsers = strpos($currentPage, '/admin/users') !== false;
 $isAdminWorkingTimeModels = strpos($currentPage, '/admin/working-time-models') !== false;
 $isAdminHolidays = strpos($currentPage, '/admin/holidays') !== false;
 $isAdminTeams = strpos($currentPage, '/admin/teams') !== false;
+$isAdminVacationLayers = strpos($currentPage, '/admin/vacation-layers') !== false;
 $isAdminAuditLog = strpos($currentPage, '/admin/audit-log') !== false;
 $isAdminSettingsPage = strpos($currentPage, '/admin/settings') !== false;
 $isAdminNotificationsPage = strpos($currentPage, '/admin/notifications') !== false;
@@ -219,6 +220,13 @@ $monthClosureEnabledNav = array_key_exists('monthClosureEnabled', $_)
                                 title="<?php p($l->t('Manage teams, locations, and responsibilities')); ?>"
                                 aria-label="<?php p($l->t('Manage teams')); ?>">
                                 <span><?php p($l->t('Teams and locations')); ?></span>
+                            </a>
+                        </li>
+                        <li class="<?php p($isAdminVacationLayers ? 'active' : ''); ?>" <?php p($isAdminVacationLayers ? 'aria-current="page"' : ''); ?>>
+                            <a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.admin.vacationLayers')); ?>"
+                                title="<?php p($l->t('Configure layered vacation entitlement defaults (organisation, working time models, teams)')); ?>"
+                                aria-label="<?php p($l->t('Open vacation entitlement layers')); ?>">
+                                <span><?php p($l->t('Vacation entitlement')); ?></span>
                             </a>
                         </li>
                         <li class="<?php p($isAdminAuditLog ? 'active' : ''); ?>" <?php p($isAdminAuditLog ? 'aria-current="page"' : ''); ?>>

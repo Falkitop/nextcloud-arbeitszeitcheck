@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## 1.3.0 - 2026-05-12
+
+### Added
+
+- **Layered vacation entitlement resolution** (issue: hr/vacation-entitlement-hierarchy). The annual vacation entitlement is now resolved through a deterministic, auditable precedence chain: L3 individual policy → L2 team/cohort policy → L1 working-time-model default → L0 organisation default → legacy safe default. Each layer can be configured manually, via the `model_based_simple` formula, or via an active tariff rule set. L3 assignments gain an `inherit_lower_layers` flag (new `inherit` mode) so HR can explicitly defer to the chain without deleting a row. L2 ties are broken deterministically by team depth → priority → smallest team ID. Every resolution emits a structured trace v1 envelope (`algorithm_version`, `as_of_date`, `matched_layer`, `layers_evaluated`, `winner`, `inputs_redacted`) that is persisted in entitlement snapshots for payroll audit (REQ-AUD-01).
+- **Admin "Vacation entitlement" page** with WCAG 2.1 AA + responsive layout (`/admin/vacation-layers`): stepper-style precedence overview, separate cards for L0/L1/L2 with full history, native `<dialog>`-based create/edit drawer with inline validation, and a built-in simulator that resolves the entitlement for any employee on any date and displays the full per-layer trace.
+- **Employee-facing "How is this calculated?" explainer** on the absences page. Surfaces a redacted, ID-free trace produced by `VacationEntitlementEngine::redactTraceForUser()` so colleagues' policy names and internal references never leak (REQ-SEC-05).
+- **Concurrency safety** via `OCP\Lock\ILockingProvider` advisory locks scoped per layer/resource (REQ-SEC-04, EC-07) and per-write transactions through the `TTransactional` trait.
+- **Audit-log entries** for every L0/L1/L2 create/delete (`org_vacation_default`, `model_vacation_default`, `team_vacation_policy` audit entities) with before/after JSON payloads (REQ-AUD-02).
+- **Feature flag** `arbeitszeitcheck.layered_entitlements_enabled` (default ON). When disabled the engine deterministically routes through L3 → legacy fallback, preserving today's behaviour byte-for-byte.
+
+### Fixed
+
+- **GAP-01** — unified rounding of vacation entitlements across the engine, `VacationAllocationService`, `AbsenceService`, and `EntitlementSnapshotService`. The single canonical implementation `VacationEntitlementEngine::roundDays()` clamps to `[0, 366]` and rounds to 2 decimal places using `PHP_ROUND_HALF_UP`. Earlier paths mixed `(int)round(...)` with `round(value, 2)`, which could shift an employee's annual entitlement by ±1 day on `.5` boundaries.
+
+### Schema
+
+- New tables: `at_org_vacation_defaults` (L0), `at_model_vacation_defaults` (L1), `at_team_vacation_policies` (L2 with FK → `at_teams ON DELETE CASCADE`).
+- `at_user_vacation_policies` (L3) gains `inherit_lower_layers BOOLEAN NOT NULL DEFAULT 0` — golden-file equivalent for every existing row.
+
+### Documentation
+
+- **Developer:** `docs/Developer-Documentation.en.md` — layered L0–L3 resolution, admin routes, audit/locking, production rollback via `layered_entitlements_enabled`, and the `Entity` / `QBMapper::insert` dirty-field pitfall for new layer entities.
+- **Operators / end users:** `docs/User-Manual.en.md`, `docs/User-Manual.de.md` — admin **Vacation entitlement** page, emergency config rollback, employee-facing entitlement explainer; `docs/README.md` index updated.
+- **Product spec (repo):** `pm/app-ideas/arbeitszeitcheck/vacation-entitlement-hierarchy.md` — adopted status, fact base aligned with shipped code, L2 tie-break text aligned with implementation, migration / backward-compatibility semantics for production upgrades.
+
+### Tests
+
+- New: `LayeredVacationEntitlementEngineTest` (cross-layer precedence, tie-breaking, simulation, trace envelope), `LayeredVacationDefaultsServiceTest` (validation, audit, lock, transactional behaviour), `LayeredVacationEntitlementSchemaTest` (migration schema + FK + idempotency).
+- All 511 unit tests pass.
+
 ## 1.2.9 - 2026-05-12
 
 ### Fixed

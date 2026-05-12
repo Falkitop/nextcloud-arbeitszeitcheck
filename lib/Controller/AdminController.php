@@ -33,6 +33,9 @@ use OCA\ArbeitszeitCheck\Service\CSPService;
 use OCA\ArbeitszeitCheck\Db\Holiday;
 use OCA\ArbeitszeitCheck\Db\HolidayMapper;
 use OCA\ArbeitszeitCheck\Service\HolidayService;
+use OCA\ArbeitszeitCheck\Service\LayeredVacationDefaultsService;
+use OCA\ArbeitszeitCheck\Service\LayeredVacationNotFoundException;
+use OCA\ArbeitszeitCheck\Service\LayeredVacationValidationException;
 use OCA\ArbeitszeitCheck\Service\VacationAllocationService;
 use OCA\ArbeitszeitCheck\Service\VacationEntitlementEngine;
 use OCP\App\IAppManager;
@@ -92,6 +95,7 @@ class AdminController extends Controller
 	private TariffRuleModuleMapper $tariffRuleModuleMapper;
 	private UserVacationPolicyAssignmentMapper $userVacationPolicyAssignmentMapper;
 	private VacationEntitlementEngine $vacationEntitlementEngine;
+	private LayeredVacationDefaultsService $layeredVacationDefaultsService;
 
 	public function __construct(
 		string $appName,
@@ -120,7 +124,8 @@ class AdminController extends Controller
 		TariffRuleSetMapper $tariffRuleSetMapper,
 		TariffRuleModuleMapper $tariffRuleModuleMapper,
 		UserVacationPolicyAssignmentMapper $userVacationPolicyAssignmentMapper,
-		VacationEntitlementEngine $vacationEntitlementEngine
+		VacationEntitlementEngine $vacationEntitlementEngine,
+		LayeredVacationDefaultsService $layeredVacationDefaultsService
 	) {
 		parent::__construct($appName, $request);
 		$this->timeEntryMapper = $timeEntryMapper;
@@ -147,6 +152,7 @@ class AdminController extends Controller
 		$this->tariffRuleModuleMapper = $tariffRuleModuleMapper;
 		$this->userVacationPolicyAssignmentMapper = $userVacationPolicyAssignmentMapper;
 		$this->vacationEntitlementEngine = $vacationEntitlementEngine;
+		$this->layeredVacationDefaultsService = $layeredVacationDefaultsService;
 		$this->setCspService($cspService);
 	}
 
@@ -3215,6 +3221,217 @@ class AdminController extends Controller
 		} catch (\Throwable $e) {
 			return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Failed to simulate vacation policy')], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
+	}
+
+	/* ====================================================================
+	 * Layered vacation entitlement (L0 / L1 / L2) admin endpoints
+	 *
+	 * Authorisation: AdminController is server-admin / app-admin gated by
+	 * Nextcloud middleware (no NoAdminRequired anywhere in this class).
+	 * Delegated HR managers are NOT allowed to mutate organisation or
+	 * model defaults — REQ-SEC-03. Future delegation work must align with
+	 * `TeamManagerMapper` instead of weakening this gate.
+	 * ==================================================================== */
+
+	/**
+	 * GET — Full overview of the layered configuration for the admin UI.
+	 */
+	public function getVacationLayers(): JSONResponse
+	{
+		try {
+			$asOfRaw = (string)($this->request->getParam('asOfDate') ?? date('Y-m-d'));
+			$asOfDate = new \DateTime($asOfRaw);
+			$orgDefaults = $this->layeredVacationDefaultsService->listOrgDefaults();
+			$activeOrg = $this->layeredVacationDefaultsService->getActiveOrgDefault($asOfDate);
+			$modelDefaults = $this->layeredVacationDefaultsService->listModelDefaults();
+			$teamPolicies = $this->layeredVacationDefaultsService->listTeamPolicies();
+			$models = $this->workingTimeModelMapper->findAll();
+			$teams = $this->teamMapper->findAll();
+			$rulesets = $this->tariffRuleSetMapper->findAllOrdered();
+
+			return new JSONResponse([
+				'success' => true,
+				'feature' => [
+					'layeredEnabled' => $this->vacationEntitlementEngine->isLayeredEnabled(),
+				],
+				'asOfDate' => $asOfDate->format('Y-m-d'),
+				'org' => [
+					'active' => $activeOrg?->getSummary(),
+					'history' => array_map(static fn ($e) => $e->getSummary(), $orgDefaults),
+				],
+				'model' => [
+					'defaults' => array_map(static fn ($e) => $e->getSummary(), $modelDefaults),
+					'availableModels' => array_map(static fn ($m) => [
+						'id' => $m->getId(),
+						'name' => $m->getName(),
+						'workDaysPerWeek' => $m->getWorkDaysPerWeek(),
+					], $models),
+				],
+				'team' => [
+					'policies' => array_map(static fn ($e) => $e->getSummary(), $teamPolicies),
+					'availableTeams' => array_map(static fn ($t) => [
+						'id' => $t->getId(),
+						'name' => $t->getName(),
+						'parentId' => $t->getParentId(),
+					], $teams),
+				],
+				'ruleSets' => array_map(static function ($r) {
+					return [
+						'id' => $r->getId(),
+						'tariffCode' => $r->getTariffCode(),
+						'version' => $r->getVersion(),
+						'status' => $r->getStatus(),
+					];
+				}, $rulesets),
+			]);
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error('getVacationLayers failed: ' . $e->getMessage(), ['exception' => $e]);
+			return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Could not load vacation entitlement layers')], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	public function saveOrgVacationDefault(): JSONResponse
+	{
+		return $this->handleLayeredSave(function () {
+			$payload = $this->request->getParams();
+			$saved = $this->layeredVacationDefaultsService->upsertOrgDefault($payload, $this->getPerformedBy());
+			return $saved->getSummary();
+		});
+	}
+
+	public function deleteOrgVacationDefault(int $id): JSONResponse
+	{
+		return $this->handleLayeredDelete(function () use ($id) {
+			$this->layeredVacationDefaultsService->deleteOrgDefault($id, $this->getPerformedBy());
+		});
+	}
+
+	public function saveModelVacationDefault(): JSONResponse
+	{
+		return $this->handleLayeredSave(function () {
+			$payload = $this->request->getParams();
+			$saved = $this->layeredVacationDefaultsService->upsertModelDefault($payload, $this->getPerformedBy());
+			return $saved->getSummary();
+		});
+	}
+
+	public function deleteModelVacationDefault(int $id): JSONResponse
+	{
+		return $this->handleLayeredDelete(function () use ($id) {
+			$this->layeredVacationDefaultsService->deleteModelDefault($id, $this->getPerformedBy());
+		});
+	}
+
+	public function saveTeamVacationPolicy(): JSONResponse
+	{
+		return $this->handleLayeredSave(function () {
+			$payload = $this->request->getParams();
+			$saved = $this->layeredVacationDefaultsService->upsertTeamPolicy($payload, $this->getPerformedBy());
+			return $saved->getSummary();
+		});
+	}
+
+	public function deleteTeamVacationPolicy(int $id): JSONResponse
+	{
+		return $this->handleLayeredDelete(function () use ($id) {
+			$this->layeredVacationDefaultsService->deleteTeamPolicy($id, $this->getPerformedBy());
+		});
+	}
+
+	/**
+	 * Lightweight user-search endpoint for the vacation-layers simulator.
+	 *
+	 * Unlike {@see self::getUsers()} this does **not** compute entitlement
+	 * previews or working-time-model joins for each candidate, so it remains
+	 * cheap when invoked from keystroke-driven autocompletes.
+	 *
+	 * Authorisation: admin-only (no `NoAdminRequired` on the class).
+	 */
+	public function searchVacationLayersUsers(): JSONResponse
+	{
+		try {
+			$search = trim((string)($this->request->getParam('search') ?? ''));
+			$limit = (int)($this->request->getParam('limit') ?? 10);
+			$limit = max(1, min($limit, 25));
+			$users = $this->userManager->search($search, $limit, 0);
+			$out = [];
+			foreach ($users as $user) {
+				$out[] = [
+					'userId' => (string)$user->getUID(),
+					'displayName' => (string)$user->getDisplayName(),
+				];
+			}
+			return new JSONResponse(['success' => true, 'users' => $out]);
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error('searchVacationLayersUsers failed: ' . $e->getMessage(), ['exception' => $e]);
+			return new JSONResponse(['success' => false, 'error' => $this->l10n->t('User search failed')], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	/**
+	 * Translate the field-error map returned by the layered service into
+	 * the same l10n-translated shape the existing assignVacationPolicy
+	 * endpoint emits, so the admin JS form-error renderer can be reused.
+	 *
+	 * @param array<string, string> $errors
+	 * @return array<string, string>
+	 */
+	private function translateFieldErrors(array $errors): array
+	{
+		$translated = [];
+		foreach ($errors as $field => $message) {
+			$translated[$field] = $this->l10n->t($message);
+		}
+		return $translated;
+	}
+
+	private function handleLayeredSave(callable $action): JSONResponse
+	{
+		try {
+			$summary = $action();
+			return new JSONResponse(['success' => true, 'data' => $summary], Http::STATUS_CREATED);
+		} catch (LayeredVacationValidationException $e) {
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t($e->getMessage()),
+				'errors' => $this->translateFieldErrors($e->fieldErrors),
+			], Http::STATUS_BAD_REQUEST);
+		} catch (LayeredVacationNotFoundException $e) {
+			return new JSONResponse(['success' => false, 'error' => $this->l10n->t($e->getMessage())], Http::STATUS_NOT_FOUND);
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error('Layered vacation save failed: ' . $e->getMessage(), ['exception' => $e]);
+			return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Failed to save vacation entitlement layer')], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	private function handleLayeredDelete(callable $action): JSONResponse
+	{
+		try {
+			$action();
+			return new JSONResponse(['success' => true]);
+		} catch (LayeredVacationNotFoundException $e) {
+			return new JSONResponse(['success' => false, 'error' => $this->l10n->t($e->getMessage())], Http::STATUS_NOT_FOUND);
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error('Layered vacation delete failed: ' . $e->getMessage(), ['exception' => $e]);
+			return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Failed to delete vacation entitlement layer')], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	/**
+	 * Page route: renders the admin "Vacation entitlement layers" screen.
+	 * Server-rendered shell + JS hydration mirroring the pattern used by
+	 * `admin#teams`, `admin#workingTimeModels`, etc.
+	 */
+	public function vacationLayers(): TemplateResponse
+	{
+		Util::addStyle('arbeitszeitcheck', 'admin-vacation-layers');
+		Util::addScript('arbeitszeitcheck', 'admin-vacation-layers');
+		$response = new TemplateResponse('arbeitszeitcheck', 'admin-vacation-layers', [
+			'l' => $this->l10n,
+			'urlGenerator' => $this->urlGenerator,
+			'layeredEnabled' => $this->vacationEntitlementEngine->isLayeredEnabled(),
+		]);
+		return $this->configureCSP($response, 'admin');
 	}
 
 	/**

@@ -156,6 +156,24 @@ class Application extends App implements IBootstrap {
 			);
 		});
 
+		$context->registerService(\OCA\ArbeitszeitCheck\Db\OrgVacationDefaultMapper::class, function($c) {
+			return new \OCA\ArbeitszeitCheck\Db\OrgVacationDefaultMapper(
+				$c->query(IDBConnection::class)
+			);
+		});
+
+		$context->registerService(\OCA\ArbeitszeitCheck\Db\ModelVacationDefaultMapper::class, function($c) {
+			return new \OCA\ArbeitszeitCheck\Db\ModelVacationDefaultMapper(
+				$c->query(IDBConnection::class)
+			);
+		});
+
+		$context->registerService(\OCA\ArbeitszeitCheck\Db\TeamVacationPolicyMapper::class, function($c) {
+			return new \OCA\ArbeitszeitCheck\Db\TeamVacationPolicyMapper(
+				$c->query(IDBConnection::class)
+			);
+		});
+
 		$context->registerService(\OCA\ArbeitszeitCheck\Db\EntitlementComputationSnapshotMapper::class, function($c) {
 			return new \OCA\ArbeitszeitCheck\Db\EntitlementComputationSnapshotMapper(
 				$c->query(IDBConnection::class)
@@ -346,13 +364,33 @@ class Application extends App implements IBootstrap {
 				$c->query(\OCA\ArbeitszeitCheck\Db\TariffRuleModuleMapper::class),
 				$c->query(\OCA\ArbeitszeitCheck\Db\UserWorkingTimeModelMapper::class),
 				$c->query(\OCA\ArbeitszeitCheck\Db\WorkingTimeModelMapper::class),
-				$c->query(\OCA\ArbeitszeitCheck\Db\UserSettingsMapper::class)
+				$c->query(\OCA\ArbeitszeitCheck\Db\UserSettingsMapper::class),
+				$c->query(\OCA\ArbeitszeitCheck\Db\OrgVacationDefaultMapper::class),
+				$c->query(\OCA\ArbeitszeitCheck\Db\ModelVacationDefaultMapper::class),
+				$c->query(\OCA\ArbeitszeitCheck\Db\TeamVacationPolicyMapper::class),
+				$c->query(\OCA\ArbeitszeitCheck\Db\TeamMapper::class),
+				$c->query(\OCA\ArbeitszeitCheck\Db\TeamMemberMapper::class),
+				$c->query(\OCP\IConfig::class)
 			);
 		});
 
 		$context->registerService(\OCA\ArbeitszeitCheck\Service\EntitlementSnapshotService::class, function($c) {
 			return new \OCA\ArbeitszeitCheck\Service\EntitlementSnapshotService(
 				$c->query(\OCA\ArbeitszeitCheck\Db\EntitlementComputationSnapshotMapper::class),
+				$c->query(\OCP\Lock\ILockingProvider::class)
+			);
+		});
+
+		$context->registerService(\OCA\ArbeitszeitCheck\Service\LayeredVacationDefaultsService::class, function($c) {
+			return new \OCA\ArbeitszeitCheck\Service\LayeredVacationDefaultsService(
+				$c->query(\OCA\ArbeitszeitCheck\Db\OrgVacationDefaultMapper::class),
+				$c->query(\OCA\ArbeitszeitCheck\Db\ModelVacationDefaultMapper::class),
+				$c->query(\OCA\ArbeitszeitCheck\Db\TeamVacationPolicyMapper::class),
+				$c->query(\OCA\ArbeitszeitCheck\Db\TeamMapper::class),
+				$c->query(\OCA\ArbeitszeitCheck\Db\WorkingTimeModelMapper::class),
+				$c->query(\OCA\ArbeitszeitCheck\Db\TariffRuleSetMapper::class),
+				$c->query(\OCA\ArbeitszeitCheck\Db\AuditLogMapper::class),
+				$c->query(IDBConnection::class),
 				$c->query(\OCP\Lock\ILockingProvider::class)
 			);
 		});

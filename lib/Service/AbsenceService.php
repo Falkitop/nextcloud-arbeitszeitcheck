@@ -1062,7 +1062,13 @@ class AbsenceService
 
 			return [
 				'year' => $year,
-				'entitlement' => (int)round($totalEntitlement),
+				// Float, 2dp. Previously cast to int — silently dropped half-days
+				// from tariff-driven entitlement and disagreed with the rest of
+				// the alloc block. Unified per GAP-01 / REQ-ENT-12. Frontends
+				// render this via toLocaleString-on-Number, so a float with
+				// trailing zero (e.g. 27.5) renders correctly without code
+				// changes.
+				'entitlement' => round($totalEntitlement, 2),
 				'entitlement_source' => (string)($alloc['entitlement_source'] ?? 'manual'),
 				'entitlement_rule_set_id' => $alloc['entitlement_rule_set_id'] ?? null,
 				'entitlement_trace' => $alloc['entitlement_trace'] ?? null,

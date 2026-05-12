@@ -669,6 +669,32 @@ Today’s entitlement work introduces a policy-driven engine that separates enti
 - `Version1018Date20260420123000` backfills `at_user_vacation_policies` from existing model assignments (best-effort, idempotent) so legacy installations keep working with default `manual_fixed` policies.
 - If no policy exists at runtime, the engine falls back to legacy manual entitlement resolution (`at_user_models` / user setting default).
 
+**Layered defaults (L0 / L1 / L2) — organisation, model, and team**
+
+Shipped alongside the per-user L3 table (`at_user_vacation_policies`), the engine can draw defaults from:
+
+| Layer | Table | Service / mapper |
+| --- | --- | --- |
+| L0 | `at_org_vacation_defaults` | `OrgVacationDefaultMapper`, `LayeredVacationDefaultsService::upsertOrgDefault` |
+| L1 | `at_model_vacation_defaults` | `ModelVacationDefaultMapper`, `LayeredVacationDefaultsService::upsertModelDefault` |
+| L2 | `at_team_vacation_policies` | `TeamVacationPolicyMapper`, `LayeredVacationDefaultsService::upsertTeamPolicy` |
+
+Resolution order when layered resolution is **enabled** (default): **L3** (explicit non-`inherit` policy wins immediately) → **L2** (best matching team policy; tie-break: deeper team in the hierarchy, then **higher** `priority`, then smaller `team_id`) → **L1** (active default for the user’s working-time model on the date) → **L0** (organisation default valid on the date) → **legacy** (`resolveLegacyManualEntitlement`: model `vacation_days_per_year`, user setting, then `Constants::DEFAULT_VACATION_DAYS_PER_YEAR`).
+
+- **Admin UI:** `GET …/admin/vacation-layers` (`AdminController::vacationLayers`) with JSON APIs under `/api/admin/vacation-layers/*` (CRUD for L0/L1/L2, simulator). Mutations use `ILockingProvider` advisory locks + DB transactions and write `AuditLogMapper` entries.
+- **L3 `inherit`:** `UserVacationPolicyAssignment` supports `inherit_lower_layers` / vacation mode `inherit` so HR can defer to the chain without deleting the row.
+- **Trace v1:** `VacationEntitlementEngine` emits a structured trace (`algorithm_version`, `as_of_date`, `matched_layer`, `layers_evaluated`, `winner`, `inputs_redacted`); allocation and snapshots consume the same contract.
+
+**Production / legacy compatibility**
+
+- **No mandatory data entry for upgrade:** After migration, **empty** L0/L1/L2 tables mean those layers never match; resolution behaves like before for tenants who never configure layers (still: L3 explicit policy, else legacy fallback).
+- **Feature flag:** `Constants::CONFIG_LAYERED_ENTITLEMENTS_ENABLED` → app config key `layered_entitlements_enabled`, **default `1` (on)**. Set to `0` to force the pre-layered path: after L3 handling, the engine **skips** L2/L1/L0 and goes straight to the same **legacy** fallback as older releases (`VacationEntitlementEngine`, `isLayeredEnabled()`). Use this if you need to freeze behaviour during an audit or incident; it does **not** remove migrated rows.
+- **Rounding (GAP-01):** All entitlement surfaces use `VacationEntitlementEngine::roundDays()` (half-up, 2 dp, clamp `[0, 366]`) so production numbers stay consistent across allocation, absences, and snapshots.
+
+**Developer pitfall — `Entity` + `QBMapper::insert`**
+
+Nextcloud’s `OCP\AppFramework\Db\Entity` only persists fields marked “dirty” by setters. If a typed property is **pre-initialised** in PHP to the same value you later `set…()`, the setter short-circuits and the column can be **omitted from `INSERT`**, causing `NOT NULL` errors (e.g. `vacation_mode`). The layered-default entities (`OrgVacationDefault`, `ModelVacationDefault`, `TeamVacationPolicy`) therefore use **nullable properties without PHP default literals** for insert-critical fields; the service layer always assigns values before `insert()`.
+
 **Data lifecycle**
 
 - `UserDeletedListener` now deletes vacation policy assignments and entitlement snapshots for the deleted user to avoid orphaned policy/computation artifacts.

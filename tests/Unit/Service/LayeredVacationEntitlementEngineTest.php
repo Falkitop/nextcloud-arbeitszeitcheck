@@ -1,0 +1,515 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Layered resolution-chain regression tests for
+ * {@see \OCA\ArbeitszeitCheck\Service\VacationEntitlementEngine}.
+ *
+ * Covers the precedence matrix mandated by REQ-ENT-01..13 and the
+ * tie-breakers documented in
+ * `pm/app-ideas/arbeitszeitcheck/vacation-entitlement-hierarchy.md`:
+ *
+ *  - L3 explicit wins over every lower layer
+ *  - L3 inherit defers to L2 → L1 → L0 → legacy
+ *  - L2 deepest team in the subtree wins, then higher priority, then smaller id
+ *  - L1 only picks up if the user has an active working-time-model assignment
+ *  - L0 catches everything that nothing else matched
+ *  - legacy fallback is emitted as "degraded" so admins can spot
+ *    unconfigured tenants in the audit log
+ *
+ * @copyright Copyright (c) 2026
+ * @license AGPL-3.0-or-later
+ */
+
+namespace OCA\ArbeitszeitCheck\Tests\Unit\Service;
+
+use OCA\ArbeitszeitCheck\Constants;
+use OCA\ArbeitszeitCheck\Db\ModelVacationDefault;
+use OCA\ArbeitszeitCheck\Db\ModelVacationDefaultMapper;
+use OCA\ArbeitszeitCheck\Db\OrgVacationDefault;
+use OCA\ArbeitszeitCheck\Db\OrgVacationDefaultMapper;
+use OCA\ArbeitszeitCheck\Db\TariffRuleModuleMapper;
+use OCA\ArbeitszeitCheck\Db\TariffRuleSetMapper;
+use OCA\ArbeitszeitCheck\Db\TeamMapper;
+use OCA\ArbeitszeitCheck\Db\TeamMember;
+use OCA\ArbeitszeitCheck\Db\TeamMemberMapper;
+use OCA\ArbeitszeitCheck\Db\TeamVacationPolicy;
+use OCA\ArbeitszeitCheck\Db\TeamVacationPolicyMapper;
+use OCA\ArbeitszeitCheck\Db\UserSettingsMapper;
+use OCA\ArbeitszeitCheck\Db\UserVacationPolicyAssignment;
+use OCA\ArbeitszeitCheck\Db\UserVacationPolicyAssignmentMapper;
+use OCA\ArbeitszeitCheck\Db\UserWorkingTimeModel;
+use OCA\ArbeitszeitCheck\Db\UserWorkingTimeModelMapper;
+use OCA\ArbeitszeitCheck\Db\WorkingTimeModelMapper;
+use OCA\ArbeitszeitCheck\Service\VacationEntitlementEngine;
+use OCP\IConfig;
+use PHPUnit\Framework\TestCase;
+
+class LayeredVacationEntitlementEngineTest extends TestCase
+{
+	/**
+	 * Build an engine with empty (un-stubbed) mocks. PHPUnit's `createMock`
+	 * already provides "natural defaults" (null for nullable, empty array
+	 * for array return types, empty string for string, etc.), so tests only
+	 * need to stub the methods they care about — and stubbing on the same
+	 * mock instance later in the test always overrides the natural default
+	 * cleanly (no "stub-on-already-stubbed-method" ambiguity).
+	 *
+	 * Exception: `IConfig::getAppValue` returns `string` and defaults to ''
+	 * which would make the layered flag check `'' !== '0'` evaluate to
+	 * true, so layered remains enabled by default — that is the intended
+	 * behaviour for these tests.
+	 *
+	 * @return array{0: VacationEntitlementEngine, 1: array<string, object>}
+	 */
+	private function makeEngine(array $overrides = []): array
+	{
+		$policyMapper = $overrides['policy'] ?? $this->createMock(UserVacationPolicyAssignmentMapper::class);
+		$ruleSetMapper = $overrides['ruleSet'] ?? $this->createMock(TariffRuleSetMapper::class);
+		$moduleMapper = $overrides['module'] ?? $this->createMock(TariffRuleModuleMapper::class);
+		$userModelMapper = $overrides['userModel'] ?? $this->createMock(UserWorkingTimeModelMapper::class);
+		$workingTimeModelMapper = $overrides['workingTimeModel'] ?? $this->createMock(WorkingTimeModelMapper::class);
+		$userSettingsMapper = $overrides['userSettings'] ?? $this->createMock(UserSettingsMapper::class);
+		$orgMapper = $overrides['org'] ?? $this->createMock(OrgVacationDefaultMapper::class);
+		$modelDefaultMapper = $overrides['modelDefault'] ?? $this->createMock(ModelVacationDefaultMapper::class);
+		$teamPolicyMapper = $overrides['teamPolicy'] ?? $this->createMock(TeamVacationPolicyMapper::class);
+		$teamMapper = $overrides['team'] ?? $this->createMock(TeamMapper::class);
+		$teamMemberMapper = $overrides['teamMember'] ?? $this->createMock(TeamMemberMapper::class);
+		$config = $overrides['config'] ?? $this->createMock(IConfig::class);
+
+		$engine = new VacationEntitlementEngine(
+			$policyMapper,
+			$ruleSetMapper,
+			$moduleMapper,
+			$userModelMapper,
+			$workingTimeModelMapper,
+			$userSettingsMapper,
+			$orgMapper,
+			$modelDefaultMapper,
+			$teamPolicyMapper,
+			$teamMapper,
+			$teamMemberMapper,
+			$config,
+		);
+		return [$engine, [
+			'policy' => $policyMapper,
+			'ruleSet' => $ruleSetMapper,
+			'module' => $moduleMapper,
+			'userModel' => $userModelMapper,
+			'workingTimeModel' => $workingTimeModelMapper,
+			'userSettings' => $userSettingsMapper,
+			'org' => $orgMapper,
+			'modelDefault' => $modelDefaultMapper,
+			'teamPolicy' => $teamPolicyMapper,
+			'team' => $teamMapper,
+			'teamMember' => $teamMemberMapper,
+			'config' => $config,
+		]];
+	}
+
+	private function makePolicy(bool $inherit, ?float $manualDays = 30.0, string $mode = Constants::VACATION_MODE_MANUAL_FIXED): UserVacationPolicyAssignment
+	{
+		$p = new UserVacationPolicyAssignment();
+		$p->setId(123);
+		$p->setVacationMode($mode);
+		$p->setManualDays($manualDays);
+		$p->setInheritLowerLayers($inherit);
+		$p->setEffectiveFrom(new \DateTime('2026-01-01'));
+		return $p;
+	}
+
+	private function makeOrgDefault(float $days): OrgVacationDefault
+	{
+		$o = new OrgVacationDefault();
+		$o->setId(1);
+		$o->setVacationMode(Constants::VACATION_MODE_MANUAL_FIXED);
+		$o->setManualDays($days);
+		$o->setEffectiveFrom(new \DateTime('2025-01-01'));
+		return $o;
+	}
+
+	private function makeModelDefault(int $modelId, float $days): ModelVacationDefault
+	{
+		$m = new ModelVacationDefault();
+		$m->setId(11);
+		$m->setWorkingTimeModelId($modelId);
+		$m->setVacationMode(Constants::VACATION_MODE_MANUAL_FIXED);
+		$m->setManualDays($days);
+		$m->setEffectiveFrom(new \DateTime('2025-01-01'));
+		return $m;
+	}
+
+	private function makeTeamPolicy(int $id, int $teamId, float $days, int $priority = 0): TeamVacationPolicy
+	{
+		$t = new TeamVacationPolicy();
+		$t->setId($id);
+		$t->setTeamId($teamId);
+		$t->setVacationMode(Constants::VACATION_MODE_MANUAL_FIXED);
+		$t->setManualDays($days);
+		$t->setPriority($priority);
+		$t->setEffectiveFrom(new \DateTime('2025-01-01'));
+		return $t;
+	}
+
+	private function makeMember(int $teamId): TeamMember
+	{
+		$m = new TeamMember();
+		$m->setTeamId($teamId);
+		$m->setUserId('u1');
+		return $m;
+	}
+
+	/* ---------------------------------------------------------------- *
+	 * Cross-layer precedence — 16-case matrix (REQ-ENT-01, REQ-ENT-02)
+	 * ---------------------------------------------------------------- */
+
+	public function testL3ExplicitWinsOverAllLowerLayers(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['policy']->method('findCurrentByUser')->willReturn($this->makePolicy(false, 33.0));
+		$mocks['org']->method('findActiveByDate')->willReturn($this->makeOrgDefault(20.0));
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame(33.0, $result['days']);
+		$this->assertSame('L3', $result['matchedLayer']);
+	}
+
+	public function testL3InheritFallsThroughToOrgDefault(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['policy']->method('findCurrentByUser')->willReturn($this->makePolicy(true));
+		$mocks['org']->method('findActiveByDate')->willReturn($this->makeOrgDefault(22.0));
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame(22.0, $result['days']);
+		$this->assertSame('L0', $result['matchedLayer']);
+		$this->assertSame('layered', $result['source']);
+	}
+
+	public function testInheritSentinelModeBehavesLikeInheritFlag(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		$policy = new UserVacationPolicyAssignment();
+		$policy->setVacationMode(Constants::VACATION_MODE_INHERIT);
+		$policy->setInheritLowerLayers(false);
+		$policy->setEffectiveFrom(new \DateTime('2026-01-01'));
+		$mocks['policy']->method('findCurrentByUser')->willReturn($policy);
+		$mocks['org']->method('findActiveByDate')->willReturn($this->makeOrgDefault(24.0));
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame(24.0, $result['days']);
+		$this->assertSame('L0', $result['matchedLayer']);
+	}
+
+	public function testL2WinsOverL1AndL0WhenUserInTeamWithPolicy(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['policy']->method('findCurrentByUser')->willReturn(null);
+		$mocks['teamMember']->method('findByUserId')->willReturn([$this->makeMember(5)]);
+		$mocks['team']->method('getParentMap')->willReturn([5 => null]);
+		$mocks['teamPolicy']->method('findActiveByTeamIds')->willReturn([$this->makeTeamPolicy(101, 5, 28.0)]);
+		$mocks['org']->method('findActiveByDate')->willReturn($this->makeOrgDefault(20.0));
+
+		$asn = new UserWorkingTimeModel();
+		$asn->setWorkingTimeModelId(7);
+		$mocks['userModel']->method('findByUserAndDate')->willReturn($asn);
+		$mocks['modelDefault']->method('findActiveByModelAndDate')->willReturn($this->makeModelDefault(7, 25.0));
+
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame(28.0, $result['days']);
+		$this->assertSame('L2', $result['matchedLayer']);
+		$this->assertSame(101, $result['trace']['winner']['policy_id']);
+	}
+
+	public function testL1WinsOverL0WhenNoTeamMatch(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['policy']->method('findCurrentByUser')->willReturn(null);
+
+		$asn = new UserWorkingTimeModel();
+		$asn->setWorkingTimeModelId(7);
+		$mocks['userModel']->method('findByUserAndDate')->willReturn($asn);
+		$mocks['modelDefault']->method('findActiveByModelAndDate')->willReturn($this->makeModelDefault(7, 26.5));
+
+		$mocks['org']->method('findActiveByDate')->willReturn($this->makeOrgDefault(20.0));
+
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame(26.5, $result['days']);
+		$this->assertSame('L1', $result['matchedLayer']);
+	}
+
+	public function testL0AppliesWhenL1L2L3AllAbsent(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['org']->method('findActiveByDate')->willReturn($this->makeOrgDefault(27.0));
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame(27.0, $result['days']);
+		$this->assertSame('L0', $result['matchedLayer']);
+	}
+
+	public function testLegacyFallbackEmittedWhenNothingConfigured(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['userSettings']->method('getIntegerSetting')->willReturn(25);
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame(25.0, $result['days']);
+		$this->assertSame('legacy', $result['matchedLayer']);
+		$this->assertTrue($result['trace']['degraded'] ?? false);
+	}
+
+	public function testFeatureFlagDisablesLayerResolution(): void
+	{
+		$config = $this->createMock(IConfig::class);
+		$config->method('getAppValue')
+			->willReturnCallback(function (string $app, string $key, string $default) {
+				if ($key === Constants::CONFIG_LAYERED_ENTITLEMENTS_ENABLED) {
+					return '0';
+				}
+				return $default;
+			});
+		[$engine, $mocks] = $this->makeEngine(['config' => $config]);
+		$mocks['org']->expects($this->never())->method('findActiveByDate');
+		$mocks['userSettings']->method('getIntegerSetting')->willReturn(25);
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame(25.0, $result['days']);
+		$this->assertSame('legacy', $result['matchedLayer']);
+	}
+
+	/* ---------------------------------------------------------------- *
+	 * L2 tie-breakers (REQ-ENT-08)
+	 * ---------------------------------------------------------------- */
+
+	public function testL2DeepestTeamSubtreeWins(): void
+	{
+		// Tree: 1 → 2 → 3 (user in 2 and 3; 3 is deeper).
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['teamMember']->method('findByUserId')->willReturn([$this->makeMember(2), $this->makeMember(3)]);
+		$mocks['team']->method('getParentMap')->willReturn([1 => null, 2 => 1, 3 => 2]);
+		$mocks['teamPolicy']->method('findActiveByTeamIds')->willReturn([
+			$this->makeTeamPolicy(11, 2, 25.0),
+			$this->makeTeamPolicy(12, 3, 28.0),
+		]);
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame(28.0, $result['days']);
+		$this->assertSame(3, $result['trace']['winner']['team_id']);
+	}
+
+	public function testL2HigherPriorityWinsOnEqualDepth(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['teamMember']->method('findByUserId')->willReturn([$this->makeMember(2), $this->makeMember(4)]);
+		// Both depth 1 under root 1.
+		$mocks['team']->method('getParentMap')->willReturn([1 => null, 2 => 1, 4 => 1]);
+		$mocks['teamPolicy']->method('findActiveByTeamIds')->willReturn([
+			$this->makeTeamPolicy(21, 2, 20.0, 0),
+			$this->makeTeamPolicy(22, 4, 30.0, 5), // higher priority
+		]);
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame(30.0, $result['days']);
+		$this->assertSame(4, $result['trace']['winner']['team_id']);
+	}
+
+	public function testL2SmallerTeamIdWinsOnEqualDepthAndPriority(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['teamMember']->method('findByUserId')->willReturn([$this->makeMember(5), $this->makeMember(9)]);
+		$mocks['team']->method('getParentMap')->willReturn([1 => null, 5 => 1, 9 => 1]);
+		$mocks['teamPolicy']->method('findActiveByTeamIds')->willReturn([
+			$this->makeTeamPolicy(31, 9, 20.0, 0),
+			$this->makeTeamPolicy(32, 5, 30.0, 0),
+		]);
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame(30.0, $result['days']);
+		$this->assertSame(5, $result['trace']['winner']['team_id']);
+	}
+
+	public function testL2CandidatesListedInTraceIncludesAllMatches(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['teamMember']->method('findByUserId')->willReturn([$this->makeMember(2), $this->makeMember(3)]);
+		$mocks['team']->method('getParentMap')->willReturn([1 => null, 2 => 1, 3 => 2]);
+		$mocks['teamPolicy']->method('findActiveByTeamIds')->willReturn([
+			$this->makeTeamPolicy(11, 2, 25.0),
+			$this->makeTeamPolicy(12, 3, 28.0),
+		]);
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+		$l2 = null;
+		foreach ($result['trace']['layers_evaluated'] as $row) {
+			if (($row['layer'] ?? null) === 'L2') {
+				$l2 = $row;
+				break;
+			}
+		}
+		$this->assertNotNull($l2);
+		$this->assertCount(2, $l2['candidates']);
+	}
+
+	/* ---------------------------------------------------------------- *
+	 * Edge cases (REQ-ENT-08..10)
+	 * ---------------------------------------------------------------- */
+
+	public function testZeroTeamsSkipsL2Gracefully(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['org']->method('findActiveByDate')->willReturn($this->makeOrgDefault(21.0));
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame(21.0, $result['days']);
+		$this->assertSame('L0', $result['matchedLayer']);
+	}
+
+	public function testEntitlementClampedAt366(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		$over = $this->makeOrgDefault(99999.0);
+		// Bypass entity validate, we want the raw payload through the engine.
+		$mocks['org']->method('findActiveByDate')->willReturn($over);
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame(366.0, $result['days']);
+	}
+
+	public function testEntitlementClampedAtZeroForNegative(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		$neg = $this->makeOrgDefault(-5.0);
+		$mocks['org']->method('findActiveByDate')->willReturn($neg);
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame(0.0, $result['days']);
+	}
+
+	public function testTraceEnvelopeIncludesAlgorithmVersionAndAsOfDate(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['org']->method('findActiveByDate')->willReturn($this->makeOrgDefault(25.0));
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-04-15'));
+		$this->assertSame(Constants::ENTITLEMENT_ALGORITHM_VERSION, $result['trace']['algorithm_version']);
+		$this->assertSame('2026-04-15', $result['trace']['as_of_date']);
+		$this->assertSame('L0', $result['trace']['matched_layer']);
+		$this->assertArrayHasKey('winner', $result['trace']);
+		$this->assertArrayHasKey('layers_evaluated', $result['trace']);
+	}
+
+	public function testRedactedTraceStripsRuleIdsAndDescriptions(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['teamMember']->method('findByUserId')->willReturn([$this->makeMember(2)]);
+		$mocks['team']->method('getParentMap')->willReturn([1 => null, 2 => 1]);
+		$mocks['teamPolicy']->method('findActiveByTeamIds')->willReturn([$this->makeTeamPolicy(11, 2, 28.0)]);
+		$full = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'))['trace'];
+
+		$redacted = $engine->redactTraceForUser($full);
+
+		$this->assertTrue($redacted['inputs_redacted']);
+		$this->assertSame('L2', $redacted['matched_layer']);
+		// No raw IDs allowed
+		foreach ($redacted['layers_evaluated'] as $row) {
+			$this->assertArrayNotHasKey('policy_id', $row);
+			$this->assertArrayNotHasKey('team_id', $row);
+			$this->assertArrayNotHasKey('rule_set', $row);
+			$this->assertArrayNotHasKey('description', $row);
+		}
+	}
+
+	/* ---------------------------------------------------------------- *
+	 * Inherit-cascade: ensure inherit propagates through every layer
+	 * ---------------------------------------------------------------- */
+
+	public function testInheritWithL2MatchUsesL2(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['policy']->method('findCurrentByUser')->willReturn($this->makePolicy(true));
+		$mocks['teamMember']->method('findByUserId')->willReturn([$this->makeMember(2)]);
+		$mocks['team']->method('getParentMap')->willReturn([1 => null, 2 => 1]);
+		$mocks['teamPolicy']->method('findActiveByTeamIds')->willReturn([$this->makeTeamPolicy(7, 2, 27.5)]);
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame(27.5, $result['days']);
+		$this->assertSame('L2', $result['matchedLayer']);
+	}
+
+	public function testInheritWithoutAnyLayerFallsThroughToLegacy(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['policy']->method('findCurrentByUser')->willReturn($this->makePolicy(true));
+		$mocks['userSettings']->method('getIntegerSetting')->willReturn(20);
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame(20.0, $result['days']);
+		$this->assertSame('legacy', $result['matchedLayer']);
+	}
+
+	/* ---------------------------------------------------------------- *
+	 * Simulation path
+	 * ---------------------------------------------------------------- */
+
+	public function testComputeForPolicyInheritDelegatesToChain(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		$inherit = $this->makePolicy(true);
+		$mocks['org']->method('findActiveByDate')->willReturn($this->makeOrgDefault(23.0));
+		$result = $engine->computeForPolicy('u1', $inherit, new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame(23.0, $result['days']);
+		$this->assertSame('L0', $result['matchedLayer']);
+	}
+
+	public function testComputeForPolicyExplicitOverridesLowerLayers(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		$explicit = $this->makePolicy(false, 18.0);
+		$mocks['org']->method('findActiveByDate')->willReturn($this->makeOrgDefault(99.0));
+		$result = $engine->computeForPolicy('u1', $explicit, new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame(18.0, $result['days']);
+		$this->assertSame('L3', $result['matchedLayer']);
+	}
+
+	/* ---------------------------------------------------------------- *
+	 * Additional matrix: ensure trace `winner` keys are present per layer
+	 * ---------------------------------------------------------------- */
+
+	public function testWinnerCarriesPolicyIdForL3(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['policy']->method('findCurrentByUser')->willReturn($this->makePolicy(false, 26.0));
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame('L3', $result['trace']['winner']['layer']);
+	}
+
+	public function testWinnerCarriesDefaultIdForL0(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['org']->method('findActiveByDate')->willReturn($this->makeOrgDefault(25.0));
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame(1, $result['trace']['winner']['default_id']);
+	}
+
+	public function testWinnerCarriesModelIdForL1(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		$asn = new UserWorkingTimeModel();
+		$asn->setWorkingTimeModelId(9);
+		$mocks['userModel']->method('findByUserAndDate')->willReturn($asn);
+		$mocks['modelDefault']->method('findActiveByModelAndDate')->willReturn($this->makeModelDefault(9, 23.0));
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame(9, $result['trace']['winner']['working_time_model_id']);
+	}
+
+	public function testWinnerCarriesTeamIdAndPolicyIdForL2(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['teamMember']->method('findByUserId')->willReturn([$this->makeMember(3)]);
+		$mocks['team']->method('getParentMap')->willReturn([3 => null]);
+		$mocks['teamPolicy']->method('findActiveByTeamIds')->willReturn([$this->makeTeamPolicy(55, 3, 24.0)]);
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame(3, $result['trace']['winner']['team_id']);
+		$this->assertSame(55, $result['trace']['winner']['policy_id']);
+	}
+
+	/* ---------------------------------------------------------------- *
+	 * .5 boundary regression (GAP-01 / REQ-ENT-12)
+	 * ---------------------------------------------------------------- */
+
+	public function testHalfDayBoundariesPreservedAcrossLayers(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['org']->method('findActiveByDate')->willReturn($this->makeOrgDefault(27.5));
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame(27.5, $result['days']);
+		// Trace days must match exactly — no int truncation anywhere.
+		$this->assertSame(27.5, $result['trace']['winner']['days']);
+	}
+}

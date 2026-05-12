@@ -1,5 +1,36 @@
 ## [Unreleased]
 
+## 1.3.0 – 2026-05-12
+
+### Neu
+
+- **Mehrstufige Urlaubsanspruchsauflösung** (Spezifikation: hr/vacation-entitlement-hierarchy). Der jährliche Urlaubsanspruch wird über eine deterministische, prüfbare Präzedenzkette aufgelöst: L3 Individualregel → L2 Team-/Kohorten-Richtlinie → L1 Arbeitszeitmodell-Default → L0 Organisations-Default → klassischer Sicher­heits-Fallback. Jede Ebene kann manuell, über die Formel `model_based_simple` oder über ein aktives Tarifregelwerk konfiguriert werden. L3-Zuweisungen erhalten ein `inherit_lower_layers`-Flag (neuer Modus `inherit`), damit HR explizit auf die Kette zurückgreifen kann, ohne die Zeile zu löschen. Konflikte auf L2 werden deterministisch nach Team-Tiefe → Priorität → kleinster Team-ID aufgelöst. Jede Auflösung erzeugt einen strukturierten Trace v1 (`algorithm_version`, `as_of_date`, `matched_layer`, `layers_evaluated`, `winner`, `inputs_redacted`), der für Lohn-Audits in Entitlement-Snapshots persistiert wird (REQ-AUD-01).
+- **Admin-Seite "Urlaubsanspruch"** mit WCAG 2.1 AA + responsivem Layout (`/admin/vacation-layers`): Stepper-Übersicht der Präzedenz, separate Karten für L0/L1/L2 mit voller Historie, native `<dialog>`-basierte Anlage-/Bearbeitungs-Drawer mit Inline-Validierung sowie ein eingebauter Simulator, der den Anspruch für jeden Mitarbeiter zu jedem Stichdatum mit voller Trace anzeigt.
+- **Erklär-Dialog "Wie wird das berechnet?"** auf der Abwesenheitenseite. Zeigt einen ID-freien, redigierten Trace aus `VacationEntitlementEngine::redactTraceForUser()`, damit niemals Richtlinien-Namen anderer Kollegen oder interne IDs durchsickern (REQ-SEC-05).
+- **Schreibsicherheit** via Advisory-Locks (`OCP\Lock\ILockingProvider`) pro Ebene/Ressource (REQ-SEC-04, EC-07) und schreibendem Transaktionsrahmen über `TTransactional`.
+- **Audit-Einträge** für jede Anlage/Löschung auf L0/L1/L2 (`org_vacation_default`, `model_vacation_default`, `team_vacation_policy`) inkl. Before-/After-JSON (REQ-AUD-02).
+- **Feature-Flag** `arbeitszeitcheck.layered_entitlements_enabled` (Default AN). Bei `0` läuft die Engine deterministisch über L3 → Legacy-Fallback und das bisherige Verhalten bleibt Byte-für-Byte erhalten.
+
+### Behoben
+
+- **GAP-01** — vereinheitlichtes Runden des Urlaubsanspruchs in Engine, `VacationAllocationService`, `AbsenceService` und `EntitlementSnapshotService`. Die einzige kanonische Implementierung `VacationEntitlementEngine::roundDays()` klemmt auf `[0, 366]` und rundet auf 2 Nachkommastellen mit `PHP_ROUND_HALF_UP`. Frühere Pfade mischten `(int)round(...)` mit `round(value, 2)` – Ergebnis: an `.5`-Grenzen konnte der Jahresanspruch um ±1 Tag schwanken.
+
+### Schema
+
+- Neue Tabellen: `at_org_vacation_defaults` (L0), `at_model_vacation_defaults` (L1), `at_team_vacation_policies` (L2 mit FK → `at_teams ON DELETE CASCADE`).
+- `at_user_vacation_policies` (L3) erhält Spalte `inherit_lower_layers BOOLEAN NOT NULL DEFAULT 0` — golden-file-äquivalent für alle bestehenden Zeilen.
+
+### Dokumentation
+
+- **Entwicklung:** `docs/Developer-Documentation.en.md` — gestufte Auflösung L0–L3, Admin-Routen, Audit/Locking, Produktions-Rollback über `layered_entitlements_enabled`, sowie der `Entity`-/`QBMapper::insert`-Fallstrick (Dirty-Tracking) bei den neuen Layer-Entitäten.
+- **Betrieb / Anwender:** `docs/User-Manual.en.md`, `docs/User-Manual.de.md` — Admin-Seite **Urlaubsanspruch**, Notfall-Konfig-Rollback, Mitarbeitenden-Hinweis zur Berechnung; Index in `docs/README.md` angepasst.
+- **Produktspezifikation (Repo):** `pm/app-ideas/arbeitszeitcheck/vacation-entitlement-hierarchy.md` — Adopted-Status, Fact-Base an ausgelieferten Code, L2-Tie-Break-Text wie Implementierung, Migrations-/Rückwärtskompatibilität für Produktions-Upgrades.
+
+### Tests
+
+- Neu: `LayeredVacationEntitlementEngineTest` (ebenenübergreifende Präzedenz, Tie-Breaking, Simulation, Trace-Envelope), `LayeredVacationDefaultsServiceTest` (Validierung, Audit, Lock, Transaktion), `LayeredVacationEntitlementSchemaTest` (Migrationsschema + FK + Idempotenz).
+- 511 Unit-Tests grün.
+
 ## 1.2.9 – 2026-05-12
 
 ### Behoben

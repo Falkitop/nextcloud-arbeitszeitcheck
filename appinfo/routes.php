@@ -76,6 +76,7 @@ return [
 
 		// API routes for absences (specific routes must come before parameterized routes)
 		['name' => 'absence#stats', 'url' => '/api/absences/stats', 'verb' => 'GET'],
+		['name' => 'absence#entitlementTrace', 'url' => '/api/absences/entitlement-trace', 'verb' => 'GET'],
 		['name' => 'absence#users', 'url' => '/api/colleagues', 'verb' => 'GET'],
 		['name' => 'absence#index', 'url' => '/api/absences', 'verb' => 'GET'],
 		['name' => 'absence#apiStore', 'url' => '/api/absences', 'verb' => 'POST'],
@@ -185,6 +186,17 @@ return [
 		['name' => 'admin#retireTariffRuleSet', 'url' => '/api/admin/tariff-rule-sets/{id}/retire', 'verb' => 'POST'],
 		['name' => 'admin#assignVacationPolicy', 'url' => '/api/admin/users/{userId}/vacation-policy', 'verb' => 'PUT'],
 		['name' => 'admin#simulateVacationPolicy', 'url' => '/api/admin/vacation-policy/simulate', 'verb' => 'POST'],
+
+		// Layered vacation entitlement (L0/L1/L2) admin endpoints
+		['name' => 'admin#vacationLayers', 'url' => '/admin/vacation-layers', 'verb' => 'GET'],
+		['name' => 'admin#getVacationLayers', 'url' => '/api/admin/vacation-layers', 'verb' => 'GET'],
+		['name' => 'admin#saveOrgVacationDefault', 'url' => '/api/admin/vacation-layers/org', 'verb' => 'POST'],
+		['name' => 'admin#deleteOrgVacationDefault', 'url' => '/api/admin/vacation-layers/org/{id}', 'verb' => 'DELETE'],
+		['name' => 'admin#saveModelVacationDefault', 'url' => '/api/admin/vacation-layers/model', 'verb' => 'POST'],
+		['name' => 'admin#deleteModelVacationDefault', 'url' => '/api/admin/vacation-layers/model/{id}', 'verb' => 'DELETE'],
+		['name' => 'admin#saveTeamVacationPolicy', 'url' => '/api/admin/vacation-layers/team', 'verb' => 'POST'],
+		['name' => 'admin#deleteTeamVacationPolicy', 'url' => '/api/admin/vacation-layers/team/{id}', 'verb' => 'DELETE'],
+		['name' => 'admin#searchVacationLayersUsers', 'url' => '/api/admin/vacation-layers/users', 'verb' => 'GET'],
 
 		// Admin teams (app-owned teams/departments)
 		['name' => 'admin#teams', 'url' => '/admin/teams', 'verb' => 'GET'],

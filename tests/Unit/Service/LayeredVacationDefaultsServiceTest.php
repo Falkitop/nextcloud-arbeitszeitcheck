@@ -1,0 +1,221 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Unit tests for {@see LayeredVacationDefaultsService}.
+ *
+ * Scope:
+ *  - Validation errors are surfaced as {@see LayeredVacationValidationException}
+ *    with a translatable field-error map.
+ *  - Audit-log entries are emitted on create and delete (REQ-AUD-02).
+ *  - L1 / L2 reject references to non-existent working-time-models / teams
+ *    with the right exception (404-style).
+ *  - L0 closes the currently open-ended row so the resolution chain only
+ *    ever sees one active organisation default per date.
+ *
+ * @copyright Copyright (c) 2026
+ * @license AGPL-3.0-or-later
+ */
+
+namespace OCA\ArbeitszeitCheck\Tests\Unit\Service;
+
+use OCA\ArbeitszeitCheck\Constants;
+use OCA\ArbeitszeitCheck\Db\AuditLogMapper;
+use OCA\ArbeitszeitCheck\Db\ModelVacationDefault;
+use OCA\ArbeitszeitCheck\Db\ModelVacationDefaultMapper;
+use OCA\ArbeitszeitCheck\Db\OrgVacationDefault;
+use OCA\ArbeitszeitCheck\Db\OrgVacationDefaultMapper;
+use OCA\ArbeitszeitCheck\Db\TariffRuleSetMapper;
+use OCA\ArbeitszeitCheck\Db\Team;
+use OCA\ArbeitszeitCheck\Db\TeamMapper;
+use OCA\ArbeitszeitCheck\Db\TeamVacationPolicy;
+use OCA\ArbeitszeitCheck\Db\TeamVacationPolicyMapper;
+use OCA\ArbeitszeitCheck\Db\WorkingTimeModel;
+use OCA\ArbeitszeitCheck\Db\WorkingTimeModelMapper;
+use OCA\ArbeitszeitCheck\Service\LayeredVacationDefaultsService;
+use OCA\ArbeitszeitCheck\Service\LayeredVacationNotFoundException;
+use OCA\ArbeitszeitCheck\Service\LayeredVacationValidationException;
+use OCP\AppFramework\Db\DoesNotExistException;
+use OCP\IDBConnection;
+use OCP\Lock\ILockingProvider;
+use PHPUnit\Framework\TestCase;
+
+class LayeredVacationDefaultsServiceTest extends TestCase
+{
+	private OrgVacationDefaultMapper $orgMapper;
+	private ModelVacationDefaultMapper $modelMapper;
+	private TeamVacationPolicyMapper $teamPolicyMapper;
+	private TeamMapper $teamMapper;
+	private WorkingTimeModelMapper $workingTimeModelMapper;
+	private TariffRuleSetMapper $tariffRuleSetMapper;
+	private AuditLogMapper $auditLogMapper;
+	private IDBConnection $db;
+	private ILockingProvider $lockingProvider;
+	private LayeredVacationDefaultsService $service;
+
+	protected function setUp(): void
+	{
+		parent::setUp();
+		$this->orgMapper = $this->createMock(OrgVacationDefaultMapper::class);
+		$this->modelMapper = $this->createMock(ModelVacationDefaultMapper::class);
+		$this->teamPolicyMapper = $this->createMock(TeamVacationPolicyMapper::class);
+		$this->teamMapper = $this->createMock(TeamMapper::class);
+		$this->workingTimeModelMapper = $this->createMock(WorkingTimeModelMapper::class);
+		$this->tariffRuleSetMapper = $this->createMock(TariffRuleSetMapper::class);
+		$this->auditLogMapper = $this->createMock(AuditLogMapper::class);
+		$this->db = $this->createMock(IDBConnection::class);
+		$this->lockingProvider = $this->createMock(ILockingProvider::class);
+
+		// TTransactional uses begin/commit/rollBack — stub them as no-ops.
+		$this->db->method('beginTransaction');
+		$this->db->method('commit');
+		$this->db->method('rollBack');
+
+		$this->service = new LayeredVacationDefaultsService(
+			$this->orgMapper,
+			$this->modelMapper,
+			$this->teamPolicyMapper,
+			$this->teamMapper,
+			$this->workingTimeModelMapper,
+			$this->tariffRuleSetMapper,
+			$this->auditLogMapper,
+			$this->db,
+			$this->lockingProvider,
+		);
+	}
+
+	public function testUpsertOrgRejectsManualModeWithoutDays(): void
+	{
+		$this->expectException(LayeredVacationValidationException::class);
+		$this->service->upsertOrgDefault([
+			'vacationMode' => Constants::VACATION_MODE_MANUAL_FIXED,
+			'effectiveFrom' => '2026-01-01',
+		], 'admin');
+	}
+
+	public function testUpsertOrgPersistsAndAudits(): void
+	{
+		$this->orgMapper->method('closeOverlappingOpenRows')->willReturn([]);
+		$saved = new OrgVacationDefault();
+		$saved->setId(7);
+		$saved->setVacationMode(Constants::VACATION_MODE_MANUAL_FIXED);
+		$saved->setManualDays(28.0);
+		$saved->setEffectiveFrom(new \DateTime('2026-01-01'));
+		$this->orgMapper->expects(self::once())
+			->method('insert')
+			->willReturn($saved);
+		$this->auditLogMapper->expects(self::once())
+			->method('logAction')
+			->with('system', 'create', Constants::AUDIT_ENTITY_ORG_VACATION_DEFAULT, 7);
+
+		$result = $this->service->upsertOrgDefault([
+			'vacationMode' => Constants::VACATION_MODE_MANUAL_FIXED,
+			'manualDays' => 28.0,
+			'effectiveFrom' => '2026-01-01',
+		], 'admin');
+
+		self::assertSame(7, $result->getId());
+	}
+
+	public function testUpsertModelRejectsUnknownModel(): void
+	{
+		$this->workingTimeModelMapper->method('find')->willThrowException(new DoesNotExistException('nope'));
+		$this->expectException(LayeredVacationNotFoundException::class);
+		$this->service->upsertModelDefault([
+			'workingTimeModelId' => 123,
+			'vacationMode' => Constants::VACATION_MODE_MANUAL_FIXED,
+			'manualDays' => 24.0,
+			'effectiveFrom' => '2026-01-01',
+		], 'admin');
+	}
+
+	public function testUpsertModelPersistsAndAudits(): void
+	{
+		$model = new WorkingTimeModel();
+		$model->setId(42);
+		$this->workingTimeModelMapper->method('find')->with(42)->willReturn($model);
+		$saved = new ModelVacationDefault();
+		$saved->setId(11);
+		$saved->setWorkingTimeModelId(42);
+		$saved->setVacationMode(Constants::VACATION_MODE_MANUAL_FIXED);
+		$saved->setManualDays(24.0);
+		$saved->setEffectiveFrom(new \DateTime('2026-01-01'));
+		$this->modelMapper->expects(self::once())->method('insert')->willReturn($saved);
+		$this->auditLogMapper->expects(self::once())
+			->method('logAction')
+			->with('system', 'create', Constants::AUDIT_ENTITY_MODEL_VACATION_DEFAULT, 11);
+
+		$result = $this->service->upsertModelDefault([
+			'workingTimeModelId' => 42,
+			'vacationMode' => Constants::VACATION_MODE_MANUAL_FIXED,
+			'manualDays' => 24.0,
+			'effectiveFrom' => '2026-01-01',
+		], 'admin');
+
+		self::assertSame(11, $result->getId());
+	}
+
+	public function testUpsertTeamRejectsUnknownTeam(): void
+	{
+		$this->teamMapper->method('find')->willThrowException(new DoesNotExistException('nope'));
+		$this->expectException(LayeredVacationNotFoundException::class);
+		$this->service->upsertTeamPolicy([
+			'teamId' => 99,
+			'vacationMode' => Constants::VACATION_MODE_MANUAL_FIXED,
+			'manualDays' => 27.0,
+			'effectiveFrom' => '2026-01-01',
+		], 'admin');
+	}
+
+	public function testUpsertTeamPersistsAndAudits(): void
+	{
+		$team = new Team();
+		$team->setId(5);
+		$this->teamMapper->method('find')->with(5)->willReturn($team);
+		$saved = new TeamVacationPolicy();
+		$saved->setId(17);
+		$saved->setTeamId(5);
+		$saved->setVacationMode(Constants::VACATION_MODE_MANUAL_FIXED);
+		$saved->setManualDays(27.0);
+		$saved->setPriority(10);
+		$saved->setEffectiveFrom(new \DateTime('2026-01-01'));
+		$this->teamPolicyMapper->expects(self::once())->method('insert')->willReturn($saved);
+		$this->auditLogMapper->expects(self::once())
+			->method('logAction')
+			->with('system', 'create', Constants::AUDIT_ENTITY_TEAM_VACATION_POLICY, 17);
+
+		$result = $this->service->upsertTeamPolicy([
+			'teamId' => 5,
+			'vacationMode' => Constants::VACATION_MODE_MANUAL_FIXED,
+			'manualDays' => 27.0,
+			'priority' => 10,
+			'effectiveFrom' => '2026-01-01',
+		], 'admin');
+
+		self::assertSame(17, $result->getId());
+	}
+
+	public function testDeleteOrgEmitsAudit(): void
+	{
+		$existing = new OrgVacationDefault();
+		$existing->setId(3);
+		$existing->setVacationMode(Constants::VACATION_MODE_MANUAL_FIXED);
+		$existing->setManualDays(25.0);
+		$existing->setEffectiveFrom(new \DateTime('2026-01-01'));
+		$this->orgMapper->method('find')->with(3)->willReturn($existing);
+		$this->orgMapper->expects(self::once())->method('delete')->with($existing);
+		$this->auditLogMapper->expects(self::once())
+			->method('logAction')
+			->with('system', 'delete', Constants::AUDIT_ENTITY_ORG_VACATION_DEFAULT, 3);
+
+		$this->service->deleteOrgDefault(3, 'admin');
+	}
+
+	public function testDeleteOrgWhenMissingThrowsNotFound(): void
+	{
+		$this->orgMapper->method('find')->willThrowException(new DoesNotExistException('nope'));
+		$this->expectException(LayeredVacationNotFoundException::class);
+		$this->service->deleteOrgDefault(99, 'admin');
+	}
+}

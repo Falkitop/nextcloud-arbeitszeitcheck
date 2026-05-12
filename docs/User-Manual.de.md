@@ -53,7 +53,13 @@ Im Auswahldialog erscheinen nur Konten aus der Nextcloud-`admin`-Gruppe.
 - Öffnen Sie **ArbeitszeitCheck → Admin-Benachrichtigungen**, um abwesenheitsbezogene Mail-Regeln zentral zu pflegen.
 - **HR-Office-Benachrichtigungen** lassen sich mit Empfängerliste plus Matrix je Abwesenheitstyp/Ereignis steuern (z. B. Antrag erstellt, Vertretung genehmigt, Manager genehmigt/abgelehnt, Mitarbeitende storniert/gekürzt).
 - Auf derselben Seite liegen außerdem praxisrelevante Schalter für Resturlaubs-Ablaufdatum, optionales Carryover-Limit, Rollover-Verhalten, Vertretungspflicht je Abwesenheitstyp sowie iCal-/Workflow-Mailoptionen.
-- Der Urlaubsanspruch kann pro Nutzer:in über Policy-Modi zugewiesen werden (manuell, modellbasiert, tarifregelbasiert, manuelle Ausnahme). Bei tariflicher Abbildung können Regelwerk-Versionen und Aktivierungsfenster über die Admin-APIs/Integrationsprozesse verwaltet werden.
+- Der Urlaubsanspruch kann **pro Person** (L3) über Policy-Modi zugewiesen werden (manuell, modellbasiert, tarifregelbasiert, manuelle Ausnahme sowie **inherit**, um explizit auf Organisations-/Modell-/Team-Defaults zurückzufallen). Bei tariflicher Abbildung können Regelwerk-Versionen und Aktivierungsfenster über die Admin-APIs/Integrationsprozesse verwaltet werden.
+- **Gestufte Defaults (optional):** Unter **ArbeitszeitCheck → Urlaubsanspruch** (Untermenü Administration) können App-Administrator:innen **organisationsweite** (L0), **pro Arbeitszeitmodell** (L1) und **pro Team** (L2) Vorgaben mit Gültigkeitszeiträumen pflegen sowie einen **Simulator** nutzen, der für Mitarbeitende und Stichtag anzeigt, welche Ebene gewinnt. Solange dort keine passenden Zeilen existieren, verhält sich die Instanz wie zuvor (nur L3 + klassischer Fallback).
+- **Notfall-Rollback:** Über die App-Konfiguration `layered_entitlements_enabled = 0` (z. B. `occ config:app:set arbeitszeitcheck layered_entitlements_enabled --value=0`) lässt sich die Auswertung von L0/L1/L2 abschalten; individuelle L3-Policies und der bisherige numerische Fallback bleiben unverändert wirksam.
+
+### Für Mitarbeitende: „Wie wird mein Jahresurlaub berechnet?“
+
+Auf der Seite **Meine Abwesenheiten** (o. Ä.) kann neben dem Jahresanspruch die Aktion **Wie wird das berechnet?** erscheinen. Der Dialog zeigt eine **redigierte** Erklärung (welche Ebene greift, ohne interne HR-Kennungen fremder Personen).
 
 ---
 
@@ -68,7 +74,7 @@ Im Auswahldialog erscheinen nur Konten aus der Nextcloud-`admin`-Gruppe.
   - Wenn ein Eintrag den Status **Pausiert** hat, zeigt das Dashboard bei **Clock In** die Aktion **Fortsetzen (nach Pause)** und setzt den gleichen Tages-Eintrag fort (statt einen Duplikat-Eintrag zu erzeugen).
   - Pausierte Einträge sind in den letzten 14 Tagen wieder normal **bearbeitbar/löschbar** (sofern nicht bereits genehmigt).
   - Beim Speichern mit Endzeit wird ein pausierter Eintrag automatisch als **Abgeschlossen** (`completed`) finalisiert.
-- **Abwesenheiten** beantragen und ggf. auf Freigabe warten. **Resturlaub** und Überträge werden angezeigt, wenn die Administration das gepflegt hat.
+- **Abwesenheiten** beantragen und ggf. auf Freigabe warten. **Resturlaub** und Überträge werden angezeigt, wenn die Administration das gepflegt hat. Wo angeboten, erklärt **Wie wird das berechnet?** den Jahresurlaubsanspruch in kurzer, redigierter Form (ohne Daten anderer Personen).
   - **App-Teams (empfohlene Einrichtung):** Wenn Ihre Organisation **App-Teams** nutzt und in der App **kein:e Vorgesetzte:r** für Ihr Team hinterlegt ist, werden Anträge **ohne** Vertretung beim Absenden **automatisch genehmigt**—es gäbe sonst niemanden mit Managerfreigabe. Mit **Vertretung** läuft zuerst der Vertretungs-Schritt. Die Oberfläche kann dazu einen kurzen Hinweis anzeigen.
   - **Älteres Gruppenmodell:** Verhalten folgt dem früheren „gleiche Gruppe“-Modell; die Administration sollte sicherstellen, dass Genehmigungen für Ihre Organisation weiterhin sinnvoll möglich sind.
 - **Manager-Dashboard** (als Führungskraft): Unter **Ausstehende Genehmigungen** können Sie zwischen den Reitern **Abwesenheiten** und **Zeiteintrag-Korrekturen** wechseln. Bei Abwesenheiten erscheint der **Abwesenheitstyp in Ihrer Sprache** (z. B. Urlaub, Krankheit), nicht technische Kurzbezeichnungen. Wo freigeschaltet, bietet **Abwesenheiten der Mitarbeitenden** eine eigene Listen-/Filteransicht.

@@ -137,16 +137,31 @@ class VacationAllocationService
 	}
 
 	/**
-	 * Annual vacation entitlement (same rules as AbsenceService::getVacationStats).
+	 * Annual vacation entitlement as a **float** (2 decimals, 0..366),
+	 * matching {@see VacationEntitlementEngine::roundDays()} — the single
+	 * canonical rounding policy (GAP-01 / REQ-ENT-12). Previously this
+	 * method cast to int, which silently dropped half-days from
+	 * tariff-driven entitlement and disagreed with
+	 * {@see self::computeYearAllocation()} (which already used the float).
+	 * The engine already rounds `days` at the boundary, so we just clamp
+	 * defensively in case the engine contract regresses; this clamp is
+	 * the same one the engine itself uses.
 	 */
-	public function getAnnualEntitlementDays(string $userId, ?\DateTimeInterface $asOfDate = null): int
+	public function getAnnualEntitlementDays(string $userId, ?\DateTimeInterface $asOfDate = null): float
 	{
 		try {
 			$resolved = $this->vacationEntitlementEngine->computeForDate($userId, $asOfDate ?? new \DateTimeImmutable('today'));
-			return max(0, min(366, (int)round((float)$resolved['days'])));
+			$days = (float)($resolved['days'] ?? 0.0);
+			if (!is_finite($days)) {
+				$days = 0.0;
+			}
+			return round(max(0.0, min(366.0, $days)), 2, PHP_ROUND_HALF_UP);
 		} catch (\Throwable $e) {
-			$totalEntitlement = Constants::DEFAULT_VACATION_DAYS_PER_YEAR;
-			return max(0, min(366, (int)$totalEntitlement));
+			\OCP\Log\logger('arbeitszeitcheck')->error(
+				'VacationAllocationService::getAnnualEntitlementDays: engine failed, using safe default',
+				['exception' => $e, 'app' => 'arbeitszeitcheck']
+			);
+			return round((float)Constants::DEFAULT_VACATION_DAYS_PER_YEAR, 2, PHP_ROUND_HALF_UP);
 		}
 	}
 

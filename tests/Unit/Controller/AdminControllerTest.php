@@ -132,6 +132,7 @@ class AdminControllerTest extends TestCase
 			'ruleSetId' => null,
 			'trace' => [],
 		]);
+		$layeredVacationDefaultsService = $this->createMock(\OCA\ArbeitszeitCheck\Service\LayeredVacationDefaultsService::class);
 
 		$this->controller = new AdminController(
 			'arbeitszeitcheck',
@@ -160,7 +161,8 @@ class AdminControllerTest extends TestCase
 			$this->tariffRuleSetMapper,
 			$tariffRuleModuleMapper,
 			$userVacationPolicyAssignmentMapper,
-			$this->vacationEntitlementEngine
+			$this->vacationEntitlementEngine,
+			$layeredVacationDefaultsService
 		);
 	}
 

@@ -574,6 +574,11 @@ $useAppTeams = $_['useAppTeams'] ?? false;
                             <span class="stat-label" id="stat-entitlement-label"><?php p($l->t('Annual entitlement')); ?></span>
                             <span class="stat-value" aria-labelledby="stat-entitlement-label"><?php p((string)round($stats['vacation_annual_entitlement'] ?? 0, 1)); ?></span>
                             <span class="stat-sublabel"><?php p($l->t('vacation days')); ?></span>
+                            <button type="button" id="entitlement-explain" class="stat-card__action"
+                                    aria-haspopup="dialog" aria-controls="entitlement-explain-dialog"
+                                    aria-label="<?php p($l->t('Show how my vacation entitlement was calculated')); ?>">
+                                <?php p($l->t('How is this calculated?')); ?>
+                            </button>
                         </div>
                         <div class="stat-card stat-card--annual-left">
                             <span class="stat-label" id="stat-annual-left-label"><?php p($l->t('Annual leave left')); ?></span>
@@ -746,6 +751,31 @@ $useAppTeams = $_['useAppTeams'] ?? false;
     </div>
 </main>
 </div><!-- /#arbeitszeitcheck-app -->
+
+<!--
+    Employee-facing entitlement explainer dialog (REQ-UX-04).
+    Built as a native <dialog> so focus is trapped, ESC closes,
+    and screen readers read the title + content as a modal.
+-->
+<dialog id="entitlement-explain-dialog" class="entitlement-explain-dialog"
+        aria-labelledby="entitlement-explain-title" aria-describedby="entitlement-explain-intro">
+    <form method="dialog" class="entitlement-explain-dialog__form">
+        <h2 id="entitlement-explain-title" class="entitlement-explain-dialog__title">
+            <?php p($l->t('How your vacation entitlement is calculated')); ?>
+        </h2>
+        <p id="entitlement-explain-intro" class="entitlement-explain-dialog__intro">
+            <?php p($l->t('Your entitlement is resolved through a precedence chain. The first matching layer wins. Internal IDs, descriptions, and other employees’ policy names are hidden.')); ?>
+        </p>
+        <div id="entitlement-explain-body" class="entitlement-explain-dialog__body" aria-live="polite">
+            <p class="entitlement-explain-dialog__placeholder">
+                <?php p($l->t('Loading explanation…')); ?>
+            </p>
+        </div>
+        <div class="entitlement-explain-dialog__actions">
+            <button type="submit" class="btn btn--primary"><?php p($l->t('Close')); ?></button>
+        </div>
+    </form>
+</dialog>
 
 <?php include __DIR__ . '/common/main-ui-l10n.php'; ?>
 
@@ -1097,4 +1127,80 @@ $useAppTeams = $_['useAppTeams'] ?? false;
             }
         });
     });
+
+    // ===== ENTITLEMENT EXPLAINER DIALOG =====
+    // Loads a redacted trace from the AbsenceController entitlementTrace
+    // endpoint (REQ-SEC-05: no internal IDs / other-team descriptions
+    // surface to the employee).
+    (function setupEntitlementExplainer() {
+        var trigger = document.getElementById('entitlement-explain');
+        var dlg = document.getElementById('entitlement-explain-dialog');
+        if (!trigger || !dlg) return;
+
+        function tt(key, fallback) {
+            return (typeof window.t === 'function') ? window.t('arbeitszeitcheck', key) : (fallback || key);
+        }
+
+        function close() {
+            if (typeof dlg.close === 'function') { try { dlg.close(); } catch (e) {} }
+            dlg.removeAttribute('open');
+        }
+
+        function buildExplainerHtml(trace) {
+            var layers = (trace && Array.isArray(trace.layers_evaluated)) ? trace.layers_evaluated : [];
+            var matched = (trace && trace.matched_layer) ? String(trace.matched_layer) : '—';
+            var rows = layers.map(function(layer) {
+                var label = layer.layer || '—';
+                var humanLabel = ({
+                    'L3': tt('Individual rule', 'Individual rule'),
+                    'L2': tt('Team policy', 'Team policy'),
+                    'L1': tt('Working time model', 'Working time model'),
+                    'L0': tt('Organisation default', 'Organisation default'),
+                    'legacy': tt('Default fallback', 'Default fallback')
+                })[label] || label;
+                var outcome = layer.matched ? tt('Applied', 'Applied') : tt('Skipped', 'Skipped');
+                return '<li><strong>' + humanLabel + '</strong>: ' + outcome + '</li>';
+            }).join('');
+            return ''
+              + '<p>' + tt('Today the following layer determined your entitlement:', 'Today the following layer determined your entitlement:') + ' <strong>' + matched + '</strong></p>'
+              + '<ol class="entitlement-explain-dialog__steps">' + rows + '</ol>'
+              + '<p class="entitlement-explain-dialog__hint">' + tt('If you think the result is wrong, please contact your HR administrator.', 'If you think the result is wrong, please contact your HR administrator.') + '</p>';
+        }
+
+        function load() {
+            var body = document.getElementById('entitlement-explain-body');
+            if (body) body.textContent = tt('Loading explanation…', 'Loading explanation…');
+            var Utils = window.ArbeitszeitCheckUtils || {};
+            Utils.ajax('/apps/arbeitszeitcheck/api/absences/entitlement-trace', {
+                method: 'GET',
+                onSuccess: function(data) {
+                    if (!body) return;
+                    if (!data || data.success !== true) {
+                        body.textContent = tt('Could not load explanation. Please try again later.', 'Could not load explanation. Please try again later.');
+                        return;
+                    }
+                    body.innerHTML = buildExplainerHtml(data.trace || {});
+                },
+                onError: function() {
+                    if (body) body.textContent = tt('Could not load explanation. Please try again later.', 'Could not load explanation. Please try again later.');
+                }
+            });
+        }
+
+        trigger.addEventListener('click', function() {
+            load();
+            if (typeof dlg.showModal === 'function') {
+                try { dlg.showModal(); } catch (e) { dlg.setAttribute('open', 'open'); }
+            } else {
+                dlg.setAttribute('open', 'open');
+            }
+        });
+
+        // Defensive: clicking outside the dialog form closes it.
+        dlg.addEventListener('click', function(ev) {
+            if (ev.target === dlg) {
+                close();
+            }
+        });
+    })();
 </script>
