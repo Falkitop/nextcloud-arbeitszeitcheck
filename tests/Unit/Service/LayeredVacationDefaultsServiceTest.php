@@ -99,6 +99,7 @@ class LayeredVacationDefaultsServiceTest extends TestCase
 
 	public function testUpsertOrgPersistsAndAudits(): void
 	{
+		$this->orgMapper->method('findOverlappingRanges')->willReturn([]);
 		$this->orgMapper->method('closeOverlappingOpenRows')->willReturn([]);
 		$saved = new OrgVacationDefault();
 		$saved->setId(7);
@@ -119,6 +120,62 @@ class LayeredVacationDefaultsServiceTest extends TestCase
 		], 'admin');
 
 		self::assertSame(7, $result->getId());
+	}
+
+	/**
+	 * REQ-DAT-03 — a new L0 row whose validity range overlaps an existing
+	 * *closed* range must be rejected up-front. Open-ended overlaps remain
+	 * the only flavour that gets auto-closed.
+	 */
+	public function testUpsertOrgRejectsOverlapWithExistingClosedRange(): void
+	{
+		$this->orgMapper->method('findOverlappingRanges')->willReturn([
+			[
+				'id' => 1,
+				'effective_from' => '2025-01-01',
+				'effective_to' => '2026-12-31',
+			],
+		]);
+		$this->orgMapper->expects(self::never())->method('insert');
+
+		$this->expectException(LayeredVacationValidationException::class);
+		$this->service->upsertOrgDefault([
+			'vacationMode' => Constants::VACATION_MODE_MANUAL_FIXED,
+			'manualDays' => 30.0,
+			'effectiveFrom' => '2026-06-01',
+			'effectiveTo' => '2026-09-30',
+		], 'admin');
+	}
+
+	/**
+	 * The existing open-ended row is *not* a blocking overlap — the service
+	 * auto-trims it via `closeOverlappingOpenRows`, see REQ-DAT-03 fallback
+	 * branch.
+	 */
+	public function testUpsertOrgAcceptsOverlapWithOpenEndedRow(): void
+	{
+		$this->orgMapper->method('findOverlappingRanges')->willReturn([
+			[
+				'id' => 1,
+				'effective_from' => '2024-01-01',
+				'effective_to' => null,
+			],
+		]);
+		$this->orgMapper->method('closeOverlappingOpenRows')->willReturn([1]);
+		$saved = new OrgVacationDefault();
+		$saved->setId(99);
+		$saved->setVacationMode(Constants::VACATION_MODE_MANUAL_FIXED);
+		$saved->setManualDays(30.0);
+		$saved->setEffectiveFrom(new \DateTime('2026-06-01'));
+		$this->orgMapper->expects(self::once())->method('insert')->willReturn($saved);
+
+		$result = $this->service->upsertOrgDefault([
+			'vacationMode' => Constants::VACATION_MODE_MANUAL_FIXED,
+			'manualDays' => 30.0,
+			'effectiveFrom' => '2026-06-01',
+		], 'admin');
+
+		self::assertSame(99, $result->getId());
 	}
 
 	public function testUpsertModelRejectsUnknownModel(): void

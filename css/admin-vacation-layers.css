@@ -575,8 +575,107 @@
   border-color: color-mix(in srgb, var(--color-warning) 35%, var(--color-border));
   background: color-mix(in srgb, var(--color-warning) 14%, var(--color-background-hover));
 }
+.layer-sim__banner--info {
+  border-color: color-mix(in srgb, var(--color-primary-element) 30%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary-element) 10%, var(--color-background-hover));
+}
 .layer-sim__flags {
   margin: .25rem 0 .75rem 0;
+}
+
+/* Simulator summary: large number + sentence, then collapsible technical
+   trace (REQ-UX-02 progressive disclosure). */
+.layer-sim__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .75rem 1rem;
+  margin: .5rem 0 1rem 0;
+}
+.layer-sim__summary .layer-sim__days {
+  font-size: 2.5rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-primary-element);
+}
+.layer-sim__summary-text {
+  flex: 1 1 16rem;
+  font-size: 1.0625rem;
+  line-height: 1.45;
+  color: var(--color-main-text);
+}
+
+.layer-sim__trace-details {
+  margin-top: .5rem;
+}
+.layer-sim__trace-details > summary {
+  cursor: pointer;
+  padding: .35rem .5rem;
+  margin: -.35rem -.5rem .5rem -.5rem;
+  border-radius: 6px;
+  font-weight: 600;
+  color: var(--color-main-text);
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+.layer-sim__trace-details > summary:focus-visible {
+  outline: 2px solid var(--color-primary-element);
+  outline-offset: 2px;
+}
+
+.layer-sim__details {
+  margin-top: .35rem;
+}
+.layer-sim__details > summary {
+  cursor: pointer;
+  font-weight: 500;
+  font-size: .9375rem;
+}
+.layer-sim__details ol {
+  padding-left: 1.25rem;
+  margin: .35rem 0 0 0;
+}
+.layer-sim__details ol li {
+  padding: .2rem 0;
+}
+
+/* Hypothetical team picker — fieldset around the multi-select with a clear
+   "what-if" label so HR understands this is a read-only simulation. */
+.sim-hypothesis {
+  margin: 0;
+  padding: .85rem 1rem 1rem;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--border-radius, 6px);
+  background: var(--color-background-hover);
+}
+.sim-hypothesis legend {
+  padding: 0 .35rem;
+  font-weight: 600;
+  font-size: .9375rem;
+  color: var(--color-main-text);
+}
+.form-select--multi {
+  min-height: 6rem;
+  padding: .35rem;
+}
+
+/* L0 collision banner shown above the active row when multiple L0 rules
+   overlap on today's date (REQ-ENT-10). */
+.layer-card__warning {
+  margin: 0 0 .75rem 0;
+  padding: .65rem .85rem;
+  border-radius: var(--border-radius, 6px);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 45%, var(--color-border));
+  background: color-mix(in srgb, var(--color-warning) 14%, var(--color-background-hover));
+  font-weight: 500;
+  color: var(--color-main-text);
+}
+
+.layer-form__row--actions {
+  display: flex;
+  gap: .65rem;
+  flex-wrap: wrap;
 }
 
 /* -------------------------------------------------------------------------

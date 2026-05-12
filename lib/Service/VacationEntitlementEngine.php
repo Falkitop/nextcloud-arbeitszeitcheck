@@ -79,6 +79,24 @@ class VacationEntitlementEngine {
 	 */
 	private array $teamContextCache = [];
 
+	/**
+	 * REQ-WF-05 — Hypothetical team membership overrides for the simulator.
+	 *
+	 * A short-lived map keyed by user id whose values supplant the real
+	 * `TeamMemberMapper::findByUserId()` lookup for that user, allowing the
+	 * admin "what-if" simulator to ask "what would the entitlement be if this
+	 * person were a member of team X?" without persisting any membership.
+	 *
+	 * Always cleared by the simulator after a single `computeFor*` call via
+	 * {@see self::clearHypotheticalTeams()}. The engine is request-scoped so
+	 * a leak here would only affect the current request, but we still take
+	 * the belt-and-braces approach because background jobs reuse the same
+	 * service instance.
+	 *
+	 * @var array<string, list<int>>
+	 */
+	private array $hypotheticalTeams = [];
+
 	public function __construct(
 		private UserVacationPolicyAssignmentMapper $policyMapper,
 		private TariffRuleSetMapper $ruleSetMapper,
@@ -184,6 +202,9 @@ class VacationEntitlementEngine {
 			if ($partialHistory) {
 				$row['partial_history'] = true;
 			}
+			if (!empty($teamResolution['hypothetical'])) {
+				$row['hypothetical'] = true;
+			}
 			$layersEvaluated[] = $row;
 			$winnerExtra = [
 				'team_id' => $teamResolution['team_id'],
@@ -192,9 +213,20 @@ class VacationEntitlementEngine {
 			if ($partialHistory) {
 				$winnerExtra['partial_history'] = true;
 			}
+			if (!empty($teamResolution['hypothetical'])) {
+				$winnerExtra['hypothetical'] = true;
+			}
 			return $this->finalise($teamResolution['resolved'], 'L2', $asOfDateOnly, $layersEvaluated, false, $winnerExtra);
 		}
-		$layersEvaluated[] = ['layer' => 'L2', 'matched' => false, 'reason' => 'no_team_match'];
+		// REQ-WF-05: when an L2 lookup was attempted with a hypothetical
+		// team override and produced no match, surface that explicitly in
+		// the trace so the simulator UI can disambiguate "no team match"
+		// from "team match suppressed by hypothetical override".
+		$noMatchRow = ['layer' => 'L2', 'matched' => false, 'reason' => 'no_team_match'];
+		if (array_key_exists($userId, $this->hypotheticalTeams)) {
+			$noMatchRow['hypothetical'] = true;
+		}
+		$layersEvaluated[] = $noMatchRow;
 
 		// L1: model-attached default for user's active model on date.
 		$modelResolution = $this->resolveModelLayer($userId, $asOfDateOnly);
@@ -269,7 +301,7 @@ class VacationEntitlementEngine {
 		];
 		$teamResolution = $this->resolveTeamLayer($userId, $asOfDateOnly);
 		if ($teamResolution !== null) {
-			$layersEvaluated[] = [
+			$row = [
 				'layer' => 'L2',
 				'matched' => true,
 				'team_id' => $teamResolution['team_id'],
@@ -280,7 +312,15 @@ class VacationEntitlementEngine {
 				'days' => $teamResolution['resolved']['days'],
 				'candidates' => $teamResolution['candidates'],
 			];
-			return $this->finalise($teamResolution['resolved'], 'L2', $asOfDateOnly, $layersEvaluated, false);
+			if (!empty($teamResolution['hypothetical'])) {
+				$row['hypothetical'] = true;
+			}
+			$layersEvaluated[] = $row;
+			$winnerExtra = [];
+			if (!empty($teamResolution['hypothetical'])) {
+				$winnerExtra['hypothetical'] = true;
+			}
+			return $this->finalise($teamResolution['resolved'], 'L2', $asOfDateOnly, $layersEvaluated, false, $winnerExtra);
 		}
 		$modelResolution = $this->resolveModelLayer($userId, $asOfDateOnly);
 		if ($modelResolution !== null) {
@@ -596,6 +636,7 @@ class VacationEntitlementEngine {
 		if ($policies === []) {
 			return null;
 		}
+		$hypothetical = !empty($ctx['hypothetical']);
 		// Tie-break: deepest team subtree first, then highest priority,
 		// then smallest id (stable).
 		$candidates = [];
@@ -640,6 +681,7 @@ class VacationEntitlementEngine {
 			'policy_id' => $winner['policy_id'],
 			'resolved' => $resolved,
 			'candidates' => $candList,
+			'hypothetical' => $hypothetical,
 		];
 	}
 
@@ -842,25 +884,75 @@ class VacationEntitlementEngine {
 	}
 
 	/**
-	 * Team membership context for a user, memoised per engine instance.
+	 * Pin a hypothetical team membership list for `$userId` so the L2
+	 * resolution layer treats the user *as if* they were a member of these
+	 * teams (in addition to / instead of their real membership). Used by the
+	 * admin what-if simulator (REQ-WF-05).
 	 *
-	 * @return array{teamIds: list<int>, parentMap: array<int, int|null>}
+	 * Callers MUST pair this with {@see self::clearHypotheticalTeams()} in
+	 * a `finally` block so the override never leaks to a subsequent
+	 * resolution. The engine is request-scoped, but background jobs reuse
+	 * the same instance and we don't want a simulator call to silently
+	 * change a payroll snapshot.
+	 *
+	 * Pass an empty list to simulate "user is in *no* team", which is a
+	 * legitimate what-if for offboarding scenarios.
+	 *
+	 * @param list<int> $teamIds
+	 */
+	public function setHypotheticalTeams(string $userId, array $teamIds): void
+	{
+		// Normalise: drop non-positive ids, deduplicate, force ints. We do
+		// this here so callers don't have to re-do it.
+		$clean = [];
+		foreach ($teamIds as $raw) {
+			$tid = (int)$raw;
+			if ($tid <= 0) {
+				continue;
+			}
+			if (!in_array($tid, $clean, true)) {
+				$clean[] = $tid;
+			}
+		}
+		$this->hypotheticalTeams[$userId] = $clean;
+		// Drop any cached real-membership context for this user so the
+		// override is honoured on the next L2 resolution.
+		unset($this->teamContextCache[$userId]);
+	}
+
+	public function clearHypotheticalTeams(string $userId): void
+	{
+		unset($this->hypotheticalTeams[$userId]);
+		unset($this->teamContextCache[$userId]);
+	}
+
+	/**
+	 * Team membership context for a user, memoised per engine instance.
+	 * Honours any hypothetical override set via
+	 * {@see self::setHypotheticalTeams()} (simulator-only).
+	 *
+	 * @return array{teamIds: list<int>, parentMap: array<int, int|null>, hypothetical: bool}
 	 */
 	private function getTeamContext(string $userId): array
 	{
 		if (isset($this->teamContextCache[$userId])) {
 			return $this->teamContextCache[$userId];
 		}
-		try {
-			$memberships = $this->teamMemberMapper->findByUserId($userId);
-		} catch (\Throwable) {
-			$memberships = [];
-		}
-		$teamIds = [];
-		foreach ($memberships as $m) {
-			$tid = (int)$m->getTeamId();
-			if (!in_array($tid, $teamIds, true)) {
-				$teamIds[] = $tid;
+		$hypothetical = array_key_exists($userId, $this->hypotheticalTeams);
+		if ($hypothetical) {
+			$teamIds = $this->hypotheticalTeams[$userId];
+		} else {
+			try {
+				$memberships = $this->teamMemberMapper->findByUserId($userId);
+			} catch (\Throwable) {
+				$memberships = [];
+			}
+			$teamIds = [];
+			foreach ($memberships as $m) {
+				$tid = (int)$m->getTeamId();
+				if (!in_array($tid, $teamIds, true)) {
+					$teamIds[] = $tid;
+				}
 			}
 		}
 		try {
@@ -871,6 +963,7 @@ class VacationEntitlementEngine {
 		return $this->teamContextCache[$userId] = [
 			'teamIds' => $teamIds,
 			'parentMap' => $parentMap,
+			'hypothetical' => $hypothetical,
 		];
 	}
 

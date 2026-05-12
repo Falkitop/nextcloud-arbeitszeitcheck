@@ -124,6 +124,45 @@ class LayeredVacationDefaultsService
 				}
 				$this->assertTariffRuleSetUsable($entity->getTariffRuleSetId(), $entity->getEffectiveFrom());
 
+				// REQ-DAT-03 — refuse overlapping *closed* ranges before they
+				// land in the DB. We can still safely auto-trim an existing
+				// open-ended row (the docs call this out explicitly as
+				// "supersede"), but a newly-saved closed range that overlaps
+				// an existing closed range is always operator error and
+				// should not silently emit a
+				// `degraded_org_default_collision` flag at resolution time.
+				$overlaps = $this->orgMapper->findOverlappingRanges(
+					$entity->getEffectiveFrom(),
+					$entity->getEffectiveTo(),
+					null,
+				);
+				$blocking = array_values(array_filter($overlaps, function (array $row) use ($entity): bool {
+					// Open-ended pre-existing row will be auto-closed by
+					// `closeOverlappingOpenRows`. Anything else is a hard conflict.
+					if ($row['effective_to'] === null && $entity->getEffectiveTo() === null) {
+						// Two open-ended rows: trim the existing one.
+						return false;
+					}
+					if ($row['effective_to'] === null && $entity->getEffectiveFrom() !== null) {
+						// New row is closed but starts on/after the existing
+						// open row's `effective_from` — auto-trim handles it.
+						return $row['effective_from'] > $entity->getEffectiveFrom()->format('Y-m-d');
+					}
+					// Pre-existing row has a closed range — overlap is blocking.
+					return true;
+				}));
+				if ($blocking !== []) {
+					$first = $blocking[0];
+					$range = $first['effective_from'] . ' → ' . ($first['effective_to'] ?? '∞');
+					throw new LayeredVacationValidationException('Validation failed', [
+						'effectiveFrom' => sprintf(
+							'Overlaps existing organisation default #%d (%s). Adjust the date range or delete the existing row.',
+							$first['id'],
+							$range,
+						),
+					]);
+				}
+
 				// Close currently open-ended overlapping row(s).
 				$trimmed = $this->orgMapper->closeOverlappingOpenRows($entity->getEffectiveFrom());
 				$saved = $this->orgMapper->insert($entity);

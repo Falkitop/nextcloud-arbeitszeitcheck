@@ -399,7 +399,14 @@
         const endVal = (endIso && convertISOToEuropean(endIso)) || '';
         const currentState = user.germanState || '';
         const policy = user.vacationPolicy || {};
-        const currentMode = policy.vacationMode || 'manual_fixed';
+        const inheritLowerLayers = !!policy.inheritLowerLayers;
+        const rawMode = policy.vacationMode || 'manual_fixed';
+        // REQ-WF-04 — surface the "inherit" sentinel as a first-class option in
+        // the dropdown so HR can flip an individual into "follow team/model/org"
+        // without having to know that empty fields + manual_fixed magically mean
+        // anything. The controller already accepts either representation
+        // (sentinel mode or the boolean column) and persists both in sync.
+        const currentMode = (inheritLowerLayers || rawMode === 'inherit') ? 'inherit' : rawMode;
         const manualDays = policy.manualDays != null ? String(policy.manualDays) : '';
         const ruleSetId = policy.tariffRuleSetId != null ? String(policy.tariffRuleSetId) : '';
         const overrideReason = policy.overrideReason || '';
@@ -468,12 +475,13 @@
                 <div class="form-group">
                     <label for="user-vacation-mode" class="form-label">${policyModeLabel}</label>
                     <select id="user-vacation-mode" name="vacationMode" class="form-select" aria-describedby="user-vacation-mode-help">
+                        <option value="inherit" ${currentMode === 'inherit' ? 'selected' : ''}>${t('vacationModeInherit', 'Inherit from team / model / organisation')}</option>
                         <option value="manual_fixed" ${currentMode === 'manual_fixed' ? 'selected' : ''}>${t('manualFixedSimple', 'Fixed value per person')}</option>
                         <option value="model_based_simple" ${currentMode === 'model_based_simple' ? 'selected' : ''}>${t('modelBasedSimple', 'Automatic from work schedule')}</option>
                         <option value="tariff_rule_based" ${currentMode === 'tariff_rule_based' ? 'selected' : ''}>${t('tariffRuleBased', 'Tariff rule')}</option>
                         <option value="manual_exception" ${currentMode === 'manual_exception' ? 'selected' : ''}>${t('manualExceptionSimple', 'Manual exception (with reason)')}</option>
                     </select>
-                    <p id="user-vacation-mode-help" class="form-help">${t('vacationModeHelpSimple', 'Use fixed value, automatic from schedule, or tariff rule. Exception mode requires a reason.')}</p>
+                    <p id="user-vacation-mode-help" class="form-help">${t('vacationModeHelpSimpleInherit', 'Inherit follows the deepest team policy, then the work-schedule default, then the organisation default. Fixed/automatic/tariff/exception set an individual rule for this employee.')}</p>
                 </div>
                 <div class="form-group">
                     <label for="user-manual-days" class="form-label">${t('manualDays', 'Manual annual days')}</label>
@@ -599,6 +607,8 @@
         const computeLocalPreview = function() {
             const mode = String(vacationModeEl?.value || 'manual_fixed');
             const manualDaysVal = parseLocalizedDecimal(manualDaysEl?.value);
+            // "Inherit" hands resolution back to L2/L1/L0 — local heuristics
+            // can't predict that, so we always ask the engine.
             if (mode === 'manual_fixed' || mode === 'manual_exception') {
                 const days = Number.isFinite(manualDaysVal) ? manualDaysVal : 0;
                 renderEntitlementPreview(days, localizedEntitlementSourceLabel(mode === 'manual_exception' ? 'manual_exception' : 'manual', t), t('previewTraceManual', 'Uses manually entered annual days.'));
@@ -621,8 +631,9 @@
                 asOfDate: (startDateEl?.value && previewToISO(startDateEl.value)) || new Date().toISOString().slice(0, 10),
                 draftPolicy: {
                     vacationMode: mode,
-                    manualDays: parseLocalizedDecimal(manualDaysEl?.value),
-                    tariffRuleSetId: tariffRuleSetEl?.value ? parseInt(String(tariffRuleSetEl.value), 10) : null,
+                    inheritLowerLayers: mode === 'inherit',
+                    manualDays: mode === 'inherit' ? null : parseLocalizedDecimal(manualDaysEl?.value),
+                    tariffRuleSetId: mode === 'inherit' ? null : (tariffRuleSetEl?.value ? parseInt(String(tariffRuleSetEl.value), 10) : null),
                     overrideReason: (overrideReasonEl?.value || '').toString()
                 }
             };
@@ -665,8 +676,9 @@
 
         const toggleVacationModeFields = function() {
             const mode = String(vacationModeEl?.value || 'manual_fixed');
-            const isManual = mode === 'manual_fixed' || mode === 'manual_exception';
-            const isTariff = mode === 'tariff_rule_based';
+            const isInherit = mode === 'inherit';
+            const isManual = !isInherit && (mode === 'manual_fixed' || mode === 'manual_exception');
+            const isTariff = !isInherit && mode === 'tariff_rule_based';
             if (manualDaysEl) {
                 manualDaysEl.disabled = !isManual;
                 manualDaysEl.closest('.form-group')?.classList.toggle('is-disabled', !isManual);
@@ -676,7 +688,7 @@
                 tariffRuleSetEl.closest('.form-group')?.classList.toggle('is-disabled', !isTariff);
             }
             if (overrideReasonEl) {
-                const needsReason = mode === 'manual_exception';
+                const needsReason = !isInherit && mode === 'manual_exception';
                 overrideReasonEl.disabled = !needsReason;
                 overrideReasonEl.required = needsReason;
                 overrideReasonEl.closest('.form-group')?.classList.toggle('is-disabled', !needsReason);
@@ -728,20 +740,29 @@
         };
         const vacationPolicyPayload = {
             vacationMode: (formData.get('vacationMode') || 'manual_fixed').toString(),
+            inheritLowerLayers: (formData.get('vacationMode') || '').toString() === 'inherit',
             manualDays: parseLocalizedDecimal(formData.get('manualDays')),
             tariffRuleSetId: formData.get('tariffRuleSetId') ? parseInt(String(formData.get('tariffRuleSetId')), 10) : null,
             overrideReason: (formData.get('overrideReason') || '').toString(),
             effectiveFrom: data.startDate || new Date().toISOString().slice(0, 10),
             effectiveTo: data.endDate || null
         };
-        if (vacationPolicyPayload.vacationMode !== 'manual_fixed' && vacationPolicyPayload.vacationMode !== 'manual_exception') {
+        // Inherit drops all "concrete" fields — they would be ignored by the
+        // engine and only confuse later operators reading the DB.
+        if (vacationPolicyPayload.inheritLowerLayers) {
             vacationPolicyPayload.manualDays = null;
-        }
-        if (vacationPolicyPayload.vacationMode !== 'tariff_rule_based') {
             vacationPolicyPayload.tariffRuleSetId = null;
-        }
-        if (vacationPolicyPayload.vacationMode !== 'manual_exception') {
             vacationPolicyPayload.overrideReason = '';
+        } else {
+            if (vacationPolicyPayload.vacationMode !== 'manual_fixed' && vacationPolicyPayload.vacationMode !== 'manual_exception') {
+                vacationPolicyPayload.manualDays = null;
+            }
+            if (vacationPolicyPayload.vacationMode !== 'tariff_rule_based') {
+                vacationPolicyPayload.tariffRuleSetId = null;
+            }
+            if (vacationPolicyPayload.vacationMode !== 'manual_exception') {
+                vacationPolicyPayload.overrideReason = '';
+            }
         }
 
         Utils.ajax(buildApiUrl('/apps/arbeitszeitcheck/api/admin/users/' + encodeURIComponent(userId) + '/working-time-model'), {

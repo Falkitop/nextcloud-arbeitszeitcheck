@@ -21,6 +21,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New: `LayeredVacationEntitlementEngineTest` adds 14 cases for the degraded-state flags and redacted-trace pass-through; `LayeredVacationDefaultsServiceTest` adds 6 cases for `previewImpact` (validation, missing-deps, model count, team-subtree aggregation); `AdminControllerTest` adds 4 cases for 409 mapping on save/delete and 200/400 mapping on the impact endpoint.
 - All 534 unit tests pass.
 
+## 1.3.1 - 2026-05-12
+
+### Added
+
+- **L3 inherit toggle in the admin user dialog** (REQ-WF-04). The "How should annual vacation be calculated?" dropdown now exposes "Inherit from team / model / organisation" as a first-class option. Selecting it disables manual days / tariff rule set / override reason (since the engine would ignore them) and persists the choice via the `inheritLowerLayers` boolean column **and** the `vacation_mode = 'inherit'` sentinel so both representations stay in sync (REQ-WF-04). The admin user-list payload now surfaces `inheritLowerLayers` so the dialog round-trips the current state.
+- **Hypothetical team-membership simulator** (REQ-WF-05). The admin simulator on `/admin/vacation-layers` now lets HR plug in an *imagined* team set for a what-if computation ("what would this employee receive if we moved them to Berlin?") without mutating any team memberships. The engine evaluates L2 against the override and propagates an explicit `hypothetical: true` flag into the trace; the UI shows a dedicated banner so the result is never mistaken for the *real* current entitlement.
+- **L0 closed-range overlap detection** (REQ-DAT-03). `OrgVacationDefaultMapper::findOverlappingRanges` actively rejects new organisation defaults that would overlap an existing *closed* validity range. Previously only open-ended overlaps were auto-closed; closed-vs-closed collisions would slip through and only surface at resolution time as `degraded_org_default_collision`. The admin UI also surfaces a `role="alert"` warning banner above the active L0 row if more than one rule is active today, so the conflict is visible before any simulation is run.
+- **Progressive-disclosure simulator UX** (REQ-UX-02). The simulator now renders a one-sentence summary (`"On {date}, the employee receives {days} vacation days per year, determined by the {layer}."`) with the resolved number in display-size type, then offers the full layer trace inside a `<details>` element. L2 tie-break candidates (depth / priority / policy ID) are listed in a nested `<details>` so auditors can still drill in, but the "happy path" no longer overwhelms HR with raw JSON.
+
+### Fixed
+
+- **Dialog focus return** (WCAG 2.4.3 / `Focus Order`). The vacation-layer dialog now remembers the trigger element on open and restores focus to it on both explicit close and ESC cancel. Previously focus fell to `<body>` on cancel, forcing keyboard users to re-traverse the page header.
+- **Simulator focus & error announcement**. After a simulation the result region (`aria-live="polite"`, `tabindex="-1"`) receives focus so screen readers read the resolved entitlement immediately. Failures are routed through the existing `aria-live` status region instead of only printing into the result card.
+
+### Tests
+
+- New: 7 cases — `LayeredVacationEntitlementEngineTest` adds 3 for hypothetical team injection (override, cleanup, sanitisation); `LayeredVacationDefaultsServiceTest` adds 2 for closed-range overlap rejection vs open-ended auto-trim; `AdminControllerTest` adds 2 for the simulator IDOR 404 and hypothetical-team forwarding.
+- All 548 unit tests pass (was 541).
+
 ## 1.3.0 - 2026-05-12
 
 ### Added

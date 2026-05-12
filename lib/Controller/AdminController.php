@@ -2159,6 +2159,7 @@ class AdminController extends Controller
 							'overrideReason' => $policy->getOverrideReason(),
 							'effectiveFrom' => $policy->getEffectiveFrom()?->format('Y-m-d'),
 							'effectiveTo' => $policy->getEffectiveTo()?->format('Y-m-d'),
+							'inheritLowerLayers' => $policy->isInherit(),
 						] : null,
 						'entitlementPreview' => [
 							'days' => round((float)$entitlementPreview['days'], 2),
@@ -2269,6 +2270,7 @@ class AdminController extends Controller
 						'overrideReason' => $policy->getOverrideReason(),
 						'effectiveFrom' => $policy->getEffectiveFrom()?->format('Y-m-d'),
 						'effectiveTo' => $policy->getEffectiveTo()?->format('Y-m-d'),
+						'inheritLowerLayers' => $policy->isInherit(),
 					] : null,
 					'entitlementPreview' => [
 						'days' => round((float)$entitlementPreview['days'], 2),
@@ -3089,6 +3091,14 @@ class AdminController extends Controller
 			}
 
 			$vacationMode = (string)($params['vacationMode'] ?? Constants::VACATION_MODE_MANUAL_FIXED);
+			// REQ-WF-04: admins may flip an L3 row into "inherit" via either
+			// the explicit `inheritLowerLayers` boolean or the `vacation_mode = 'inherit'`
+			// sentinel. Both representations route through the same engine
+			// fallthrough (see `UserVacationPolicyAssignment::isInherit()`),
+			// so we accept either at the API boundary and normalise both
+			// columns to be in sync on persist.
+			$inheritLowerLayers = !empty($params['inheritLowerLayers'])
+				|| $vacationMode === Constants::VACATION_MODE_INHERIT;
 			$manualDays = isset($params['manualDays']) ? $this->parseDecimalInput($params['manualDays'], 0.0) : null;
 			$tariffRuleSetId = isset($params['tariffRuleSetId']) && $params['tariffRuleSetId'] !== null && $params['tariffRuleSetId'] !== ''
 				? (int)$params['tariffRuleSetId']
@@ -3096,6 +3106,15 @@ class AdminController extends Controller
 			$overrideReason = isset($params['overrideReason']) ? trim((string)$params['overrideReason']) : null;
 			$effectiveFrom = new \DateTime((string)($params['effectiveFrom'] ?? date('Y-m-d')));
 			$effectiveTo = !empty($params['effectiveTo']) ? new \DateTime((string)$params['effectiveTo']) : null;
+			// Defensive cross-field consistency: an `inherit` row cannot also
+			// carry manual days or a tariff rule set (those would be silently
+			// ignored by the engine and confuse later operators who saw the
+			// numbers in the DB).
+			if ($inheritLowerLayers) {
+				$manualDays = null;
+				$tariffRuleSetId = null;
+				$overrideReason = $overrideReason !== null && $overrideReason !== '' ? $overrideReason : null;
+			}
 
 			if ($vacationMode === Constants::VACATION_MODE_TARIFF_RULE_BASED && $tariffRuleSetId !== null) {
 				try {
@@ -3124,6 +3143,7 @@ class AdminController extends Controller
 					$currentPolicy->setTariffRuleSetId($tariffRuleSetId);
 					$currentPolicy->setOverrideReason($overrideReason);
 					$currentPolicy->setEffectiveTo($effectiveTo);
+					$currentPolicy->setInheritLowerLayers($inheritLowerLayers);
 					$currentPolicy->setUpdatedAt(new \DateTime());
 					$errors = $currentPolicy->validate();
 					if (!empty($errors)) {
@@ -3154,6 +3174,7 @@ class AdminController extends Controller
 			$assignment->setOverrideReason($overrideReason);
 			$assignment->setEffectiveFrom($effectiveFrom);
 			$assignment->setEffectiveTo($effectiveTo);
+			$assignment->setInheritLowerLayers($inheritLowerLayers);
 			$assignment->setCreatedBy($this->getPerformedBy());
 			$assignment->setCreatedAt(new \DateTime());
 			$assignment->setUpdatedAt(new \DateTime());
@@ -3180,46 +3201,96 @@ class AdminController extends Controller
 			if ($userId === '') {
 				return new JSONResponse(['success' => false, 'error' => $this->l10n->t('User ID is required')], Http::STATUS_BAD_REQUEST);
 			}
+			// REQ-EC-10 / IDOR guard: verify the simulated user actually exists.
+			// Without this an admin probing a typo'd UID would get a synthetic
+			// "legacy fallback 25 d." result and we would have no clean way to
+			// distinguish "no policy configured" from "no such user".
+			if ($this->userManager->get($userId) === null) {
+				return new JSONResponse(['success' => false, 'error' => $this->l10n->t('User not found')], Http::STATUS_NOT_FOUND);
+			}
 			$asOfDate = new \DateTime((string)($params['asOfDate'] ?? date('Y-m-d')));
 			$draftPolicy = $params['draftPolicy'] ?? null;
-			if (is_array($draftPolicy)) {
-				$policy = new UserVacationPolicyAssignment();
-				$policy->setUserId($userId);
-				$policy->setVacationMode((string)($draftPolicy['vacationMode'] ?? Constants::VACATION_MODE_MANUAL_FIXED));
-				$policy->setManualDays(isset($draftPolicy['manualDays']) ? $this->parseDecimalInput($draftPolicy['manualDays'], 0.0) : null);
-				$policy->setTariffRuleSetId(isset($draftPolicy['tariffRuleSetId']) && $draftPolicy['tariffRuleSetId'] !== '' ? (int)$draftPolicy['tariffRuleSetId'] : null);
-				$policy->setOverrideReason(isset($draftPolicy['overrideReason']) ? trim((string)$draftPolicy['overrideReason']) : null);
-				$policy->setEffectiveFrom($asOfDate);
-				$policy->setEffectiveTo(null);
-				$policy->setCreatedBy('simulation');
-				$policy->setCreatedAt(new \DateTime());
-				$policy->setUpdatedAt(new \DateTime());
-				$errors = $policy->validate();
-				if (!empty($errors)) {
-					$translatedErrors = [];
-					foreach ($errors as $field => $message) {
-						$translatedErrors[$field] = $this->l10n->t($message);
+			// REQ-WF-05: optional hypothetical team membership for what-if
+			// scenarios ("what would this user's entitlement be if we moved
+			// them to team X?"). Accepts a list of team IDs; engine treats
+			// them as L2 membership candidates for *this call only* (no
+			// persistence). Invalid / unknown IDs are silently filtered out
+			// so admins can pass mixed UI state without an error 400.
+			$hypotheticalTeamIds = null;
+			if (isset($params['hypotheticalTeamIds']) && is_array($params['hypotheticalTeamIds'])) {
+				$hypotheticalTeamIds = [];
+				foreach ($params['hypotheticalTeamIds'] as $raw) {
+					if ($raw === null || $raw === '') {
+						continue;
 					}
-					return new JSONResponse([
-						'success' => false,
-						'error' => $this->l10n->t('Validation failed'),
-						'errors' => $translatedErrors,
-					], Http::STATUS_BAD_REQUEST);
+					$tid = (int)$raw;
+					if ($tid > 0) {
+						$hypotheticalTeamIds[] = $tid;
+					}
 				}
-				$result = $this->vacationEntitlementEngine->computeForPolicy($userId, $policy, $asOfDate);
-			} else {
-				$result = $this->vacationEntitlementEngine->computeForDate($userId, $asOfDate);
+				$hypotheticalTeamIds = array_values(array_unique($hypotheticalTeamIds));
+			}
+			if ($hypotheticalTeamIds !== null) {
+				$this->vacationEntitlementEngine->setHypotheticalTeams($userId, $hypotheticalTeamIds);
+			}
+			try {
+				if (is_array($draftPolicy)) {
+					$policy = new UserVacationPolicyAssignment();
+					$policy->setUserId($userId);
+					$draftMode = (string)($draftPolicy['vacationMode'] ?? Constants::VACATION_MODE_MANUAL_FIXED);
+					$draftInherit = !empty($draftPolicy['inheritLowerLayers'])
+						|| $draftMode === Constants::VACATION_MODE_INHERIT;
+					$policy->setVacationMode($draftMode);
+					$policy->setManualDays(
+						$draftInherit
+							? null
+							: (isset($draftPolicy['manualDays']) ? $this->parseDecimalInput($draftPolicy['manualDays'], 0.0) : null)
+					);
+					$policy->setTariffRuleSetId(
+						$draftInherit
+							? null
+							: (isset($draftPolicy['tariffRuleSetId']) && $draftPolicy['tariffRuleSetId'] !== '' ? (int)$draftPolicy['tariffRuleSetId'] : null)
+					);
+					$policy->setOverrideReason(isset($draftPolicy['overrideReason']) ? trim((string)$draftPolicy['overrideReason']) : null);
+					$policy->setInheritLowerLayers($draftInherit);
+					$policy->setEffectiveFrom($asOfDate);
+					$policy->setEffectiveTo(null);
+					$policy->setCreatedBy('simulation');
+					$policy->setCreatedAt(new \DateTime());
+					$policy->setUpdatedAt(new \DateTime());
+					$errors = $policy->validate();
+					if (!empty($errors)) {
+						$translatedErrors = [];
+						foreach ($errors as $field => $message) {
+							$translatedErrors[$field] = $this->l10n->t($message);
+						}
+						return new JSONResponse([
+							'success' => false,
+							'error' => $this->l10n->t('Validation failed'),
+							'errors' => $translatedErrors,
+						], Http::STATUS_BAD_REQUEST);
+					}
+					$result = $this->vacationEntitlementEngine->computeForPolicy($userId, $policy, $asOfDate);
+				} else {
+					$result = $this->vacationEntitlementEngine->computeForDate($userId, $asOfDate);
+				}
+			} finally {
+				if ($hypotheticalTeamIds !== null) {
+					$this->vacationEntitlementEngine->clearHypotheticalTeams($userId);
+				}
 			}
 			return new JSONResponse([
 				'success' => true,
 				'userId' => $userId,
 				'asOfDate' => $asOfDate->format('Y-m-d'),
-				'effectiveEntitlementDays' => round((float)$result['days'], 2),
+				'effectiveEntitlementDays' => $this->vacationEntitlementEngine->roundDays((float)$result['days']),
 				'source' => $result['source'],
 				'ruleSetId' => $result['ruleSetId'],
+				'hypotheticalTeamIds' => $hypotheticalTeamIds,
 				'calculationTrace' => $result['trace'],
 			]);
 		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error('simulateVacationPolicy failed: ' . $e->getMessage(), ['exception' => $e]);
 			return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Failed to simulate vacation policy')], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}
@@ -3465,6 +3536,22 @@ class AdminController extends Controller
 	 */
 	public function vacationLayers(): TemplateResponse
 	{
+		// Load the same common bundle every other admin page loads, so the
+		// shared theme (colours, focus rings, `.visually-hidden`, app layout,
+		// responsive grid, …) is available here too. Without this the page
+		// rendered correctly only because it is theme-safe by accident; with
+		// it we also pick up future common updates for free.
+		Util::addStyle('arbeitszeitcheck', 'common/colors');
+		Util::addStyle('arbeitszeitcheck', 'common/typography');
+		Util::addStyle('arbeitszeitcheck', 'common/base');
+		Util::addStyle('arbeitszeitcheck', 'common/components');
+		Util::addStyle('arbeitszeitcheck', 'common/layout');
+		Util::addStyle('arbeitszeitcheck', 'common/utilities');
+		Util::addStyle('arbeitszeitcheck', 'common/accessibility');
+		Util::addStyle('arbeitszeitcheck', 'common/app-layout');
+		Util::addStyle('arbeitszeitcheck', 'common/responsive');
+		Util::addStyle('arbeitszeitcheck', 'navigation');
+		Util::addStyle('arbeitszeitcheck', 'arbeitszeitcheck-main');
 		Util::addStyle('arbeitszeitcheck', 'admin-vacation-layers');
 		Util::addScript('arbeitszeitcheck', 'admin-vacation-layers');
 		$response = new TemplateResponse('arbeitszeitcheck', 'admin-vacation-layers', [

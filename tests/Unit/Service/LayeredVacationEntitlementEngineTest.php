@@ -343,6 +343,72 @@ class LayeredVacationEntitlementEngineTest extends TestCase
 	}
 
 	/* ---------------------------------------------------------------- *
+	 * REQ-WF-05 — what-if hypothetical team membership simulation
+	 * ---------------------------------------------------------------- */
+
+	public function testHypotheticalTeamsOverrideRealMembershipForL2Resolution(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		// Real membership: user is in team 1 (no policy → falls through).
+		// We don't even need findByUserId to be called since the override
+		// short-circuits the real lookup.
+		$mocks['teamMember']->expects($this->never())->method('findByUserId');
+		$mocks['team']->method('getParentMap')->willReturn([1 => null, 5 => 1, 9 => 1]);
+		$mocks['teamPolicy']->method('findActiveByTeamIds')
+			->willReturn([$this->makeTeamPolicy(101, 9, 32.0)]);
+		$mocks['org']->method('findActiveByDate')->willReturn($this->makeOrgDefault(20.0));
+
+		$engine->setHypotheticalTeams('u1', [9]);
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+
+		$this->assertSame(32.0, $result['days']);
+		$this->assertSame('L2', $result['matchedLayer']);
+		$this->assertTrue($result['trace']['winner']['hypothetical'] ?? false);
+		$l2 = null;
+		foreach ($result['trace']['layers_evaluated'] as $row) {
+			if (($row['layer'] ?? null) === 'L2') {
+				$l2 = $row;
+				break;
+			}
+		}
+		$this->assertNotNull($l2);
+		$this->assertTrue($l2['hypothetical'] ?? false);
+	}
+
+	public function testClearHypotheticalTeamsRestoresRealMembership(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['teamMember']->method('findByUserId')->willReturn([]);
+		$mocks['org']->method('findActiveByDate')->willReturn($this->makeOrgDefault(20.0));
+
+		$engine->setHypotheticalTeams('u1', [9]);
+		$engine->clearHypotheticalTeams('u1');
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+
+		$this->assertSame('L0', $result['matchedLayer']);
+		$this->assertSame(20.0, $result['days']);
+	}
+
+	public function testHypotheticalTeamsAreSanitised(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['team']->method('getParentMap')->willReturn([1 => null, 5 => 1]);
+		$mocks['teamPolicy']->method('findActiveByTeamIds')
+			->with($this->callback(static function ($ids) {
+				// 0, -1 and duplicates are filtered out before reaching the
+				// policy mapper.
+				return is_array($ids) && $ids === [5];
+			}))
+			->willReturn([$this->makeTeamPolicy(77, 5, 26.0)]);
+
+		$engine->setHypotheticalTeams('u1', [5, 0, -1, 5]);
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+
+		$this->assertSame(26.0, $result['days']);
+		$this->assertSame('L2', $result['matchedLayer']);
+	}
+
+	/* ---------------------------------------------------------------- *
 	 * Edge cases (REQ-ENT-08..10)
 	 * ---------------------------------------------------------------- */
 

@@ -1130,6 +1130,10 @@ class AdminControllerTest extends TestCase
 				'manualDays' => '28,5',
 			],
 		]);
+		// REQ-EC-10 — the controller now hard-fails 404 on unknown UIDs, so
+		// the happy path must explicitly stand up an IUser mock.
+		$user = $this->createMock(IUser::class);
+		$this->userManager->method('get')->with('alice')->willReturn($user);
 
 		$this->vacationEntitlementEngine->expects($this->once())
 			->method('computeForPolicy')
@@ -1148,6 +1152,10 @@ class AdminControllerTest extends TestCase
 				'ruleSetId' => null,
 				'trace' => ['formula' => 'manual'],
 			]);
+		// The controller now explicitly rounds via the engine; mock the
+		// canonical rounding so the assertion stays meaningful.
+		$this->vacationEntitlementEngine->method('roundDays')
+			->willReturnCallback(static fn (float $v) => round($v, 2));
 
 		$response = $this->controller->simulateVacationPolicy();
 		$data = $response->getData();
@@ -1155,6 +1163,60 @@ class AdminControllerTest extends TestCase
 		$this->assertTrue($data['success']);
 		$this->assertSame(28.5, $data['effectiveEntitlementDays']);
 		$this->assertSame('manual', $data['source']);
+	}
+
+	public function testSimulateVacationPolicyReturns404ForUnknownUser(): void
+	{
+		$this->request->method('getParams')->willReturn([
+			'userId' => 'ghost',
+			'asOfDate' => '2026-04-20',
+		]);
+		$this->userManager->method('get')->with('ghost')->willReturn(null);
+
+		$this->vacationEntitlementEngine->expects($this->never())->method('computeForDate');
+		$this->vacationEntitlementEngine->expects($this->never())->method('computeForPolicy');
+
+		$response = $this->controller->simulateVacationPolicy();
+		$this->assertSame(Http::STATUS_NOT_FOUND, $response->getStatus());
+		$data = $response->getData();
+		$this->assertFalse($data['success']);
+	}
+
+	public function testSimulateVacationPolicyForwardsHypotheticalTeams(): void
+	{
+		$this->request->method('getParams')->willReturn([
+			'userId' => 'alice',
+			'asOfDate' => '2026-04-20',
+			'hypotheticalTeamIds' => ['11', '22', '0', '22', 'abc'],
+		]);
+		$user = $this->createMock(IUser::class);
+		$this->userManager->method('get')->with('alice')->willReturn($user);
+
+		$this->vacationEntitlementEngine->expects($this->once())
+			->method('setHypotheticalTeams')
+			->with('alice', $this->callback(static function ($ids) {
+				return is_array($ids) && $ids === [11, 22];
+			}));
+		$this->vacationEntitlementEngine->expects($this->once())
+			->method('computeForDate')
+			->with('alice', $this->isInstanceOf(\DateTimeInterface::class))
+			->willReturn([
+				'days' => 30,
+				'source' => 'team',
+				'ruleSetId' => null,
+				'trace' => ['matched_layer' => 'L2'],
+			]);
+		$this->vacationEntitlementEngine->expects($this->once())
+			->method('clearHypotheticalTeams')
+			->with('alice');
+		$this->vacationEntitlementEngine->method('roundDays')
+			->willReturnCallback(static fn (float $v) => round($v, 2));
+
+		$response = $this->controller->simulateVacationPolicy();
+		$this->assertSame(Http::STATUS_OK, $response->getStatus());
+		$data = $response->getData();
+		$this->assertTrue($data['success']);
+		$this->assertSame([11, 22], $data['hypotheticalTeamIds']);
 	}
 
 	/**

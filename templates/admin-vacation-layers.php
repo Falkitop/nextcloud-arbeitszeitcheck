@@ -208,9 +208,31 @@ $layeredEnabled = (bool)($_['layeredEnabled'] ?? true);
                         <input type="date" id="sim-date" name="asOfDate" class="form-input"
                                value="<?php p(date('Y-m-d')); ?>">
                     </div>
-                    <div class="layer-form__row">
+                    <div class="layer-form__row layer-form__row--wide">
+                        <fieldset class="sim-hypothesis" aria-describedby="sim-hypothesis-help">
+                            <legend><?php p($l->t('What-if (optional)')); ?></legend>
+                            <p id="sim-hypothesis-help" class="form-help">
+                                <?php p($l->t('Pretend the employee is a member of one or more teams to see how their entitlement would change. Real team memberships are not modified.')); ?>
+                            </p>
+                            <label class="form-label" for="sim-hypothetical-teams">
+                                <?php p($l->t('Hypothetical team membership')); ?>
+                            </label>
+                            <select id="sim-hypothetical-teams" name="hypotheticalTeamIds[]"
+                                    multiple
+                                    size="4"
+                                    class="form-select form-select--multi"
+                                    aria-describedby="sim-hypothetical-teams-help"></select>
+                            <p id="sim-hypothetical-teams-help" class="form-help">
+                                <?php p($l->t('Hold Ctrl/Cmd or Shift to pick several teams. Leave empty to use the employee’s real membership.')); ?>
+                            </p>
+                        </fieldset>
+                    </div>
+                    <div class="layer-form__row layer-form__row--actions">
                         <button type="submit" class="btn btn--primary">
                             <?php p($l->t('Run simulation')); ?>
+                        </button>
+                        <button type="reset" id="sim-reset" class="btn btn--secondary">
+                            <?php p($l->t('Reset')); ?>
                         </button>
                     </div>
                 </form>

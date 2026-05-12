@@ -14,6 +14,25 @@
 - Neu: `LayeredVacationEntitlementEngineTest` erhält 14 Fälle für Degraded-Flags und das Pass-Through der redigierten Trace; `LayeredVacationDefaultsServiceTest` 6 Fälle für `previewImpact` (Validierung, fehlende Deps, Model-Zählung, Team-Subtree-Aggregation); `AdminControllerTest` 4 Fälle für 409 beim Speichern/Löschen und 200/400 beim Impact-Endpoint.
 - 534 Unit-Tests grün.
 
+## 1.3.1 – 2026-05-12
+
+### Neu
+
+- **L3-Vererbung als Option im Admin-Benutzerdialog** (REQ-WF-04). Die Auswahl „Wie soll der Jahresurlaub berechnet werden?" enthält jetzt „Aus Team / Modell / Organisation übernehmen" als erstklassige Option. Bei Auswahl werden manuelle Tage / Tarifregelwerk / Begründung deaktiviert (die Engine würde sie ohnehin ignorieren). Persistiert wird sowohl die Boolean-Spalte `inheritLowerLayers` als auch der Sentinel `vacation_mode = 'inherit'`, damit beide Repräsentationen synchron bleiben. Die Admin-Benutzerliste liefert `inheritLowerLayers` jetzt im Payload mit, sodass der Dialog den Zustand korrekt zurückspielt.
+- **Hypothetische Teammitgliedschaft im Simulator** (REQ-WF-05). Der Simulator auf `/admin/vacation-layers` erlaubt HR jetzt, ein *gedachtes* Team-Set für eine What-if-Berechnung anzugeben („Was bekäme die Mitarbeiterin, wenn sie zum Team Berlin wechselt?") – ganz ohne die echten Teammitgliedschaften zu ändern. Die Engine wertet L2 gegen das Override aus und propagiert ein explizites `hypothetical: true`-Flag in den Trace; die UI zeigt ein dediziertes Banner, damit das Ergebnis nie mit dem *aktuellen* Anspruch verwechselt wird.
+- **Erkennung überlappender geschlossener L0-Zeiträume** (REQ-DAT-03). `OrgVacationDefaultMapper::findOverlappingRanges` lehnt neue Organisations-Defaults aktiv ab, wenn sie sich mit einer bestehenden *geschlossenen* Gültigkeit überschneiden. Zuvor wurden nur offene Bereiche automatisch geschlossen; geschlossen-vs-geschlossen-Konflikte fielen erst zur Auflösungszeit als `degraded_org_default_collision` auf. Die Admin-UI zeigt zusätzlich ein `role="alert"`-Warnbanner über der aktiven L0-Zeile, sobald mehr als eine Regel heute gleichzeitig aktiv ist – sichtbar bevor überhaupt eine Simulation gestartet wird.
+- **Progressive Disclosure im Simulator** (REQ-UX-02). Das Simulator-Ergebnis startet mit einem Ein-Satz-Resümee („Am {Datum} erhält die/der Mitarbeitende {Tage} Urlaubstage pro Jahr, festgelegt durch die {Ebene}.") inklusive großgesetzter Tage. Die volle Schicht-Trace landet in einem aufklappbaren `<details>`-Element; L2-Tiebreaker-Kandidaten (Tiefe / Priorität / Policy-ID) in einem geschachtelten `<details>`. So bleibt die Detail-Tiefe für Auditoren erhalten, ohne HR im Default-Fall mit JSON zu überfordern.
+
+### Behoben
+
+- **Fokusrückgabe nach Dialog** (WCAG 2.4.3 / Fokusreihenfolge). Der Vacation-Layer-Dialog merkt sich beim Öffnen das auslösende Element und gibt den Fokus bei explizitem Schließen *und* bei ESC dorthin zurück. Bisher landete der Fokus auf `<body>`, sodass Tastatur­nutzer:innen die Seitenhierarchie erneut durchhangeln mussten.
+- **Simulator-Fokus & Fehlermeldung**. Nach einer Simulation erhält die Ergebnis­region (`aria-live="polite"`, `tabindex="-1"`) den Fokus, damit Screenreader das Ergebnis sofort vorlesen. Fehler laufen jetzt über die bestehende `aria-live`-Statusregion und stehen nicht mehr ausschließlich in der Ergebniskarte.
+
+### Tests
+
+- Neu: 7 Fälle — `LayeredVacationEntitlementEngineTest` 3× für hypothetische Team-Injektion (Override, Cleanup, Sanitisierung); `LayeredVacationDefaultsServiceTest` 2× für die Ablehnung überlappender geschlossener Bereiche vs. Auto-Trim offener Bereiche; `AdminControllerTest` 2× für IDOR-404 im Simulator und das Weiterreichen hypothetischer Teams.
+- 548 Unit-Tests grün (vorher 541).
+
 ## 1.3.0 – 2026-05-12
 
 ### Neu

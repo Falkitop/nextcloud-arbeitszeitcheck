@@ -127,6 +127,72 @@ class OrgVacationDefaultMapper extends QBMapper
 	}
 
 	/**
+	 * Detect existing rows whose validity range overlaps a *new* row defined
+	 * by `$newFrom`/`$newTo` (inclusive). Used by the service layer to
+	 * reject overlapping closed ranges (`REQ-DAT-03`): two L0 rows that
+	 * cover the same calendar date would silently produce a
+	 * `degraded_org_default_collision` flag at resolution time. We prefer
+	 * to refuse the write *before* the data lands instead of relying on
+	 * the degraded-state flag as a backstop.
+	 *
+	 * Returns an associative summary `[id, effective_from, effective_to]`
+	 * for every overlapping row so the validation error can name the
+	 * conflicting record.
+	 *
+	 * @return list<array{id: int, effective_from: string, effective_to: ?string}>
+	 */
+	public function findOverlappingRanges(\DateTime $newFrom, ?\DateTime $newTo, ?int $excludeId = null): array
+	{
+		$fromIso = $newFrom->format('Y-m-d');
+		$toIso = $newTo !== null ? $newTo->format('Y-m-d') : null;
+		try {
+			$qb = $this->db->getQueryBuilder();
+			$qb->select('id', 'effective_from', 'effective_to')
+				->from($this->getTableName());
+
+			// A pre-existing row (eFrom, eTo) overlaps the new range
+			// (newFrom, newTo) iff:
+			//   eFrom <= newTo (or newTo IS NULL, treated as +inf) AND
+			//   (eTo IS NULL OR eTo >= newFrom)
+			$conds = [];
+			if ($toIso === null) {
+				// New range is open-ended; only need eTo IS NULL OR eTo >= newFrom.
+				$conds[] = $qb->expr()->orX(
+					$qb->expr()->isNull('effective_to'),
+					$qb->expr()->gte('effective_to', $qb->createNamedParameter($fromIso, IQueryBuilder::PARAM_STR))
+				);
+			} else {
+				$conds[] = $qb->expr()->lte('effective_from', $qb->createNamedParameter($toIso, IQueryBuilder::PARAM_STR));
+				$conds[] = $qb->expr()->orX(
+					$qb->expr()->isNull('effective_to'),
+					$qb->expr()->gte('effective_to', $qb->createNamedParameter($fromIso, IQueryBuilder::PARAM_STR))
+				);
+			}
+			$qb->where(...$conds);
+			if ($excludeId !== null) {
+				$qb->andWhere($qb->expr()->neq('id', $qb->createNamedParameter($excludeId, IQueryBuilder::PARAM_INT)));
+			}
+			$qb->orderBy('effective_from', 'ASC');
+			$cursor = $qb->executeQuery();
+			$out = [];
+			while ($row = $cursor->fetch()) {
+				$out[] = [
+					'id' => (int)$row['id'],
+					'effective_from' => (string)$row['effective_from'],
+					'effective_to' => $row['effective_to'] !== null ? (string)$row['effective_to'] : null,
+				];
+			}
+			$cursor->closeCursor();
+			return $out;
+		} catch (DBException $e) {
+			if ($e->getReason() === DBException::REASON_DATABASE_OBJECT_NOT_FOUND) {
+				return [];
+			}
+			throw $e;
+		}
+	}
+
+	/**
 	 * Close any currently open-ended row that overlaps a new row starting on
 	 * `$newFrom`, by setting `effective_to = newFrom - 1 day`. Returns the
 	 * IDs whose validity was trimmed so the audit log can record them.

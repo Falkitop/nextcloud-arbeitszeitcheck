@@ -173,6 +173,39 @@
     renderL0();
     renderL1();
     renderL2();
+    renderHypotheticalTeamPicker();
+  }
+
+  /**
+   * REQ-ENT-10: detect locally whether multiple L0 rows are active on
+   * "today" using the history we already loaded, so we can surface a
+   * warning banner in the admin UI before someone clicks Save. The engine
+   * still fails closed when this slips through, but the admin should not
+   * need to read the engine logs to discover the conflict.
+   */
+  function detectOrgCollision() {
+    const history = (state.org && Array.isArray(state.org.history)) ? state.org.history : [];
+    if (history.length < 2) return false;
+    const today = new Date().toISOString().slice(0, 10);
+    let actives = 0;
+    history.forEach((row) => {
+      const from = row.effectiveFrom || '';
+      const to = row.effectiveTo || null;
+      if (from && from <= today && (to === null || to >= today)) actives += 1;
+    });
+    return actives > 1;
+  }
+
+  function renderHypotheticalTeamPicker() {
+    const select = document.getElementById('sim-hypothetical-teams');
+    if (!select) return;
+    const teams = (state.team && Array.isArray(state.team.availableTeams)) ? state.team.availableTeams : [];
+    const opts = teams
+      .slice()
+      .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
+      .map((tm) => `<option value="${escape(tm.id)}">${escape(tm.name)}</option>`)
+      .join('');
+    select.innerHTML = opts;
   }
 
   function renderL0() {
@@ -184,7 +217,10 @@
         setHtml(activeEl, `<p>${escape(t('No organisation default configured. The legacy fallback of 25 days/year applies until you add a default.', 'No organisation default configured. The legacy fallback of 25 days/year applies until you add a default.'))}</p>`);
       } else {
         activeEl.classList.remove('layer-card__active--empty');
-        setHtml(activeEl, renderActiveRow(active, [
+        const collisionBanner = detectOrgCollision()
+          ? `<p class="layer-card__warning" role="alert">${escape(t('Warning: more than one organisation default is active on the same date. Resolution falls back to the latest row and emits a degraded flag. Please remove the conflicting row.', 'Warning: more than one organisation default is active on the same date. Resolution falls back to the latest row and emits a degraded flag. Please remove the conflicting row.'))}</p>`
+          : '';
+        setHtml(activeEl, collisionBanner + renderActiveRow(active, [
           { label: t('Mode', 'Mode'), value: fmtMode(active.vacationMode) },
           { label: t('Days', 'Days'), value: active.manualDays != null ? fmtDays(active.manualDays) : '—' },
           { label: t('Tariff rule set', 'Tariff rule set'), value: fmtRuleSet(active.tariffRuleSetId) },
@@ -277,8 +313,13 @@
   const dialogFeedback = document.getElementById('layer-dialog-feedback');
   const dialogForm = document.getElementById('layer-dialog-form');
   let dialogContext = null; // { layer: 'org'|'model'|'team' }
+  // WCAG 2.4.3 — remember the trigger so we can return focus when the
+  // dialog closes (otherwise focus drops to <body> and keyboard users have
+  // to tab back from the very top).
+  let dialogReturnFocus = null;
 
   function openDialog(context) {
+    dialogReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     dialogContext = context;
     dialogTitle.textContent = context.title;
     dialogIntro.textContent = context.intro || '';
@@ -286,12 +327,14 @@
     dialogFeedback.textContent = '';
     resetImpactPreview();
     if (typeof dialog.showModal === 'function') {
-      dialog.showModal();
+      try { dialog.showModal(); } catch (e) { dialog.setAttribute('open', 'open'); }
     } else {
       dialog.setAttribute('open', 'open');
     }
     const first = dialog.querySelector('input, select, textarea');
-    if (first) first.focus();
+    if (first) {
+      try { first.focus(); } catch (e) { /* noop */ }
+    }
     // Initial preview — for `org` no target is needed; for `model` / `team`
     // we wait for the user to pick a target before firing.
     schedulePreview();
@@ -303,6 +346,23 @@
     }
     dialog.removeAttribute('open');
     dialogContext = null;
+    if (dialogReturnFocus && typeof dialogReturnFocus.focus === 'function') {
+      try { dialogReturnFocus.focus(); } catch (e) { /* noop */ }
+    }
+    dialogReturnFocus = null;
+  }
+
+  // Native <dialog>'s ESC closes via "cancel" — wire focus return there too.
+  if (dialog) {
+    dialog.addEventListener('cancel', () => {
+      // The browser will close the dialog automatically; we only need to
+      // restore focus and clear our state.
+      dialogContext = null;
+      if (dialogReturnFocus && typeof dialogReturnFocus.focus === 'function') {
+        try { dialogReturnFocus.focus(); } catch (e) { /* noop */ }
+      }
+      dialogReturnFocus = null;
+    });
   }
 
   document.getElementById('layer-dialog-cancel').addEventListener('click', closeDialog);
@@ -728,17 +788,43 @@
       const asOfDate = document.getElementById('sim-date').value || new Date().toISOString().slice(0, 10);
       if (!userId) {
         notifyError(t('Please pick an employee first.', 'Please pick an employee first.'));
+        if (simUser) simUser.focus();
         return;
+      }
+      const hypothetical = document.getElementById('sim-hypothetical-teams');
+      const hypotheticalTeamIds = hypothetical
+        ? Array.from(hypothetical.selectedOptions).map((o) => parseInt(o.value, 10)).filter((n) => Number.isInteger(n) && n > 0)
+        : [];
+      const payload = { userId, asOfDate };
+      if (hypotheticalTeamIds.length > 0) {
+        payload.hypotheticalTeamIds = hypotheticalTeamIds;
       }
       Utils.ajax(URLS.simulate, {
         method: 'POST',
-        data: { userId, asOfDate },
+        data: payload,
         onSuccess: (data) => renderSimResult(data),
         onError: (err) => {
-          simResult.innerHTML = `<p class="layer-card__placeholder">${escape((err && err.error) || t('Could not run simulation', 'Could not run simulation'))}</p>`;
+          const errMsg = (err && err.error) || t('Could not run simulation', 'Could not run simulation');
+          simResult.innerHTML = `<p class="layer-card__placeholder" role="alert">${escape(errMsg)}</p>`;
+          announce(errMsg);
         },
       });
     });
+
+    const simReset = document.getElementById('sim-reset');
+    if (simReset) {
+      simReset.addEventListener('click', () => {
+        simSelectedUserId = null;
+        if (simUser) simUser.value = '';
+        const simDate = document.getElementById('sim-date');
+        if (simDate) simDate.value = new Date().toISOString().slice(0, 10);
+        const hypothetical = document.getElementById('sim-hypothetical-teams');
+        if (hypothetical) {
+          Array.from(hypothetical.options).forEach((o) => { o.selected = false; });
+        }
+        if (simResult) simResult.innerHTML = '';
+      });
+    }
   }
 
   function renderLayerFlags(layer) {
@@ -753,11 +839,38 @@
     if (layer.partial_history) {
       flags.push({ kind: 'info', label: t('Partial team history', 'Partial team history') });
     }
+    if (layer.hypothetical) {
+      flags.push({ kind: 'info', label: t('Hypothetical team', 'Hypothetical team') });
+    }
     if (layer.degraded) {
       flags.push({ kind: 'warn', label: t('Degraded fallback', 'Degraded fallback') });
     }
     if (!flags.length) return '';
     return flags.map((f) => `<span class="trace-flag trace-flag--${escape(f.kind)}">${escape(f.label)}</span>`).join(' ');
+  }
+
+  function humanLayerLabel(layer) {
+    const map = {
+      L3: t('Individual policy', 'Individual policy'),
+      L2: t('Team / cohort policy', 'Team / cohort policy'),
+      L1: t('Working time model default', 'Working time model default'),
+      L0: t('Organisation default', 'Organisation default'),
+      legacy: t('Legacy fallback (25 d.)', 'Legacy fallback (25 d.)'),
+    };
+    return map[layer] || layer || '—';
+  }
+
+  function renderCandidatesList(candidates) {
+    if (!Array.isArray(candidates) || candidates.length < 2) return '';
+    const items = candidates.map((c, idx) => {
+      const tn = getTeamLabel(c.team_id);
+      const winner = idx === 0 ? ` <span class="trace-flag trace-flag--info">${escape(t('Winner', 'Winner'))}</span>` : '';
+      return `<li><strong>${escape(tn)}</strong> ` +
+        `<span class="form-help">(${escape(t('depth', 'depth'))} ${escape(String(c.team_depth))}, ` +
+        `${escape(t('priority', 'priority'))} ${escape(String(c.priority))}, ` +
+        `${escape(t('policy', 'policy'))} #${escape(String(c.policy_id))})</span>${winner}</li>`;
+    }).join('');
+    return `<details class="layer-sim__details"><summary>${escape(t('Tie-break details (candidate teams)', 'Tie-break details (candidate teams)'))}</summary><ol>${items}</ol></details>`;
   }
 
   function renderInnerFlags(inner) {
@@ -779,49 +892,81 @@
 
   function renderSimResult(data) {
     if (!data || data.success !== true) {
-      simResult.innerHTML = `<p class="layer-card__placeholder">${escape(t('Could not run simulation', 'Could not run simulation'))}</p>`;
+      simResult.innerHTML = `<p class="layer-card__placeholder" role="alert">${escape(t('Could not run simulation', 'Could not run simulation'))}</p>`;
       return;
     }
     const trace = data.calculationTrace || {};
     const layers = Array.isArray(trace.layers_evaluated) ? trace.layers_evaluated : [];
-    const winnerLabel = (trace.winner && trace.winner.matched_layer) || data.source || '—';
+    const matchedLayer = (trace.matched_layer || data.matchedLayer) || '—';
     const rows = layers.map((layer) => {
       const matched = layer.matched === true;
       const flagsHtml = renderLayerFlags(layer);
+      const candidatesHtml = (layer.layer === 'L2' && matched && Array.isArray(layer.candidates))
+        ? renderCandidatesList(layer.candidates)
+        : '';
+      const teamLabel = (layer.layer === 'L2' && matched && layer.team_id)
+        ? `<br><span class="form-help">${escape(t('Team', 'Team'))}: ${escape(getTeamLabel(layer.team_id))}</span>`
+        : '';
+      const modelLabel = (layer.layer === 'L1' && matched && layer.working_time_model_id)
+        ? `<br><span class="form-help">${escape(t('Model', 'Model'))}: ${escape(getModelLabel(layer.working_time_model_id))}</span>`
+        : '';
       return `
         <tr data-matched="${matched ? 'true' : 'false'}">
-          <td>${escape(layer.layer || '')}</td>
+          <td><strong>${escape(layer.layer || '')}</strong><br><span class="form-help">${escape(humanLayerLabel(layer.layer))}</span></td>
           <td>${matched ? escape(t('Match', 'Match')) : escape(t('Skipped', 'Skipped'))}</td>
-          <td>${escape(layer.reason || layer.mode || '')}${flagsHtml ? '<br>' + flagsHtml : ''}</td>
+          <td>${escape(fmtMode(layer.mode || layer.reason || ''))}${flagsHtml ? '<br>' + flagsHtml : ''}${teamLabel}${modelLabel}${candidatesHtml}</td>
           <td>${escape(layer.days != null ? fmtDays(layer.days) : '—')}</td>
         </tr>
       `;
     }).join('');
     const innerFlags = renderInnerFlags(trace.inner);
-    const degradedBanner = trace.degraded
-      ? `<p class="layer-sim__banner layer-sim__banner--warn" role="alert">${escape(t('Heads up: this resolution ran in a degraded state. See the flags below for details.', 'Heads up: this resolution ran in a degraded state. See the flags below for details.'))}</p>`
-      : '';
+    const banners = [];
+    if (trace.degraded) {
+      banners.push(`<p class="layer-sim__banner layer-sim__banner--warn" role="alert">${escape(t('Heads up: this resolution ran in a degraded state. See the flags below for details.', 'Heads up: this resolution ran in a degraded state. See the flags below for details.'))}</p>`);
+    }
+    if (Array.isArray(data.hypotheticalTeamIds) && data.hypotheticalTeamIds.length > 0) {
+      const names = data.hypotheticalTeamIds.map(getTeamLabel).join(', ');
+      banners.push(`<p class="layer-sim__banner layer-sim__banner--info" role="status">${escape(t('What-if mode: hypothetical team membership applied —', 'What-if mode: hypothetical team membership applied —'))} ${escape(names)}.</p>`);
+    }
+    const summaryDays = fmtDays(data.effectiveEntitlementDays);
+    const summarySentence = data.hypotheticalTeamIds && data.hypotheticalTeamIds.length > 0
+      ? t('In this what-if scenario, the employee would receive {days} vacation days per year, determined by the {layer}.', 'In this what-if scenario, the employee would receive {days} vacation days per year, determined by the {layer}.')
+      : t('On {date}, the employee receives {days} vacation days per year, determined by the {layer}.', 'On {date}, the employee receives {days} vacation days per year, determined by the {layer}.');
+    const summaryText = summarySentence
+      .replace('{date}', fmtDate(data.asOfDate))
+      .replace('{days}', summaryDays)
+      .replace('{layer}', humanLayerLabel(matchedLayer));
     simResult.innerHTML = `
       <div class="layer-sim__card">
-        ${degradedBanner}
+        ${banners.join('')}
         <h3 class="layer-sim__headline">${escape(t('Result', 'Result'))}</h3>
-        <p class="layer-sim__sub">${escape(t('On', 'On'))} ${escape(fmtDate(data.asOfDate))} — ${escape(t('layer', 'layer'))}: <strong>${escape(winnerLabel)}</strong></p>
-        <p><span class="layer-sim__days">${escape(fmtDays(data.effectiveEntitlementDays))}</span> <span aria-hidden="true">${escape(t('days', 'days'))}</span><span class="visually-hidden">${escape(t('vacation days per year', 'vacation days per year'))}</span></p>
+        <p class="layer-sim__summary"><span class="layer-sim__days" aria-hidden="true">${escape(summaryDays)}</span>
+          <span class="visually-hidden">${escape(summaryDays)} ${escape(t('days per year', 'days per year'))}</span>
+          <span class="layer-sim__summary-text">${escape(summaryText)}</span></p>
         ${innerFlags ? `<p class="layer-sim__flags">${innerFlags}</p>` : ''}
-        <table class="trace-table">
-          <thead>
-            <tr>
-              <th scope="col">${escape(t('Layer', 'Layer'))}</th>
-              <th scope="col">${escape(t('Outcome', 'Outcome'))}</th>
-              <th scope="col">${escape(t('Reason / Mode', 'Reason / Mode'))}</th>
-              <th scope="col">${escape(t('Days', 'Days'))}</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
+        <details class="layer-sim__trace-details">
+          <summary>${escape(t('Show full resolution trace', 'Show full resolution trace'))}</summary>
+          <table class="trace-table" aria-label="${escape(t('Resolution trace', 'Resolution trace'))}">
+            <thead>
+              <tr>
+                <th scope="col">${escape(t('Layer', 'Layer'))}</th>
+                <th scope="col">${escape(t('Outcome', 'Outcome'))}</th>
+                <th scope="col">${escape(t('Reason / Mode', 'Reason / Mode'))}</th>
+                <th scope="col">${escape(t('Days', 'Days'))}</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+          <p class="form-help">${escape(t('Trace v', 'Trace v'))}${escape(String(trace.algorithm_version || 1))} · ${escape(t('as-of', 'as-of'))} ${escape(trace.as_of_date || data.asOfDate || '')}</p>
+        </details>
       </div>
     `;
     announce(t('Simulation finished.', 'Simulation finished.'));
+    // Focus management: move keyboard focus to the result region so screen
+    // readers / keyboard users can read the answer without hunting.
+    if (typeof simResult.focus === 'function') {
+      try { simResult.setAttribute('tabindex', '-1'); simResult.focus({ preventScroll: false }); } catch (e) { /* noop */ }
+    }
   }
 
   // -----------------------------------------------------------------------
