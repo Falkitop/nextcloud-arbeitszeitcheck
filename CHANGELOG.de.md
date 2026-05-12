@@ -1,5 +1,19 @@
 ## [Unreleased]
 
+### Neu
+
+- **Mehrstufige Urlaubsanspruchsauflösung — Trace-Flags für entartete Zustände & Impact-Vorschau** (Spezifikation: hr/vacation-entitlement-hierarchy Folge­erweiterung). Der Auflösungs-Trace liefert jetzt explizite Marker: `degraded_org_default_collision` (REQ-ENT-10), `partial_history` (REQ-ENT-13 / EC-11), `clamped` + `raw_*`-Werte (EC-08), `rule_set_status_warning` (EC-05) und `degraded='model_lookup_failed'` (EC-04). Auditoren sehen Fehlkonfigurationen und historisch-eingeschränkte Auflösungen sofort statt eines stillen Fallbacks. Der Admin-Simulator stellt die Flags als beschriftete Chips neben dem Ergebnis dar; der Mitarbeiter-Erklär­dialog zeigt eine redigierte Untermenge (`degraded`, `clamped`, `partial_history`) ohne interne IDs (REQ-SEC-05).
+- **Impact-Vorschau-Endpoint** `GET /api/admin/vacation-layers/impact?scope={org,model,team}&targetId={int}` (REQ-UX-03). Der Urlaubsebenen-Dialog zeigt direkt „Bis zu N Mitarbeitende werden von dieser Änderung neu aufgelöst" an, bevor der Admin auf Speichern klickt — WCAG-konform mit Icon, Statustext und ARIA-Live-Region (nie nur Farbe).
+
+### Geändert
+
+- **`LayeredVacationConflictException` für Lock-Konflikte** (REQ-SEC-04 / EC-07). `LayeredVacationDefaultsService` umschließt Nextclouds `OCP\Lock\LockedException`, sodass der `AdminController` HTTP 409 mit einem übersetzbaren Hinweis „Eine Administratorin/ein Administrator bearbeitet diese Ebene gerade" zurückliefert statt eines generischen 500. Das Admin-JS zeigt die Meldung im Dialog-Feedback an, ohne das Formular zu schließen.
+
+### Tests
+
+- Neu: `LayeredVacationEntitlementEngineTest` erhält 14 Fälle für Degraded-Flags und das Pass-Through der redigierten Trace; `LayeredVacationDefaultsServiceTest` 6 Fälle für `previewImpact` (Validierung, fehlende Deps, Model-Zählung, Team-Subtree-Aggregation); `AdminControllerTest` 4 Fälle für 409 beim Speichern/Löschen und 200/400 beim Impact-Endpoint.
+- 534 Unit-Tests grün.
+
 ## 1.3.0 – 2026-05-12
 
 ### Neu

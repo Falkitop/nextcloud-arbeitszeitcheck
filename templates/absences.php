@@ -1146,6 +1146,13 @@ $useAppTeams = $_['useAppTeams'] ?? false;
             dlg.removeAttribute('open');
         }
 
+        function escapeHtml(value) {
+            if (value === null || value === undefined) return '';
+            return String(value).replace(/[&<>"']/g, function(c) {
+                return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+            });
+        }
+
         function buildExplainerHtml(trace) {
             var layers = (trace && Array.isArray(trace.layers_evaluated)) ? trace.layers_evaluated : [];
             var matched = (trace && trace.matched_layer) ? String(trace.matched_layer) : '—';
@@ -1159,12 +1166,33 @@ $useAppTeams = $_['useAppTeams'] ?? false;
                     'legacy': tt('Default fallback', 'Default fallback')
                 })[label] || label;
                 var outcome = layer.matched ? tt('Applied', 'Applied') : tt('Skipped', 'Skipped');
-                return '<li><strong>' + humanLabel + '</strong>: ' + outcome + '</li>';
+                var extras = '';
+                if (layer.partial_history) {
+                    extras += ' <em class="entitlement-explain-dialog__hint-inline">' + escapeHtml(tt('(team membership for past dates is best-effort)', '(team membership for past dates is best-effort)')) + '</em>';
+                }
+                return '<li><strong>' + escapeHtml(humanLabel) + '</strong>: ' + escapeHtml(outcome) + extras + '</li>';
             }).join('');
+            var bannerHtml = '';
+            // Top-level "degraded" — tells the user their result fell back to a
+            // safety default. Stripped of any internal reason; just a hint to
+            // contact HR.
+            if (trace && trace.degraded) {
+                bannerHtml += '<p class="entitlement-explain-dialog__banner entitlement-explain-dialog__banner--warn" role="alert">'
+                  + escapeHtml(tt('Your entitlement was resolved with a safety default. Please contact your HR administrator if this looks wrong.', 'Your entitlement was resolved with a safety default. Please contact your HR administrator if this looks wrong.'))
+                  + '</p>';
+            }
+            // Clamping — surfaces "your number was capped at 0..366" without
+            // exposing the raw value.
+            if (trace && trace.clamped) {
+                bannerHtml += '<p class="entitlement-explain-dialog__banner entitlement-explain-dialog__banner--info" role="status">'
+                  + escapeHtml(tt('Your computed entitlement was outside the allowed 0–366 day range and has been adjusted. Please contact HR if you expected a different value.', 'Your computed entitlement was outside the allowed 0–366 day range and has been adjusted. Please contact HR if you expected a different value.'))
+                  + '</p>';
+            }
             return ''
-              + '<p>' + tt('Today the following layer determined your entitlement:', 'Today the following layer determined your entitlement:') + ' <strong>' + matched + '</strong></p>'
+              + bannerHtml
+              + '<p>' + escapeHtml(tt('Today the following layer determined your entitlement:', 'Today the following layer determined your entitlement:')) + ' <strong>' + escapeHtml(matched) + '</strong></p>'
               + '<ol class="entitlement-explain-dialog__steps">' + rows + '</ol>'
-              + '<p class="entitlement-explain-dialog__hint">' + tt('If you think the result is wrong, please contact your HR administrator.', 'If you think the result is wrong, please contact your HR administrator.') + '</p>';
+              + '<p class="entitlement-explain-dialog__hint">' + escapeHtml(tt('If you think the result is wrong, please contact your HR administrator.', 'If you think the result is wrong, please contact your HR administrator.')) + '</p>';
         }
 
         function load() {

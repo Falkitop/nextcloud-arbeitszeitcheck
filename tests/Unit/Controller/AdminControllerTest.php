@@ -84,6 +84,9 @@ class AdminControllerTest extends TestCase
 	/** @var VacationEntitlementEngine|\PHPUnit\Framework\MockObject\MockObject */
 	private $vacationEntitlementEngine;
 
+	/** @var \OCA\ArbeitszeitCheck\Service\LayeredVacationDefaultsService|\PHPUnit\Framework\MockObject\MockObject */
+	private $layeredVacationDefaultsService;
+
 	/** @var IRequest|\PHPUnit\Framework\MockObject\MockObject */
 	private $request;
 	/** @var IGroupManager|\PHPUnit\Framework\MockObject\MockObject */
@@ -132,7 +135,7 @@ class AdminControllerTest extends TestCase
 			'ruleSetId' => null,
 			'trace' => [],
 		]);
-		$layeredVacationDefaultsService = $this->createMock(\OCA\ArbeitszeitCheck\Service\LayeredVacationDefaultsService::class);
+		$this->layeredVacationDefaultsService = $this->createMock(\OCA\ArbeitszeitCheck\Service\LayeredVacationDefaultsService::class);
 
 		$this->controller = new AdminController(
 			'arbeitszeitcheck',
@@ -162,7 +165,7 @@ class AdminControllerTest extends TestCase
 			$tariffRuleModuleMapper,
 			$userVacationPolicyAssignmentMapper,
 			$this->vacationEntitlementEngine,
-			$layeredVacationDefaultsService
+			$this->layeredVacationDefaultsService
 		);
 	}
 
@@ -1311,5 +1314,83 @@ class AdminControllerTest extends TestCase
 		$this->assertEquals(Http::STATUS_INTERNAL_SERVER_ERROR, $response->getStatus());
 		$data = $response->getData();
 		$this->assertFalse($data['success']);
+	}
+
+	/* ============================================================ *
+	 * Layered vacation entitlement endpoints
+	 * ============================================================ */
+
+	public function testSaveOrgVacationDefaultMapsConflictExceptionTo409(): void
+	{
+		// EC-07: lock contention from a concurrent admin must surface as
+		// HTTP 409, not a generic 500, so the JS layer can show
+		// "refresh and retry" instead of leaking a server error.
+		$this->request->method('getParam')->willReturn(null);
+		$this->layeredVacationDefaultsService->expects($this->once())
+			->method('upsertOrgDefault')
+			->willThrowException(new \OCA\ArbeitszeitCheck\Service\LayeredVacationConflictException('Another admin is editing this layer'));
+
+		$response = $this->controller->saveOrgVacationDefault();
+		$this->assertSame(Http::STATUS_CONFLICT, $response->getStatus());
+		$data = $response->getData();
+		$this->assertFalse($data['success']);
+		$this->assertNotEmpty($data['error']);
+	}
+
+	public function testDeleteOrgVacationDefaultMapsConflictExceptionTo409(): void
+	{
+		$this->layeredVacationDefaultsService->expects($this->once())
+			->method('deleteOrgDefault')
+			->willThrowException(new \OCA\ArbeitszeitCheck\Service\LayeredVacationConflictException('Another admin is editing this layer'));
+
+		$response = $this->controller->deleteOrgVacationDefault(7);
+		$this->assertSame(Http::STATUS_CONFLICT, $response->getStatus());
+		$data = $response->getData();
+		$this->assertFalse($data['success']);
+	}
+
+	public function testPreviewVacationLayerImpactReturnsDataPayload(): void
+	{
+		$this->request->method('getParam')->willReturnMap([
+			['scope', null, 'team'],
+			['targetId', null, '42'],
+		]);
+		$this->layeredVacationDefaultsService->expects($this->once())
+			->method('previewImpact')
+			->with('team', 42)
+			->willReturn([
+				'scope' => 'team',
+				'target_id' => 42,
+				'affected_user_count' => 7,
+				'exact' => false,
+				'note' => 'Counts members…',
+			]);
+
+		$response = $this->controller->previewVacationLayerImpact();
+		$this->assertSame(Http::STATUS_OK, $response->getStatus());
+		$data = $response->getData();
+		$this->assertTrue($data['success']);
+		$this->assertSame(7, $data['data']['affected_user_count']);
+		$this->assertSame('team', $data['data']['scope']);
+	}
+
+	public function testPreviewVacationLayerImpactMapsValidationExceptionTo400(): void
+	{
+		$this->request->method('getParam')->willReturnMap([
+			['scope', null, 'garbage'],
+			['targetId', null, null],
+		]);
+		$this->layeredVacationDefaultsService->expects($this->once())
+			->method('previewImpact')
+			->willThrowException(new \OCA\ArbeitszeitCheck\Service\LayeredVacationValidationException(
+				'Validation failed',
+				['scope' => 'Scope must be one of: org, model, team'],
+			));
+
+		$response = $this->controller->previewVacationLayerImpact();
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
+		$data = $response->getData();
+		$this->assertFalse($data['success']);
+		$this->assertArrayHasKey('scope', $data['errors'] ?? []);
 	}
 }

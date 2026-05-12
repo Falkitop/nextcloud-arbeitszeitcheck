@@ -229,6 +229,12 @@ $layeredEnabled = (bool)($_['layeredEnabled'] ?? true);
         <h2 id="layer-dialog-title" class="layer-dialog__title"><?php p($l->t('Edit layer')); ?></h2>
         <p id="layer-dialog-intro" class="layer-dialog__intro"></p>
         <div id="layer-dialog-body" class="layer-dialog__body"></div>
+        <div id="layer-dialog-impact" class="layer-dialog__impact" role="status" aria-live="polite" hidden>
+            <span class="layer-dialog__impact-icon" aria-hidden="true">
+                <i data-lucide="users" class="lucide-icon"></i>
+            </span>
+            <span class="layer-dialog__impact-text" id="layer-dialog-impact-text"></span>
+        </div>
         <p id="layer-dialog-feedback" class="layer-dialog__feedback" role="alert" aria-live="assertive"></p>
         <div class="layer-dialog__actions">
             <button type="button" id="layer-dialog-cancel" class="btn btn--secondary">
@@ -256,6 +262,7 @@ echo json_encode([
         'teamDelete' => $urlGenerator->linkToRoute('arbeitszeitcheck.admin.deleteTeamVacationPolicy', ['id' => 0]),
         'simulate' => $urlGenerator->linkToRoute('arbeitszeitcheck.admin.simulateVacationPolicy'),
         'userSearch' => $urlGenerator->linkToRoute('arbeitszeitcheck.admin.searchVacationLayersUsers'),
+        'impact' => $urlGenerator->linkToRoute('arbeitszeitcheck.admin.previewVacationLayerImpact'),
     ],
     'layeredEnabled' => $layeredEnabled,
 ], JSON_THROW_ON_ERROR | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);

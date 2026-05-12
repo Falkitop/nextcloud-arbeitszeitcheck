@@ -391,7 +391,9 @@ class Application extends App implements IBootstrap {
 				$c->query(\OCA\ArbeitszeitCheck\Db\TariffRuleSetMapper::class),
 				$c->query(\OCA\ArbeitszeitCheck\Db\AuditLogMapper::class),
 				$c->query(IDBConnection::class),
-				$c->query(\OCP\Lock\ILockingProvider::class)
+				$c->query(\OCP\Lock\ILockingProvider::class),
+				$c->query(\OCA\ArbeitszeitCheck\Db\TeamMemberMapper::class),
+				$c->query(\OCA\ArbeitszeitCheck\Db\UserWorkingTimeModelMapper::class)
 			);
 		});
 

@@ -197,6 +197,7 @@ return [
 		['name' => 'admin#saveTeamVacationPolicy', 'url' => '/api/admin/vacation-layers/team', 'verb' => 'POST'],
 		['name' => 'admin#deleteTeamVacationPolicy', 'url' => '/api/admin/vacation-layers/team/{id}', 'verb' => 'DELETE'],
 		['name' => 'admin#searchVacationLayersUsers', 'url' => '/api/admin/vacation-layers/users', 'verb' => 'GET'],
+		['name' => 'admin#previewVacationLayerImpact', 'url' => '/api/admin/vacation-layers/impact', 'verb' => 'GET'],
 
 		// Admin teams (app-owned teams/departments)
 		['name' => 'admin#teams', 'url' => '/admin/teams', 'verb' => 'GET'],

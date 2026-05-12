@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Layered vacation entitlement — degraded-state trace flags & impact preview** (issue: hr/vacation-entitlement-hierarchy follow-up). The resolution trace now carries explicit `degraded_org_default_collision` (REQ-ENT-10), `partial_history` (REQ-ENT-13 / EC-11), `clamped` + `raw_*` values (EC-08), `rule_set_status_warning` (EC-05), and `degraded='model_lookup_failed'` (EC-04) markers so auditors can see misconfigurations and best-effort historical resolutions instead of silent fallback. The admin simulator surfaces these flags as labelled chips alongside the result; the employee explainer surfaces a redacted subset (`degraded`, `clamped`, `partial_history`) without leaking any internal IDs (REQ-SEC-05).
+- **Impact preview endpoint** `GET /api/admin/vacation-layers/impact?scope={org,model,team}&targetId={int}` (REQ-UX-03). The vacation-layer dialog now shows "Up to N employees may be re-resolved by this change" inline before the admin clicks Save, with WCAG-compliant colour states that are never colour-only (icon + status text + ARIA live region).
+
+### Changed
+
+- **`LayeredVacationConflictException` for lock contention** (REQ-SEC-04 / EC-07). `LayeredVacationDefaultsService` now wraps Nextcloud's `OCP\Lock\LockedException` so the `AdminController` returns HTTP 409 with a translatable "another administrator is editing this layer" hint instead of a generic 500. The admin JS surfaces the message in the dialog feedback area rather than dismissing the form.
+
+### Tests
+
+- New: `LayeredVacationEntitlementEngineTest` adds 14 cases for the degraded-state flags and redacted-trace pass-through; `LayeredVacationDefaultsServiceTest` adds 6 cases for `previewImpact` (validation, missing-deps, model count, team-subtree aggregation); `AdminControllerTest` adds 4 cases for 409 mapping on save/delete and 200/400 mapping on the impact endpoint.
+- All 534 unit tests pass.
+
 ## 1.3.0 - 2026-05-12
 
 ### Added

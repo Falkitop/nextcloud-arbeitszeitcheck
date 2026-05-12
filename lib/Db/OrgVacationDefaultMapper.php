@@ -73,6 +73,40 @@ class OrgVacationDefaultMapper extends QBMapper
 	}
 
 	/**
+	 * Count of L0 rows that are simultaneously active on `$asOfDate`. The
+	 * organisation default is supposed to be a single active row per validity
+	 * slot; if this returns more than 1, the engine emits a
+	 * `degraded_org_default_collision` flag in the resolution trace and a
+	 * `critical` log line so an admin can repair the data (REQ-ENT-10).
+	 *
+	 * Returns 0 when the table does not exist yet (fresh install before
+	 * migration) so callers can fall back without a stack trace.
+	 */
+	public function countActiveByDate(\DateTimeInterface $asOfDate): int
+	{
+		try {
+			$date = $asOfDate->format('Y-m-d');
+			$qb = $this->db->getQueryBuilder();
+			$qb->select($qb->func()->count('*', 'cnt'))
+				->from($this->getTableName())
+				->where($qb->expr()->lte('effective_from', $qb->createNamedParameter($date, IQueryBuilder::PARAM_STR)))
+				->andWhere($qb->expr()->orX(
+					$qb->expr()->isNull('effective_to'),
+					$qb->expr()->gte('effective_to', $qb->createNamedParameter($date, IQueryBuilder::PARAM_STR))
+				));
+			$cursor = $qb->executeQuery();
+			$row = $cursor->fetch();
+			$cursor->closeCursor();
+			return $row && isset($row['cnt']) ? (int)$row['cnt'] : 0;
+		} catch (DBException $e) {
+			if ($e->getReason() === DBException::REASON_DATABASE_OBJECT_NOT_FOUND) {
+				return 0;
+			}
+			throw $e;
+		}
+	}
+
+	/**
 	 * @return OrgVacationDefault[]
 	 */
 	public function findAll(): array

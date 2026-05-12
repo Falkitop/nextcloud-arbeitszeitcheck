@@ -33,6 +33,7 @@ use OCA\ArbeitszeitCheck\Service\CSPService;
 use OCA\ArbeitszeitCheck\Db\Holiday;
 use OCA\ArbeitszeitCheck\Db\HolidayMapper;
 use OCA\ArbeitszeitCheck\Service\HolidayService;
+use OCA\ArbeitszeitCheck\Service\LayeredVacationConflictException;
 use OCA\ArbeitszeitCheck\Service\LayeredVacationDefaultsService;
 use OCA\ArbeitszeitCheck\Service\LayeredVacationNotFoundException;
 use OCA\ArbeitszeitCheck\Service\LayeredVacationValidationException;
@@ -3339,6 +3340,40 @@ class AdminController extends Controller
 	}
 
 	/**
+	 * Impact preview for vacation-layer writes (REQ-UX-03).
+	 *
+	 * Used by the admin UI to display "this change will affect ~N users"
+	 * before the admin clicks Save. The endpoint is read-only and never
+	 * acquires the write lock; the returned `affected_user_count` is an
+	 * upper bound based on current assignments, not a full re-simulation.
+	 *
+	 * Query params:
+	 *  - `scope`: one of `org`, `model`, `team`
+	 *  - `targetId`: required for `model` / `team`
+	 *
+	 * Authorisation: admin-only (no `NoAdminRequired` on the class).
+	 */
+	public function previewVacationLayerImpact(): JSONResponse
+	{
+		try {
+			$scope = trim((string)($this->request->getParam('scope') ?? ''));
+			$targetIdRaw = $this->request->getParam('targetId');
+			$targetId = ($targetIdRaw === null || $targetIdRaw === '') ? null : (int)$targetIdRaw;
+			$preview = $this->layeredVacationDefaultsService->previewImpact($scope, $targetId);
+			return new JSONResponse(['success' => true, 'data' => $preview]);
+		} catch (LayeredVacationValidationException $e) {
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t($e->getMessage()),
+				'errors' => $this->translateFieldErrors($e->fieldErrors),
+			], Http::STATUS_BAD_REQUEST);
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error('previewVacationLayerImpact failed: ' . $e->getMessage(), ['exception' => $e]);
+			return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Impact preview failed')], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	/**
 	 * Lightweight user-search endpoint for the vacation-layers simulator.
 	 *
 	 * Unlike {@see self::getUsers()} this does **not** compute entitlement
@@ -3398,6 +3433,10 @@ class AdminController extends Controller
 			], Http::STATUS_BAD_REQUEST);
 		} catch (LayeredVacationNotFoundException $e) {
 			return new JSONResponse(['success' => false, 'error' => $this->l10n->t($e->getMessage())], Http::STATUS_NOT_FOUND);
+		} catch (LayeredVacationConflictException $e) {
+			// REQ-SEC-04 / EC-07 — surface concurrent-edit conflicts as 409
+			// so the admin JS can show "refresh and retry" instead of a 500.
+			return new JSONResponse(['success' => false, 'error' => $this->l10n->t($e->getMessage())], Http::STATUS_CONFLICT);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Layered vacation save failed: ' . $e->getMessage(), ['exception' => $e]);
 			return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Failed to save vacation entitlement layer')], Http::STATUS_INTERNAL_SERVER_ERROR);
@@ -3411,6 +3450,8 @@ class AdminController extends Controller
 			return new JSONResponse(['success' => true]);
 		} catch (LayeredVacationNotFoundException $e) {
 			return new JSONResponse(['success' => false, 'error' => $this->l10n->t($e->getMessage())], Http::STATUS_NOT_FOUND);
+		} catch (LayeredVacationConflictException $e) {
+			return new JSONResponse(['success' => false, 'error' => $this->l10n->t($e->getMessage())], Http::STATUS_CONFLICT);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Layered vacation delete failed: ' . $e->getMessage(), ['exception' => $e]);
 			return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Failed to delete vacation entitlement layer')], Http::STATUS_INTERNAL_SERVER_ERROR);

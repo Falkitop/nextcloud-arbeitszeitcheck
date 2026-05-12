@@ -29,8 +29,11 @@ use OCA\ArbeitszeitCheck\Db\OrgVacationDefaultMapper;
 use OCA\ArbeitszeitCheck\Db\TariffRuleSetMapper;
 use OCA\ArbeitszeitCheck\Db\Team;
 use OCA\ArbeitszeitCheck\Db\TeamMapper;
+use OCA\ArbeitszeitCheck\Db\TeamMemberMapper;
 use OCA\ArbeitszeitCheck\Db\TeamVacationPolicy;
 use OCA\ArbeitszeitCheck\Db\TeamVacationPolicyMapper;
+use OCA\ArbeitszeitCheck\Db\UserWorkingTimeModel;
+use OCA\ArbeitszeitCheck\Db\UserWorkingTimeModelMapper;
 use OCA\ArbeitszeitCheck\Db\WorkingTimeModel;
 use OCA\ArbeitszeitCheck\Db\WorkingTimeModelMapper;
 use OCA\ArbeitszeitCheck\Service\LayeredVacationDefaultsService;
@@ -217,5 +220,102 @@ class LayeredVacationDefaultsServiceTest extends TestCase
 		$this->orgMapper->method('find')->willThrowException(new DoesNotExistException('nope'));
 		$this->expectException(LayeredVacationNotFoundException::class);
 		$this->service->deleteOrgDefault(99, 'admin');
+	}
+
+	/* ============================================================ *
+	 * Impact preview (REQ-UX-03)
+	 * ============================================================ */
+
+	/**
+	 * Build a service with the optional impact-preview dependencies wired
+	 * (mirrors the production registration in Application.php). Tests for
+	 * non-impact methods continue to use the parent setUp without these
+	 * dependencies, so the optional-arg contract stays exercised both ways.
+	 */
+	private function makeServiceWithImpactDeps(
+		TeamMemberMapper $teamMember,
+		UserWorkingTimeModelMapper $userModel,
+	): LayeredVacationDefaultsService {
+		return new LayeredVacationDefaultsService(
+			$this->orgMapper,
+			$this->modelMapper,
+			$this->teamPolicyMapper,
+			$this->teamMapper,
+			$this->workingTimeModelMapper,
+			$this->tariffRuleSetMapper,
+			$this->auditLogMapper,
+			$this->db,
+			$this->lockingProvider,
+			$teamMember,
+			$userModel,
+		);
+	}
+
+	public function testPreviewImpactRejectsInvalidScope(): void
+	{
+		$this->expectException(LayeredVacationValidationException::class);
+		$this->service->previewImpact('garbage');
+	}
+
+	public function testPreviewImpactModelRequiresTargetId(): void
+	{
+		$this->expectException(LayeredVacationValidationException::class);
+		$this->service->previewImpact('model');
+	}
+
+	public function testPreviewImpactTeamRequiresTargetId(): void
+	{
+		$this->expectException(LayeredVacationValidationException::class);
+		$this->service->previewImpact('team');
+	}
+
+	public function testPreviewImpactOrgReturnsZeroWithoutDependencies(): void
+	{
+		// Without optional deps (the legacy 9-arg constructor path) the
+		// preview must still return a clean payload — never throw — so
+		// the UI degrades gracefully on partially-mocked installs.
+		$result = $this->service->previewImpact('org');
+		$this->assertSame('org', $result['scope']);
+		$this->assertSame(0, $result['affected_user_count']);
+		$this->assertFalse($result['exact']);
+	}
+
+	public function testPreviewImpactModelDelegatesToUserWorkingTimeModelMapper(): void
+	{
+		$teamMember = $this->createMock(TeamMemberMapper::class);
+		$userModel = $this->createMock(UserWorkingTimeModelMapper::class);
+		$assignments = [new UserWorkingTimeModel(), new UserWorkingTimeModel(), new UserWorkingTimeModel()];
+		$userModel->expects(self::once())
+			->method('findByWorkingTimeModel')
+			->with(42, true)
+			->willReturn($assignments);
+
+		$service = $this->makeServiceWithImpactDeps($teamMember, $userModel);
+		$result = $service->previewImpact('model', 42);
+		$this->assertSame('model', $result['scope']);
+		$this->assertSame(42, $result['target_id']);
+		$this->assertSame(3, $result['affected_user_count']);
+	}
+
+	public function testPreviewImpactTeamAggregatesSubtreeMembers(): void
+	{
+		// Tree: 10 → 11 → 12. Asking for team #10 must collect members
+		// from {10, 11, 12} and de-duplicate user IDs.
+		$teamMember = $this->createMock(TeamMemberMapper::class);
+		$userModel = $this->createMock(UserWorkingTimeModelMapper::class);
+		$this->teamMapper->method('getParentMap')->willReturn([10 => null, 11 => 10, 12 => 11]);
+		$teamMember->expects(self::once())
+			->method('getMemberUserIdsByTeamIds')
+			->willReturnCallback(function (array $teamIds) {
+				sort($teamIds);
+				$this->assertSame([10, 11, 12], $teamIds);
+				return ['alice', 'bob', 'alice', 'carol']; // dupes on purpose
+			});
+
+		$service = $this->makeServiceWithImpactDeps($teamMember, $userModel);
+		$result = $service->previewImpact('team', 10);
+		$this->assertSame('team', $result['scope']);
+		$this->assertSame(10, $result['target_id']);
+		$this->assertSame(3, $result['affected_user_count']);
 	}
 }

@@ -284,6 +284,7 @@
     dialogIntro.textContent = context.intro || '';
     dialogBody.innerHTML = context.body;
     dialogFeedback.textContent = '';
+    resetImpactPreview();
     if (typeof dialog.showModal === 'function') {
       dialog.showModal();
     } else {
@@ -291,6 +292,9 @@
     }
     const first = dialog.querySelector('input, select, textarea');
     if (first) first.focus();
+    // Initial preview — for `org` no target is needed; for `model` / `team`
+    // we wait for the user to pick a target before firing.
+    schedulePreview();
   }
 
   function closeDialog() {
@@ -302,6 +306,101 @@
   }
 
   document.getElementById('layer-dialog-cancel').addEventListener('click', closeDialog);
+
+  // --------------------------------------------------------------------
+  // Impact preview (REQ-UX-03): live "this change will affect ~N users"
+  // hint that fires when the admin picks a target. Read-only endpoint, no
+  // write lock, debounced to 250ms.
+  // --------------------------------------------------------------------
+  const impactBox = document.getElementById('layer-dialog-impact');
+  const impactText = document.getElementById('layer-dialog-impact-text');
+  let impactTimer = null;
+  let impactReqId = 0;
+
+  function resetImpactPreview() {
+    if (impactBox) {
+      impactBox.hidden = true;
+      impactBox.removeAttribute('data-state');
+    }
+    if (impactText) {
+      impactText.textContent = '';
+    }
+  }
+
+  function setImpactState(state, message) {
+    if (!impactBox || !impactText) return;
+    impactBox.hidden = false;
+    impactBox.setAttribute('data-state', state);
+    impactText.textContent = message;
+  }
+
+  function schedulePreview() {
+    window.clearTimeout(impactTimer);
+    impactTimer = window.setTimeout(runPreview, 250);
+  }
+
+  function runPreview() {
+    if (!dialogContext || !URLS.impact) return;
+    const layer = dialogContext.layer;
+    let targetId = null;
+    if (layer === 'model') {
+      const sel = document.getElementById('dlg-model');
+      targetId = sel ? sel.value : null;
+    } else if (layer === 'team') {
+      const sel = document.getElementById('dlg-team');
+      targetId = sel ? sel.value : null;
+    }
+    if ((layer === 'model' || layer === 'team') && (!targetId || targetId === '')) {
+      // No target picked yet → friendly placeholder.
+      const msg = layer === 'model'
+        ? t('Pick a working time model to see who would be affected.', 'Pick a working time model to see who would be affected.')
+        : t('Pick a team to see who would be affected.', 'Pick a team to see who would be affected.');
+      setImpactState('idle', msg);
+      return;
+    }
+    setImpactState('loading', t('Estimating impact…', 'Estimating impact…'));
+    const reqId = ++impactReqId;
+    const params = new URLSearchParams({ scope: layer });
+    if (targetId !== null && targetId !== '') {
+      params.set('targetId', String(targetId));
+    }
+    Utils.ajax(URLS.impact + '?' + params.toString(), {
+      method: 'GET',
+      onSuccess: (data) => {
+        if (reqId !== impactReqId) return; // stale response
+        const payload = (data && data.data) || {};
+        const count = Number(payload.affected_user_count || 0);
+        const note = String(payload.note || '');
+        let msg;
+        if (count === 0) {
+          msg = t('No employees would be directly affected by this change.', 'No employees would be directly affected by this change.');
+        } else if (count === 1) {
+          msg = t('Up to 1 employee may be re-resolved by this change.', 'Up to 1 employee may be re-resolved by this change.');
+        } else {
+          msg = (t('Up to {n} employees may be re-resolved by this change.', 'Up to {n} employees may be re-resolved by this change.') || '').replace('{n}', String(count));
+        }
+        setImpactState(count > 0 ? 'warn' : 'ok', msg + (note ? '  ' + note : ''));
+      },
+      onError: () => {
+        if (reqId !== impactReqId) return;
+        setImpactState('error', t('Impact preview unavailable.', 'Impact preview unavailable.'));
+      },
+    });
+  }
+
+  // Live updates as the admin edits the form (target id changes only —
+  // the underlying count is identical regardless of mode/days, so we don't
+  // re-fire on every keystroke).
+  document.addEventListener('change', (ev) => {
+    if (!dialogContext) return;
+    if (!dialog.open && !dialog.hasAttribute('open')) return;
+    const target = ev.target;
+    if (!(target instanceof HTMLElement)) return;
+    const id = target.id || '';
+    if (id === 'dlg-model' || id === 'dlg-team') {
+      schedulePreview();
+    }
+  });
 
   // Shared form fragments
   function modeFieldHtml(allowInherit) {
@@ -491,7 +590,14 @@
         loadOverview();
       },
       onError: (err) => {
-        const msg = (err && err.error) || t('Could not save', 'Could not save');
+        const status = err && err.status;
+        let msg = (err && err.error) || t('Could not save', 'Could not save');
+        if (status === 409) {
+          // EC-07: another admin is editing the same layer — give a
+          // specific, actionable hint so the user doesn't just retry blindly.
+          msg = (err && err.error)
+            || t('Another administrator is currently editing this layer. Refresh and try again.', 'Another administrator is currently editing this layer. Refresh and try again.');
+        }
         dialogFeedback.textContent = msg;
         if (err && err.data && err.data.errors) {
           showFieldErrors(err.data.errors);
@@ -635,6 +741,42 @@
     });
   }
 
+  function renderLayerFlags(layer) {
+    // Surface degraded-state markers as visible chips so an admin can spot
+    // misconfigurations in the simulator output without having to crack
+    // open the raw trace JSON. Each flag is also conveyed by its label —
+    // we never rely on colour alone (WCAG 1.4.1).
+    const flags = [];
+    if (layer.degraded_org_default_collision) {
+      flags.push({ kind: 'warn', label: t('Multiple active L0 rules', 'Multiple active L0 rules') });
+    }
+    if (layer.partial_history) {
+      flags.push({ kind: 'info', label: t('Partial team history', 'Partial team history') });
+    }
+    if (layer.degraded) {
+      flags.push({ kind: 'warn', label: t('Degraded fallback', 'Degraded fallback') });
+    }
+    if (!flags.length) return '';
+    return flags.map((f) => `<span class="trace-flag trace-flag--${escape(f.kind)}">${escape(f.label)}</span>`).join(' ');
+  }
+
+  function renderInnerFlags(inner) {
+    if (!inner) return '';
+    const chips = [];
+    if (inner.clamped) {
+      const raw = inner.raw_manual_days != null ? inner.raw_manual_days : inner.raw_computed_days;
+      const detail = raw != null ? ` (${fmtDays(raw)} → ${t('clamped to 0–366', 'clamped to 0–366')})` : '';
+      chips.push(`<span class="trace-flag trace-flag--warn">${escape(t('Clamped', 'Clamped'))}${escape(detail)}</span>`);
+    }
+    if (inner.degraded === 'model_lookup_failed') {
+      chips.push(`<span class="trace-flag trace-flag--warn">${escape(t('Working time model missing', 'Working time model missing'))}</span>`);
+    }
+    if (inner.rule_set_status_warning) {
+      chips.push(`<span class="trace-flag trace-flag--warn">${escape(t('Tariff rule set not active', 'Tariff rule set not active'))} (${escape(inner.rule_set_status_warning)})</span>`);
+    }
+    return chips.join(' ');
+  }
+
   function renderSimResult(data) {
     if (!data || data.success !== true) {
       simResult.innerHTML = `<p class="layer-card__placeholder">${escape(t('Could not run simulation', 'Could not run simulation'))}</p>`;
@@ -645,20 +787,27 @@
     const winnerLabel = (trace.winner && trace.winner.matched_layer) || data.source || '—';
     const rows = layers.map((layer) => {
       const matched = layer.matched === true;
+      const flagsHtml = renderLayerFlags(layer);
       return `
         <tr data-matched="${matched ? 'true' : 'false'}">
           <td>${escape(layer.layer || '')}</td>
           <td>${matched ? escape(t('Match', 'Match')) : escape(t('Skipped', 'Skipped'))}</td>
-          <td>${escape(layer.reason || layer.mode || '')}</td>
+          <td>${escape(layer.reason || layer.mode || '')}${flagsHtml ? '<br>' + flagsHtml : ''}</td>
           <td>${escape(layer.days != null ? fmtDays(layer.days) : '—')}</td>
         </tr>
       `;
     }).join('');
+    const innerFlags = renderInnerFlags(trace.inner);
+    const degradedBanner = trace.degraded
+      ? `<p class="layer-sim__banner layer-sim__banner--warn" role="alert">${escape(t('Heads up: this resolution ran in a degraded state. See the flags below for details.', 'Heads up: this resolution ran in a degraded state. See the flags below for details.'))}</p>`
+      : '';
     simResult.innerHTML = `
       <div class="layer-sim__card">
+        ${degradedBanner}
         <h3 class="layer-sim__headline">${escape(t('Result', 'Result'))}</h3>
         <p class="layer-sim__sub">${escape(t('On', 'On'))} ${escape(fmtDate(data.asOfDate))} — ${escape(t('layer', 'layer'))}: <strong>${escape(winnerLabel)}</strong></p>
         <p><span class="layer-sim__days">${escape(fmtDays(data.effectiveEntitlementDays))}</span> <span aria-hidden="true">${escape(t('days', 'days'))}</span><span class="visually-hidden">${escape(t('vacation days per year', 'vacation days per year'))}</span></p>
+        ${innerFlags ? `<p class="layer-sim__flags">${innerFlags}</p>` : ''}
         <table class="trace-table">
           <thead>
             <tr>

@@ -162,9 +162,15 @@ class VacationEntitlementEngine {
 		}
 
 		// L2: team-attached policy. Tie-break by depth → priority → id.
+		// `partial_history` is set when the caller asked for a back-dated
+		// resolution: the membership table only reflects *current* state,
+		// so an L2 match for a past `as_of_date` is best-effort. We surface
+		// this in the trace (REQ-ENT-13 / EC-11) instead of silently
+		// pretending the membership reflected history.
+		$partialHistory = $this->asOfPredatesMembershipHistory($asOfDateOnly);
 		$teamResolution = $this->resolveTeamLayer($userId, $asOfDateOnly);
 		if ($teamResolution !== null) {
-			$layersEvaluated[] = [
+			$row = [
 				'layer' => 'L2',
 				'matched' => true,
 				'team_id' => $teamResolution['team_id'],
@@ -175,10 +181,18 @@ class VacationEntitlementEngine {
 				'days' => $teamResolution['resolved']['days'],
 				'candidates' => $teamResolution['candidates'],
 			];
-			return $this->finalise($teamResolution['resolved'], 'L2', $asOfDateOnly, $layersEvaluated, false, [
+			if ($partialHistory) {
+				$row['partial_history'] = true;
+			}
+			$layersEvaluated[] = $row;
+			$winnerExtra = [
 				'team_id' => $teamResolution['team_id'],
 				'policy_id' => $teamResolution['policy_id'],
-			]);
+			];
+			if ($partialHistory) {
+				$winnerExtra['partial_history'] = true;
+			}
+			return $this->finalise($teamResolution['resolved'], 'L2', $asOfDateOnly, $layersEvaluated, false, $winnerExtra);
 		}
 		$layersEvaluated[] = ['layer' => 'L2', 'matched' => false, 'reason' => 'no_team_match'];
 
@@ -203,16 +217,22 @@ class VacationEntitlementEngine {
 		// L0: organisation default.
 		$orgResolution = $this->resolveOrgLayer($userId, $asOfDateOnly);
 		if ($orgResolution !== null) {
-			$layersEvaluated[] = [
+			$row = [
 				'layer' => 'L0',
 				'matched' => true,
 				'default_id' => $orgResolution['default_id'],
 				'mode' => $orgResolution['resolved']['source'],
 				'days' => $orgResolution['resolved']['days'],
 			];
-			return $this->finalise($orgResolution['resolved'], 'L0', $asOfDateOnly, $layersEvaluated, false, [
-				'default_id' => $orgResolution['default_id'],
-			]);
+			if ($orgResolution['collision']) {
+				$row['degraded_org_default_collision'] = true;
+			}
+			$layersEvaluated[] = $row;
+			$winnerExtra = ['default_id' => $orgResolution['default_id']];
+			if ($orgResolution['collision']) {
+				$winnerExtra['degraded_org_default_collision'] = true;
+			}
+			return $this->finalise($orgResolution['resolved'], 'L0', $asOfDateOnly, $layersEvaluated, $orgResolution['collision'], $winnerExtra);
 		}
 		$layersEvaluated[] = ['layer' => 'L0', 'matched' => false, 'reason' => 'no_org_default'];
 
@@ -278,8 +298,9 @@ class VacationEntitlementEngine {
 				'layer' => 'L0',
 				'matched' => true,
 				'days' => $orgResolution['resolved']['days'],
-			];
-			return $this->finalise($orgResolution['resolved'], 'L0', $asOfDateOnly, $layersEvaluated, false);
+				'simulated' => true,
+			] + ($orgResolution['collision'] ? ['degraded_org_default_collision' => true] : []);
+			return $this->finalise($orgResolution['resolved'], 'L0', $asOfDateOnly, $layersEvaluated, $orgResolution['collision']);
 		}
 		$legacy = $this->legacyFallback($userId, $asOfDateOnly);
 		$layersEvaluated[] = ['layer' => 'legacy', 'matched' => true, 'days' => $legacy['days']];
@@ -306,17 +327,46 @@ class VacationEntitlementEngine {
 			'matched_layer' => $trace['matched_layer'] ?? ($trace['winner']['layer'] ?? 'unknown'),
 			'inputs_redacted' => true,
 		];
-		// Surface a short, sanitised reason per layer (no IDs, no other-cohort labels)
+		// Surface a short, sanitised reason per layer (no IDs, no other-cohort
+		// labels). We also pass through three employee-relevant flags that
+		// are *generic* (no internal identifiers leak): `partial_history`
+		// tells the user "your team membership for this past date is best
+		// effort", and `degraded_org_default_collision` is intentionally
+		// **not** included — that's an admin/data-quality concern, surfacing
+		// it would only confuse end users.
 		$publicLayers = [];
 		foreach (($trace['layers_evaluated'] ?? []) as $row) {
-			$publicLayers[] = [
+			$publicRow = [
 				'layer' => $row['layer'] ?? null,
 				'matched' => (bool)($row['matched'] ?? false),
 				'mode' => $row['mode'] ?? null,
 			];
+			if (!empty($row['partial_history'])) {
+				$publicRow['partial_history'] = true;
+			}
+			$publicLayers[] = $publicRow;
 		}
 		$redacted['layers_evaluated'] = $publicLayers;
 		$redacted['result_days'] = $trace['result_days'] ?? null;
+
+		// Top-level "your calc is in a degraded state, please contact HR"
+		// signal. We deliberately do NOT explain the specific reason here;
+		// the admin trace has the full detail.
+		if (!empty($trace['degraded'])) {
+			$redacted['degraded'] = true;
+		}
+
+		// Inner flags worth surfacing without disclosing rule IDs:
+		//  - `clamped`: tells the user their number was capped at the
+		//    0..366 invariant. The *raw* value is stripped (no payroll
+		//    misconfiguration details).
+		$inner = $trace['inner'] ?? null;
+		if (is_array($inner)) {
+			if (!empty($inner['clamped'])) {
+				$redacted['clamped'] = true;
+			}
+		}
+
 		return $redacted;
 	}
 
@@ -329,16 +379,22 @@ class VacationEntitlementEngine {
 	{
 		$mode = $policy->getVacationMode();
 		if ($mode === Constants::VACATION_MODE_MANUAL_FIXED || $mode === Constants::VACATION_MODE_MANUAL_EXCEPTION) {
-			$days = $this->roundDays((float)($policy->getManualDays() ?? 0.0));
+			$rawDays = (float)($policy->getManualDays() ?? 0.0);
+			$days = $this->roundDays($rawDays);
+			$trace = [
+				'mode' => $mode,
+				'manual_days' => $days,
+				'override_reason' => $policy->getOverrideReason(),
+			];
+			if ($this->wasClamped($rawDays, $days)) {
+				$trace['clamped'] = true;
+				$trace['raw_manual_days'] = round($rawDays, 4);
+			}
 			return [
 				'days' => $days,
 				'source' => $mode === Constants::VACATION_MODE_MANUAL_EXCEPTION ? 'manual_exception' : 'manual',
 				'ruleSetId' => $policy->getTariffRuleSetId(),
-				'trace' => [
-					'mode' => $mode,
-					'manual_days' => $days,
-					'override_reason' => $policy->getOverrideReason(),
-				],
+				'trace' => $trace,
 			];
 		}
 		if ($mode === Constants::VACATION_MODE_MODEL_BASED_SIMPLE) {
@@ -364,29 +420,48 @@ class VacationEntitlementEngine {
 		$referenceDays = 30.0;
 		$referenceWeekDays = 5.0;
 		$workDaysPerWeek = 5.0;
+		$degraded = null;
 		$modelAssignment = $this->userWorkingTimeModelMapper->findByUserAndDate($userId, new \DateTime($asOfDate->format('Y-m-d')));
 		if ($modelAssignment !== null) {
 			try {
 				$workingTimeModel = $this->workingTimeModelMapper->find($modelAssignment->getWorkingTimeModelId());
 				$workDaysPerWeek = max(1.0, min(7.0, round((float)$workingTimeModel->getWorkDaysPerWeek(), 2)));
 			} catch (\Throwable) {
-				// Keep safe defaults if model cannot be resolved.
+				// EC-04: model deleted but the user still has an assignment
+				// row referencing it. Falling back to the 5-day reference
+				// would silently change a part-timer's entitlement, so we
+				// flag this in the trace and log a warning. Admin UIs can
+				// surface the flag instead of pretending nothing happened.
+				$degraded = 'model_lookup_failed';
+				\OCP\Log\logger('arbeitszeitcheck')->warning(
+					sprintf(
+						'VacationEntitlementEngine: working time model #%d not found for user %s — falling back to %d work days/week (EC-04).',
+						(int)$modelAssignment->getWorkingTimeModelId(),
+						$userId,
+						(int)$workDaysPerWeek,
+					),
+					['app' => 'arbeitszeitcheck']
+				);
 			}
 		}
 		$days = $this->roundDays($referenceDays * ($workDaysPerWeek / $referenceWeekDays));
+		$trace = [
+			'mode' => $mode,
+			'formula' => 'reference_days * (work_days_per_week / reference_week_days)',
+			'inputs' => [
+				'reference_days' => $referenceDays,
+				'work_days_per_week' => $workDaysPerWeek,
+				'reference_week_days' => $referenceWeekDays,
+			],
+		];
+		if ($degraded !== null) {
+			$trace['degraded'] = $degraded;
+		}
 		return [
 			'days' => $days,
 			'source' => 'simple_model',
 			'ruleSetId' => null,
-			'trace' => [
-				'mode' => $mode,
-				'formula' => 'reference_days * (work_days_per_week / reference_week_days)',
-				'inputs' => [
-					'reference_days' => $referenceDays,
-					'work_days_per_week' => $workDaysPerWeek,
-					'reference_week_days' => $referenceWeekDays,
-				],
-			],
+			'trace' => $trace,
 		];
 	}
 
@@ -448,38 +523,53 @@ class VacationEntitlementEngine {
 		$referenceWeekDays = max(1.0, min(7.0, $referenceWeekDays));
 		$baseDays = max(0.0, min(366.0, $baseDays));
 
-		$computed = $baseDays * ($workDaysPerWeek / max(1.0, $referenceWeekDays));
-		$computed += $additional;
-		$computed -= $deductions;
-		$computed = max(0.0, min(366.0, $computed));
+		$computedRaw = $baseDays * ($workDaysPerWeek / max(1.0, $referenceWeekDays));
+		$computedRaw += $additional;
+		$computedRaw -= $deductions;
+		$computed = max(0.0, min(366.0, $computedRaw));
+		$wasClamped = abs($computedRaw - $computed) > 0.0001;
 		$computed = $this->applyRounding($computed, $rounding);
 		$computed = $this->applyProRata($computed, $proRata, $asOfDate);
+		$finalDays = $this->roundDays($computed);
 
+		$trace = [
+			'mode' => $mode,
+			'rule_set' => [
+				'id' => $ruleSet->getId(),
+				'tariff_code' => $ruleSet->getTariffCode(),
+				'version' => $ruleSet->getVersion(),
+				'status' => $ruleSet->getStatus(),
+			],
+			'formula' => 'base + additional - deductions',
+			'inputs' => [
+				'base_reference_days' => $baseDays,
+				'work_days_per_week' => $workDaysPerWeek,
+				'reference_week_days' => $referenceWeekDays,
+				'additional_days' => $additional,
+				'deduction_days' => $deductions,
+				'rounding' => $rounding,
+				'pro_rata' => $proRata,
+				'as_of_date' => $asOfDate->format('Y-m-d'),
+			],
+			'result_days' => $finalDays,
+		];
+		// EC-08: surface clamping so payroll auditors can spot rule-set
+		// misconfigurations that would otherwise be invisible behind the
+		// 0..366 invariant.
+		if ($wasClamped) {
+			$trace['clamped'] = true;
+			$trace['raw_computed_days'] = round($computedRaw, 4);
+		}
+		// EC-05: rule set is no longer active (retired/draft) — surface
+		// in the trace so the admin simulator and audit log can flag it.
+		if ($ruleSet->getStatus() !== Constants::TARIFF_RULE_SET_STATUS_ACTIVE) {
+			$trace['rule_set_status_warning'] = $ruleSet->getStatus();
+		}
 		return [
-			'days' => $this->roundDays($computed),
+			'days' => $finalDays,
 			'source' => 'tariff',
 			'ruleSetId' => $ruleSet->getId(),
-			'trace' => [
-				'mode' => $mode,
-				'rule_set' => [
-					'id' => $ruleSet->getId(),
-					'tariff_code' => $ruleSet->getTariffCode(),
-					'version' => $ruleSet->getVersion(),
-					'status' => $ruleSet->getStatus(),
-				],
-				'formula' => 'base + additional - deductions',
-				'inputs' => [
-					'base_reference_days' => $baseDays,
-					'work_days_per_week' => $workDaysPerWeek,
-					'reference_week_days' => $referenceWeekDays,
-					'additional_days' => $additional,
-					'deduction_days' => $deductions,
-					'rounding' => $rounding,
-					'pro_rata' => $proRata,
-					'as_of_date' => $asOfDate->format('Y-m-d'),
-				],
-				'result_days' => $this->roundDays($computed),
-			],
+			'trace' => $trace,
 		];
 	}
 
@@ -576,7 +666,7 @@ class VacationEntitlementEngine {
 	}
 
 	/**
-	 * @return array{default_id: int, resolved: array{days: float, source: string, ruleSetId: int|null, trace: array}}|null
+	 * @return array{default_id: int, collision: bool, resolved: array{days: float, source: string, ruleSetId: int|null, trace: array}}|null
 	 */
 	private function resolveOrgLayer(string $userId, \DateTimeImmutable $asOfDate): ?array
 	{
@@ -584,9 +674,35 @@ class VacationEntitlementEngine {
 		if ($default === null) {
 			return null;
 		}
+		// REQ-ENT-10: organisation defaults are supposed to be a single
+		// active row per validity slot. If two rows are simultaneously
+		// active we fail closed to the deterministic "latest effective_from
+		// wins" pick from the mapper, but emit a critical log line *and*
+		// surface a `degraded_org_default_collision` flag in the trace so
+		// admins can repair the data instead of silently shipping the
+		// wrong number.
+		$collision = false;
+		try {
+			$activeCount = $this->orgDefaultMapper->countActiveByDate($asOfDate);
+			if ($activeCount > 1) {
+				$collision = true;
+				\OCP\Log\logger('arbeitszeitcheck')->critical(
+					sprintf(
+						'VacationEntitlementEngine: %d active L0 organisation vacation defaults on %s — failing closed to row #%d (REQ-ENT-10).',
+						$activeCount,
+						$asOfDate->format('Y-m-d'),
+						(int)$default->getId(),
+					),
+					['app' => 'arbeitszeitcheck']
+				);
+			}
+		} catch (\Throwable) {
+			// countActiveByDate is best-effort: never block resolution on diag.
+		}
 		$resolved = $this->resolveFromLayerRow($userId, $default->getVacationMode(), $default->getManualDays(), $default->getTariffRuleSetId(), $asOfDate);
 		return [
 			'default_id' => (int)$default->getId(),
+			'collision' => $collision,
 			'resolved' => $resolved,
 		];
 	}
@@ -602,15 +718,21 @@ class VacationEntitlementEngine {
 	private function resolveFromLayerRow(string $userId, string $mode, ?float $manualDays, ?int $tariffRuleSetId, \DateTimeImmutable $asOfDate): array
 	{
 		if ($mode === Constants::VACATION_MODE_MANUAL_FIXED) {
-			$days = $this->roundDays((float)($manualDays ?? 0.0));
+			$rawDays = (float)($manualDays ?? 0.0);
+			$days = $this->roundDays($rawDays);
+			$trace = [
+				'mode' => $mode,
+				'manual_days' => $days,
+			];
+			if ($this->wasClamped($rawDays, $days)) {
+				$trace['clamped'] = true;
+				$trace['raw_manual_days'] = round($rawDays, 4);
+			}
 			return [
 				'days' => $days,
 				'source' => 'manual',
 				'ruleSetId' => null,
-				'trace' => [
-					'mode' => $mode,
-					'manual_days' => $days,
-				],
+				'trace' => $trace,
 			];
 		}
 		if ($mode === Constants::VACATION_MODE_MODEL_BASED_SIMPLE) {
@@ -767,6 +889,46 @@ class VacationEntitlementEngine {
 		}
 		$clamped = max(0.0, min(366.0, $value));
 		return round($clamped, 2, PHP_ROUND_HALF_UP);
+	}
+
+	/**
+	 * Detect whether {@see self::roundDays()} had to clamp the value. Used
+	 * by trace builders to surface `clamped=true` for auditors so
+	 * misconfigured rule sets (negative manual days, accidentally adding
+	 * 200% pro-rata) are visible instead of disappearing behind the
+	 * 0..366 invariant (EC-08).
+	 *
+	 * Tolerance picks up below the 2dp rounding noise so 25.0 vs 25.001 is
+	 * not flagged as "clamped" by accident.
+	 */
+	private function wasClamped(float $raw, float $finalDays): bool
+	{
+		if (!is_finite($raw)) {
+			return true;
+		}
+		if ($raw < 0.0 || $raw > 366.0) {
+			return true;
+		}
+		// Below the 2dp rounding floor — not a clamp, just rounding noise.
+		return false;
+	}
+
+	/**
+	 * Whether `$asOfDate` is before the day this resolution runs. Used to
+	 * surface a `partial_history` flag on L2 matches when the team
+	 * membership table only reflects *current* state (REQ-ENT-13, EC-11).
+	 * The check is intentionally coarse — we have no per-membership
+	 * `valid_from` column yet — so any `as_of_date` strictly before today
+	 * is treated as "best effort historical".
+	 */
+	private function asOfPredatesMembershipHistory(\DateTimeImmutable $asOfDate): bool
+	{
+		try {
+			$today = new \DateTimeImmutable('today');
+		} catch (\Throwable) {
+			return false;
+		}
+		return $asOfDate->format('Y-m-d') < $today->format('Y-m-d');
 	}
 
 	/**

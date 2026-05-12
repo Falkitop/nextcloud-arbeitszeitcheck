@@ -512,4 +512,259 @@ class LayeredVacationEntitlementEngineTest extends TestCase
 		// Trace days must match exactly — no int truncation anywhere.
 		$this->assertSame(27.5, $result['trace']['winner']['days']);
 	}
+
+	/* ---------------------------------------------------------------- *
+	 * Degraded-state trace flags
+	 * (REQ-ENT-10, EC-04, EC-05, EC-08, EC-11)
+	 * ---------------------------------------------------------------- */
+
+	public function testL0CollisionSurfacesDegradedFlagInTrace(): void
+	{
+		// REQ-ENT-10: two L0 rows active on the same date → fail closed
+		// to the deterministic winner from `findActiveByDate` *and* mark
+		// the trace as degraded so an admin can repair the data.
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['org']->method('findActiveByDate')->willReturn($this->makeOrgDefault(20.0));
+		$mocks['org']->method('countActiveByDate')->willReturn(2);
+
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+
+		$this->assertSame('L0', $result['matchedLayer']);
+		$this->assertSame(20.0, $result['days']);
+		$this->assertTrue($result['trace']['degraded'] ?? false, 'trace.degraded must be true on L0 collision');
+		$this->assertTrue($result['trace']['winner']['degraded_org_default_collision'] ?? false);
+		$l0Row = null;
+		foreach ($result['trace']['layers_evaluated'] as $row) {
+			if (($row['layer'] ?? null) === 'L0') {
+				$l0Row = $row;
+				break;
+			}
+		}
+		$this->assertNotNull($l0Row);
+		$this->assertTrue($l0Row['degraded_org_default_collision'] ?? false);
+	}
+
+	public function testL0NoCollisionLeavesTraceClean(): void
+	{
+		// Counter-test: a single active row must NOT raise the degraded flag.
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['org']->method('findActiveByDate')->willReturn($this->makeOrgDefault(25.0));
+		$mocks['org']->method('countActiveByDate')->willReturn(1);
+
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame('L0', $result['matchedLayer']);
+		$this->assertArrayNotHasKey('degraded', $result['trace']);
+		$this->assertArrayNotHasKey('degraded_org_default_collision', $result['trace']['winner']);
+	}
+
+	public function testModelLookupFailedFlagWhenWorkingTimeModelGone(): void
+	{
+		// EC-04: user has an L3 model-based-simple policy and a
+		// UserWorkingTimeModel assignment, but the referenced
+		// WorkingTimeModel row was deleted. The engine must NOT silently
+		// fall back to the 5-day reference week — it must keep computing
+		// (so the user-facing surface stays alive) but raise a
+		// `degraded='model_lookup_failed'` flag.
+		[$engine, $mocks] = $this->makeEngine();
+		$policy = $this->makePolicy(false, null, Constants::VACATION_MODE_MODEL_BASED_SIMPLE);
+		$mocks['policy']->method('findCurrentByUser')->willReturn($policy);
+
+		$asn = new UserWorkingTimeModel();
+		$asn->setWorkingTimeModelId(99);
+		$mocks['userModel']->method('findByUserAndDate')->willReturn($asn);
+		$mocks['workingTimeModel']
+			->method('find')
+			->willThrowException(new \OCP\AppFramework\Db\DoesNotExistException('gone'));
+
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame('L3', $result['matchedLayer']);
+		$this->assertSame('model_lookup_failed', $result['trace']['inner']['degraded'] ?? null);
+	}
+
+	public function testTariffRuleSetStatusWarningWhenNotActive(): void
+	{
+		// EC-05: a retired/draft tariff rule set is still consultable via
+		// L3 (e.g. payroll's looking at an old simulation). The engine
+		// must surface `rule_set_status_warning` so the admin UI can
+		// disambiguate "this isn't your *current* tariff".
+		[$engine, $mocks] = $this->makeEngine();
+		$policy = $this->makePolicy(false, null, Constants::VACATION_MODE_TARIFF_RULE_BASED);
+		$policy->setTariffRuleSetId(77);
+		$mocks['policy']->method('findCurrentByUser')->willReturn($policy);
+
+		$ruleSet = new \OCA\ArbeitszeitCheck\Db\TariffRuleSet();
+		$ruleSet->setId(77);
+		$ruleSet->setTariffCode('IGM-2020');
+		$ruleSet->setVersion(1);
+		$ruleSet->setStatus(Constants::TARIFF_RULE_SET_STATUS_RETIRED);
+		$mocks['ruleSet']->method('find')->willReturn($ruleSet);
+		$mocks['module']->method('findByRuleSetId')->willReturn([]);
+
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame('L3', $result['matchedLayer']);
+		$this->assertSame(
+			Constants::TARIFF_RULE_SET_STATUS_RETIRED,
+			$result['trace']['inner']['rule_set_status_warning'] ?? null,
+		);
+	}
+
+	public function testManualDaysClampedRaisesClampedFlag(): void
+	{
+		// EC-08: a misconfigured policy with `manualDays = 9999` must
+		// land at the 366 invariant cap *and* explicitly surface that
+		// fact via `clamped=true` + `raw_manual_days`, otherwise
+		// auditors lose the only signal that the rule was misconfigured.
+		[$engine, $mocks] = $this->makeEngine();
+		$policy = $this->makePolicy(false, 9999.0);
+		$mocks['policy']->method('findCurrentByUser')->willReturn($policy);
+
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame(366.0, $result['days']);
+		$this->assertTrue($result['trace']['inner']['clamped'] ?? false);
+		$this->assertSame(9999.0, $result['trace']['inner']['raw_manual_days'] ?? null);
+	}
+
+	public function testManualDaysInRangeDoesNotRaiseClampedFlag(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		$policy = $this->makePolicy(false, 30.0);
+		$mocks['policy']->method('findCurrentByUser')->willReturn($policy);
+
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame(30.0, $result['days']);
+		$this->assertArrayNotHasKey('clamped', $result['trace']['inner']);
+	}
+
+	public function testL0ManualClampedRaisesClampedFlagOnLayerRow(): void
+	{
+		// Same invariant for L0/L1/L2 — the layer-row path goes through
+		// `resolveFromLayerRow`, not `resolveFromPolicy`, so we exercise
+		// it explicitly.
+		[$engine, $mocks] = $this->makeEngine();
+		$over = $this->makeOrgDefault(-50.0);
+		$mocks['org']->method('findActiveByDate')->willReturn($over);
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame(0.0, $result['days']);
+		$this->assertTrue($result['trace']['inner']['clamped'] ?? false);
+		$this->assertSame(-50.0, $result['trace']['inner']['raw_manual_days'] ?? null);
+	}
+
+	public function testL2PartialHistoryFlagForBackdatedResolution(): void
+	{
+		// EC-11 / REQ-ENT-13: the membership table only reflects current
+		// state, so a back-dated L2 resolution must be flagged
+		// `partial_history=true` instead of silently pretending the
+		// membership reflected history.
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['teamMember']->method('findByUserId')->willReturn([$this->makeMember(2)]);
+		$mocks['team']->method('getParentMap')->willReturn([1 => null, 2 => 1]);
+		$mocks['teamPolicy']->method('findActiveByTeamIds')->willReturn([$this->makeTeamPolicy(7, 2, 25.0)]);
+
+		// A date in the distant past relative to test "today".
+		$result = $engine->computeForDate('u1', new \DateTimeImmutable('2020-01-15'));
+		$this->assertSame('L2', $result['matchedLayer']);
+		$this->assertTrue($result['trace']['winner']['partial_history'] ?? false);
+		$l2 = null;
+		foreach ($result['trace']['layers_evaluated'] as $row) {
+			if (($row['layer'] ?? null) === 'L2') {
+				$l2 = $row;
+				break;
+			}
+		}
+		$this->assertNotNull($l2);
+		$this->assertTrue($l2['partial_history'] ?? false);
+	}
+
+	public function testL2NoPartialHistoryForFutureResolution(): void
+	{
+		// Negative control: forward-dated resolution must NOT carry the
+		// partial_history flag because the membership table is current.
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['teamMember']->method('findByUserId')->willReturn([$this->makeMember(2)]);
+		$mocks['team']->method('getParentMap')->willReturn([1 => null, 2 => 1]);
+		$mocks['teamPolicy']->method('findActiveByTeamIds')->willReturn([$this->makeTeamPolicy(7, 2, 25.0)]);
+
+		$future = (new \DateTimeImmutable('today'))->modify('+30 days');
+		$result = $engine->computeForDate('u1', $future);
+		$this->assertSame('L2', $result['matchedLayer']);
+		$this->assertArrayNotHasKey('partial_history', $result['trace']['winner']);
+	}
+
+	/* ---------------------------------------------------------------- *
+	 * Redacted-trace flag pass-through (REQ-SEC-05)
+	 * ---------------------------------------------------------------- */
+
+	public function testRedactedTracePassesThroughDegradedFlag(): void
+	{
+		// Top-level `degraded` survives redaction so the employee gets a
+		// "please contact HR" hint, but no internal reason is disclosed.
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['userSettings']->method('getIntegerSetting')->willReturn(25);
+		$full = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'))['trace'];
+		$this->assertTrue($full['degraded'] ?? false);
+
+		$redacted = $engine->redactTraceForUser($full);
+		$this->assertTrue($redacted['degraded'] ?? false);
+		$this->assertArrayNotHasKey('inner', $redacted);
+	}
+
+	public function testRedactedTracePassesThroughClampedFlag(): void
+	{
+		// `clamped` survives redaction, but `raw_manual_days` / `raw_computed_days`
+		// must NOT leak — they would disclose the misconfigured raw value.
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['policy']->method('findCurrentByUser')->willReturn($this->makePolicy(false, 9999.0));
+		$full = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'))['trace'];
+
+		$redacted = $engine->redactTraceForUser($full);
+		$this->assertTrue($redacted['clamped'] ?? false);
+		$this->assertArrayNotHasKey('raw_manual_days', $redacted);
+		$this->assertArrayNotHasKey('raw_computed_days', $redacted);
+		$this->assertArrayNotHasKey('inner', $redacted);
+	}
+
+	public function testRedactedTracePassesThroughPartialHistoryPerLayer(): void
+	{
+		// L2 `partial_history` flag is generic enough to keep — it tells
+		// the user "this is best effort for past dates" without naming
+		// teams or memberships.
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['teamMember']->method('findByUserId')->willReturn([$this->makeMember(2)]);
+		$mocks['team']->method('getParentMap')->willReturn([1 => null, 2 => 1]);
+		$mocks['teamPolicy']->method('findActiveByTeamIds')->willReturn([$this->makeTeamPolicy(7, 2, 25.0)]);
+		$full = $engine->computeForDate('u1', new \DateTimeImmutable('2020-01-15'))['trace'];
+
+		$redacted = $engine->redactTraceForUser($full);
+		$l2 = null;
+		foreach ($redacted['layers_evaluated'] as $row) {
+			if (($row['layer'] ?? null) === 'L2') {
+				$l2 = $row;
+				break;
+			}
+		}
+		$this->assertNotNull($l2);
+		$this->assertTrue($l2['partial_history'] ?? false);
+		// No internal IDs in the redacted L2 row
+		$this->assertArrayNotHasKey('team_id', $l2);
+		$this->assertArrayNotHasKey('policy_id', $l2);
+		$this->assertArrayNotHasKey('candidates', $l2);
+	}
+
+	public function testRedactedTraceDoesNotLeakOrgCollisionFlag(): void
+	{
+		// `degraded_org_default_collision` is admin-only — it would
+		// confuse end users and reveal a data quality issue they cannot
+		// act on. The top-level `degraded` flag is the only signal they
+		// see.
+		[$engine, $mocks] = $this->makeEngine();
+		$mocks['org']->method('findActiveByDate')->willReturn($this->makeOrgDefault(20.0));
+		$mocks['org']->method('countActiveByDate')->willReturn(2);
+		$full = $engine->computeForDate('u1', new \DateTimeImmutable('2026-06-01'))['trace'];
+
+		$redacted = $engine->redactTraceForUser($full);
+		$this->assertTrue($redacted['degraded'] ?? false);
+		foreach ($redacted['layers_evaluated'] as $row) {
+			$this->assertArrayNotHasKey('degraded_org_default_collision', $row);
+		}
+	}
 }

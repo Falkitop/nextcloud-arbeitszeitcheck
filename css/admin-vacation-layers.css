@@ -368,6 +368,56 @@
 }
 .layer-dialog__feedback:empty { display: none; }
 
+/* Impact preview (REQ-UX-03) — surfaces "this change will affect ~N users"
+   inline above the action bar so admins can't miss it before clicking Save.
+   Colour-coded by state, but state is also conveyed by the icon and the
+   text itself (WCAG 1.4.1 — never colour alone). */
+.layer-dialog__impact {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  margin: 0;
+  padding: .65rem .85rem;
+  border-radius: var(--border-radius, 6px);
+  font-size: .9375rem;
+  line-height: 1.35;
+  border: 1px solid var(--color-border);
+  background: var(--color-background-hover);
+}
+.layer-dialog__impact[hidden] { display: none; }
+.layer-dialog__impact[data-state="idle"] {
+  color: var(--color-text-maxcontrast);
+}
+.layer-dialog__impact[data-state="loading"] {
+  color: var(--color-text-maxcontrast);
+  font-style: italic;
+}
+.layer-dialog__impact[data-state="ok"] {
+  border-color: color-mix(in srgb, var(--color-success) 30%, var(--color-border));
+  background: color-mix(in srgb, var(--color-success) 8%, var(--color-background-hover));
+}
+.layer-dialog__impact[data-state="warn"] {
+  border-color: color-mix(in srgb, var(--color-warning) 35%, var(--color-border));
+  background: color-mix(in srgb, var(--color-warning) 12%, var(--color-background-hover));
+}
+.layer-dialog__impact[data-state="error"] {
+  border-color: color-mix(in srgb, var(--color-error) 30%, var(--color-border));
+  background: color-mix(in srgb, var(--color-error) 8%, var(--color-background-hover));
+  color: var(--color-error);
+}
+.layer-dialog__impact-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: 0 0 1.25rem;
+}
+.layer-dialog__impact-icon .lucide-icon {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
 .layer-dialog__actions {
   display: flex;
   justify-content: flex-end;
@@ -489,6 +539,44 @@
 }
 .trace-table tr[data-matched="true"] {
   background: color-mix(in srgb, var(--color-success) 12%, transparent);
+}
+
+/* Trace-flag chips: rendered inside the simulator table when a layer or
+   inner result emitted a degraded/clamped/partial_history marker. Each
+   variant uses a distinct icon-less text label so colour is never the
+   only differentiator (WCAG 1.4.1). */
+.trace-flag {
+  display: inline-block;
+  margin-top: .25rem;
+  padding: .1rem .55rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  font-size: .8125rem;
+  line-height: 1.35;
+  background: var(--color-background-hover);
+}
+.trace-flag--warn {
+  border-color: color-mix(in srgb, var(--color-warning) 35%, var(--color-border));
+  background: color-mix(in srgb, var(--color-warning) 14%, var(--color-background-hover));
+}
+.trace-flag--info {
+  border-color: color-mix(in srgb, var(--color-primary-element) 30%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary-element) 10%, var(--color-background-hover));
+}
+.layer-sim__banner {
+  margin: 0 0 .75rem 0;
+  padding: .65rem .85rem;
+  border-radius: var(--border-radius, 6px);
+  border: 1px solid var(--color-border);
+  background: var(--color-background-hover);
+  font-size: .9375rem;
+}
+.layer-sim__banner--warn {
+  border-color: color-mix(in srgb, var(--color-warning) 35%, var(--color-border));
+  background: color-mix(in srgb, var(--color-warning) 14%, var(--color-background-hover));
+}
+.layer-sim__flags {
+  margin: .25rem 0 .75rem 0;
 }
 
 /* -------------------------------------------------------------------------
