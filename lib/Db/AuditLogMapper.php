@@ -250,15 +250,19 @@ class AuditLogMapper extends QBMapper
 	public function getStatistics(array $filters = []): array
 	{
 		$qb = $this->db->getQueryBuilder();
+		// IMPORTANT: do not use `count` or `unique_users` as aliases - `count` is
+		// a reserved function name in PostgreSQL/Oracle, and Doctrine's
+		// "ORDER BY <alias>" can collide with the function. We use neutral
+		// aliases instead.
 		$qb->select([
 			'action',
 			'entity_type',
-			$qb->createFunction('COUNT(*) as count'),
-			$qb->createFunction('COUNT(DISTINCT user_id) as unique_users')
+			$qb->createFunction('COUNT(*) AS entry_count'),
+			$qb->createFunction('COUNT(DISTINCT user_id) AS distinct_users'),
 		])
 		->from($this->getTableName())
 		->groupBy('action', 'entity_type')
-		->orderBy('count', 'DESC');
+		->orderBy('entry_count', 'DESC');
 
 		if (isset($filters['start_date'])) {
 			$start = $filters['start_date'] instanceof \DateTime ? $filters['start_date']->format('Y-m-d H:i:s') : $filters['start_date'];
@@ -280,8 +284,8 @@ class AuditLogMapper extends QBMapper
 		];
 
 		foreach ($results as $row) {
-			$count = (int)$row['count'];
-			$uniqueUsers = (int)$row['unique_users'];
+			$count = (int)($row['entry_count'] ?? 0);
+			$uniqueUsers = (int)($row['distinct_users'] ?? 0);
 
 			$stats['total_logs'] += $count;
 			$stats['unique_users'] = max($stats['unique_users'], $uniqueUsers);

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## 1.2.9 - 2026-05-12
+
+### Fixed
+
+- **Install-blocking foreign key crash on PostgreSQL** (issue #4): Migration `Version1014Date20260409120000` declared the `at_mcr_closure_fk` foreign key on `at_month_closure_revision.closure_id` by passing the raw, *unprefixed* string `'at_month_closure'` to `addForeignKeyConstraint()`. Doctrine then emitted SQL that referenced the literal `at_month_closure` relation instead of the prefixed `oc_at_month_closure`, which aborted the install on every PostgreSQL cluster with `SQLSTATE[42P01] / Undefined table: 7 / ERROR: relation »at_month_closure« does not exist`. The FK is now declared via `$schema->getTable('at_month_closure')` so the prefix is applied. MariaDB/MySQL were affected too, but silently — the FK was never created on those engines, leaving the month-closure audit trail without referential integrity.
+- **Backfill of the missing month-closure FK on existing installs**: Added `Version1023Date20260512143000`. The migration first removes any orphan `at_month_closure_revision` rows whose `closure_id` does not point to an existing closure (these can only exist as a side-effect of the previously-missing FK on MariaDB) and then adds the FK with `ON DELETE CASCADE`. Fully idempotent — safe to re-run on healthy installs.
+- **Locale-fragile "table does not exist" detection in migrations**: `Version1008`, `Version1009`, and `Version1015` previously detected a missing table on fresh installs by string-matching English driver error messages ("doesn't exist", "no such table", …). PostgreSQL localises these messages ("Relation … existiert nicht" on a German cluster), and the check leaked through, surfacing migration failures with a confusing translated database error. Replaced with explicit `IDBConnection::tableExists()` guards.
+- **Locale-fragile runtime guards** in `SettingsController::index_api`, `AdminController::getTeams`, and `TeamResolverService`: replaced fragile error-message string matching with `OCP\DB\Exception::getReason() === REASON_DATABASE_OBJECT_NOT_FOUND` — the portable, locale-independent contract guaranteed by Nextcloud's DBAL wrapper. A small message-based fallback is kept only for non-DBAL paths (e.g. test doubles).
+
+### Tests
+
+- **Schema-level regression guard for the FK bug**: New `tests/Unit/Migration/MonthClosureForeignKeyTest` reproduces the migration's schema build against a real Doctrine `Schema` with the Nextcloud table prefix applied, then asserts that the FK references the *prefixed* table name and that re-running the migration is a no-op. This pins down the contract that originally regressed and catches any future migration that accidentally passes a raw, unprefixed table name to `addForeignKeyConstraint()`.
+
 ## 1.2.8 - 2026-04-30
 
 ### Security

@@ -512,7 +512,8 @@ class AbsenceMapper extends QBMapper
 			->andWhere($qb->expr()->gte('end_date', $qb->createNamedParameter($startDate->format('Y-m-d'), IQueryBuilder::PARAM_STR)));
 
 		if ($excludeId !== null) {
-			$qb->andWhere($qb->expr()->neq('id', $qb->createNamedParameter($excludeId)));
+			// `id` is BIGINT - bind as integer for strict drivers (PostgreSQL/Oracle).
+			$qb->andWhere($qb->expr()->neq('id', $qb->createNamedParameter($excludeId, IQueryBuilder::PARAM_INT)));
 		}
 
 		return $this->findEntities($qb);

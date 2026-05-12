@@ -40,25 +40,19 @@ class Version1009Date20260314000000 extends SimpleMigrationStep
 	 */
 	public function preSchemaChange(IOutput $output, Closure $schemaClosure, array $options): void
 	{
-		try {
-			$qb = $this->db->getQueryBuilder();
-			$qb->update('at_violations')
-				->set('resolved_by', $qb->createNamedParameter(null, \OCP\DB\QueryBuilder\IQueryBuilder::PARAM_NULL))
-				->where($qb->expr()->isNotNull('resolved_by'));
-			$qb->executeStatement();
-		} catch (\Throwable $e) {
-			$msg = (string)$e->getMessage();
-			// Table might not exist on a fresh install; safe to ignore.
-			if (str_contains($msg, "doesn't exist")
-				|| str_contains($msg, 'does not exist')
-				|| str_contains($msg, 'no such table')
-				|| str_contains($msg, 'undefined table')
-				|| str_contains($msg, 'relation ')
-			) {
-				return;
-			}
-			throw $e;
+		// On a fresh install the table does not exist yet. Explicit existence
+		// check avoids depending on locale-specific driver error messages
+		// (PostgreSQL translates "relation does not exist" on non-English
+		// clusters).
+		if (!$this->db->tableExists('at_violations')) {
+			return;
 		}
+
+		$qb = $this->db->getQueryBuilder();
+		$qb->update('at_violations')
+			->set('resolved_by', $qb->createNamedParameter(null, \OCP\DB\QueryBuilder\IQueryBuilder::PARAM_NULL))
+			->where($qb->expr()->isNotNull('resolved_by'));
+		$qb->executeStatement();
 	}
 
 	public function changeSchema(IOutput $output, Closure $schemaClosure, array $options): ?ISchemaWrapper

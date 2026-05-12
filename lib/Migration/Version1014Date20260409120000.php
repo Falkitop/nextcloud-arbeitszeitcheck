@@ -5,6 +5,20 @@ declare(strict_types=1);
 /**
  * Revision-safe month closure (snapshots + hash chain).
  *
+ * Creates the two tables that underpin the cryptographically chained month
+ * closure feature:
+ *
+ *  - `at_month_closure`           : one row per (user, year, month) closure.
+ *  - `at_month_closure_revision`  : append-only seal history with a hash chain.
+ *
+ * The foreign key on `closure_id` MUST be added using the prefixed Doctrine
+ * `Table` object returned by `$schema->getTable()`. Passing the raw, unprefixed
+ * string `'at_month_closure'` to `addForeignKeyConstraint()` produces a SQL
+ * statement that references the literal table name and crashes on PostgreSQL
+ * with "relation »at_month_closure« does not exist" (the real table is
+ * `oc_at_month_closure` after Nextcloud's `dbtableprefix` is applied).
+ * See: https://github.com/aSoftwareByDesignRepository/nextcloud-arbeitszeitcheck/issues/4
+ *
  * @copyright Copyright (c) 2026
  * @license AGPL-3.0-or-later
  */
@@ -115,7 +129,7 @@ class Version1014Date20260409120000 extends SimpleMigrationStep
 			$table->setPrimaryKey(['id'], 'at_mcr_pk');
 			$table->addIndex(['closure_id', 'version'], 'at_mcr_closure_ver_idx');
 			$table->addForeignKeyConstraint(
-				'at_month_closure',
+				$schema->getTable('at_month_closure'),
 				['closure_id'],
 				['id'],
 				['onDelete' => 'CASCADE'],

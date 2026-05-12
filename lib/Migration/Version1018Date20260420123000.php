@@ -32,7 +32,8 @@ class Version1018Date20260420123000 extends SimpleMigrationStep {
 			$selectQb = $this->db->getQueryBuilder();
 			$selectQb->select('user_id', 'vacation_days_per_year', 'start_date', 'end_date')
 				->from('at_user_models');
-			$rows = $selectQb->executeQuery()->fetchAllAssociative();
+			// Use the public IResult API (associative is the default fetch mode).
+			$rows = $selectQb->executeQuery()->fetchAll();
 
 			foreach ($rows as $row) {
 				$insertQb = $this->db->getQueryBuilder();

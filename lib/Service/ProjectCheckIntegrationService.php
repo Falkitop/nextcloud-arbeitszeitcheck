@@ -144,7 +144,13 @@ class ProjectCheckIntegrationService
 	}
 
 	/**
-	 * Get time entries from ProjectCheck for a project (for migration/comparison)
+	 * Get time entries from ProjectCheck for a project (for migration/comparison).
+	 *
+	 * @deprecated Not used by production code; retained behind a try/catch for
+	 *             future use cases. The shape of the returned array mirrors the
+	 *             projectcheck schema, which is not part of this app's public
+	 *             contract and may change without notice.
+	 * @internal
 	 *
 	 * @param string $projectId
 	 * @return array
@@ -189,8 +195,15 @@ class ProjectCheckIntegrationService
 	}
 
 	/**
-	 * Sync time entries between ArbeitszeitCheck and ProjectCheck
-	 * This allows time tracked in ArbeitszeitCheck to be visible in ProjectCheck
+	 * Sync time entries between ArbeitszeitCheck and ProjectCheck.
+	 *
+	 * @deprecated The implementation references `hours` and `hourly_rate`
+	 *             columns which do not exist on the `at_entries` schema, so
+	 *             this method cannot succeed against a real database. It is
+	 *             kept solely to preserve the historical contract for the
+	 *             `ProjectCheckIntegrationServiceTest` mocks. Do NOT call
+	 *             from production code.
+	 * @internal
 	 *
 	 * @param string $userId
 	 * @param \DateTime|null $since Only sync entries since this date
@@ -268,7 +281,11 @@ class ProjectCheckIntegrationService
 	}
 
 	/**
-	 * Get project budget information from ProjectCheck
+	 * Get project budget information from ProjectCheck.
+	 *
+	 * @deprecated Not used by production code; reads directly from the
+	 *             projectcheck schema and is sensitive to changes there.
+	 * @internal
 	 *
 	 * @param string $projectId
 	 * @return array|null
@@ -305,7 +322,16 @@ class ProjectCheckIntegrationService
 	}
 
 	/**
-	 * Get project time statistics combining both apps
+	 * Get project time statistics combining both apps.
+	 *
+	 * @deprecated The implementation references `hours` and `hourly_rate`
+	 *             columns which do not exist on the `at_entries` schema, so
+	 *             the ArbeitszeitCheck portion of the stats always errors out
+	 *             at runtime (and is logged and ignored). Do NOT call from
+	 *             production code – the {@see \OCA\ArbeitszeitCheck\Service\OvertimeService}
+	 *             and report services are the canonical sources of working-time
+	 *             aggregates.
+	 * @internal
 	 *
 	 * @param string $projectId
 	 * @return array

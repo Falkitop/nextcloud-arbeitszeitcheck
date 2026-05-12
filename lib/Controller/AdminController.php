@@ -44,6 +44,7 @@ use OCP\AppFramework\Http\DataDownloadResponse;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\AppFramework\Services\IAppConfig;
+use OCP\DB\Exception as DBException;
 use OCP\IGroupManager;
 use OCP\IRequest;
 use OCP\IUserManager;
@@ -3605,17 +3606,40 @@ class AdminController extends Controller
 			$tree = $this->buildTeamTree($teams, null);
 			return new JSONResponse(['success' => true, 'teams' => $tree]);
 		} catch (\Throwable $e) {
-			$msg = $e->getMessage();
-			if (str_contains($msg, "doesn't exist") || str_contains($msg, 'at_teams')) {
-				\OCP\Log\logger('arbeitszeitcheck')->info('Admin teams table not found, returning empty: ' . $msg);
+			if ($this->isMissingTableException($e)) {
+				\OCP\Log\logger('arbeitszeitcheck')->info('Admin teams table not yet available, returning empty teams.');
 				return new JSONResponse(['success' => true, 'teams' => []]);
 			}
-			\OCP\Log\logger('arbeitszeitcheck')->error('Error in AdminController::getTeams: ' . $msg, ['exception' => $e]);
+			\OCP\Log\logger('arbeitszeitcheck')->error('Error in AdminController::getTeams: ' . $e->getMessage(), ['exception' => $e]);
 			return new JSONResponse([
 				'success' => false,
 				'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.'),
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
+	}
+
+	/**
+	 * Locale-independent detection of "table/object does not exist" errors.
+	 *
+	 * Inspects Nextcloud's DB exception reason codes (which the DBAL wrapper
+	 * provides on every supported database) rather than parsing localised
+	 * driver error messages. The string fallback only fires for non-DBAL
+	 * paths (e.g. test doubles raising raw PDO exceptions).
+	 */
+	private function isMissingTableException(\Throwable $e): bool
+	{
+		if ($e instanceof DBException && $e->getReason() === DBException::REASON_DATABASE_OBJECT_NOT_FOUND) {
+			return true;
+		}
+		$previous = $e->getPrevious();
+		if ($previous instanceof DBException && $previous->getReason() === DBException::REASON_DATABASE_OBJECT_NOT_FOUND) {
+			return true;
+		}
+		$msg = (string)$e->getMessage();
+		return str_contains($msg, "doesn't exist")
+			|| str_contains($msg, 'does not exist')
+			|| str_contains($msg, 'no such table')
+			|| str_contains($msg, 'undefined table');
 	}
 
 	/**

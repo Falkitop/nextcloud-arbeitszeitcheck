@@ -263,11 +263,13 @@ class ComplianceViolationMapper extends QBMapper
 	public function getStatistics(array $filters = []): array
 	{
 		$qb = $this->db->getQueryBuilder();
+		// Use a non-reserved alias ('cnt'). PostgreSQL/Oracle treat `count` as a
+		// function name and quoting can interact awkwardly with some driver versions.
 		$qb->select([
 			'violation_type',
 			'severity',
 			'resolved',
-			$qb->createFunction('COUNT(*) as count')
+			$qb->createFunction('COUNT(*) AS cnt'),
 		])
 		->from($this->getTableName())
 		->groupBy('violation_type', 'severity', 'resolved')
@@ -298,10 +300,14 @@ class ComplianceViolationMapper extends QBMapper
 		];
 
 		foreach ($results as $row) {
-			$count = (int)$row['count'];
+			$count = (int)($row['cnt'] ?? 0);
 			$stats['total_violations'] += $count;
 
-			if ($row['resolved'] === '1') {
+			// Cross-database boolean normalisation:
+			// - MySQL/MariaDB/SQLite: TINYINT(1) returns 0/1 or '0'/'1'
+			// - PostgreSQL: BOOLEAN returns true/false or 't'/'f'
+			// - Oracle: NUMBER(1) returns 0/1 or '0'/'1'
+			if ($this->isTruthyDbValue($row['resolved'] ?? null)) {
 				$stats['resolved_violations'] += $count;
 			} else {
 				$stats['unresolved_violations'] += $count;
@@ -321,6 +327,29 @@ class ComplianceViolationMapper extends QBMapper
 		}
 
 		return $stats;
+	}
+
+	/**
+	 * Normalise a database boolean cell to a PHP bool, regardless of platform.
+	 *
+	 * Different drivers materialise BOOLEAN columns differently (e.g. 't'/'f' on
+	 * PostgreSQL, 1/0 on MySQL/SQLite, true/false when DBAL hydrates). This
+	 * helper centralises the conversion so callers cannot accidentally rely on
+	 * a platform-specific representation.
+	 */
+	private function isTruthyDbValue(mixed $value): bool
+	{
+		if ($value === null) {
+			return false;
+		}
+		if (is_bool($value)) {
+			return $value;
+		}
+		if (is_int($value) || is_float($value)) {
+			return (int)$value === 1;
+		}
+		$normalised = strtolower((string)$value);
+		return in_array($normalised, ['1', 't', 'true', 'y', 'yes'], true);
 	}
 
 	/**

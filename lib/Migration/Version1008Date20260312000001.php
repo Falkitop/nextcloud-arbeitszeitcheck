@@ -32,34 +32,28 @@ class Version1008Date20260312000001 extends SimpleMigrationStep
 
 	public function preSchemaChange(IOutput $output, Closure $schemaClosure, array $options): void
 	{
+		// Fresh installs do not have the table yet: explicit existence check
+		// is portable across MySQL/MariaDB/PostgreSQL/SQLite/Oracle and locale
+		// independent (PostgreSQL localises error messages).
+		if (!$this->db->tableExists('at_holidays')) {
+			return;
+		}
+
 		// Remove duplicate rows keeping only the one with the smallest id per
 		// (state, date, scope) before the unique index is added.
 		// Uses the Doctrine DBAL QueryBuilder to stay fully portable across
 		// MySQL/MariaDB, PostgreSQL, and SQLite.
-		try {
-			$qb = $this->db->getQueryBuilder();
+		$qb = $this->db->getQueryBuilder();
 
-			// Fetch all rows, ordered so duplicates within a group are predictable
-			$qb->select('id', 'state', 'date', 'scope')
-				->from('at_holidays')
-				->orderBy('state', 'ASC')
-				->addOrderBy('date', 'ASC')
-				->addOrderBy('scope', 'ASC')
-				->addOrderBy('id', 'ASC');
+		// Fetch all rows, ordered so duplicates within a group are predictable
+		$qb->select('id', 'state', 'date', 'scope')
+			->from('at_holidays')
+			->orderBy('state', 'ASC')
+			->addOrderBy('date', 'ASC')
+			->addOrderBy('scope', 'ASC')
+			->addOrderBy('id', 'ASC');
 
-			$rows = $qb->executeQuery()->fetchAll();
-		} catch (\Throwable $e) {
-			$msg = (string)$e->getMessage();
-			// Table does not exist on a fresh install — nothing to deduplicate
-			if (str_contains($msg, "doesn't exist")
-				|| str_contains($msg, 'does not exist')
-				|| str_contains($msg, 'no such table')
-				|| str_contains($msg, 'undefined table')
-			) {
-				return;
-			}
-			throw $e;
-		}
+		$rows = $qb->executeQuery()->fetchAll();
 
 		// Identify the IDs to delete in PHP — keeps the row with the smallest id
 		// per group and marks all others as duplicates.

@@ -57,6 +57,13 @@ class Version1015Date20260415120000 extends SimpleMigrationStep
 		$berlin = new DateTimeZone('Europe/Berlin');
 
 		foreach (self::DATETIME_COLUMNS as $table => $columns) {
+			// Use `tableExists()` rather than catching driver errors: error
+			// messages are localised by PostgreSQL ("Relation ... existiert
+			// nicht" on a German cluster) and any string-based detection is
+			// fragile across locales / future driver versions.
+			if (!$this->db->tableExists($table)) {
+				continue;
+			}
 			$this->convertTableDatetimes($table, $columns, $utc, $berlin);
 		}
 
@@ -68,20 +75,22 @@ class Version1015Date20260415120000 extends SimpleMigrationStep
 
 	private function completePausedEntriesWithoutEndTime(): void
 	{
-		try {
-			$qb = $this->db->getQueryBuilder();
-			$qb->update('at_entries')
-				->set('end_time', 'updated_at')
-				->set('status', $qb->createNamedParameter('completed', IQueryBuilder::PARAM_STR))
-				->where($qb->expr()->eq('status', $qb->createNamedParameter('paused', IQueryBuilder::PARAM_STR)))
-				->andWhere($qb->expr()->isNull('end_time'));
-			$qb->executeStatement();
-		} catch (\Throwable $e) {
-			if ($this->isMissingTableError($e->getMessage())) {
-				return;
-			}
-			throw $e;
+		if (!$this->db->tableExists('at_entries')) {
+			return;
 		}
+
+		// Nextcloud's QueryBuilder::set() quotes both arguments as column
+		// identifiers, so `set('end_time', 'updated_at')` produces
+		// `SET "end_time" = "updated_at"`. This is the portable way to copy
+		// one column's value into another across MySQL/MariaDB, PostgreSQL,
+		// SQLite and Oracle.
+		$qb = $this->db->getQueryBuilder();
+		$qb->update('at_entries')
+			->set('end_time', 'updated_at')
+			->set('status', $qb->createNamedParameter('completed', IQueryBuilder::PARAM_STR))
+			->where($qb->expr()->eq('status', $qb->createNamedParameter('paused', IQueryBuilder::PARAM_STR)))
+			->andWhere($qb->expr()->isNull('end_time'));
+		$qb->executeStatement();
 	}
 
 	/**
@@ -89,20 +98,13 @@ class Version1015Date20260415120000 extends SimpleMigrationStep
 	 */
 	private function convertTableDatetimes(string $table, array $columns, DateTimeZone $sourceTz, DateTimeZone $targetTz): void
 	{
-		try {
-			$selectQb = $this->db->getQueryBuilder();
-			$selectQb->select('id');
-			foreach ($columns as $column) {
-				$selectQb->addSelect($column);
-			}
-			$selectQb->from($table);
-			$rows = $selectQb->executeQuery()->fetchAll();
-		} catch (\Throwable $e) {
-			if ($this->isMissingTableError($e->getMessage())) {
-				return;
-			}
-			throw $e;
+		$selectQb = $this->db->getQueryBuilder();
+		$selectQb->select('id');
+		foreach ($columns as $column) {
+			$selectQb->addSelect($column);
 		}
+		$selectQb->from($table);
+		$rows = $selectQb->executeQuery()->fetchAll();
 
 		if (!is_array($rows) || $rows === []) {
 			return;
@@ -145,14 +147,5 @@ class Version1015Date20260415120000 extends SimpleMigrationStep
 
 		$dateTime->setTimezone($targetTz);
 		return $dateTime->format('Y-m-d H:i:s');
-	}
-
-	private function isMissingTableError(string $message): bool
-	{
-		return str_contains($message, "doesn't exist")
-			|| str_contains($message, 'does not exist')
-			|| str_contains($message, 'no such table')
-			|| str_contains($message, 'undefined table')
-			|| str_contains($message, 'relation ');
 	}
 }

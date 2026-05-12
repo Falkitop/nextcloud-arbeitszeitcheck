@@ -13,6 +13,7 @@ namespace OCA\ArbeitszeitCheck\Db;
 
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Db\QBMapper;
+use OCP\DB\Exception as DbException;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 
@@ -84,12 +85,20 @@ class UserSettingsMapper extends QBMapper
 	}
 
 	/**
-	 * Set a user setting (creates or updates)
+	 * Set a user setting (creates or updates) – concurrency-safe.
+	 *
+	 * The (user_id, setting_key) pair is protected by the unique index
+	 * `at_settings_user_key_unique`. Two concurrent writers can both observe
+	 * "no existing row" in {@see self::getSetting()} and then race on INSERT.
+	 * In that case one of them gets a UniqueConstraintViolationException –
+	 * we transparently retry with an UPDATE so the upsert is atomic from
+	 * the caller's perspective.
 	 *
 	 * @param string $userId
 	 * @param string $settingKey
 	 * @param string|null $settingValue
 	 * @return UserSetting
+	 * @throws \RuntimeException If the upsert cannot be reconciled after a retry.
 	 */
 	public function setSetting(string $userId, string $settingKey, ?string $settingValue): UserSetting
 	{
@@ -108,7 +117,28 @@ class UserSettingsMapper extends QBMapper
 		$newSetting->setCreatedAt(new \DateTime());
 		$newSetting->setUpdatedAt(new \DateTime());
 
-		return $this->insert($newSetting);
+		try {
+			return $this->insert($newSetting);
+		} catch (DbException $e) {
+			// Only swallow uniqueness conflicts; re-throw other DB errors.
+			$reason = $e->getReason();
+			$isUniqueViolation = ($reason === DbException::REASON_UNIQUE_CONSTRAINT_VIOLATION);
+			if (!$isUniqueViolation) {
+				throw $e;
+			}
+
+			// Another writer beat us to it – switch to UPDATE.
+			$existingSetting = $this->getSetting($userId, $settingKey);
+			if ($existingSetting === null) {
+				// The row should now exist; if it does not, something is wrong
+				// (e.g. it was deleted in the meantime). Surface a clear error
+				// rather than infinite-looping.
+				throw new \RuntimeException('Failed to upsert user setting after unique constraint violation', 0, $e);
+			}
+			$existingSetting->setSettingValue($settingValue);
+			$existingSetting->setUpdatedAt(new \DateTime());
+			return $this->update($existingSetting);
+		}
 	}
 
 	/**

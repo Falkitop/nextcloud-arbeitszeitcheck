@@ -93,11 +93,10 @@ class SettingsController extends Controller
 					$settings[$setting->getSettingKey()] = $setting->getSettingValue();
 				}
 			} catch (\Throwable $e) {
-				$msg = $e->getMessage();
-				if (str_contains($msg, "doesn't exist") || str_contains($msg, 'at_settings')) {
-					\OCP\Log\logger('arbeitszeitcheck')->info('Settings table not found: ' . $msg);
+				if ($this->isMissingTableException($e)) {
+					\OCP\Log\logger('arbeitszeitcheck')->info('Settings table not yet available, returning empty user settings.');
 				} else {
-					\OCP\Log\logger('arbeitszeitcheck')->warning('Error getting settings: ' . $msg, ['exception' => $e]);
+					\OCP\Log\logger('arbeitszeitcheck')->warning('Error getting settings: ' . $e->getMessage(), ['exception' => $e]);
 				}
 			}
 
@@ -106,17 +105,43 @@ class SettingsController extends Controller
 				'settings' => $settings
 			]);
 		} catch (\Throwable $e) {
-			$msg = $e->getMessage();
-			if (str_contains($msg, "doesn't exist") || str_contains($msg, 'at_settings')) {
-				\OCP\Log\logger('arbeitszeitcheck')->info('Settings API: table not found, returning empty: ' . $msg);
+			if ($this->isMissingTableException($e)) {
+				\OCP\Log\logger('arbeitszeitcheck')->info('Settings API: table not yet available, returning empty settings.');
 				return new JSONResponse(['success' => true, 'settings' => []]);
 			}
-			\OCP\Log\logger('arbeitszeitcheck')->error('Error in SettingsController::index_api: ' . $msg, ['exception' => $e]);
+			\OCP\Log\logger('arbeitszeitcheck')->error('Error in SettingsController::index_api: ' . $e->getMessage(), ['exception' => $e]);
 			return new JSONResponse([
 				'success' => false,
 				'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.'),
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
+	}
+
+	/**
+	 * Locale-independent detection of "table/object does not exist" errors.
+	 *
+	 * Uses Nextcloud's DB exception reason codes when available (the
+	 * portable, locale-independent contract from OCP\DB\Exception) and falls
+	 * back to a small set of message substrings for legacy/non-DBAL paths.
+	 */
+	private function isMissingTableException(\Throwable $e): bool
+	{
+		if ($e instanceof DBException && $e->getReason() === DBException::REASON_DATABASE_OBJECT_NOT_FOUND) {
+			return true;
+		}
+		$previous = $e->getPrevious();
+		if ($previous instanceof DBException && $previous->getReason() === DBException::REASON_DATABASE_OBJECT_NOT_FOUND) {
+			return true;
+		}
+		// Defensive fallback for non-DBAL paths (e.g. raw PDO exceptions
+		// raised by test doubles). Message-based detection is intentionally
+		// last so localised driver errors never reach this branch on a
+		// healthy install.
+		$msg = (string)$e->getMessage();
+		return str_contains($msg, "doesn't exist")
+			|| str_contains($msg, 'does not exist')
+			|| str_contains($msg, 'no such table')
+			|| str_contains($msg, 'undefined table');
 	}
 
 	/**

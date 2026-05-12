@@ -16,6 +16,7 @@ namespace OCA\ArbeitszeitCheck\Service;
 use OCA\ArbeitszeitCheck\Db\TeamManagerMapper;
 use OCA\ArbeitszeitCheck\Db\TeamMemberMapper;
 use OCA\ArbeitszeitCheck\Db\TeamMapper;
+use OCP\DB\Exception as DBException;
 use OCP\IConfig;
 use OCP\IGroupManager;
 use OCP\IUserManager;
@@ -57,9 +58,9 @@ class TeamResolverService
 			try {
 				return $this->getTeamMemberIdsFromAppTeams($managerUserId);
 			} catch (\Throwable $e) {
-				// at_teams/at_team_members/at_team_managers may not exist if migration hasn't run
-				$msg = $e->getMessage();
-				if (str_contains($msg, "doesn't exist") || str_contains($msg, 'at_team')) {
+				// at_teams/at_team_members/at_team_managers may not exist
+				// if the schema migration hasn't completed yet.
+				if ($this->isMissingTableException($e)) {
 					return [];
 				}
 				throw $e;
@@ -262,8 +263,7 @@ class TeamResolverService
 
 			return $managerIds;
 		} catch (\Throwable $e) {
-			$msg = $e->getMessage();
-			if (str_contains($msg, "doesn't exist") || str_contains($msg, 'at_team')) {
+			if ($this->isMissingTableException($e)) {
 				return [];
 			}
 			throw $e;
@@ -283,5 +283,29 @@ class TeamResolverService
 			return $this->getManagerIdsForEmployee($employeeUserId) !== [];
 		}
 		return $this->getColleagueIds($employeeUserId) !== [];
+	}
+
+	/**
+	 * Locale-independent detection of "table/object does not exist" errors.
+	 *
+	 * Driver error strings ("doesn't exist", "relation … does not exist",
+	 * "Relation … existiert nicht", …) vary by engine and locale. Nextcloud's
+	 * DBAL wrapper exposes a stable {@see DBException::REASON_DATABASE_OBJECT_NOT_FOUND}
+	 * reason code, which is the portable contract we rely on here.
+	 */
+	private function isMissingTableException(\Throwable $e): bool
+	{
+		if ($e instanceof DBException && $e->getReason() === DBException::REASON_DATABASE_OBJECT_NOT_FOUND) {
+			return true;
+		}
+		$previous = $e->getPrevious();
+		if ($previous instanceof DBException && $previous->getReason() === DBException::REASON_DATABASE_OBJECT_NOT_FOUND) {
+			return true;
+		}
+		$msg = (string)$e->getMessage();
+		return str_contains($msg, "doesn't exist")
+			|| str_contains($msg, 'does not exist')
+			|| str_contains($msg, 'no such table')
+			|| str_contains($msg, 'undefined table');
 	}
 }
