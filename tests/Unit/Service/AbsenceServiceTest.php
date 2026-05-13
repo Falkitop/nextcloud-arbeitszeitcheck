@@ -431,9 +431,9 @@ class AbsenceServiceTest extends TestCase
 	}
 
 	/**
-	 * Test creating absence with past start date
+	 * Test creating vacation with a past start date (migration/backfill records)
 	 */
-	public function testCreateAbsencePastStartDate(): void
+	public function testCreateAbsenceAllowsPastVacationDate(): void
 	{
 		$userId = 'testuser';
 		$yesterday = (new \DateTime())->modify('-1 day')->format('Y-m-d');
@@ -445,10 +445,27 @@ class AbsenceServiceTest extends TestCase
 			'reason' => 'Past date'
 		];
 
-		$this->expectException(\Exception::class);
-		$this->expectExceptionMessage('Start date cannot be in the past');
+		$this->absenceMapper->expects($this->exactly(2))
+			->method('findOverlapping')
+			->willReturn([]);
+		$this->absenceMapper->method('getSickLeaveDays')->willReturn(0.0);
+		$this->userWorkingTimeModelMapper->method('findCurrentByUser')->willReturn(null);
+		$this->userSettingsMapper->method('getIntegerSetting')->willReturn(25);
 
-		$this->service->createAbsence($data, $userId);
+		$absence = new Absence();
+		$absence->setId(1234);
+		$absence->setUserId($userId);
+		$absence->setType(Absence::TYPE_VACATION);
+		$absence->setStartDate(new \DateTime($yesterday));
+		$absence->setEndDate(new \DateTime($tomorrow));
+		$absence->setStatus(Absence::STATUS_PENDING);
+		$absence->setDays(2.0);
+
+		$this->absenceMapper->expects($this->once())->method('insert')->willReturn($absence);
+		$this->auditLogMapper->expects($this->once())->method('logAction');
+
+		$result = $this->service->createAbsence($data, $userId);
+		$this->assertSame($absence, $result);
 	}
 
 	/**
@@ -489,9 +506,9 @@ class AbsenceServiceTest extends TestCase
 	}
 
 	/**
-	 * Test sick leave with start date more than 7 days in past – should fail
+	 * Test sick leave with start date more than 7 days in past – should succeed for backfill/migration.
 	 */
-	public function testCreateAbsenceSickLeaveTooFarInPast(): void
+	public function testCreateAbsenceSickLeaveAllowsOlderPastStartDate(): void
 	{
 		$userId = 'testuser';
 		$tenDaysAgo = (new \DateTime())->modify('-10 days')->format('Y-m-d');
@@ -503,10 +520,26 @@ class AbsenceServiceTest extends TestCase
 			'reason' => 'Sick'
 		];
 
-		$this->expectException(\Exception::class);
-		$this->expectExceptionMessage('Sick leave start date cannot be more than');
+		$this->absenceMapper->expects($this->exactly(2))
+			->method('findOverlapping')
+			->willReturn([]);
+		$this->absenceMapper->method('getSickLeaveDays')->willReturn(0.0);
+		$this->userWorkingTimeModelMapper->method('findCurrentByUser')->willReturn(null);
+		$this->userSettingsMapper->method('getIntegerSetting')->willReturn(25);
 
-		$this->service->createAbsence($data, $userId);
+		$absence = new Absence();
+		$absence->setId(125);
+		$absence->setUserId($userId);
+		$absence->setType(Absence::TYPE_SICK_LEAVE);
+		$absence->setStartDate(new \DateTime($tenDaysAgo));
+		$absence->setEndDate(new \DateTime($tomorrow));
+		$absence->setStatus(Absence::STATUS_PENDING);
+		$absence->setDays(8.0);
+		$this->absenceMapper->expects($this->once())->method('insert')->willReturn($absence);
+		$this->auditLogMapper->expects($this->once())->method('logAction');
+
+		$result = $this->service->createAbsence($data, $userId);
+		$this->assertSame($absence, $result);
 	}
 
 	/**
@@ -1402,5 +1435,273 @@ class AbsenceServiceTest extends TestCase
 
 		$result = $this->service->createAbsence($data, $userId);
 		$this->assertSame(Absence::STATUS_APPROVED, $result->getStatus());
+	}
+
+	public function testCreateApprovedAbsenceForEmployeeByManager(): void
+	{
+		$managerId = 'mgr1';
+		$targetId = 'emp1';
+		$start = (new \DateTime())->modify('-40 days');
+		$end = (clone $start)->modify('+2 days');
+		$data = [
+			'type' => Absence::TYPE_SICK_LEAVE,
+			'start_date' => $start->format('Y-m-d'),
+			'end_date' => $end->format('Y-m-d'),
+			'reason' => 'HR migration',
+		];
+
+		$this->absenceMapper->expects($this->exactly(2))->method('findOverlapping')->willReturn([]);
+		$this->holidayCalendarService->method('computeWorkingDaysForUser')->willReturn(3.0);
+
+		$inserted = new Absence();
+		$inserted->setId(9001);
+		$inserted->setUserId($targetId);
+		$inserted->setType(Absence::TYPE_SICK_LEAVE);
+		$inserted->setStartDate(clone $start);
+		$inserted->setEndDate(clone $end);
+		$inserted->setStatus(Absence::STATUS_APPROVED);
+		$inserted->setDays(3.0);
+		$inserted->setCreatedAt(new \DateTime());
+
+		$this->absenceMapper->expects($this->once())->method('lockUserAbsenceWindow');
+		$this->absenceMapper->expects($this->once())->method('insert')->willReturn($inserted);
+		$this->auditLogMapper->expects($this->once())->method('logAction')->with(
+			$targetId,
+			'absence_manager_recorded',
+			'absence',
+			9001,
+			null,
+			$this->isType('array'),
+			$managerId
+		);
+		$this->db->method('beginTransaction');
+		$this->db->method('commit');
+		$this->db->method('rollBack');
+
+		$this->notificationService->expects($this->once())->method('notifyAbsenceApproved');
+
+		$result = $this->service->createApprovedAbsenceForEmployeeByManager($managerId, $targetId, $data);
+		$this->assertSame(Absence::STATUS_APPROVED, $result->getStatus());
+		$this->assertSame($targetId, $result->getUserId());
+	}
+
+	public function testCreateApprovedAbsenceForEmployeeByManagerRejectsSelf(): void
+	{
+		$this->expectException(\Exception::class);
+		$this->expectExceptionMessage('You cannot record an absence for yourself with this action.');
+
+		$this->service->createApprovedAbsenceForEmployeeByManager('u1', 'u1', [
+			'type' => Absence::TYPE_SICK_LEAVE,
+			'start_date' => '2024-01-02',
+			'end_date' => '2024-01-03',
+		]);
+	}
+
+	/**
+	 * Historical entries (end date strictly before today) must never enter the
+	 * SUBSTITUTE_PENDING workflow even if the caller submits a substitute_user_id.
+	 * Vertretung is a forward-looking workflow and is meaningless once the period
+	 * has elapsed. The substitute reference is silently dropped and the status
+	 * routes directly into PENDING (or AUTO_APPROVED downstream, depending on the
+	 * team configuration). This guards against API consumers (mobile app, scripts)
+	 * accidentally putting historical migration records into a pending-substitute
+	 * limbo that no one can resolve.
+	 */
+	public function testCreateAbsencePastDateDropsSubstituteAndStaysPending(): void
+	{
+		$userId = 'testuser';
+		$tenDaysAgo = (new \DateTime())->modify('-10 days')->format('Y-m-d');
+		$fiveDaysAgo = (new \DateTime())->modify('-5 days')->format('Y-m-d');
+		$data = [
+			'type' => Absence::TYPE_VACATION,
+			'start_date' => $tenDaysAgo,
+			'end_date' => $fiveDaysAgo,
+			'reason' => 'Migrated vacation',
+			'substitute_user_id' => 'colleague1',
+		];
+
+		$this->absenceMapper->expects($this->exactly(2))
+			->method('findOverlapping')
+			->willReturn([]);
+		$this->absenceMapper->method('getSickLeaveDays')->willReturn(0.0);
+		$this->userWorkingTimeModelMapper->method('findCurrentByUser')->willReturn(null);
+		$this->userSettingsMapper->method('getIntegerSetting')->willReturn(25);
+
+		$persisted = null;
+		$this->absenceMapper->expects($this->once())
+			->method('insert')
+			->willReturnCallback(function (Absence $absence) use (&$persisted) {
+				$absence->setId(9001);
+				$persisted = $absence;
+				return $absence;
+			});
+		$this->auditLogMapper->expects($this->once())->method('logAction');
+		/* The substitute notification path must never fire for historical entries.
+		 * If it did, the substitute would receive a misleading "please approve a
+		 * shift that already happened" notification. */
+		$this->notificationService->expects($this->never())->method('notifySubstitutionRequest');
+
+		$result = $this->service->createAbsence($data, $userId);
+
+		$this->assertNotNull($result);
+		$this->assertInstanceOf(Absence::class, $persisted);
+		/** @var Absence $persisted */
+		$this->assertNull($persisted->getSubstituteUserId(),
+			'Substitute reference must be cleared for historical entries.');
+		$this->assertNotSame(Absence::STATUS_SUBSTITUTE_PENDING, $persisted->getStatus(),
+			'Historical entries must never enter the substitute-pending workflow.');
+	}
+
+	/**
+	 * Sanity check that a future absence with a substitute still routes through
+	 * the substitute approval workflow. Regression guard for the past-aware
+	 * branch above so we do not accidentally short-circuit live requests.
+	 */
+	public function testCreateAbsenceFutureDateWithSubstituteStillRoutesToSubstitutePending(): void
+	{
+		$userId = 'testuser';
+		$start = (new \DateTime())->modify('+14 days')->format('Y-m-d');
+		$end = (new \DateTime())->modify('+18 days')->format('Y-m-d');
+		$data = [
+			'type' => Absence::TYPE_VACATION,
+			'start_date' => $start,
+			'end_date' => $end,
+			'reason' => 'Future trip',
+			'substitute_user_id' => 'colleague1',
+		];
+
+		$this->absenceMapper->expects($this->exactly(2))->method('findOverlapping')->willReturn([]);
+		$this->absenceMapper->method('getSickLeaveDays')->willReturn(0.0);
+		$this->userWorkingTimeModelMapper->method('findCurrentByUser')->willReturn(null);
+		$this->userSettingsMapper->method('getIntegerSetting')->willReturn(25);
+
+		$persisted = null;
+		$this->absenceMapper->expects($this->once())
+			->method('insert')
+			->willReturnCallback(function (Absence $absence) use (&$persisted) {
+				$absence->setId(9002);
+				$persisted = $absence;
+				return $absence;
+			});
+		$this->auditLogMapper->expects($this->once())->method('logAction');
+
+		$this->service->createAbsence($data, $userId);
+
+		$this->assertInstanceOf(Absence::class, $persisted);
+		/** @var Absence $persisted */
+		$this->assertSame('colleague1', $persisted->getSubstituteUserId());
+		$this->assertSame(Absence::STATUS_SUBSTITUTE_PENDING, $persisted->getStatus());
+	}
+
+	/**
+	 * The absence summary exposes server-computed temporal flags so the frontend
+	 * does not have to re-derive "today" in JS where iPadOS / Chrome have been
+	 * observed to drift up to a calendar day due to DST and timezone offsets.
+	 * Exercising the entity directly keeps this fast and free of test doubles.
+	 */
+	public function testAbsenceSummaryExposesPastCurrentFutureFlags(): void
+	{
+		$yesterday = (new \DateTime())->modify('-1 day');
+		$twoDaysAgo = (new \DateTime())->modify('-2 days');
+		$tomorrow = (new \DateTime())->modify('+1 day');
+		$inTwoDays = (new \DateTime())->modify('+2 days');
+		$today = new \DateTime('today');
+
+		$past = new Absence();
+		$past->setUserId('u1');
+		$past->setType(Absence::TYPE_VACATION);
+		$past->setStartDate($twoDaysAgo);
+		$past->setEndDate($yesterday);
+		$past->setStatus(Absence::STATUS_APPROVED);
+		$past->setDays(2.0);
+
+		$current = new Absence();
+		$current->setUserId('u1');
+		$current->setType(Absence::TYPE_VACATION);
+		$current->setStartDate($yesterday);
+		$current->setEndDate($tomorrow);
+		$current->setStatus(Absence::STATUS_APPROVED);
+		$current->setDays(3.0);
+
+		$future = new Absence();
+		$future->setUserId('u1');
+		$future->setType(Absence::TYPE_VACATION);
+		$future->setStartDate($tomorrow);
+		$future->setEndDate($inTwoDays);
+		$future->setStatus(Absence::STATUS_PENDING);
+		$future->setDays(2.0);
+
+		$pastSummary = $past->getSummary();
+		$currentSummary = $current->getSummary();
+		$futureSummary = $future->getSummary();
+
+		$this->assertTrue($pastSummary['isPast']);
+		$this->assertFalse($pastSummary['isCurrent']);
+		$this->assertFalse($pastSummary['isFuture']);
+
+		$this->assertFalse($currentSummary['isPast']);
+		$this->assertTrue($currentSummary['isCurrent']);
+		$this->assertFalse($currentSummary['isFuture']);
+
+		$this->assertFalse($futureSummary['isPast']);
+		$this->assertFalse($futureSummary['isCurrent']);
+		$this->assertTrue($futureSummary['isFuture']);
+
+		// Sanity check on unused `today` reference to silence static analysis
+		// while keeping the assertion intent explicit.
+		$this->assertInstanceOf(\DateTime::class, $today);
+	}
+
+	/**
+	 * `isManagerRecorded` is the server-side heuristic the manager-record API
+	 * uses (and emits as the `absence_manager_recorded` audit-log action). It
+	 * encodes "approved by a human approver other than the absence owner and
+	 * other than the system." Clients can rely on this flag to render a clear
+	 * "Recorded by manager" badge without re-implementing the heuristic in JS.
+	 */
+	public function testAbsenceSummaryDetectsManagerRecorded(): void
+	{
+		$start = (new \DateTime())->modify('-5 days');
+		$end = (new \DateTime())->modify('-1 day');
+
+		$managerRecorded = new Absence();
+		$managerRecorded->setUserId('emp1');
+		$managerRecorded->setType(Absence::TYPE_VACATION);
+		$managerRecorded->setStartDate($start);
+		$managerRecorded->setEndDate($end);
+		$managerRecorded->setStatus(Absence::STATUS_APPROVED);
+		$managerRecorded->setApprovedByUserId('manager1');
+		$managerRecorded->setDays(4.0);
+
+		$autoApprovedBySystem = new Absence();
+		$autoApprovedBySystem->setUserId('emp2');
+		$autoApprovedBySystem->setType(Absence::TYPE_VACATION);
+		$autoApprovedBySystem->setStartDate($start);
+		$autoApprovedBySystem->setEndDate($end);
+		$autoApprovedBySystem->setStatus(Absence::STATUS_APPROVED);
+		$autoApprovedBySystem->setApprovedByUserId('system');
+		$autoApprovedBySystem->setDays(4.0);
+
+		$selfApproved = new Absence();
+		$selfApproved->setUserId('emp3');
+		$selfApproved->setType(Absence::TYPE_VACATION);
+		$selfApproved->setStartDate($start);
+		$selfApproved->setEndDate($end);
+		$selfApproved->setStatus(Absence::STATUS_APPROVED);
+		$selfApproved->setApprovedByUserId('emp3');
+		$selfApproved->setDays(4.0);
+
+		$pendingNoApprover = new Absence();
+		$pendingNoApprover->setUserId('emp4');
+		$pendingNoApprover->setType(Absence::TYPE_VACATION);
+		$pendingNoApprover->setStartDate($start);
+		$pendingNoApprover->setEndDate($end);
+		$pendingNoApprover->setStatus(Absence::STATUS_PENDING);
+		$pendingNoApprover->setDays(4.0);
+
+		$this->assertTrue($managerRecorded->getSummary()['isManagerRecorded']);
+		$this->assertFalse($autoApprovedBySystem->getSummary()['isManagerRecorded']);
+		$this->assertFalse($selfApproved->getSummary()['isManagerRecorded']);
+		$this->assertFalse($pendingNoApprover->getSummary()['isManagerRecorded']);
 	}
 }

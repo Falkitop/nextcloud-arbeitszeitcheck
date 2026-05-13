@@ -967,3 +967,95 @@
         transform: translateY(0);
     }
 }
+
+/* Time zone context (list view): explains organization vs personal display time */
+.arbeitszeit-check-tz-context {
+    margin-bottom: var(--space-6, 1.5rem);
+}
+
+.arbeitszeit-check-tz-context__card {
+    border: 1px solid var(--arbeitszeitcheck-color-border);
+    border-radius: var(--radius-xl, 14px);
+    background: color-mix(in srgb, var(--color-primary-element-light, var(--arbeitszeitcheck-color-primary-lighter)) 22%, var(--arbeitszeitcheck-color-background-elevated));
+    box-shadow: var(--arbeitszeitcheck-shadow-subtle);
+}
+
+.arbeitszeit-check-tz-context__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4, 1rem);
+    align-items: flex-start;
+}
+
+@media (min-width: 48rem) {
+    .arbeitszeit-check-tz-context__body {
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+    }
+}
+
+.arbeitszeit-check-tz-context__text {
+    max-width: 40rem;
+    margin: 0;
+    font-size: 0.9375rem;
+    line-height: 1.55;
+    color: var(--arbeitszeitcheck-color-text-default, var(--color-main-text));
+}
+
+.arbeitszeit-check-tz-context__badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3, 0.75rem);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.timezone-badge--inline {
+    margin-left: 0;
+    --status-accent: var(--color-primary-element, var(--arbeitszeitcheck-color-primary));
+}
+
+/* ------------------------------------------------------------------------- */
+/* Paused-entry recovery affordances                                          */
+/*                                                                            */
+/* The "Complete" button is the primary recovery action for an unfinished     */
+/* (paused) session and must be visually unambiguous. The complementary       */
+/* banner above the table explains the state in plain language so users do    */
+/* not have to deduce it from a badge alone (WCAG 1.4.1 - colour is not the   */
+/* only indicator; WCAG 3.3.3 - error suggestion).                            */
+/* ------------------------------------------------------------------------- */
+
+#paused-entries-banner {
+    margin-bottom: var(--space-4, 1rem);
+}
+
+#paused-entries-banner .alert-message {
+    margin: 0;
+    line-height: 1.55;
+}
+
+.actions-cell .btn-complete-entry {
+    /* Use the primary palette so the recommended action is impossible to miss
+       against the secondary "Edit" and danger "Delete" siblings. */
+    --button-icon-size: 0.875rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.actions-cell .btn-complete-entry > span[aria-hidden="true"] {
+    font-weight: 700;
+}
+
+/* Make sure the "Complete session" button does not shrink below the WCAG
+   2.5.5 (Target Size, AA) minimum of 44x44 px on touch surfaces.
+   The responsive media query in common/responsive.css already handles
+   `.btn--sm`; this rule is a defensive backstop. */
+@media (max-width: 47.9375rem) {
+    .actions-cell .btn-complete-entry {
+        min-height: 44px;
+    }
+}

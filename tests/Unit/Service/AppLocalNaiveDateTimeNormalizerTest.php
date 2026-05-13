@@ -1,0 +1,72 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * @copyright Copyright (c) 2026, Nextcloud GmbH
+ * @license AGPL-3.0-or-later
+ */
+
+namespace OCA\ArbeitszeitCheck\Tests\Unit\Service;
+
+use OCA\ArbeitszeitCheck\Service\AppLocalNaiveDateTimeNormalizer;
+use PHPUnit\Framework\TestCase;
+
+class AppLocalNaiveDateTimeNormalizerTest extends TestCase
+{
+	public function testReinterpretsUtcLoadedNaiveAsBerlinWallClock(): void
+	{
+		// Simulate Entity::setter: naive SQL string parsed in PHP default UTC
+		$wronglyRead = new \DateTime('2026-05-13 09:00:00', new \DateTimeZone('UTC'));
+
+		$fixed = AppLocalNaiveDateTimeNormalizer::interpretSqlNaiveAsAppTimezone(
+			$wronglyRead,
+			new \DateTimeZone('Europe/Berlin')
+		);
+
+		$this->assertSame('Europe/Berlin', $fixed->getTimezone()->getName());
+		$this->assertSame('2026-05-13 09:00:00', $fixed->format('Y-m-d H:i:s'));
+		// Same wall 09:00 Berlin in summer (CEST) is 07:00Z
+		$this->assertSame('2026-05-13T07:00:00+00:00', $fixed->setTimezone(new \DateTimeZone('UTC'))->format('c'));
+	}
+
+	public function testBerlinUserSeesSameClockDigitsWhenDisplayTzMatchesStorage(): void
+	{
+		$berlin = new \DateTimeZone('Europe/Berlin');
+		$wronglyRead = new \DateTime('2026-05-13 09:00:00', new \DateTimeZone('UTC'));
+		$fixed = AppLocalNaiveDateTimeNormalizer::interpretSqlNaiveAsAppTimezone($wronglyRead, $berlin);
+
+		$display = clone $fixed;
+		$display->setTimezone($berlin);
+		$this->assertSame('09:00', $display->format('H:i'));
+	}
+
+	public function testParseFlexibleDateTimeHonoursExplicitZAndUsesAppTzForNaiveIso(): void
+	{
+		$berlin = new \DateTimeZone('Europe/Berlin');
+		$utcNine = AppLocalNaiveDateTimeNormalizer::parseFlexibleDateTime('2026-05-13T09:00:00Z', $berlin);
+		// PHP may expose UTC as "UTC", "Z", or "+00:00" depending on version; offset is authoritative.
+		$this->assertSame(0, $utcNine->getOffset());
+		$this->assertSame('11:00', $utcNine->setTimezone($berlin)->format('H:i'));
+
+		$naive = AppLocalNaiveDateTimeNormalizer::parseFlexibleDateTime('2026-05-13T09:00:00', $berlin);
+		$this->assertSame('Europe/Berlin', $naive->getTimezone()->getName());
+		$this->assertSame('09:00', $naive->format('H:i'));
+	}
+
+	public function testNormalizeAtEntryDatetimeStringsInRowEmitsIso8601(): void
+	{
+		$tz = new \DateTimeZone('Europe/Berlin');
+		$row = [
+			'id' => 1,
+			'user_id' => 'alice',
+			'start_time' => '2026-05-13 09:00:00',
+			'end_time' => '2026-05-13 17:00:00',
+			'approved_at' => '',
+		];
+		$out = AppLocalNaiveDateTimeNormalizer::normalizeAtEntryDatetimeStringsInRow($row, $tz);
+		$this->assertStringStartsWith('2026-05-13T09:00:00', (string)$out['start_time']);
+		$this->assertStringStartsWith('2026-05-13T17:00:00', (string)$out['end_time']);
+		$this->assertSame('', $out['approved_at']);
+	}
+}

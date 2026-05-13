@@ -80,7 +80,8 @@ class Application extends App implements IBootstrap {
 		// Register mappers
 		$context->registerService(\OCA\ArbeitszeitCheck\Db\TimeEntryMapper::class, function($c) {
 			return new \OCA\ArbeitszeitCheck\Db\TimeEntryMapper(
-				$c->query(IDBConnection::class)
+				$c->query(IDBConnection::class),
+				$c->query(\OCP\IConfig::class)
 			);
 		});
 

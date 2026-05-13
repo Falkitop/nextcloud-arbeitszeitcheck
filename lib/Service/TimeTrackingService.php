@@ -18,7 +18,9 @@ use OCA\ArbeitszeitCheck\Db\UserWorkingTimeModelMapper;
 use OCA\ArbeitszeitCheck\Db\WorkingTimeModelMapper;
 use OCA\ArbeitszeitCheck\Db\ComplianceViolationMapper;
 use OCA\ArbeitszeitCheck\Db\AuditLogMapper;
+use OCA\ArbeitszeitCheck\Constants;
 use OCA\ArbeitszeitCheck\Exception\BusinessRuleException;
+use OCA\ArbeitszeitCheck\Exception\MonthFinalizedException;
 use OCA\ArbeitszeitCheck\Service\ProjectCheckIntegrationService;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\IConfig;
@@ -85,6 +87,165 @@ class TimeTrackingService
 		return max(1.0, min(24.0, (float)$this->config->getAppValue('arbeitszeitcheck', 'min_rest_period', '11')));
 	}
 
+	private function getAppConfiguredTimeZone(): \DateTimeZone
+	{
+		$tzName = $this->config->getAppValue('arbeitszeitcheck', Constants::CONFIG_APP_TIMEZONE, 'Europe/Berlin');
+		try {
+			return new \DateTimeZone($tzName);
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->warning(
+				'Invalid app timezone configured; falling back to Europe/Berlin: ' . $tzName,
+				['exception' => $e]
+			);
+			return new \DateTimeZone('Europe/Berlin');
+		}
+	}
+
+	/**
+	 * Inclusive/exclusive bounds of the current calendar day in {@see getAppConfiguredTimeZone()},
+	 * formatted as naive `Y-m-d H:i:s` values (same convention as stored `at_entries` timestamps).
+	 *
+	 * @return array{\DateTime, \DateTime}
+	 */
+	private function getAppLocalTodayWindow(): array
+	{
+		$tz = $this->getAppConfiguredTimeZone();
+		$now = new \DateTimeImmutable('now', $tz);
+		$start = $now->setTime(0, 0, 0);
+		$end = $start->modify('+1 day');
+		return [
+			new \DateTime($start->format('Y-m-d H:i:s')),
+			new \DateTime($end->format('Y-m-d H:i:s')),
+		];
+	}
+
+	/**
+	 * Heal legacy/orphan {@see TimeEntry::STATUS_PAUSED} automatic rows from previous calendar days.
+	 *
+	 * The current code path never produces `paused` rows; this defense-in-depth sweep
+	 * exists for entries that pre-date the {@see \OCA\ArbeitszeitCheck\Migration\Version1020Date20260421000000}
+	 * fix, or for any future regression that might slip one through (e.g. an aborted
+	 * clock-out on an unstable connection). It is intentionally invoked from read
+	 * paths (e.g. {@see getStatus()}, {@see clockIn()}) so users never get stuck
+	 * with a frozen "paused" status that requires admin intervention to resolve.
+	 *
+	 * Safe to call from read paths: failures are swallowed and logged. A user-visible
+	 * banner is stored under `auto_clockout_notice` so the affected user knows the
+	 * system finalised something on their behalf.
+	 */
+	private function repairStalePausedAutomaticEntries(string $userId): void
+	{
+		try {
+			[$todayStart] = $this->getAppLocalTodayWindow();
+			$stale = $this->timeEntryMapper->findStalePausedAutomaticEntries($userId, $todayStart);
+			if ($stale === []) {
+				return;
+			}
+
+			$repaired = 0;
+			foreach ($stale as $entry) {
+				try {
+					$this->monthClosureGuard->assertTimeEntryMutable($entry);
+				} catch (MonthFinalizedException $e) {
+					continue;
+				} catch (\Throwable $e) {
+					\OCP\Log\logger('arbeitszeitcheck')->warning(
+						'Stale paused repair skipped (guard): ' . $e->getMessage(),
+						['exception' => $e, 'user_id' => $userId, 'entry_id' => $entry->getId()]
+					);
+					continue;
+				}
+
+				$start = $entry->getStartTime();
+				if ($start === null) {
+					continue;
+				}
+
+				$oldSummary = $this->safeGetSummary($entry, $userId);
+				$endCandidate = $entry->getUpdatedAt();
+				if ($endCandidate === null) {
+					$endCandidate = clone $start;
+				} else {
+					$endCandidate = clone $endCandidate;
+				}
+				if ($endCandidate < $start) {
+					$endCandidate = clone $start;
+				}
+
+				$entry->setEndTime($endCandidate);
+				$entry->setStatus(TimeEntry::STATUS_COMPLETED);
+				$entry->setEndedReason(TimeEntry::ENDED_REASON_STALE_PAUSED_REPAIR);
+				$entry->setPolicyApplied('repair');
+				$entry->setUpdatedAt(new \DateTime());
+
+				try {
+					$this->calculateAndSetAutomaticBreak($entry);
+				} catch (\Throwable $e) {
+					\OCP\Log\logger('arbeitszeitcheck')->warning(
+						'Automatic break during stale paused repair failed: ' . $e->getMessage(),
+						['exception' => $e, 'user_id' => $userId, 'entry_id' => $entry->getId()]
+					);
+				}
+
+				try {
+					$this->adjustEndTimeForDailyMaximum($entry);
+				} catch (\Throwable $e) {
+					\OCP\Log\logger('arbeitszeitcheck')->warning(
+						'Daily maximum adjustment during stale paused repair failed: ' . $e->getMessage(),
+						['exception' => $e, 'user_id' => $userId, 'entry_id' => $entry->getId()]
+					);
+				}
+
+				$updated = $this->timeEntryMapper->update($entry);
+				$repaired++;
+
+				try {
+					$this->auditLogMapper->logAction(
+						$userId,
+						'stale_paused_repaired',
+						'time_entry',
+						$updated->getId(),
+						$oldSummary,
+						$this->safeGetSummary($updated, $userId)
+					);
+				} catch (\Throwable $e) {
+					\OCP\Log\logger('arbeitszeitcheck')->warning(
+						'Audit log for stale paused repair failed: ' . $e->getMessage(),
+						['exception' => $e, 'user_id' => $userId, 'entry_id' => $updated->getId()]
+					);
+				}
+
+				try {
+					$this->checkComplianceAfterClockOut($updated);
+				} catch (\Throwable $e) {
+					\OCP\Log\logger('arbeitszeitcheck')->warning(
+						'Compliance check after stale paused repair failed: ' . $e->getMessage(),
+						['exception' => $e, 'user_id' => $userId, 'entry_id' => $updated->getId()]
+					);
+				}
+			}
+
+			if ($repaired > 0) {
+				$noticeMessage = $this->l10n->n(
+					'An unfinished session from a previous day was closed automatically. Please verify your time entries list.',
+					'%n unfinished sessions from previous days were closed automatically. Please verify your time entries list.',
+					$repaired
+				);
+				$this->config->setUserValue($userId, 'arbeitszeitcheck', 'auto_clockout_notice', json_encode([
+					'message' => $noticeMessage,
+					'reason' => TimeEntry::ENDED_REASON_STALE_PAUSED_REPAIR,
+					'count' => $repaired,
+					'at' => (new \DateTime())->format('c'),
+				]));
+			}
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->warning(
+				'repairStalePausedAutomaticEntries skipped: ' . $e->getMessage(),
+				['exception' => $e, 'user_id' => $userId]
+			);
+		}
+	}
+
 	/**
 	 * Whether the configured daily maximum is reached/exceeded for the given user.
 	 *
@@ -109,6 +270,7 @@ class TimeTrackingService
 	{
 		$lockKey = $this->acquireUserMutationLock($userId);
 		try {
+			$this->repairStalePausedAutomaticEntries($userId);
 			$this->db->beginTransaction();
 			try {
 				$this->monthClosureGuard->assertUserDayMutable($userId, new \DateTime());
@@ -122,7 +284,8 @@ class TimeTrackingService
 					throw new BusinessRuleException($this->l10n->t('User is currently on break. End break first.'));
 				}
 
-				$pausedTodayEntry = $this->timeEntryMapper->findPausedOrUnfinishedTodayByUser($userId);
+				[$today, $tomorrow] = $this->getAppLocalTodayWindow();
+				$pausedTodayEntry = $this->timeEntryMapper->findPausedOrUnfinishedTodayByUser($userId, $today, $tomorrow);
 				if ($pausedTodayEntry !== null && $pausedTodayEntry->getStatus() === TimeEntry::STATUS_PAUSED) {
 					$resumed = $this->resumePausedEntry($userId, $pausedTodayEntry, $projectCheckProjectId, $description);
 					$this->db->commit();
@@ -137,10 +300,6 @@ class TimeTrackingService
 				}
 
 				$this->checkComplianceBeforeClockIn($userId);
-				$today = new \DateTime();
-				$today->setTime(0, 0, 0);
-				$tomorrow = clone $today;
-				$tomorrow->modify('+1 day');
 				$todayHours = $this->timeEntryMapper->getTotalHoursByUserAndDateRange($userId, $today, $tomorrow);
 				$maxDailyHours = $this->getMaxDailyHours();
 				if ($todayHours >= $maxDailyHours) {
@@ -226,7 +385,18 @@ class TimeTrackingService
 				$currentEntry->setEndedReason($endedReason);
 				$currentEntry->setPolicyApplied($policyApplied);
 				$currentEntry->setUpdatedAt($now);
-				$this->calculateAndSetAutomaticBreak($currentEntry);
+				try {
+					$this->calculateAndSetAutomaticBreak($currentEntry);
+				} catch (\Throwable $e) {
+					\OCP\Log\logger('arbeitszeitcheck')->error(
+						'calculateAndSetAutomaticBreak failed after clock-out; entry was still completed: ' . $e->getMessage(),
+						[
+							'exception' => $e,
+							'user_id' => $userId,
+							'entry_id' => $currentEntry->getId(),
+						]
+					);
+				}
 
 				$updatedEntry = $this->timeEntryMapper->update($currentEntry);
 				$this->auditLogMapper->logAction(
@@ -284,10 +454,7 @@ class TimeTrackingService
 		$this->monthClosureGuard->assertTimeEntryMutable($pausedEntry);
 
 		// Respect the daily maximum – the paused entry's own hours already count.
-		$today = new \DateTime();
-		$today->setTime(0, 0, 0);
-		$tomorrow = clone $today;
-		$tomorrow->modify('+1 day');
+		[$today, $tomorrow] = $this->getAppLocalTodayWindow();
 		$todayHours   = $this->timeEntryMapper->getTotalHoursByUserAndDateRange($userId, $today, $tomorrow);
 		$maxDailyHours = $this->getMaxDailyHours();
 		if ($todayHours >= $maxDailyHours) {
@@ -439,6 +606,7 @@ class TimeTrackingService
 	public function getStatus(string $userId): array
 	{
 		try {
+			$this->repairStalePausedAutomaticEntries($userId);
 			// Self-healing: if the user has crossed the ArbZG §3 daily maximum,
 			// auto-complete the active entry on read so the frontend timer
 			// observes a consistent state and never enters a reload loop.
@@ -453,7 +621,8 @@ class TimeTrackingService
 			// If no active/break entry, check for a paused entry from today before
 			// declaring the user fully clocked out.
 			if ($currentEntry === null) {
-				$pausedEntry = $this->timeEntryMapper->findPausedOrUnfinishedTodayByUser($userId);
+				[$today, $tomorrow] = $this->getAppLocalTodayWindow();
+				$pausedEntry = $this->timeEntryMapper->findPausedOrUnfinishedTodayByUser($userId, $today, $tomorrow);
 				if ($pausedEntry !== null && $pausedEntry->getStatus() === TimeEntry::STATUS_PAUSED) {
 					$sessionStart = $pausedEntry->getStartTime();
 					$pausedAt     = $pausedEntry->getUpdatedAt() ?? new \DateTime();
@@ -618,10 +787,8 @@ class TimeTrackingService
 	public function getTodayHours(string $userId): float
 	{
 		try {
-			$today = new \DateTime();
-			$today->setTime(0, 0, 0);
-			$tomorrow = clone $today;
-			$tomorrow->modify('+1 day');
+			[$today, $tomorrow] = $this->getAppLocalTodayWindow();
+			$todayKey = $today->format('Y-m-d');
 
 			// Get all entries for today (completed and active/paused)
 			$allEntries = [];
@@ -638,16 +805,14 @@ class TimeTrackingService
 			// Get active/paused entry and add it with current end time
 			$activeEntry = $this->timeEntryMapper->findActiveByUser($userId);
 			$breakEntry = $this->timeEntryMapper->findOnBreakByUser($userId);
-			$pausedEntry = $this->timeEntryMapper->findPausedOrUnfinishedTodayByUser($userId);
+			$pausedEntry = $this->timeEntryMapper->findPausedOrUnfinishedTodayByUser($userId, $today, $tomorrow);
 			$currentEntry = $activeEntry ?: $breakEntry ?: $pausedEntry;
 			
 			if ($currentEntry && $currentEntry->getStartTime()) {
 				$entryStart = $currentEntry->getStartTime();
-				$entryStartForCheck = clone $entryStart;
-				$entryStartForCheck->setTime(0, 0, 0);
-				
-				// Only count if entry started today
-				if ($entryStartForCheck->format('Y-m-d') === $today->format('Y-m-d')) {
+
+				// Only count if the session started on the same local calendar day (app timezone)
+				if ($entryStart->format('Y-m-d') === $todayKey) {
 					// Determine end time for calculation
 					$calcEndTime = null;
 					if ($currentEntry->getEndTime()) {
@@ -820,7 +985,10 @@ class TimeTrackingService
 
 		// Place break in the middle of the working period
 		$workDurationSeconds = $totalDurationSeconds;
-		$breakStartOffset = ($workDurationSeconds - $breakDurationSeconds) / 2;
+		$breakStartOffset = (int)floor(($workDurationSeconds - $breakDurationSeconds) / 2);
+		if ($breakStartOffset < 0) {
+			$breakStartOffset = 0;
+		}
 		$breakStartTime = clone $startTime;
 		$breakStartTime->modify('+' . round($breakStartOffset) . ' seconds');
 		$breakEndTime = clone $breakStartTime;
@@ -1477,6 +1645,167 @@ class TimeTrackingService
 			$this->lockingProvider->releaseLock($key, ILockingProvider::LOCK_EXCLUSIVE);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->warning('Failed to release time tracking workflow lock: ' . $e->getMessage(), ['exception' => $e]);
+		}
+	}
+
+	/**
+	 * Finalise a {@see TimeEntry::STATUS_PAUSED} entry in a single, race-safe step.
+	 *
+	 * This is the canonical, programmatic recovery path that {@see \OCA\ArbeitszeitCheck\Controller\TimeEntryController::complete}
+	 * delegates to. Centralising the logic here means:
+	 *   - the same code is exercised whether triggered by a UI click, an API
+	 *     client, an `occ` command, or a future cron-based healer;
+	 *   - concurrency is enforced via {@see acquireUserMutationLock()} just like
+	 *     `clockIn()`/`clockOut()`, so two simultaneous completions for the same
+	 *     user can never race;
+	 *   - audit logging, ArbZG §4 (automatic break) and ArbZG §3 (daily maximum)
+	 *     adjustments are guaranteed to run for every recovery, not just the UI
+	 *     path.
+	 *
+	 * End-time selection (in order of preference):
+	 *   1. an explicit `$explicitEndTime` from the caller (already validated /
+	 *      normalised by the caller);
+	 *   2. the entry's `updated_at` (the moment the broken clock-out froze it —
+	 *      the closest truthful approximation of when work stopped);
+	 *   3. the entry's `start_time` as a zero-duration fallback so the row at
+	 *      least leaves the broken `paused` state and stops blocking the UI.
+	 *
+	 * If the chosen end is before the start (e.g. clock skew, daylight-saving
+	 * boundary, or an explicit override of "08:00" for a 22:00 start), we first
+	 * try the next calendar day, then snap to the start time as the ultimate
+	 * safety net so {@see TimeEntry::validate()} cannot reject the row.
+	 *
+	 * @param string $userId               Owner of the entry; ownership is enforced.
+	 * @param int $entryId                 ID of the paused entry to finalise.
+	 * @param \DateTime|null $explicitEndTime  Optional caller-supplied end. The
+	 *                                         caller is responsible for parsing
+	 *                                         user input (HH:MM, ISO 8601, ...).
+	 *
+	 * @throws DoesNotExistException     when no entry with the given ID exists.
+	 * @throws BusinessRuleException     when the entry is not owned by `$userId`,
+	 *                                   not in `STATUS_PAUSED`, has no start time,
+	 *                                   or fails validation after recovery.
+	 * @throws MonthFinalizedException   when the entry sits in a finalised month
+	 *                                   and must not be touched.
+	 * @throws \OCP\Lock\LockedException when a concurrent mutation already holds
+	 *                                   the per-user workflow lock.
+	 */
+	public function completePausedEntry(string $userId, int $entryId, ?\DateTime $explicitEndTime = null): TimeEntry
+	{
+		if ($entryId <= 0) {
+			throw new BusinessRuleException($this->l10n->t('Invalid entry ID'));
+		}
+
+		$lockKey = $this->acquireUserMutationLock($userId);
+		try {
+			$this->db->beginTransaction();
+			try {
+				$entry = $this->timeEntryMapper->find($entryId);
+
+				if ($entry->getUserId() !== $userId) {
+					throw new BusinessRuleException($this->l10n->t('Access denied'));
+				}
+
+				$this->monthClosureGuard->assertTimeEntryMutable($entry);
+
+				if ($entry->getStatus() !== TimeEntry::STATUS_PAUSED) {
+					throw new BusinessRuleException($this->l10n->t(
+						'This entry is not in a paused state and cannot be completed automatically. Use the edit form instead.'
+					));
+				}
+
+				$startTime = $entry->getStartTime();
+				if ($startTime === null) {
+					throw new BusinessRuleException($this->l10n->t('Time entry has no start time'));
+				}
+
+				$oldSummary = $this->safeGetSummary($entry, $userId);
+
+				$endTime = $explicitEndTime !== null ? clone $explicitEndTime : null;
+				if ($endTime === null) {
+					$updatedAt = $entry->getUpdatedAt();
+					$endTime = $updatedAt !== null ? clone $updatedAt : clone $startTime;
+				}
+
+				if ($endTime < $startTime) {
+					$candidate = clone $endTime;
+					$candidate->modify('+1 day');
+					$endTime = $candidate >= $startTime ? $candidate : clone $startTime;
+				}
+
+				$entry->setEndTime($endTime);
+				$entry->setStatus(TimeEntry::STATUS_COMPLETED);
+				if (!$entry->getEndedReason()) {
+					$entry->setEndedReason(TimeEntry::ENDED_REASON_MANUAL_CLOCK_OUT);
+				}
+				$entry->setPolicyApplied($entry->getPolicyApplied() ?? 'paused_recovery');
+				$entry->setUpdatedAt(new \DateTime());
+
+				try {
+					$this->calculateAndSetAutomaticBreak($entry);
+				} catch (\Throwable $e) {
+					\OCP\Log\logger('arbeitszeitcheck')->warning(
+						'Automatic break during paused completion failed: ' . $e->getMessage(),
+						['exception' => $e, 'user_id' => $userId, 'entry_id' => $entryId]
+					);
+				}
+
+				try {
+					$this->adjustEndTimeForDailyMaximum($entry);
+				} catch (\Throwable $e) {
+					\OCP\Log\logger('arbeitszeitcheck')->warning(
+						'Daily maximum adjustment during paused completion failed: ' . $e->getMessage(),
+						['exception' => $e, 'user_id' => $userId, 'entry_id' => $entryId]
+					);
+				}
+
+				$errors = $entry->validate();
+				if (!empty($errors)) {
+					throw new BusinessRuleException($this->l10n->t('Validation failed: %s', [implode('; ', array_map('strval', $errors))]));
+				}
+
+				$updatedEntry = $this->timeEntryMapper->update($entry);
+
+				try {
+					$this->auditLogMapper->logAction(
+						$userId,
+						'time_entry_paused_completed',
+						'time_entry',
+						$updatedEntry->getId(),
+						$oldSummary,
+						$this->safeGetSummary($updatedEntry, $userId)
+					);
+				} catch (\Throwable $e) {
+					\OCP\Log\logger('arbeitszeitcheck')->warning(
+						'Audit log for paused completion failed: ' . $e->getMessage(),
+						['exception' => $e, 'user_id' => $userId, 'entry_id' => $entryId]
+					);
+				}
+
+				$this->db->commit();
+
+				// Compliance is a best-effort post-commit side effect: a defect
+				// in the compliance evaluator must never roll back the recovery.
+				try {
+					$this->checkComplianceAfterClockOut($updatedEntry);
+				} catch (\Throwable $e) {
+					\OCP\Log\logger('arbeitszeitcheck')->warning(
+						'Compliance check after paused completion failed: ' . $e->getMessage(),
+						['exception' => $e, 'user_id' => $userId, 'entry_id' => $entryId]
+					);
+				}
+
+				return $updatedEntry;
+			} catch (\Throwable $e) {
+				try {
+					$this->db->rollBack();
+				} catch (\Throwable $rollbackError) {
+					// Nothing to rollback / connection already closed.
+				}
+				throw $e;
+			}
+		} finally {
+			$this->releaseUserMutationLock($lockKey);
 		}
 	}
 

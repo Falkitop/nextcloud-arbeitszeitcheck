@@ -38,6 +38,37 @@
 	align-items: center;
 	justify-content: space-between;
 	gap: 1rem;
+	flex-wrap: wrap;
+}
+
+.manager-time-entries-page .badge--past-record {
+	display: inline-flex;
+	align-items: center;
+	margin-left: 0.35rem;
+	padding: 0.1rem 0.45rem;
+	border-radius: 999px;
+	font-size: 0.75rem;
+	font-weight: 600;
+	line-height: 1.25;
+	border: 1px solid color-mix(in srgb, var(--color-primary-element) 45%, var(--color-border));
+	background: color-mix(in srgb, var(--color-primary-element) 12%, var(--color-main-background));
+	color: var(--color-primary-element);
+}
+
+.manager-absence-record {
+	margin-top: 0.25rem;
+}
+
+.manager-absence-record__title {
+	margin: 0 0 0.5rem;
+	font-size: 1.1rem;
+}
+
+.manager-absence-record__desc {
+	margin: 0 0 1rem;
+	max-width: 70ch;
+	line-height: 1.5;
+	color: var(--color-text-maxcontrast);
 }
 
 .manager-time-entries-page__count {

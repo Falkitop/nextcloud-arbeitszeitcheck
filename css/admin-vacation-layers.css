@@ -325,11 +325,19 @@
    Forms inside dialog
    ------------------------------------------------------------------------- */
 .layer-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  margin: 0;
+  box-sizing: border-box;
   border: 1px solid var(--color-border);
   border-radius: var(--border-radius-large, 8px);
   padding: 0;
-  max-width: min(720px, 96vw);
-  width: 100%;
+  max-width: min(720px, calc(100vw - 2rem));
+  width: min(720px, calc(100vw - 2rem));
+  max-height: min(90dvh, calc(100vh - 2rem));
+  overflow: auto;
   background: var(--color-main-background);
   color: var(--color-main-text);
   box-shadow: var(--arbeitszeitcheck-shadow-xl, 0 10px 30px rgba(0,0,0,.15));
@@ -354,11 +362,51 @@
   line-height: 1.5;
 }
 .layer-dialog__body {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
 }
-.layer-dialog__body .layer-form__row--wide { grid-column: 1 / -1; }
+.layer-dialog__body .layer-form__fieldset {
+  margin-bottom: 1rem;
+}
+.layer-dialog__body .layer-form__fieldset:last-child {
+  margin-bottom: 0;
+}
+.layer-dialog__body .layer-form__row--wide {
+  width: 100%;
+}
+
+.layer-form__fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius, 6px);
+  padding: 1rem 1.1rem 1.15rem;
+  margin: 0;
+  min-width: 0;
+  background: color-mix(in srgb, var(--color-main-background) 92%, var(--color-background-hover));
+}
+.layer-form__legend {
+  padding: 0 0.25rem;
+  font-weight: 600;
+  font-size: 1rem;
+  line-height: 1.35;
+  color: var(--color-main-text);
+}
+.layer-form__fieldset:focus-within {
+  border-color: color-mix(in srgb, var(--color-primary-element) 40%, var(--color-border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary-element) 22%, transparent);
+}
+.layer-form__hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+.layer-form__hint--info {
+  color: var(--color-text-maxcontrast);
+}
 
 .layer-dialog__feedback {
   margin: 0;
@@ -687,7 +735,6 @@
     grid-template-columns: 1fr;
     gap: .5rem;
   }
-  .layer-dialog__body { grid-template-columns: 1fr; }
   .layer-form { grid-template-columns: 1fr; }
 }
 
@@ -735,4 +782,18 @@
 
 @media (prefers-reduced-motion: reduce) {
   .btn { transition: none; }
+}
+
+/* REQ-UX-07 — print/PDF: stable layout, avoid awkward splits, preserve ink */
+@media print {
+  .admin-vacation-layers {
+    max-width: none;
+    padding: 0;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .layer-card {
+    break-inside: avoid;
+    box-shadow: none;
+  }
 }

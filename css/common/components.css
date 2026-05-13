@@ -894,16 +894,31 @@ body[data-theme-dark-highcontrast] .form-input.form-select option {
 /* Modal Backdrop */
 .modal-backdrop {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
   background-color: var(--arbeitszeitcheck-color-modal-overlay);
   z-index: var(--z-modal-backdrop);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: var(--space-4);
+  box-sizing: border-box;
+  /* When the modal is taller than the viewport, keep it reachable (flex + overflow). */
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@supports (align-items: safe center) {
+  .modal-backdrop {
+    align-items: safe center;
+  }
+}
+
+/* Keep the panel from shrinking when the backdrop scrolls (flex + overflow). */
+.modal-backdrop > .modal {
+  flex-shrink: 0;
 }
 
 /* Modal */
@@ -914,6 +929,7 @@ body[data-theme-dark-highcontrast] .form-input.form-select option {
   box-shadow: var(--shadow-2xl);
   max-width: 90vw;
   max-height: 90vh;
+  max-height: 90dvh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -950,6 +966,7 @@ body[data-theme-dark-highcontrast] .form-input.form-select option {
   .modal {
     max-width: 95vw;
     max-height: 95vh;
+    max-height: 95dvh;
     margin: var(--space-2);
   }
 
@@ -2229,4 +2246,92 @@ body[data-theme-dark-highcontrast] .form-input.form-select option {
   .substitution-request-card__meta { flex: 0 0 auto; }
   .substitution-request-card__actions { flex: 0 0 auto; margin-top: 0; }
   .substitution-requests__title { font-size: 2rem; }
+}
+
+/* ===== HISTORICAL ENTRY HINT =====
+ * Dynamic feedback box revealed once both date inputs hold dates strictly
+ * before today. Shared between the employee absence request form and the
+ * manager record-absence form so the visual language stays consistent across
+ * the two entry points.
+ *
+ * Design rationale:
+ *  - Uses the warning palette (amber-leaning) rather than primary so it is
+ *    visually distinct from the static "past entries are allowed" explainer
+ *    that may render above it. Two stacked primary-colored boxes read as a
+ *    single block; the warning tint cleanly separates "informational" from
+ *    "active state of your current selection".
+ *  - 4 px left rail + icon + bold title = scannable in <500ms even for users
+ *    with low vision; body text uses 1.5 line-height for WCAG SC 1.4.12
+ *    (text spacing) compatibility.
+ *  - Toggled via the [hidden] attribute (never display:none in CSS) so the
+ *    aria-live region announces correctly when revealed.
+ *  - Respects prefers-reduced-motion: no transitions are applied to opacity
+ *    or position changes.
+ *  - Border + 10% color-mix background reach WCAG AA 4.5:1 contrast for
+ *    body text in both light and dark themes via theme tokens.
+ */
+.absence-historical-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3, 0.75rem);
+  margin: 0 0 var(--space-6, 1.5rem);
+  padding: var(--space-4, 1rem) var(--space-5, 1.25rem);
+  border: 1px solid color-mix(in srgb, var(--arbeitszeitcheck-color-warning, var(--color-warning, #b88100)) 40%, var(--arbeitszeitcheck-color-border, var(--color-border, #d4d4d4)));
+  border-left: 4px solid var(--arbeitszeitcheck-color-warning, var(--color-warning, #b88100));
+  border-radius: var(--radius-base, 8px);
+  background: color-mix(in srgb, var(--arbeitszeitcheck-color-warning, var(--color-warning, #b88100)) 10%, var(--arbeitszeitcheck-color-background-elevated, var(--color-main-background, #fff)));
+  color: var(--arbeitszeitcheck-color-main-text, var(--color-main-text, #000));
+}
+
+.absence-historical-hint[hidden] {
+  display: none;
+}
+
+.absence-historical-hint__icon {
+  flex-shrink: 0;
+  font-size: 1.25rem;
+  line-height: 1.25;
+  color: var(--arbeitszeitcheck-color-warning, var(--color-warning, #b88100));
+}
+
+.absence-historical-hint__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.absence-historical-hint__title {
+  display: block;
+  margin-bottom: var(--space-1, 0.25rem);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--arbeitszeitcheck-color-main-text, var(--color-main-text, #000));
+}
+
+.absence-historical-hint__text {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--arbeitszeitcheck-color-main-text, var(--color-main-text, #000));
+}
+
+.absence-historical-hint__text + .absence-historical-hint__text {
+  margin-top: var(--space-2, 0.5rem);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .absence-historical-hint,
+  .absence-historical-hint__icon {
+    transition: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .absence-historical-hint {
+    padding: var(--space-3, 0.75rem) var(--space-4, 1rem);
+    gap: var(--space-2, 0.5rem);
+  }
+  .absence-historical-hint__icon {
+    font-size: 1.1rem;
+  }
 }

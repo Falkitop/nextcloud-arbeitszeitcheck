@@ -139,6 +139,10 @@ $currentMonth = $_['currentMonth'] ?? date('Y-m');
                         <span class="legend-color legend-color--today" aria-hidden="true"></span>
                         <span class="legend-label"><?php p($l->t('Today')); ?></span>
                     </div>
+                    <div class="legend-item" role="listitem">
+                        <span class="legend-color legend-color--past-absence" aria-hidden="true"></span>
+                        <span class="legend-label"><?php p($l->t('Historical absence (already ended)')); ?></span>
+                    </div>
                 </div>
             </div>
 
@@ -194,6 +198,10 @@ $currentMonth = $_['currentMonth'] ?? date('Y-m');
     window.ArbeitszeitCheck.l10n.holiday = <?php echo json_encode($l->t('Public holiday'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.breakTime = <?php echo json_encode($l->t('Break Time'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.coveringFor = <?php echo json_encode($l->t('Covering for %1$s', ['%1$s']), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.pastRecord = <?php echo json_encode($l->t('Past record'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.requestAbsenceThisDay = <?php echo json_encode($l->t('Request absence for this day'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.requestAbsenceThisDayHelp = <?php echo json_encode($l->t('Request absence (opens form with this day prefilled). Past dates are allowed for migration.'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.historicalAbsenceLegend = <?php echo json_encode($l->t('Historical absence (already ended)'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.absenceTypes = {
         vacation: <?php echo json_encode($l->t('Vacation'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
         holiday: <?php echo json_encode($l->t('Vacation'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
@@ -210,6 +218,7 @@ $currentMonth = $_['currentMonth'] ?? date('Y-m');
     window.ArbeitszeitCheck.apiUrl = {
         calendar: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.time_entry.apiIndex'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
         absences: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.absence.index'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
-        holidays: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.holiday.index'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>
+        holidays: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.holiday.index'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
+        absenceCreate: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.absence.create'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>
     };
 </script>

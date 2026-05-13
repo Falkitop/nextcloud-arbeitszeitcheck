@@ -432,7 +432,8 @@
                 return;
             }
             const selected = ruleSetId === id ? 'selected' : '';
-            const status = ruleSet.status ? ` (${String(ruleSet.status)})` : '';
+            const st = ruleSet.statusLabel || ruleSet.status || '';
+            const status = st ? ` (${String(st)})` : '';
             const label = String(ruleSet.displayName || `${ruleSet.tariffCode || ''} ${ruleSet.version || ''}`) + status;
             tariffRuleSetOptions += `<option value="${Utils.escapeHtml(id)}" ${selected}>${Utils.escapeHtml(label)}</option>`;
         });
@@ -509,8 +510,10 @@
                 </div>
                 <div class="form-group">
                     <label for="user-vacation-carryover" class="form-label">${carryoverLabel}</label>
-                    <input type="number" id="user-vacation-carryover" name="vacationCarryoverDays" class="form-input" min="0" max="366" step="0.1" value="${carryover}" aria-describedby="user-carryover-help">
-                    <p id="user-carryover-help" class="form-help">${t('vacationCarryoverHelp', 'Opening balance of carryover days for the selected calendar year (Resturlaub), e.g. from HR or migration. This is not the annual vacation entitlement from the working time model. The last day carryover can be used is set globally in Admin settings.')}</p>
+                    <input type="text" id="user-vacation-carryover" name="vacationCarryoverDays" class="form-input"
+                           inputmode="decimal" pattern="^[0-9]+([\\.,][0-9]{1,2})?$" autocomplete="off"
+                           value="${Utils.escapeHtml(carryover)}" aria-describedby="user-carryover-help">
+                    <p id="user-carryover-help" class="form-help">${t('vacationCarryoverHelp', 'Opening balance of carryover days for the selected calendar year (Resturlaub), e.g. from HR or migration. This is not the annual vacation entitlement from the working time model. The last day carryover can be used is set globally in Admin settings.')} ${t('vacationCarryoverHelpDecimals', 'Up to two decimal places are allowed, e.g. 1.5 or 4.25 — comma or dot both work.')}</p>
                 </div>
                 <div class="form-group">
                     <label for="user-vacation-carryover-year" class="form-label">${carryoverYearLabel}</label>

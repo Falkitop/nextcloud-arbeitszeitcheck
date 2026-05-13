@@ -69,6 +69,8 @@ class TimeEntry extends Entity
 	public const ENDED_REASON_MANUAL_CLOCK_OUT = 'manual_clock_out';
 	public const ENDED_REASON_AUTO_BREAK_FALLBACK = 'auto_break_fallback';
 	public const ENDED_REASON_AUTO_DAILY_MAX = 'auto_daily_max';
+	/** Automatic completion of legacy/orphan {@see STATUS_PAUSED} rows from a previous calendar day */
+	public const ENDED_REASON_STALE_PAUSED_REPAIR = 'stale_paused_repair';
 
 	/** @var string */
 	protected $userId;

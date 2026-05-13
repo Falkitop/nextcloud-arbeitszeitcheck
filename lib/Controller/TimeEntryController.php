@@ -12,6 +12,7 @@ declare(strict_types=1);
 namespace OCA\ArbeitszeitCheck\Controller;
 
 use OCA\ArbeitszeitCheck\Constants;
+use OCA\ArbeitszeitCheck\Service\AppLocalNaiveDateTimeNormalizer;
 use OCA\ArbeitszeitCheck\Db\TimeEntry;
 use OCA\ArbeitszeitCheck\Db\TimeEntryMapper;
 use OCA\ArbeitszeitCheck\Db\AbsenceMapper;
@@ -23,7 +24,9 @@ use OCA\ArbeitszeitCheck\Service\TeamResolverService;
 use OCA\ArbeitszeitCheck\Service\TimeTrackingService;
 use OCA\ArbeitszeitCheck\Service\NotificationService;
 use OCA\ArbeitszeitCheck\Service\MonthClosureGuard;
+use OCA\ArbeitszeitCheck\Exception\BusinessRuleException;
 use OCA\ArbeitszeitCheck\Exception\MonthFinalizedException;
+use OCP\Lock\LockedException;
 use OCP\AppFramework\Controller;
 use OCP\IConfig;
 use OCP\AppFramework\Db\DoesNotExistException;
@@ -204,12 +207,19 @@ class TimeEntryController extends Controller
 	 * @return \DateTime
 	 * @throws \Exception if date cannot be parsed
 	 */
+	private function getAppTimeZone(): \DateTimeZone
+	{
+		return AppLocalNaiveDateTimeNormalizer::appStorageTimeZoneFromConfig($this->config);
+	}
+
 	private function parseDate(string $dateString): \DateTime
 	{
 		$dateString = trim($dateString);
 		if ($dateString === '') {
 			throw new \Exception($this->l10n->t('Date is required and cannot be empty'));
 		}
+
+		$appTz = $this->getAppTimeZone();
 
 		// Try German format first (dd.mm.yyyy)
 		if (preg_match('/^(\d{2})\.(\d{2})\.(\d{4})$/', $dateString, $matches)) {
@@ -222,16 +232,20 @@ class TimeEntryController extends Controller
 				throw new \Exception($this->l10n->t('Invalid date: %s', [$dateString]));
 			}
 
-			return new \DateTime(sprintf('%04d-%02d-%02d', $year, $month, $day));
+			$parsed = \DateTime::createFromFormat('!d.m.Y', $dateString, $appTz);
+			if ($parsed === false) {
+				throw new \Exception($this->l10n->t('Invalid date: %s', [$dateString]));
+			}
+			return $parsed;
 		}
 
-		$iso = \DateTimeImmutable::createFromFormat('!Y-m-d', $dateString);
+		$iso = \DateTimeImmutable::createFromFormat('!Y-m-d', $dateString, $appTz);
 		$isoErrors = \DateTimeImmutable::getLastErrors();
 		$isoIsValid = $iso !== false
 			&& ($isoErrors === false || (($isoErrors['warning_count'] ?? 0) === 0 && ($isoErrors['error_count'] ?? 0) === 0))
 			&& $iso->format('Y-m-d') === $dateString;
 		if ($isoIsValid) {
-			return new \DateTime($iso->format('Y-m-d'));
+			return \DateTime::createFromImmutable($iso);
 		}
 
 		throw new \Exception($this->l10n->t('Invalid date format. Expected yyyy-mm-dd or dd.mm.yyyy: %s', [$dateString]));
@@ -335,7 +349,7 @@ class TimeEntryController extends Controller
 			$countFilters = ['user_id' => $userId];
 			if ($start_date) {
 				try {
-					$countFilters['start_date'] = new \DateTime($start_date);
+					$countFilters['start_date'] = $this->parseDate($start_date);
 				} catch (\Throwable $e) {
 					\OCP\Log\logger('arbeitszeitcheck')->error('Invalid start_date format: ' . $start_date, ['exception' => $e]);
 					return new JSONResponse([
@@ -346,7 +360,7 @@ class TimeEntryController extends Controller
 			}
 			if ($end_date) {
 				try {
-					$countFilters['end_date'] = new \DateTime($end_date);
+					$countFilters['end_date'] = $this->parseDate($end_date);
 				} catch (\Throwable $e) {
 					\OCP\Log\logger('arbeitszeitcheck')->error('Invalid end_date format: ' . $end_date, ['exception' => $e]);
 					return new JSONResponse([
@@ -371,8 +385,9 @@ class TimeEntryController extends Controller
 			// Wrap in try-catch to handle any entity mapping errors
 			try {
 				if ($start_date || $end_date) {
+					$appTz = $this->getAppTimeZone();
 					try {
-						$startDateTime = $start_date ? new \DateTime($start_date) : new \DateTime('1970-01-01');
+						$startDateTime = $start_date ? $this->parseDate($start_date) : new \DateTime('1970-01-01', $appTz);
 						$startDateTime->setTime(0, 0, 0);
 					} catch (\Throwable $e) {
 						\OCP\Log\logger('arbeitszeitcheck')->error('Invalid start_date format: ' . $start_date, ['exception' => $e]);
@@ -381,13 +396,13 @@ class TimeEntryController extends Controller
 							'error' => $this->l10n->t('Invalid start date format')
 						], Http::STATUS_BAD_REQUEST);
 					}
-				try {
-					$endDateTime = $end_date ? new \DateTime($end_date) : new \DateTime('2099-12-31');
-					// Exclusive upper bound: start of the next calendar day so that entries at
-					// any time on $end_date are included (findByUserAndDateRange uses strict <).
-					$endDateTime->setTime(0, 0, 0);
-					$endDateTime->modify('+1 day');
-				} catch (\Throwable $e) {
+					try {
+						$endDateTime = $end_date ? $this->parseDate($end_date) : new \DateTime('2099-12-31', $appTz);
+						// Exclusive upper bound: start of the next calendar day so that entries at
+						// any time on $end_date are included (findByUserAndDateRange uses strict <).
+						$endDateTime->setTime(0, 0, 0);
+						$endDateTime->modify('+1 day');
+					} catch (\Throwable $e) {
 						\OCP\Log\logger('arbeitszeitcheck')->error('Invalid end_date format: ' . $end_date, ['exception' => $e]);
 						return new JSONResponse([
 							'success' => false,
@@ -489,7 +504,7 @@ class TimeEntryController extends Controller
 	 *
 	 * Editing restrictions:
 	 * - Only entries from the last 2 weeks (14 days) can be edited
-	 * - Only manual entries, entries with pending approval, or completed automatic entries can be edited
+	 * - Manual entries, pending approval, completed automatic entries, and paused (unfinished automatic) entries can be edited
 	 * - Approved entries cannot be edited (use "Request Correction" instead)
 	 *
 	 * @param int $id Time entry ID to edit
@@ -802,7 +817,7 @@ class TimeEntryController extends Controller
 	 *
 	 * Editing restrictions:
 	 * - Only entries from the last 2 weeks (14 days) can be edited
-	 * - Only manual entries, entries with pending approval, or completed automatic entries can be edited
+	 * - Manual entries, pending approval, completed automatic entries, and paused (unfinished automatic) entries can be edited
 	 * - Approved entries cannot be edited (use "Request Correction" instead)
 	 *
 	 *
@@ -901,7 +916,7 @@ class TimeEntryController extends Controller
 						[$h, $m] = \explode(':', $startTime, 2);
 						$startDateTime->setTime((int)$h, (int)$m, 0);
 					} else {
-						$startDateTime = new \DateTime($startTime);
+						$startDateTime = AppLocalNaiveDateTimeNormalizer::parseFlexibleDateTime($startTime, $this->getAppTimeZone());
 					}
 
 					// End
@@ -910,7 +925,7 @@ class TimeEntryController extends Controller
 						[$h, $m] = \explode(':', $endTime, 2);
 						$endDateTime->setTime((int)$h, (int)$m, 0);
 					} else {
-						$endDateTime = new \DateTime($endTime);
+						$endDateTime = AppLocalNaiveDateTimeNormalizer::parseFlexibleDateTime($endTime, $this->getAppTimeZone());
 					}
 
 					// Overnight work: if we have a base date and end < start, treat end as next day
@@ -951,7 +966,7 @@ class TimeEntryController extends Controller
 									[$h, $m] = \explode(':', $rawStart, 2);
 									$breakStart->setTime((int)$h, (int)$m, 0);
 								} else {
-									$breakStart = new \DateTime($rawStart);
+									$breakStart = AppLocalNaiveDateTimeNormalizer::parseFlexibleDateTime($rawStart, $this->getAppTimeZone());
 								}
 
 								if ($baseDate instanceof \DateTime && $isPlainTime($rawEnd)) {
@@ -959,7 +974,7 @@ class TimeEntryController extends Controller
 									[$h, $m] = \explode(':', $rawEnd, 2);
 									$breakEnd->setTime((int)$h, (int)$m, 0);
 								} else {
-									$breakEnd = new \DateTime($rawEnd);
+									$breakEnd = AppLocalNaiveDateTimeNormalizer::parseFlexibleDateTime($rawEnd, $this->getAppTimeZone());
 								}
 
 								// Handle overnight breaks
@@ -1011,7 +1026,7 @@ class TimeEntryController extends Controller
 							[$h, $m] = \explode(':', $breakStartTime, 2);
 							$singleBreakStart->setTime((int)$h, (int)$m, 0);
 						} else {
-							$singleBreakStart = new \DateTime($breakStartTime);
+							$singleBreakStart = AppLocalNaiveDateTimeNormalizer::parseFlexibleDateTime($breakStartTime, $this->getAppTimeZone());
 						}
 
 						if ($baseDate instanceof \DateTime && $isPlainTime($breakEndTime)) {
@@ -1019,7 +1034,7 @@ class TimeEntryController extends Controller
 							[$h, $m] = \explode(':', $breakEndTime, 2);
 							$singleBreakEnd->setTime((int)$h, (int)$m, 0);
 						} else {
-							$singleBreakEnd = new \DateTime($breakEndTime);
+							$singleBreakEnd = AppLocalNaiveDateTimeNormalizer::parseFlexibleDateTime($breakEndTime, $this->getAppTimeZone());
 						}
 
 						if ($singleBreakEnd < $singleBreakStart) {
@@ -1683,6 +1698,109 @@ class TimeEntryController extends Controller
 	}
 
 	/**
+	 * Finalise a {@see TimeEntry::STATUS_PAUSED} entry in a single click.
+	 *
+	 * This is the safety-net endpoint for the scenario where a previous clock-out
+	 * (in an older app version, on an unstable connection, or after a backend
+	 * exception) left the entry in `paused` without an `end_time`. Forcing users
+	 * to manually re-enter start/end times in the edit form is poor UX and a
+	 * recurring support burden; this endpoint completes the entry safely with a
+	 * deterministic end-time:
+	 *
+	 *   1. an explicit `end_time` from the request body (ISO 8601 or local time
+	 *      `HH:MM`), or
+	 *   2. the `updated_at` timestamp (the moment the entry was frozen — the
+	 *      audit-log truth for when work stopped), or
+	 *   3. the original `start_time` as a zero-duration fallback so the row at
+	 *      least leaves the broken `paused` state.
+	 *
+	 * The new end is run through automatic break calculation (ArbZG §4) and the
+	 * daily-maximum adjustment (ArbZG §3) so the resulting `completed` row is
+	 * compliance-equivalent to a normal clock-out. Compliance checks, audit
+	 * logging and ownership enforcement match the regular `update()` path.
+	 *
+	 * @param int $id Time entry ID
+	 * @return JSONResponse JSON response with the finalised entry summary
+	 */
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	public function complete(int $id): JSONResponse
+	{
+		try {
+			if ($id <= 0) {
+				return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Invalid entry ID')], Http::STATUS_BAD_REQUEST);
+			}
+			$userId = $this->getUserId();
+
+			// Parse an optional caller-supplied end time. The service applies the
+			// smart fallback (updated_at -> start_time) when no override is given.
+			$params = $this->request->getParams();
+			$rawEnd = $params['endTime'] ?? $params['end_time'] ?? null;
+
+			$explicitEndTime = null;
+			if (is_string($rawEnd) && $rawEnd !== '') {
+				try {
+					if (preg_match('/^([01]?\d|2[0-3]):([0-5]\d)$/', $rawEnd)) {
+						// Short HH:MM combined with today's date in the app timezone
+						// keeps the JS one-click flow simple while still anchoring the
+						// override on a real calendar day. The service still ensures
+						// `end >= start` and applies break/daily-max logic.
+						$now = new \DateTime('now', $this->getAppTimeZone());
+						[$h, $m] = explode(':', $rawEnd, 2);
+						$explicitEndTime = new \DateTime($now->format('Y-m-d') . ' ' . sprintf('%02d:%02d:00', (int)$h, (int)$m));
+					} else {
+						$explicitEndTime = AppLocalNaiveDateTimeNormalizer::parseFlexibleDateTime($rawEnd, $this->getAppTimeZone());
+					}
+				} catch (\Throwable $e) {
+					return new JSONResponse([
+						'success' => false,
+						'error' => $this->l10n->t('Invalid end time format. Use ISO 8601 (e.g. Y-m-dTH:i:s) or HH:MM.'),
+					], Http::STATUS_BAD_REQUEST);
+				}
+			}
+
+			$updatedEntry = $this->timeTrackingService->completePausedEntry($userId, $id, $explicitEndTime);
+
+			return new JSONResponse([
+				'success' => true,
+				'entry' => $updatedEntry->getSummary(),
+				'message' => $this->l10n->t('Paused session was completed and recorded successfully.'),
+			]);
+		} catch (DoesNotExistException $e) {
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('Time entry not found'),
+			], Http::STATUS_NOT_FOUND);
+		} catch (MonthFinalizedException $e) {
+			return new JSONResponse([
+				'success' => false,
+				'error' => $e->getMessage(),
+			], Http::STATUS_CONFLICT);
+		} catch (LockedException $e) {
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('Another change to your time tracking is in progress. Please wait a moment and try again.'),
+			], Http::STATUS_LOCKED);
+		} catch (BusinessRuleException $e) {
+			$message = $e->getMessage();
+			$status = Http::STATUS_BAD_REQUEST;
+			if (stripos($message, 'access denied') !== false) {
+				$status = Http::STATUS_FORBIDDEN;
+			}
+			return new JSONResponse([
+				'success' => false,
+				'error' => $message,
+			], $status);
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error('Error in TimeEntryController::complete: ' . $e->getMessage(), ['exception' => $e, 'entry_id' => $id]);
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.'),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	/**
 	 * Get time entry statistics endpoint
 	 *
 	 *
@@ -1697,8 +1815,10 @@ class TimeEntryController extends Controller
 			$userId = $this->getUserId();
 
 			try {
-				$start = $start_date ? new \DateTime($start_date) : (new \DateTime())->modify('-30 days');
-				$end = $end_date ? new \DateTime($end_date) : new \DateTime();
+				$appTz = $this->getAppTimeZone();
+				$now = new \DateTime('now', $appTz);
+				$start = $start_date ? $this->parseDate($start_date) : (clone $now)->modify('-30 days');
+				$end = $end_date ? $this->parseDate($end_date) : clone $now;
 			} catch (\Throwable $e) {
 				\OCP\Log\logger('arbeitszeitcheck')->error('Invalid date in getStats: ' . $e->getMessage(), ['exception' => $e]);
 				return new JSONResponse([
@@ -1897,7 +2017,7 @@ class TimeEntryController extends Controller
 					[$h, $m] = \explode(':', $startTime, 2);
 					$startDateTime->setTime((int)$h, (int)$m, 0);
 				} else {
-					$startDateTime = new \DateTime($startTime);
+					$startDateTime = AppLocalNaiveDateTimeNormalizer::parseFlexibleDateTime($startTime, $this->getAppTimeZone());
 				}
 
 				if ($baseDate instanceof \DateTime && $isPlainTime($endTime)) {
@@ -1905,7 +2025,7 @@ class TimeEntryController extends Controller
 					[$h, $m] = \explode(':', $endTime, 2);
 					$endDateTime->setTime((int)$h, (int)$m, 0);
 				} else {
-					$endDateTime = new \DateTime($endTime);
+					$endDateTime = AppLocalNaiveDateTimeNormalizer::parseFlexibleDateTime($endTime, $this->getAppTimeZone());
 				}
 
 				// Overnight work: if we have a base date and end < start, treat end as next day
@@ -1943,7 +2063,7 @@ class TimeEntryController extends Controller
 									[$h, $m] = \explode(':', $rawStart, 2);
 									$breakStart->setTime((int)$h, (int)$m, 0);
 								} else {
-									$breakStart = new \DateTime($rawStart);
+									$breakStart = AppLocalNaiveDateTimeNormalizer::parseFlexibleDateTime($rawStart, $this->getAppTimeZone());
 								}
 
 								if ($baseDate instanceof \DateTime && $isPlainTime($rawEnd)) {
@@ -1951,7 +2071,7 @@ class TimeEntryController extends Controller
 									[$h, $m] = \explode(':', $rawEnd, 2);
 									$breakEnd->setTime((int)$h, (int)$m, 0);
 								} else {
-									$breakEnd = new \DateTime($rawEnd);
+									$breakEnd = AppLocalNaiveDateTimeNormalizer::parseFlexibleDateTime($rawEnd, $this->getAppTimeZone());
 								}
 
 								// Handle overnight breaks
@@ -2002,7 +2122,7 @@ class TimeEntryController extends Controller
 						[$h, $m] = \explode(':', $breakStartTime, 2);
 						$singleBreakStart->setTime((int)$h, (int)$m, 0);
 					} else {
-                        $singleBreakStart = new \DateTime($breakStartTime);
+						$singleBreakStart = AppLocalNaiveDateTimeNormalizer::parseFlexibleDateTime($breakStartTime, $this->getAppTimeZone());
 					}
 
 					if ($baseDate instanceof \DateTime && $isPlainTime($breakEndTime)) {
@@ -2010,7 +2130,7 @@ class TimeEntryController extends Controller
 						[$h, $m] = \explode(':', $breakEndTime, 2);
 						$singleBreakEnd->setTime((int)$h, (int)$m, 0);
 					} else {
-                        $singleBreakEnd = new \DateTime($breakEndTime);
+						$singleBreakEnd = AppLocalNaiveDateTimeNormalizer::parseFlexibleDateTime($breakEndTime, $this->getAppTimeZone());
 					}
 
 					if ($singleBreakEnd < $singleBreakStart) {
@@ -2342,8 +2462,8 @@ class TimeEntryController extends Controller
 			throw new \Exception($this->l10n->t('Start date and end date are required for custom period'));
 		}
 		try {
-			$start = new \DateTime($start_date);
-			$end = new \DateTime($end_date);
+			$start = $this->parseDate($start_date);
+			$end = $this->parseDate($end_date);
 		} catch (\Throwable $e) {
 			throw new \Exception($this->l10n->t('Invalid date format. Expected yyyy-mm-dd'));
 		}
@@ -2393,11 +2513,20 @@ class TimeEntryController extends Controller
 		try {
 			$userId = $this->getUserId();
 
-			$parse = static function (string $ts): ?\DateTime {
-				return \DateTime::createFromFormat(\DateTime::ATOM, $ts)
+			$appTz = $this->getAppTimeZone();
+			$parse = function (string $ts) use ($appTz): ?\DateTime {
+				$dt = \DateTime::createFromFormat(\DateTime::ATOM, $ts)
 					?: \DateTime::createFromFormat('Y-m-d\TH:i:s.u\Z', $ts)
 					?: \DateTime::createFromFormat('Y-m-d\TH:i:s\Z', $ts)
 					?: \DateTime::createFromFormat('Y-m-d\TH:i:sP', $ts);
+				if ($dt instanceof \DateTime) {
+					return $dt;
+				}
+				try {
+					return AppLocalNaiveDateTimeNormalizer::parseFlexibleDateTime($ts, $appTz);
+				} catch (\Throwable $e) {
+					return null;
+				}
 			};
 
 			$startDt = $parse($startTime);

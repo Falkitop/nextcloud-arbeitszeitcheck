@@ -45,6 +45,7 @@ $mode = $_['mode'] ?? 'list'; // 'list', 'create', 'edit'
 $entry = $_['entry'] ?? null;
 $error = $_['error'] ?? null;
 $appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitcheck', 'app_timezone', 'Europe/Berlin');
+require __DIR__ . '/common/user-display-timezone.php';
 ?>
 
 <?php include __DIR__ . '/common/navigation.php'; ?>
@@ -60,6 +61,27 @@ $appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitch
                 </ol>
             </nav>
         </div>
+
+        <?php if ($mode === 'list'): ?>
+            <section class="section arbeitszeit-check-tz-context" role="region" aria-labelledby="arbeitszeit-tz-context-title">
+                <h2 id="arbeitszeit-tz-context-title" class="sr-only"><?php p($l->t('How time zones are used')); ?></h2>
+                <div class="card arbeitszeit-check-tz-context__card">
+                    <div class="card-body arbeitszeit-check-tz-context__body">
+                        <p class="arbeitszeit-check-tz-context__text" id="arbeitszeit-tz-context-desc">
+                            <?php p($l->t('Start and end times are shown in your personal timezone (%2$s). Values are stored using the organization timezone (%1$s) so daylight saving time is handled consistently.', [$appTimezone, $arbeitszeitCheckUserDisplayTz->getName()])); ?>
+                        </p>
+                        <div class="arbeitszeit-check-tz-context__badges" role="list" aria-label="<?php p($l->t('Time zone summary')); ?>">
+                            <div class="timezone-badge timezone-badge--inline" role="listitem" title="<?php p($l->t('Organization reference timezone for stored work times')); ?>">
+                                <span class="timezone-badge__label"><?php p($l->t('Organization')); ?>: <?php p($appTimezone); ?></span>
+                            </div>
+                            <div class="timezone-badge timezone-badge--inline" role="listitem" title="<?php p($l->t('Your Nextcloud account timezone for display')); ?>">
+                                <span class="timezone-badge__label"><?php p($l->t('Your display')); ?>: <?php p($arbeitszeitCheckUserDisplayTz->getName()); ?></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        <?php endif; ?>
 
         <!-- Page Header -->
         <header class="section page-header-section" aria-labelledby="time-entries-page-title">
@@ -197,6 +219,12 @@ $appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitch
                                 : $l->t('Use this form to edit your time entry. The form will automatically check compliance with German labor law requirements.')); ?>
                         </p>
 
+                        <?php if ($mode === 'edit' && $entry && $entry->getStatus() === \OCA\ArbeitszeitCheck\Db\TimeEntry::STATUS_PAUSED && $entry->getEndTime() === null): ?>
+                            <div class="alert alert--warning" role="status">
+                                <p><?php p($l->t('This session was left unfinished. Set the correct end time and save — the entry will then be recorded as completed.')); ?></p>
+                            </div>
+                        <?php endif; ?>
+
                         <!-- Real-time Summary Section -->
                         <div id="time-summary" 
                              role="status" 
@@ -330,7 +358,14 @@ $appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitch
                                     </label>
                                     <?php 
                                     // Custom 24-hour time input - always shows 24h format regardless of browser locale
-                                    $endTimeValue = $entry && $entry->getEndTime() ? $entry->getEndTime()->format('H:i') : '17:00';
+                                    if ($entry && $entry->getEndTime()) {
+                                        $endTimeValue = $entry->getEndTime()->format('H:i');
+                                    } elseif ($entry && $entry->getStatus() === \OCA\ArbeitszeitCheck\Db\TimeEntry::STATUS_PAUSED && $entry->getUpdatedAt()) {
+                                        // Orphan paused row: suggest the moment the session was frozen (updated_at) as end time
+                                        $endTimeValue = $entry->getUpdatedAt()->format('H:i');
+                                    } else {
+                                        $endTimeValue = '17:00';
+                                    }
                                     $endTimeParts = explode(':', $endTimeValue);
                                     $endHour = $endTimeParts[0] ?? '17';
                                     $endMinute = $endTimeParts[1] ?? '00';
@@ -616,6 +651,7 @@ $appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitch
                             <option value="active"><?php p($l->t('Active')); ?></option>
                             <option value="completed"><?php p($l->t('Completed')); ?></option>
                             <option value="pending_approval"><?php p($l->t('Pending Approval')); ?></option>
+                            <option value="paused"><?php p($l->t('Paused (needs attention)')); ?></option>
                         </select>
                     </div>
                     <div class="card-actions">
@@ -627,6 +663,26 @@ $appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitch
 
             <!-- Time Entries Table -->
             <div class="section">
+                <?php
+                $pausedEntriesCount = 0;
+                foreach (($entries ?? []) as $pausedCheckEntry) {
+                    if ($pausedCheckEntry->getStatus() === \OCA\ArbeitszeitCheck\Db\TimeEntry::STATUS_PAUSED) {
+                        $pausedEntriesCount++;
+                    }
+                }
+                if ($pausedEntriesCount > 0):
+                ?>
+                    <div class="alert alert--warning" role="status" aria-live="polite" id="paused-entries-banner">
+                        <p class="alert-message">
+                            <strong><?php p($l->n(
+                                'You have %n unfinished session that was not properly clocked out.',
+                                'You have %n unfinished sessions that were not properly clocked out.',
+                                $pausedEntriesCount
+                            )); ?></strong>
+                            <?php p($l->t('Click "Complete" next to the entry below to finalise it with the time it was paused — required breaks are added automatically. You can also click "Edit" to set custom times.')); ?>
+                        </p>
+                    </div>
+                <?php endif; ?>
                 <div class="table-container">
                     <table class="table table--hover" id="time-entries-table" role="table" aria-label="<?php p($l->t('Time entries list')); ?>">
                         <thead>
@@ -645,19 +701,27 @@ $appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitch
                         <tbody>
                             <?php if (!empty($entries)): ?>
                                 <?php foreach (($entries ?? []) as $entry): ?>
+                                    <?php
+                                    $rowDisplayStart = clone $entry->getStartTime();
+                                    $rowDisplayStart->setTimezone($arbeitszeitCheckUserDisplayTz);
+                                    $rowDisplayEnd = null;
+                                    if ($entry->getEndTime()) {
+                                        $rowDisplayEnd = clone $entry->getEndTime();
+                                        $rowDisplayEnd->setTimezone($arbeitszeitCheckUserDisplayTz);
+                                    }
+                                    ?>
                                     <tr data-entry-id="<?php p($entry->getId()); ?>">
-                                        <td><?php p($entry->getStartTime()->format('d.m.Y')); ?></td>
-                                        <td><?php p($entry->getStartTime()->format('H:i')); ?></td>
+                                        <td><?php p($rowDisplayStart->format('d.m.Y')); ?></td>
+                                        <td><?php p($rowDisplayStart->format('H:i')); ?></td>
                                         <td><?php
-                                            if ($entry->getEndTime()) {
-                                                $endTime = $entry->getEndTime();
-                                                $startDate = $entry->getStartTime()->format('Y-m-d');
-                                                $endDate = $endTime->format('Y-m-d');
+                                            if ($rowDisplayEnd) {
+                                                $startDate = $rowDisplayStart->format('Y-m-d');
+                                                $endDate = $rowDisplayEnd->format('Y-m-d');
                                                 // Show date if end time is on a different day
                                                 if ($startDate !== $endDate) {
-                                                    p($endTime->format('d.m.Y H:i'));
+                                                    p($rowDisplayEnd->format('d.m.Y H:i'));
                                                 } else {
-                                                    p($endTime->format('H:i'));
+                                                    p($rowDisplayEnd->format('H:i'));
                                                 }
                                             } else {
                                                 p('-');
@@ -678,13 +742,17 @@ $appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitch
                                                         try {
                                                             $breakStart = new \DateTime($break['start']);
                                                             $breakEnd = new \DateTime($break['end']);
+                                                            $breakStartDisp = clone $breakStart;
+                                                            $breakStartDisp->setTimezone($arbeitszeitCheckUserDisplayTz);
+                                                            $breakEndDisp = clone $breakEnd;
+                                                            $breakEndDisp->setTimezone($arbeitszeitCheckUserDisplayTz);
 
                                                             // Only include breaks that are at least 15 minutes (ArbZG §4)
                                                             $breakDurationSeconds = $breakEnd->getTimestamp() - $breakStart->getTimestamp();
                                                             $minBreakDurationSeconds = 900; // 15 minutes
 
                                                             if ($breakDurationSeconds >= $minBreakDurationSeconds) {
-                                                                $breakTimes[] = $breakStart->format('H:i') . ' - ' . $breakEnd->format('H:i');
+                                                                $breakTimes[] = $breakStartDisp->format('H:i') . ' - ' . $breakEndDisp->format('H:i');
                                                             }
                                                         } catch (\Exception $e) {
                                                             // Skip invalid break times
@@ -695,11 +763,13 @@ $appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitch
 
                                             // Check for single break (breakStartTime/breakEndTime)
                                             if ($entry->getBreakStartTime() !== null && $entry->getBreakEndTime() !== null) {
-                                                $breakStart = $entry->getBreakStartTime();
-                                                $breakEnd = $entry->getBreakEndTime();
+                                                $breakStart = clone $entry->getBreakStartTime();
+                                                $breakEnd = clone $entry->getBreakEndTime();
+                                                $breakStart->setTimezone($arbeitszeitCheckUserDisplayTz);
+                                                $breakEnd->setTimezone($arbeitszeitCheckUserDisplayTz);
 
                                                 // Only include breaks that are at least 15 minutes (ArbZG §4)
-                                                $breakDurationSeconds = $breakEnd->getTimestamp() - $breakStart->getTimestamp();
+                                                $breakDurationSeconds = $entry->getBreakEndTime()->getTimestamp() - $entry->getBreakStartTime()->getTimestamp();
                                                 $minBreakDurationSeconds = 900; // 15 minutes
 
                                                 if ($breakDurationSeconds >= $minBreakDurationSeconds) {
@@ -773,9 +843,23 @@ $appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitch
                                                                             'completed' => 'success',
                                                                             'active' => 'primary',
                                                                             'pending_approval' => 'warning',
+                                                                            'break' => 'warning',
+                                                                            'paused' => 'warning',
+                                                                            'rejected' => 'error',
                                                                             default => 'secondary'
                                                                         });
-                                                                        ?>">
+                                                                        ?>"
+                                                title="<?php
+                                                p(match ($entry->getStatus()) {
+                                                    'paused' => $l->t('This session was not properly clocked out. Complete it (one click) or edit the times below.'),
+                                                    'pending_approval' => $l->t('Waiting for manager approval'),
+                                                    'rejected' => $l->t('Correction request was rejected'),
+                                                    'active' => $l->t('Currently tracking'),
+                                                    'break' => $l->t('Currently on break'),
+                                                    'completed' => $l->t('Closed and counted toward your working time'),
+                                                    default => ''
+                                                });
+                                                ?>">
                                                 <?php
                                                 $statusKey = $entry->getStatus();
                                                 $statusLabel = match ($statusKey) {
@@ -793,14 +877,29 @@ $appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitch
                                         </td>
                                         <td class="actions-cell">
                                             <?php
+                                            $isPaused = $entry->getStatus() === \OCA\ArbeitszeitCheck\Db\TimeEntry::STATUS_PAUSED;
+                                            // One-click completion for paused entries — the most common recovery action.
+                                            // Rendered first and primary-styled so even keyboard/SR users land on it first.
+                                            if ($isPaused):
+                                            ?>
+                                                <button class="btn btn--sm btn--primary btn-complete-entry"
+                                                    data-entry-id="<?php p($entry->getId()); ?>"
+                                                    title="<?php p($l->t('Complete this paused session now. The end time will be set to when it was paused, and required breaks will be applied automatically.')); ?>"
+                                                    type="button"
+                                                    aria-label="<?php p($l->t('Complete this paused session')); ?>">
+                                                    <span aria-hidden="true">✓</span>
+                                                    <?php p($l->t('Complete')); ?>
+                                                </button>
+                                            <?php endif; ?>
+                                            <?php
                                             $canEdit = $entry->canEdit(\OCA\ArbeitszeitCheck\Constants::EDIT_WINDOW_DAYS);
                                             if ($canEdit):
                                             ?>
-                                                <button class="btn btn--sm btn--secondary"
+                                                <button class="btn btn--sm btn--secondary btn-edit-entry"
                                                     data-entry-id="<?php p($entry->getId()); ?>"
-                                                    title="<?php p($l->t('Edit')); ?>"
+                                                    title="<?php p($isPaused ? $l->t('Edit start/end times and breaks for this paused session') : $l->t('Edit this time entry')); ?>"
                                                     type="button"
-                                                    aria-label="<?php p($l->t('Edit time entry')); ?>">
+                                                    aria-label="<?php p($isPaused ? $l->t('Edit times for this paused time entry') : $l->t('Edit time entry')); ?>">
                                                     <?php p($l->t('Edit')); ?>
                                                 </button>
                                             <?php endif; ?>
@@ -808,7 +907,7 @@ $appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitch
                                             $canDelete = $entry->canDelete();
                                             if ($canDelete):
                                             ?>
-                                                <button class="btn btn--sm btn--danger btn-delete"
+                                                <button class="btn btn--sm btn--danger btn-delete btn-delete-entry"
                                                     data-entry-id="<?php p($entry->getId()); ?>"
                                                     title="<?php p($l->t('Delete this time entry permanently. This cannot be undone.')); ?>"
                                                     type="button"
@@ -890,6 +989,7 @@ $__jsEnc = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UN
     window.ArbeitszeitCheck.l10n.skipToTimeEntryForm = <?php echo json_encode($l->t('Skip to time entry form'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.confirmDelete = <?php echo json_encode($l->t('Are you sure you want to delete this time entry?'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.confirmDeleteTimeEntry = <?php echo json_encode($l->t('Are you sure you want to delete this time entry?\n\nThis will permanently remove this record of your working time. This action cannot be undone.'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.confirmDeleteTimeEntryTitle = <?php echo json_encode($l->t('Delete time entry'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.error = <?php echo json_encode($l->t('An error occurred'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.deleted = <?php echo json_encode($l->t('Time entry deleted successfully'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.autoBreakDuration30 = <?php echo json_encode($l->t('30 minutes'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
@@ -914,8 +1014,8 @@ $__jsEnc = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UN
     window.ArbeitszeitCheck.apiUrl = {
         timeEntries: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.time_entry.apiIndex'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
         create: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.time_entry.apiStore'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
-        update: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.time_entry.apiUpdate', ['id' => '__ID__']), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>.replace('__ID__', ''),
-        delete: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.time_entry.apiDelete', ['id' => '__ID__']), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>.replace('__ID__', ''),
+        update: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.time_entry.apiUpdate', ['id' => '__ID__']), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
+        delete: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.time_entry.apiDelete', ['id' => '__ID__']), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
         export: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.export.timeEntries'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>
     };
 

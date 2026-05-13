@@ -43,6 +43,15 @@ $requireSubstituteTypes = $_['requireSubstituteTypes'] ?? [];
 $colleagues = $_['colleagues'] ?? [];
 $employeeHasAssignableManager = $_['employeeHasAssignableManager'] ?? true;
 $useAppTeams = $_['useAppTeams'] ?? false;
+$prefillStart = $_['prefillStart'] ?? null;
+$prefillEnd = $_['prefillEnd'] ?? null;
+$today = new \DateTimeImmutable('today');
+$absenceFormStartDisplay = ($mode === 'create')
+	? (is_string($prefillStart) ? $prefillStart : '')
+	: (($absence && $absence->getStartDate()) ? $absence->getStartDate()->format('d.m.Y') : '');
+$absenceFormEndDisplay = ($mode === 'create')
+	? (is_string($prefillEnd) ? $prefillEnd : (is_string($prefillStart) ? $prefillStart : ''))
+	: (($absence && $absence->getEndDate()) ? $absence->getEndDate()->format('d.m.Y') : '');
 ?>
 
 <?php include __DIR__ . '/common/navigation.php'; ?>
@@ -223,10 +232,30 @@ $useAppTeams = $_['useAppTeams'] ?? false;
                         <p class="form-help"><?php p($l->t('Select the type of absence you want to request')); ?></p>
                     </div>
 
-                    <?php
-                    $todayFormatted = (new DateTime())->format('d.m.Y');
-                    $sickMinDate = (new DateTime())->modify('-7 days')->format('d.m.Y');
-                    ?>
+                    <div class="absence-past-entry-hint" role="note" aria-labelledby="absence-past-entry-title">
+                        <h4 id="absence-past-entry-title"><?php p($l->t('Past absences are allowed')); ?></h4>
+                        <p><?php p($l->t('Use the same form for old vacation, sick leave, migration records, and future requests. Closed months stay protected and cannot be changed unless an administrator reopens them.')); ?></p>
+                    </div>
+
+                    <!--
+                        Dynamic historical-entry hint. Hidden by default; the inline script below
+                        toggles it (and the substitute disabled state) once both dates have been
+                        entered. The element exists in the static markup so screen readers can
+                        announce its content via aria-live as soon as it becomes visible, and so
+                        the layout does not jump.
+                    -->
+                    <div id="absence-historical-hint"
+                         class="absence-historical-hint"
+                         role="status"
+                         aria-live="polite"
+                         hidden>
+                        <span class="absence-historical-hint__icon" aria-hidden="true">⏱</span>
+                        <div class="absence-historical-hint__body">
+                            <strong class="absence-historical-hint__title"><?php p($l->t('Historical entry – the dates you selected are in the past')); ?></strong>
+                            <p class="absence-historical-hint__text" id="absence-historical-hint-default-text"><?php p($l->t('You can submit this as a regular request. Your manager will still review and approve or reject it like any other request, and the substitute workflow does not apply to dates that already passed.')); ?></p>
+                            <p class="absence-historical-hint__text absence-historical-hint__text--auto" id="absence-historical-hint-auto-text" hidden><?php p($l->t('No approver is assigned to your team in the app, so this historical absence will be auto-approved as soon as you submit it.')); ?></p>
+                        </div>
+                    </div>
                     <div class="form-group">
                         <label for="absence-start-date" class="form-label">
                             <?php p($l->t('Start Date')); ?> <span class="form-required">*</span>
@@ -235,10 +264,9 @@ $useAppTeams = $_['useAppTeams'] ?? false;
                                id="absence-start-date"
                                name="start_date"
                                class="form-input datepicker-input"
-                               data-datepicker-min="<?php echo $todayFormatted; ?>"
-                               data-datepicker-min-sick="<?php echo $sickMinDate; ?>"
+                               data-datepicker-min=""
                                data-datepicker-sync-month-with="absence-end-date"
-                               value="<?php p($absence ? $absence->getStartDate()->format('d.m.Y') : ''); ?>"
+                               value="<?php p($absenceFormStartDisplay); ?>"
                                placeholder="<?php p($l->t('dd.mm.yyyy')); ?>"
                                pattern="\d{2}\.\d{2}\.\d{4}"
                                maxlength="10"
@@ -254,10 +282,9 @@ $useAppTeams = $_['useAppTeams'] ?? false;
                                id="absence-end-date"
                                name="end_date"
                                class="form-input datepicker-input"
-                               data-datepicker-min="<?php echo $todayFormatted; ?>"
-                               data-datepicker-min-sick="<?php echo $sickMinDate; ?>"
+                               data-datepicker-min=""
                                data-datepicker-sync-month-with="absence-start-date"
-                               value="<?php p($absence ? $absence->getEndDate()->format('d.m.Y') : ''); ?>"
+                               value="<?php p($absenceFormEndDisplay); ?>"
                                placeholder="<?php p($l->t('dd.mm.yyyy')); ?>"
                                pattern="\d{2}\.\d{2}\.\d{4}"
                                maxlength="10"
@@ -318,9 +345,9 @@ $useAppTeams = $_['useAppTeams'] ?? false;
             if ($days === null) {
                 $days = $_['displayDays'] ?? ($_['computedWorkingDays'][$absence->getId()] ?? $absence->calculateWorkingDays());
             }
-            $today = new \DateTimeImmutable('today');
             $canCancel = $start > $today
                 && !in_array($absence->getStatus(), ['cancelled', 'rejected', 'substitute_declined'], true);
+            $isPastAbsence = $end < $today;
             ?>
             <!-- Read-only Absence Details -->
             <section class="section section--detail absence-detail-view" aria-labelledby="detail-title">
@@ -382,6 +409,9 @@ $useAppTeams = $_['useAppTeams'] ?? false;
                             p($statusLabel);
                             ?>
                         </span>
+                        <?php if ($isPastAbsence): ?>
+                            <span class="badge badge--past-record"><?php p($l->t('Past record')); ?></span>
+                        <?php endif; ?>
                     </div>
                     <p class="absence-detail-period" aria-label="<?php p($l->t('Period and duration')); ?>">
                         <?php p($start->format('d.m.Y')); ?><?php echo ' – '; ?><?php p($end->format('d.m.Y')); ?>
@@ -574,11 +604,9 @@ $useAppTeams = $_['useAppTeams'] ?? false;
                             <span class="stat-label" id="stat-entitlement-label"><?php p($l->t('Annual entitlement')); ?></span>
                             <span class="stat-value" aria-labelledby="stat-entitlement-label"><?php p((string)round($stats['vacation_annual_entitlement'] ?? 0, 1)); ?></span>
                             <span class="stat-sublabel"><?php p($l->t('vacation days')); ?></span>
-                            <button type="button" id="entitlement-explain" class="stat-card__action"
+                            <button type="button" id="entitlement-explain" class="stat-card__action stat-card__action--explain"
                                     aria-haspopup="dialog" aria-controls="entitlement-explain-dialog"
-                                    aria-label="<?php p($l->t('Show how my vacation entitlement was calculated')); ?>">
-                                <?php p($l->t('How is this calculated?')); ?>
-                            </button>
+                                    aria-label="<?php p($l->t('Show how my vacation entitlement was calculated')); ?>"><?php p($l->t('How is this calculated?')); ?></button>
                         </div>
                         <div class="stat-card stat-card--annual-left">
                             <span class="stat-label" id="stat-annual-left-label"><?php p($l->t('Annual leave left')); ?></span>
@@ -628,6 +656,7 @@ $useAppTeams = $_['useAppTeams'] ?? false;
                         <tbody>
                             <?php if (!empty($absences)): ?>
                                 <?php foreach (($absences ?? []) as $absence): ?>
+                                    <?php $isPastAbsence = $absence->getEndDate() < $today; ?>
                                     <tr data-absence-id="<?php p($absence->getId()); ?>" data-status="<?php p($absence->getStatus()); ?>">
                                         <td data-label="<?php p($l->t('Type')); ?>">
                                             <span class="absence-type-badge type-<?php p($absence->getType()); ?>">
@@ -648,6 +677,9 @@ $useAppTeams = $_['useAppTeams'] ?? false;
                                                 p($typeLabel);
                                                 ?>
                                             </span>
+                                            <?php if ($isPastAbsence): ?>
+                                                <span class="badge badge--past-record absence-past-record-badge"><?php p($l->t('Past record')); ?></span>
+                                            <?php endif; ?>
                                         </td>
                                         <td data-label="<?php p($l->t('Start Date')); ?>"><?php p($absence->getStartDate()->format('d.m.Y')); ?></td>
                                         <td data-label="<?php p($l->t('End Date')); ?>"><?php p($absence->getEndDate()->format('d.m.Y')); ?></td>
@@ -801,6 +833,23 @@ $useAppTeams = $_['useAppTeams'] ?? false;
     
     window.ArbeitszeitCheck.l10n = window.ArbeitszeitCheck.l10n || {};
     window.ArbeitszeitCheck.l10n.confirmCancel = <?php echo json_encode($l->t('Are you sure you want to cancel this absence request?'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.confirmCancelAbsenceTitle = <?php echo json_encode($l->t('Cancel absence request'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.entitlementExplainer = <?php echo json_encode([
+    	'individualRule' => $l->t('Individual rule'),
+    	'teamPolicy' => $l->t('Team policy'),
+    	'workingTimeModel' => $l->t('workingTimeModel'),
+    	'organisationDefault' => $l->t('Organisation default'),
+    	'defaultFallback' => $l->t('Default fallback'),
+    	'applied' => $l->t('Applied'),
+    	'skipped' => $l->t('Skipped'),
+    	'partialHistoryHint' => $l->t('(team membership for past dates is best-effort)'),
+    	'degradedBanner' => $l->t('Your entitlement was resolved with a safety default. Please contact your HR administrator if this looks wrong.'),
+    	'clampedBanner' => $l->t('Your computed entitlement was outside the allowed 0–366 day range and has been adjusted. Please contact HR if you expected a different value.'),
+    	'layerDeterminedLead' => $l->t('The following layer determined your entitlement:'),
+    	'hintContactHr' => $l->t('If you think the result is wrong, please contact your HR administrator.'),
+    	'loading' => $l->t('Loading explanation…'),
+    	'loadError' => $l->t('Could not load explanation. Please try again later.'),
+    ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;
     
     window.ArbeitszeitCheck.apiUrl = {
         absences: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.absence.index'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
@@ -933,7 +982,79 @@ $useAppTeams = $_['useAppTeams'] ?? false;
             }
             return true;
         }
-        
+
+        /* Past-date awareness for the request form.
+         *
+         * When both dates have been entered AND the end date lies strictly
+         * before today (in the user's local timezone, matching the visible
+         * datepicker), we surface a clearly worded "historical entry" hint
+         * and adjust adjacent affordances (substitute selection is meaningless
+         * for past dates). The hint exists in the markup with aria-live so
+         * the layout never jumps and screen readers announce the change.
+         */
+        const historicalHint = document.getElementById('absence-historical-hint');
+        const historicalAutoText = document.getElementById('absence-historical-hint-auto-text');
+        const historicalDefaultText = document.getElementById('absence-historical-hint-default-text');
+        const substituteGroupEl = document.getElementById('absence-substitute-group');
+        const substituteSelectEl = document.getElementById('absence-substitute');
+        const substituteHelpEl = document.getElementById('absence-substitute-help');
+        const employeeHasAssignableManagerForJs = <?php echo $employeeHasAssignableManager ? 'true' : 'false'; ?>;
+        const useAppTeamsForJs = <?php echo $useAppTeams ? 'true' : 'false'; ?>;
+        const willAutoApprovePastEntry = useAppTeamsForJs && !employeeHasAssignableManagerForJs;
+        const substituteHelpDefaultText = substituteHelpEl ? substituteHelpEl.textContent : '';
+        const substituteHelpHistoricalText = (window.t && window.t('arbeitszeitcheck', 'Substitute selection is disabled for past dates – the workflow only applies to upcoming absences.')) || 'Substitute selection is disabled for past dates – the workflow only applies to upcoming absences.';
+
+        function updateHistoricalState() {
+            if (!historicalHint || !startDateInput || !endDateInput) return;
+            const end = parseDDMMYYYY(endDateInput.value);
+            if (!end) {
+                historicalHint.hidden = true;
+                if (substituteGroupEl) {
+                    substituteGroupEl.classList.remove('absence-form-section--disabled');
+                }
+                if (substituteSelectEl) {
+                    substituteSelectEl.disabled = false;
+                    substituteSelectEl.removeAttribute('aria-disabled');
+                }
+                if (substituteHelpEl) substituteHelpEl.textContent = substituteHelpDefaultText;
+                return;
+            }
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const isPast = end < today;
+            historicalHint.hidden = !isPast;
+            if (historicalAutoText && historicalDefaultText) {
+                historicalAutoText.hidden = !(isPast && willAutoApprovePastEntry);
+                historicalDefaultText.hidden = !(isPast && !willAutoApprovePastEntry);
+            }
+            /* For past dates, the substitute workflow is not meaningful – nobody
+             * can cover a shift that already happened. Disable the select and
+             * explain it in form-help so the user is not confused. The required
+             * flag is also dropped so type-based requirements (vacation etc.)
+             * do not block historical submission. */
+            if (substituteSelectEl) {
+                if (isPast) {
+                    substituteSelectEl.value = '';
+                    substituteSelectEl.disabled = true;
+                    substituteSelectEl.setAttribute('aria-disabled', 'true');
+                    substituteSelectEl.required = false;
+                    substituteSelectEl.setAttribute('aria-required', 'false');
+                } else {
+                    substituteSelectEl.disabled = false;
+                    substituteSelectEl.removeAttribute('aria-disabled');
+                    if (typeof updateSubstituteRequiredState === 'function') {
+                        updateSubstituteRequiredState();
+                    }
+                }
+            }
+            if (substituteGroupEl) {
+                substituteGroupEl.classList.toggle('absence-form-section--disabled', isPast);
+            }
+            if (substituteHelpEl) {
+                substituteHelpEl.textContent = isPast ? substituteHelpHistoricalText : substituteHelpDefaultText;
+            }
+        }
+
         if (startDateInput) {
             startDateInput.addEventListener('change', function() {
                 if (!endDateInput.value && startDateInput.value && /^\d{2}\.\d{2}\.\d{4}$/.test(startDateInput.value)) {
@@ -942,6 +1063,7 @@ $useAppTeams = $_['useAppTeams'] ?? false;
                 } else if (endDateInput.value) {
                     validateDates();
                 }
+                updateHistoricalState();
             });
         }
 
@@ -952,8 +1074,14 @@ $useAppTeams = $_['useAppTeams'] ?? false;
                     startDateInput.dispatchEvent(new Event('change', { bubbles: true }));
                 }
                 validateDates();
+                updateHistoricalState();
             });
         }
+
+        /* Run once on load so prefilled values (e.g. coming from the calendar
+         * "Request absence for this day" link with a past date) immediately
+         * show the historical hint. */
+        updateHistoricalState();
         
         function hideFormError() {
             var errEl = document.getElementById('absence-form-error');
@@ -971,7 +1099,15 @@ $useAppTeams = $_['useAppTeams'] ?? false;
                     return;
                 }
                 var type = typeSelect ? typeSelect.value : '';
-                var subRequired = requireSubstituteTypes.indexOf(type) !== -1;
+                /* For historical entries (end date strictly before today) we do
+                 * not enforce the substitute requirement, because Vertretung is
+                 * meaningless once the day is over. The same rule applies on
+                 * the backend (createAbsence / createApprovedAbsenceForEmployeeByManager). */
+                var subSubmitEnd = parseDDMMYYYY(endDateInput ? endDateInput.value : '');
+                var subSubmitToday = new Date();
+                subSubmitToday.setHours(0, 0, 0, 0);
+                var subSubmitIsPast = subSubmitEnd ? (subSubmitEnd < subSubmitToday) : false;
+                var subRequired = !subSubmitIsPast && (requireSubstituteTypes.indexOf(type) !== -1);
                 if (subRequired && substituteSelect && (!substituteSelect.value || substituteSelect.value === '')) {
                     if (substituteRequiredMsg) substituteRequiredMsg.style.display = 'block';
                     substituteSelect.setAttribute('aria-invalid', 'true');
@@ -1137,8 +1273,19 @@ $useAppTeams = $_['useAppTeams'] ?? false;
         var dlg = document.getElementById('entitlement-explain-dialog');
         if (!trigger || !dlg) return;
 
-        function tt(key, fallback) {
-            return (typeof window.t === 'function') ? window.t('arbeitszeitcheck', key) : (fallback || key);
+        var S = (window.ArbeitszeitCheck && window.ArbeitszeitCheck.entitlementExplainer) || {};
+
+        function tt(id) {
+            if (S[id]) {
+                return S[id];
+            }
+            if (typeof window.t === 'function') {
+                var r = window.t('arbeitszeitcheck', id);
+                if (r && r !== id) {
+                    return r;
+                }
+            }
+            return id;
         }
 
         function close() {
@@ -1156,19 +1303,21 @@ $useAppTeams = $_['useAppTeams'] ?? false;
         function buildExplainerHtml(trace) {
             var layers = (trace && Array.isArray(trace.layers_evaluated)) ? trace.layers_evaluated : [];
             var matched = (trace && trace.matched_layer) ? String(trace.matched_layer) : '—';
+            var layerHuman = {
+                'L3': tt('individualRule'),
+                'L2': tt('teamPolicy'),
+                'L1': tt('workingTimeModel'),
+                'L0': tt('organisationDefault'),
+                'legacy': tt('defaultFallback')
+            };
+            var matchedHuman = layerHuman[matched] || matched;
             var rows = layers.map(function(layer) {
                 var label = layer.layer || '—';
-                var humanLabel = ({
-                    'L3': tt('Individual rule', 'Individual rule'),
-                    'L2': tt('Team policy', 'Team policy'),
-                    'L1': tt('Working time model', 'Working time model'),
-                    'L0': tt('Organisation default', 'Organisation default'),
-                    'legacy': tt('Default fallback', 'Default fallback')
-                })[label] || label;
-                var outcome = layer.matched ? tt('Applied', 'Applied') : tt('Skipped', 'Skipped');
+                var humanLabel = layerHuman[label] || label;
+                var outcome = layer.matched ? tt('applied') : tt('skipped');
                 var extras = '';
                 if (layer.partial_history) {
-                    extras += ' <em class="entitlement-explain-dialog__hint-inline">' + escapeHtml(tt('(team membership for past dates is best-effort)', '(team membership for past dates is best-effort)')) + '</em>';
+                    extras += ' <em class="entitlement-explain-dialog__hint-inline">' + escapeHtml(tt('partialHistoryHint')) + '</em>';
                 }
                 return '<li><strong>' + escapeHtml(humanLabel) + '</strong>: ' + escapeHtml(outcome) + extras + '</li>';
             }).join('');
@@ -1178,39 +1327,39 @@ $useAppTeams = $_['useAppTeams'] ?? false;
             // contact HR.
             if (trace && trace.degraded) {
                 bannerHtml += '<p class="entitlement-explain-dialog__banner entitlement-explain-dialog__banner--warn" role="alert">'
-                  + escapeHtml(tt('Your entitlement was resolved with a safety default. Please contact your HR administrator if this looks wrong.', 'Your entitlement was resolved with a safety default. Please contact your HR administrator if this looks wrong.'))
+                  + escapeHtml(tt('degradedBanner'))
                   + '</p>';
             }
             // Clamping — surfaces "your number was capped at 0..366" without
             // exposing the raw value.
             if (trace && trace.clamped) {
                 bannerHtml += '<p class="entitlement-explain-dialog__banner entitlement-explain-dialog__banner--info" role="status">'
-                  + escapeHtml(tt('Your computed entitlement was outside the allowed 0–366 day range and has been adjusted. Please contact HR if you expected a different value.', 'Your computed entitlement was outside the allowed 0–366 day range and has been adjusted. Please contact HR if you expected a different value.'))
+                  + escapeHtml(tt('clampedBanner'))
                   + '</p>';
             }
             return ''
               + bannerHtml
-              + '<p>' + escapeHtml(tt('Today the following layer determined your entitlement:', 'Today the following layer determined your entitlement:')) + ' <strong>' + escapeHtml(matched) + '</strong></p>'
+              + '<p class="entitlement-explain-dialog__lead"><span class="entitlement-explain-dialog__lead-text">' + escapeHtml(tt('layerDeterminedLead')) + '</span> <strong class="entitlement-explain-dialog__lead-layer">' + escapeHtml(matchedHuman) + '</strong></p>'
               + '<ol class="entitlement-explain-dialog__steps">' + rows + '</ol>'
-              + '<p class="entitlement-explain-dialog__hint">' + escapeHtml(tt('If you think the result is wrong, please contact your HR administrator.', 'If you think the result is wrong, please contact your HR administrator.')) + '</p>';
+              + '<p class="entitlement-explain-dialog__hint">' + escapeHtml(tt('hintContactHr')) + '</p>';
         }
 
         function load() {
             var body = document.getElementById('entitlement-explain-body');
-            if (body) body.textContent = tt('Loading explanation…', 'Loading explanation…');
+            if (body) body.textContent = tt('loading');
             var Utils = window.ArbeitszeitCheckUtils || {};
             Utils.ajax('/apps/arbeitszeitcheck/api/absences/entitlement-trace', {
                 method: 'GET',
                 onSuccess: function(data) {
                     if (!body) return;
                     if (!data || data.success !== true) {
-                        body.textContent = tt('Could not load explanation. Please try again later.', 'Could not load explanation. Please try again later.');
+                        body.textContent = tt('loadError');
                         return;
                     }
                     body.innerHTML = buildExplainerHtml(data.trace || {});
                 },
                 onError: function() {
-                    if (body) body.textContent = tt('Could not load explanation. Please try again later.', 'Could not load explanation. Please try again later.');
+                    if (body) body.textContent = tt('loadError');
                 }
             });
         }

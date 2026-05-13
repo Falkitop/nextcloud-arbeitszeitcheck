@@ -126,6 +126,12 @@ final class Constants
 	public const CONFIG_MONTH_CLOSURE_ENABLED = 'month_closure_enabled';
 
 	/**
+	 * IANA timezone name for calendar-day boundaries (paused “today”, daily totals, exports).
+	 * @see Version1015Date20260415120000
+	 */
+	public const CONFIG_APP_TIMEZONE = 'app_timezone';
+
+	/**
 	 * App config: JSON array of user IDs that are allowed to administer this app.
 	 * Empty means all Nextcloud admins are app-admins (backward compatible default).
 	 */

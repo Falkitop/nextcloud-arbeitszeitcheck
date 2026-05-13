@@ -11,24 +11,75 @@ declare(strict_types=1);
 
 namespace OCA\ArbeitszeitCheck\Db;
 
+use OCA\ArbeitszeitCheck\Service\AppLocalNaiveDateTimeNormalizer;
 use OCP\AppFramework\Db\DoesNotExistException;
+use OCP\AppFramework\Db\Entity;
 use OCP\AppFramework\Db\QBMapper;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
+use OCP\IConfig;
 
 /**
  * TimeEntryMapper
  */
 class TimeEntryMapper extends QBMapper
 {
+	private IConfig $config;
+
 	/**
 	 * TimeEntryMapper constructor
 	 *
 	 * @param IDBConnection $db
 	 */
-	public function __construct(IDBConnection $db)
+	public function __construct(IDBConnection $db, IConfig $config)
 	{
 		parent::__construct($db, 'at_entries', TimeEntry::class);
+		$this->config = $config;
+	}
+
+	/**
+	 * @param array<string, mixed> $row
+	 * @psalm-return TimeEntry
+	 */
+	protected function mapRowToEntity(array $row): Entity
+	{
+		$entity = parent::mapRowToEntity($row);
+		if (!$entity instanceof TimeEntry) {
+			return $entity;
+		}
+		$this->reinterpretNaiveDatabaseTimestamps($entity);
+		$entity->resetUpdatedFields();
+		return $entity;
+	}
+
+	/**
+	 * at_entries.* datetime columns are stored without timezone; values are wall clocks in
+	 * {@see AppLocalNaiveDateTimeNormalizer::appStorageTimeZoneFromConfig()}.
+	 */
+	private function reinterpretNaiveDatabaseTimestamps(TimeEntry $entry): void
+	{
+		$tz = AppLocalNaiveDateTimeNormalizer::appStorageTimeZoneFromConfig($this->config);
+
+		$entry->setStartTime(AppLocalNaiveDateTimeNormalizer::interpretSqlNaiveAsAppTimezone($entry->getStartTime(), $tz));
+
+		if ($entry->getEndTime() !== null) {
+			$entry->setEndTime(AppLocalNaiveDateTimeNormalizer::interpretSqlNaiveAsAppTimezone($entry->getEndTime(), $tz));
+		}
+		if ($entry->getBreakStartTime() !== null) {
+			$entry->setBreakStartTime(AppLocalNaiveDateTimeNormalizer::interpretSqlNaiveAsAppTimezone($entry->getBreakStartTime(), $tz));
+		}
+		if ($entry->getBreakEndTime() !== null) {
+			$entry->setBreakEndTime(AppLocalNaiveDateTimeNormalizer::interpretSqlNaiveAsAppTimezone($entry->getBreakEndTime(), $tz));
+		}
+		if ($entry->getCreatedAt() !== null) {
+			$entry->setCreatedAt(AppLocalNaiveDateTimeNormalizer::interpretSqlNaiveAsAppTimezone($entry->getCreatedAt(), $tz));
+		}
+		if ($entry->getUpdatedAt() !== null) {
+			$entry->setUpdatedAt(AppLocalNaiveDateTimeNormalizer::interpretSqlNaiveAsAppTimezone($entry->getUpdatedAt(), $tz));
+		}
+		if ($entry->getApprovedAt() !== null) {
+			$entry->setApprovedAt(AppLocalNaiveDateTimeNormalizer::interpretSqlNaiveAsAppTimezone($entry->getApprovedAt(), $tz));
+		}
 	}
 
 	/**
@@ -180,17 +231,25 @@ class TimeEntryMapper extends QBMapper
 	}
 
 	/**
-	 * Find paused or unfinished time entry for today for a user
+	 * Find paused or unfinished time entry for “today” for a user.
 	 *
-	 * @param string $userId
-	 * @return TimeEntry|null
+	 * Calendar-day bounds must match {@see \OCA\ArbeitszeitCheck\Constants::CONFIG_APP_TIMEZONE}
+	 * (pass $dayStart / $dayEndExclusive from {@see TimeTrackingService}).
+	 *
+	 * @param \DateTime|null $dayStart Inclusive start of the local calendar day (00:00)
+	 * @param \DateTime|null $dayEndExclusive Exclusive end (midnight next day)
 	 */
-	public function findPausedOrUnfinishedTodayByUser(string $userId): ?TimeEntry
+	public function findPausedOrUnfinishedTodayByUser(string $userId, ?\DateTime $dayStart = null, ?\DateTime $dayEndExclusive = null): ?TimeEntry
 	{
-		$today = new \DateTime();
-		$today->setTime(0, 0, 0);
-		$tomorrow = clone $today;
-		$tomorrow->modify('+1 day');
+		if ($dayStart === null || $dayEndExclusive === null) {
+			$today = new \DateTime();
+			$today->setTime(0, 0, 0);
+			$tomorrow = clone $today;
+			$tomorrow->modify('+1 day');
+		} else {
+			$today = clone $dayStart;
+			$tomorrow = clone $dayEndExclusive;
+		}
 
 		$qb = $this->db->getQueryBuilder();
 		$qb->select('*')
@@ -213,6 +272,51 @@ class TimeEntryMapper extends QBMapper
 		} catch (DoesNotExistException $e) {
 			return null;
 		}
+	}
+
+	/**
+	 * Paused automatic entries without end_time whose session started before the given local-day boundary.
+	 *
+	 * Used to heal rows left by legacy clock-out bugs or timezone mismatches so they no longer block UX.
+	 *
+	 * @return TimeEntry[]
+	 */
+	public function findStalePausedAutomaticEntries(string $userId, \DateTimeInterface $localTodayStart): array
+	{
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')
+			->from($this->getTableName())
+			->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+			->andWhere($qb->expr()->eq('status', $qb->createNamedParameter(TimeEntry::STATUS_PAUSED)))
+			->andWhere($qb->expr()->isNull('end_time'))
+			->andWhere($qb->expr()->eq('is_manual_entry', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT)))
+			->andWhere($qb->expr()->lt('start_time', $qb->createNamedParameter($localTodayStart->format('Y-m-d H:i:s'), IQueryBuilder::PARAM_STR)))
+			->orderBy('start_time', 'ASC');
+
+		return $this->findEntities($qb);
+	}
+
+	/**
+	 * All paused entries (auto + manual, with or without end_time) for a user.
+	 *
+	 * Used by {@see \OCA\ArbeitszeitCheck\Repair\RepairOrphanedPausedEntries} and the
+	 * defense-in-depth healer in {@see \OCA\ArbeitszeitCheck\Service\TimeTrackingService}
+	 * to close any leftover `paused` rows regardless of how they were created. Manual
+	 * paused rows should never occur in the current code path, but we sweep them anyway
+	 * so the user can never get stuck if a future regression slips one through.
+	 *
+	 * @return TimeEntry[]
+	 */
+	public function findAllPausedByUser(string $userId): array
+	{
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')
+			->from($this->getTableName())
+			->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+			->andWhere($qb->expr()->eq('status', $qb->createNamedParameter(TimeEntry::STATUS_PAUSED)))
+			->orderBy('start_time', 'ASC');
+
+		return $this->findEntities($qb);
 	}
 
 	/**
@@ -361,7 +465,16 @@ class TimeEntryMapper extends QBMapper
 			$qb->setFirstResult((int)$filters['offset']);
 		}
 
-		return $qb->executeQuery()->fetchAll();
+		$rows = $qb->executeQuery()->fetchAll();
+		$tz = AppLocalNaiveDateTimeNormalizer::appStorageTimeZoneFromConfig($this->config);
+		$out = [];
+		foreach ($rows as $row) {
+			if (!\is_array($row)) {
+				continue;
+			}
+			$out[] = AppLocalNaiveDateTimeNormalizer::normalizeAtEntryDatetimeStringsInRow($row, $tz);
+		}
+		return $out;
 	}
 
 	/**

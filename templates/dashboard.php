@@ -39,6 +39,7 @@ $dashboardError = isset($_['error']) && is_string($_['error']) ? trim($_['error'
 $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class);
 $dashStats = $_['stats'] ?? [];
 $appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitcheck', 'app_timezone', 'Europe/Berlin');
+require __DIR__ . '/common/user-display-timezone.php';
 
 // Current session duration calculation for display
 $currentSessionDuration = $status['current_session_duration'] ?? 0;
@@ -173,10 +174,8 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                 $startedAt = null;
                 if (!empty($status['current_entry']['startTime'])) {
                     try {
-                        // Get user timezone
-                        $userTimezone = \OCP\Server::get(\OCP\IDateTimeZone::class)->getTimeZone();
                         $startTime = new \DateTime($status['current_entry']['startTime']);
-                        $startTime->setTimezone($userTimezone);
+                        $startTime->setTimezone($arbeitszeitCheckUserDisplayTz);
                         $startedAt = $startTime->format('H:i');
                     } catch (\Throwable $e) {
                         $startedAt = null;
@@ -189,9 +188,8 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                             <span class="dashboard-status-card__icon" aria-hidden="true"><?php p($statusIcon); ?></span>
                             <h3 id="dashboard-status-heading" class="card-title"><?php p($l->t('Current Status')); ?></h3>
                             <div class="timezone-badge"
-                                 aria-label="<?php p($l->t('Configured timezone')); ?>"
-                                 title="<?php p($l->t('All times are shown and exported in this timezone.')); ?>">
-                                <span class="timezone-badge__icon" aria-hidden="true">🕐</span>
+                                 aria-label="<?php p($l->t('Time zones: organization %1$s, your account %2$s', [$appTimezone, $arbeitszeitCheckUserDisplayTz->getName()])); ?>"
+                                 title="<?php p($l->t('Clock times are stored using the organization timezone (%1$s) and shown in your personal timezone (%2$s). Exports may follow export settings.', [$appTimezone, $arbeitszeitCheckUserDisplayTz->getName()])); ?>">
                                 <span class="timezone-badge__label"><?php p($appTimezone); ?></span>
                             </div>
                         </div>
@@ -236,9 +234,7 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                                         <div class="dashboard-status-card__meta">
                                             <?php
                                             try {
-                                                // Get user timezone
-                                                $userTimezone = \OCP\Server::get(\OCP\IDateTimeZone::class)->getTimeZone();
-                                                $breakStartTime->setTimezone($userTimezone);
+                                                $breakStartTime->setTimezone($arbeitszeitCheckUserDisplayTz);
                                                 p($l->t('Break started at')); ?> <?php p($breakStartTime->format('H:i'));
                                                                                 } catch (\Throwable $e) {
                                                                                     p($l->t('Break started at')); ?> <?php p($breakStartTime->format('H:i'));
@@ -286,6 +282,19 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                                     title="<?php p($statusKeySafe === 'paused' ? $l->t('Resume working – continues your paused time entry') : $l->t('Click to clock in and start tracking your working time')); ?>">
                                     <?php p($statusKeySafe === 'paused' ? $l->t('Resume after break') : $l->t('Clock In')); ?>
                                 </button>
+                                <?php
+                                $pausedEntryId = $statusKeySafe === 'paused' ? ($status['current_entry']['id'] ?? null) : null;
+                                if ($pausedEntryId !== null):
+                                ?>
+                                    <button class="btn btn--secondary btn-complete-entry"
+                                        type="button"
+                                        data-entry-id="<?php p((string)$pausedEntryId); ?>"
+                                        aria-label="<?php p($l->t('Complete the paused session and record the time you stopped working')); ?>"
+                                        title="<?php p($l->t('Already done for today? Complete this session – the end time is the moment it was paused, required breaks are added automatically.')); ?>">
+                                        <span aria-hidden="true">✓</span>
+                                        <?php p($l->t('Complete session')); ?>
+                                    </button>
+                                <?php endif; ?>
                             <?php elseif (($status['status'] ?? 'clocked_out') === 'active'): ?>
                                 <button id="btn-start-break"
                                     class="btn btn--secondary"
@@ -458,20 +467,13 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                     </thead>
                     <tbody>
                         <?php if (!empty($recentEntries)): ?>
-                            <?php
-                            // Get user timezone once for all entries
-                            try {
-                                $userTimezone = \OCP\Server::get(\OCP\IDateTimeZone::class)->getTimeZone();
-                            } catch (\Throwable $e) {
-                                $userTimezone = new \DateTimeZone(date_default_timezone_get());
-                            }
-                            foreach ($recentEntries as $entry):
-                                // Convert times to user timezone
+                            <?php foreach ($recentEntries as $entry):
+                                // Convert times to user timezone (see templates/common/user-display-timezone.php)
                                 $startTime = clone $entry->getStartTime();
-                                $startTime->setTimezone($userTimezone);
+                                $startTime->setTimezone($arbeitszeitCheckUserDisplayTz);
                                 $endTime = $entry->getEndTime() ? clone $entry->getEndTime() : null;
                                 if ($endTime) {
-                                    $endTime->setTimezone($userTimezone);
+                                    $endTime->setTimezone($arbeitszeitCheckUserDisplayTz);
                                 }
                             ?>
                                 <tr>
@@ -542,9 +544,9 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                                                 if (isset($break['start']) && isset($break['end'])) {
                                                     try {
                                                         $breakStart = new \DateTime($break['start']);
-                                                        $breakStart->setTimezone($userTimezone);
+                                                        $breakStart->setTimezone($arbeitszeitCheckUserDisplayTz);
                                                         $breakEnd = new \DateTime($break['end']);
-                                                        $breakEnd->setTimezone($userTimezone);
+                                                        $breakEnd->setTimezone($arbeitszeitCheckUserDisplayTz);
                                                         $breakTimes[] = $breakStart->format('H:i') . ' - ' . $breakEnd->format('H:i');
                                                     } catch (\Exception $e) {
                                                         // Skip invalid break times
@@ -556,12 +558,12 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                                         // Check for single break (breakStartTime/breakEndTime)
                                         if ($entry->getBreakStartTime() !== null && $entry->getBreakEndTime() !== null) {
                                             $breakStart = clone $entry->getBreakStartTime();
-                                            $breakStart->setTimezone($userTimezone);
+                                            $breakStart->setTimezone($arbeitszeitCheckUserDisplayTz);
                                             $breakEnd = clone $entry->getBreakEndTime();
-                                            $breakEnd->setTimezone($userTimezone);
+                                            $breakEnd->setTimezone($arbeitszeitCheckUserDisplayTz);
 
                                             // Only include breaks that are at least 15 minutes (ArbZG §4)
-                                            $breakDurationSeconds = $breakEnd->getTimestamp() - $breakStart->getTimestamp();
+                                            $breakDurationSeconds = $entry->getBreakEndTime()->getTimestamp() - $entry->getBreakStartTime()->getTimestamp();
                                             $minBreakDurationSeconds = 900; // 15 minutes
 
                                             if ($breakDurationSeconds >= $minBreakDurationSeconds) {

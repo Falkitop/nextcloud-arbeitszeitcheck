@@ -54,6 +54,17 @@
 		return num.toFixed(1);
 	}
 
+	function isPastRecord(entry) {
+		const rawEnd = entry && (entry.endDate || entry.end_date || entry.startDate || entry.start_date);
+		if (!rawEnd) {
+			return false;
+		}
+		const end = new Date(`${String(rawEnd).slice(0, 10)}T00:00:00`);
+		const today = new Date();
+		today.setHours(0, 0, 0, 0);
+		return !Number.isNaN(end.getTime()) && end < today;
+	}
+
 	function setEmpty(message) {
 		const emptyEl = document.getElementById('employee-absences-empty');
 		const tableWrap = document.getElementById('employee-absences-table-wrap');
@@ -82,17 +93,22 @@
 			return;
 		}
 
-		body.innerHTML = entries.map((entry) => [
+		body.innerHTML = entries.map((entry) => {
+			const pastBadge = isPastRecord(entry)
+				? ` <span class="badge badge--past-record">${escapeHtml(t('Past record', 'Past record'))}</span>`
+				: '';
+			return [
 			'<tr>',
 			`<td>${escapeHtml(entry.displayName || entry.userId || '-')}</td>`,
 			`<td>${escapeHtml(entry.typeLabel || entry.type || '-')}</td>`,
 			`<td>${escapeHtml(formatDate(entry.startDate))}</td>`,
 			`<td>${escapeHtml(formatDate(entry.endDate))}</td>`,
 			`<td>${escapeHtml(formatDays(entry.days))}</td>`,
-			`<td><span class="badge badge--primary">${escapeHtml(entry.statusLabel || entry.status || '-')}</span></td>`,
+			`<td><span class="badge badge--primary">${escapeHtml(entry.statusLabel || entry.status || '-')}</span>${pastBadge}</td>`,
 			`<td>${escapeHtml(entry.reason || t('No reason', 'No reason'))}</td>`,
 			'</tr>',
-		].join('')).join('');
+			].join('');
+		}).join('');
 
 		emptyEl.classList.add('visually-hidden');
 		tableWrap.classList.remove('visually-hidden');
@@ -124,6 +140,28 @@
 			return;
 		}
 		countEl.textContent = t('{count} entries', '{count} entries').replace('{count}', String(state.total));
+	}
+
+	function populateRecordEmployeeSelect(employees) {
+		const select = document.getElementById('manager-absence-record-employee');
+		if (!select) {
+			return;
+		}
+		const preserved = select.value;
+		select.innerHTML = '';
+		const opt0 = document.createElement('option');
+		opt0.value = '';
+		opt0.textContent = t('Select an employee', 'Select an employee');
+		select.appendChild(opt0);
+		(employees || []).forEach((employee) => {
+			const o = document.createElement('option');
+			o.value = employee.userId;
+			o.textContent = employee.displayName || employee.userId;
+			select.appendChild(o);
+		});
+		if (preserved) {
+			select.value = preserved;
+		}
 	}
 
 	function populateEmployees(employees) {
@@ -196,7 +234,9 @@
 			method: 'GET',
 			onSuccess: (data) => {
 				state.total = Number(data.total || 0);
-				populateEmployees(Array.isArray(data.employees) ? data.employees : []);
+				const list = Array.isArray(data.employees) ? data.employees : [];
+				populateEmployees(list);
+				populateRecordEmployeeSelect(list);
 				renderEntries(Array.isArray(data.entries) ? data.entries : []);
 				updateCount();
 				updatePagination();
@@ -206,6 +246,183 @@
 				Messaging.showError(message);
 				setEmpty(message);
 			},
+		});
+	}
+
+	function readFilterFormDates() {
+		const form = document.getElementById('employee-absences-filter-form');
+		if (!form) {
+			return { startDate: '', endDate: '' };
+		}
+		const fd = new FormData(form);
+		return {
+			startDate: String(fd.get('start_date') || ''),
+			endDate: String(fd.get('end_date') || ''),
+		};
+	}
+
+	function syncRecordDatesFromFilter() {
+		const fs = document.getElementById('employee-absences-start-date-filter');
+		const fe = document.getElementById('employee-absences-end-date-filter');
+		const rs = document.getElementById('manager-absence-record-start');
+		const re = document.getElementById('manager-absence-record-end');
+		if (fs && rs && fs.value) {
+			rs.value = fs.value;
+		}
+		if (fe && re && fe.value) {
+			re.value = fe.value;
+		}
+	}
+
+	function prefetchEmployeeDirectory() {
+		const dates = readFilterFormDates();
+		if (!dates.startDate || !dates.endDate) {
+			return;
+		}
+		const savedLimit = state.limit;
+		const savedOffset = state.offset;
+		state.limit = 1;
+		state.offset = 0;
+		const filters = {
+			employeeId: '',
+			startDate: dates.startDate,
+			endDate: dates.endDate,
+			status: '',
+			type: '',
+		};
+		Utils.ajax(`/apps/arbeitszeitcheck/api/manager/employee-absences?${buildQuery(filters)}`, {
+			method: 'GET',
+			onSuccess: (data) => {
+				state.limit = savedLimit;
+				state.offset = savedOffset;
+				const list = Array.isArray(data.employees) ? data.employees : [];
+				populateEmployees(list);
+				populateRecordEmployeeSelect(list);
+			},
+			onError: () => {
+				state.limit = savedLimit;
+				state.offset = savedOffset;
+			},
+		});
+	}
+
+	/* Past-date awareness for the manager record form.
+	 *
+	 * Mirrors the behaviour of the employee absence form: when both dates
+	 * have been entered and the end date is strictly before today (local
+	 * time, matching the visible datepicker), reveal an aria-live hint so
+	 * the manager has clear feedback that they are recording a historical
+	 * entry. Submission semantics are unchanged - the manager API always
+	 * persists as APPROVED - but the visible cue helps prevent typos like
+	 * 2024 vs 2025 going unnoticed.
+	 */
+	function parseEuropeanDate(value) {
+		if (!value || !/^\d{2}\.\d{2}\.\d{4}$/.test(value)) {
+			return null;
+		}
+		const parts = String(value).split('.');
+		const date = new Date(
+			parseInt(parts[2], 10),
+			parseInt(parts[1], 10) - 1,
+			parseInt(parts[0], 10)
+		);
+		return Number.isNaN(date.getTime()) ? null : date;
+	}
+
+	function updateManagerRecordHistoricalHint() {
+		const hint = document.getElementById('manager-absence-record-historical-hint');
+		const endEl = document.getElementById('manager-absence-record-end');
+		if (!hint || !endEl) {
+			return;
+		}
+		const end = parseEuropeanDate(endEl.value);
+		if (!end) {
+			hint.hidden = true;
+			return;
+		}
+		const today = new Date();
+		today.setHours(0, 0, 0, 0);
+		hint.hidden = !(end < today);
+	}
+
+	function bindRecordHistoricalHint() {
+		const startEl = document.getElementById('manager-absence-record-start');
+		const endEl = document.getElementById('manager-absence-record-end');
+		if (startEl) {
+			startEl.addEventListener('change', updateManagerRecordHistoricalHint);
+			startEl.addEventListener('input', updateManagerRecordHistoricalHint);
+		}
+		if (endEl) {
+			endEl.addEventListener('change', updateManagerRecordHistoricalHint);
+			endEl.addEventListener('input', updateManagerRecordHistoricalHint);
+		}
+		updateManagerRecordHistoricalHint();
+	}
+
+	function bindRecordForm() {
+		const form = document.getElementById('manager-absence-record-form');
+		const submitBtn = document.getElementById('manager-absence-record-submit');
+		if (!form || !submitBtn) {
+			return;
+		}
+		form.addEventListener('submit', (event) => {
+			event.preventDefault();
+			const empSel = document.getElementById('manager-absence-record-employee');
+			const typeSel = document.getElementById('manager-absence-record-type');
+			const rs = document.getElementById('manager-absence-record-start');
+			const re = document.getElementById('manager-absence-record-end');
+			const reasonEl = document.getElementById('manager-absence-record-reason');
+			const userId = empSel ? String(empSel.value || '') : '';
+			const type = typeSel ? String(typeSel.value || '') : '';
+			const dp = window.ArbeitszeitCheckDatepicker;
+			const toISO = dp && typeof dp.convertEuropeanToISO === 'function'
+				? dp.convertEuropeanToISO
+				: (value) => value;
+			const startDate = rs ? toISO(String(rs.value || '')) : '';
+			const endDate = re ? toISO(String(re.value || '')) : '';
+			const reason = reasonEl ? String(reasonEl.value || '') : '';
+			if (!userId) {
+				Messaging.showError(t('Select an employee', 'Select an employee'));
+				if (empSel) empSel.focus();
+				return;
+			}
+			if (!startDate || !endDate) {
+				Messaging.showError(t('Please select start and end date.', 'Please select start and end date.'));
+				return;
+			}
+			const original = submitBtn.textContent;
+			submitBtn.disabled = true;
+			Utils.ajax('/apps/arbeitszeitcheck/api/manager/employee-absences', {
+				method: 'POST',
+				data: {
+					userId,
+					type,
+					startDate,
+					endDate,
+					reason,
+				},
+				onSuccess: () => {
+					submitBtn.disabled = false;
+					submitBtn.textContent = original;
+					if (window.OC && window.OC.Notification && window.OC.Notification.showTemporary) {
+						window.OC.Notification.showTemporary(
+							t('Absence recorded and approved.', 'Absence recorded and approved.'),
+							{ type: 'success' }
+						);
+					}
+					if (reasonEl) {
+						reasonEl.value = '';
+					}
+					state.offset = 0;
+					loadEntries();
+				},
+				onError: (err) => {
+					submitBtn.disabled = false;
+					submitBtn.textContent = original;
+					const message = err?.error || t('Could not save absence.', 'Could not save absence.');
+					Messaging.showError(message);
+				},
+			});
 		});
 	}
 
@@ -275,7 +492,11 @@
 
 	function init() {
 		setDefaultDateRange(false);
+		syncRecordDatesFromFilter();
+		prefetchEmployeeDirectory();
 		bindForm();
+		bindRecordForm();
+		bindRecordHistoricalHint();
 		bindPagination();
 		updatePagination();
 	}

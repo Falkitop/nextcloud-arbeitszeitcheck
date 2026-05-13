@@ -99,7 +99,7 @@ class AbsenceService
 	{
 		$lockKey = $this->acquireUserMutationLock($userId);
 		try {
-			$this->validateAbsenceData($data, $userId);
+			$this->validateAbsenceData($data, $userId, null, null, []);
 
 			$absence = new Absence();
 			$absence->setUserId($userId);
@@ -108,6 +108,19 @@ class AbsenceService
 			$absence->setEndDate($this->parseDate($data['end_date']));
 			$absence->setReason($data['reason'] ?? null);
 			$substituteUserId = isset($data['substitute_user_id']) ? trim((string)$data['substitute_user_id']) : null;
+
+			/* Historical entries (end date strictly before today) skip the
+			 * substitute workflow: Vertretung is a forward-looking concept and
+			 * cannot meaningfully gate an absence whose period has already
+			 * elapsed. We discard any submitted substitute_user_id rather than
+			 * persisting a stale reference, and route directly into PENDING
+			 * (auto-approval may then take over below if no approver exists). */
+			$todayForSubstitute = new \DateTime('today');
+			$absenceFullyInPast = $absence->getEndDate() < $todayForSubstitute;
+			if ($absenceFullyInPast) {
+				$substituteUserId = null;
+			}
+
 			$absence->setSubstituteUserId($substituteUserId ?: null);
 			// If substitute is selected: wait for substitute approval first (Vertretungs-Freigabe)
 			$absence->setStatus($substituteUserId ? Absence::STATUS_SUBSTITUTE_PENDING : Absence::STATUS_PENDING);
@@ -208,6 +221,106 @@ class AbsenceService
 	}
 
 	/**
+	 * Create an absence on behalf of an employee and persist it as **already approved**.
+	 * Used for migration / historical corrections by managers or administrators.
+	 *
+	 * Security: the caller MUST verify the actor may manage the target user (same rules as approvals).
+	 * Substitute workflow is skipped; Vertretung does not apply to manager-recorded history.
+	 *
+	 * @param string $managerUserId Acting manager or administrator
+	 * @param string $targetUserId Absence owner
+	 * @param array $data Same shape as {@see createAbsence()} (type, start_date, end_date, optional reason)
+	 */
+	public function createApprovedAbsenceForEmployeeByManager(string $managerUserId, string $targetUserId, array $data): Absence
+	{
+		if ($managerUserId === $targetUserId) {
+			throw new \Exception($this->l10n->t('You cannot record an absence for yourself with this action.'));
+		}
+
+		$lockKey = $this->acquireUserMutationLock($targetUserId);
+		try {
+			$this->validateAbsenceData($data, $targetUserId, null, null, ['skip_substitute_rules' => true]);
+
+			$absence = new Absence();
+			$absence->setUserId($targetUserId);
+			$absence->setType($data['type']);
+			$absence->setStartDate($this->parseDate($data['start_date']));
+			$absence->setEndDate($this->parseDate($data['end_date']));
+			$reason = isset($data['reason']) ? trim((string)$data['reason']) : '';
+			$absence->setReason($reason !== '' ? $reason : null);
+			$absence->setSubstituteUserId(null);
+			$absence->setStatus(Absence::STATUS_APPROVED);
+			$absence->setApproverComment($this->l10n->t('Recorded and approved by a manager (historical or administrative entry).'));
+			$absence->setApprovedBy(null);
+			$absence->setApprovedByUserId($managerUserId);
+			$now = new \DateTime();
+			$absence->setApprovedAt($now);
+			$absence->setCreatedAt($now);
+			$absence->setUpdatedAt($now);
+
+			$workingDays = $this->computeWorkingDaysForUser($targetUserId, $absence->getStartDate(), $absence->getEndDate());
+			$absence->setDays($workingDays);
+
+			$savedAbsence = null;
+			$this->db->beginTransaction();
+			try {
+				$this->absenceMapper->lockUserAbsenceWindow($targetUserId, $absence->getStartDate(), $absence->getEndDate());
+				$overlappingInTx = $this->absenceMapper->findOverlapping($targetUserId, $absence->getStartDate(), $absence->getEndDate(), null);
+				if (!empty($overlappingInTx)) {
+					throw new \Exception($this->l10n->t('This period overlaps with an existing absence.'));
+				}
+				if ($absence->getType() === Absence::TYPE_VACATION) {
+					$sd = $absence->getStartDate();
+					$ed = $absence->getEndDate();
+					if ($sd && $ed) {
+						$this->lockVacationApprovalScope($targetUserId, $sd, $ed);
+						$this->assertVacationAllocationForRequest($targetUserId, $sd, $ed, null, $absence->getCreatedAt());
+					}
+				}
+
+				$savedAbsence = $this->absenceMapper->insert($absence);
+
+				$this->auditLogMapper->logAction(
+					$targetUserId,
+					'absence_manager_recorded',
+					'absence',
+					$savedAbsence->getId(),
+					null,
+					$savedAbsence->getSummary(),
+					$managerUserId
+				);
+
+				$this->db->commit();
+			} catch (\Throwable $e) {
+				$this->db->rollBack();
+				throw $e;
+			}
+
+			if ($this->notificationService) {
+				$startDate = $savedAbsence->getStartDate();
+				$endDate = $savedAbsence->getEndDate();
+				$this->notificationService->notifyAbsenceApproved($savedAbsence->getUserId(), [
+					'id' => $savedAbsence->getId(),
+					'type' => $savedAbsence->getType(),
+					'start_date' => $startDate ? $startDate->format('Y-m-d') : null,
+					'end_date' => $endDate ? $endDate->format('Y-m-d') : null,
+					'days' => $savedAbsence->getDays()
+				]);
+			}
+			if ($this->absenceIcalMailService) {
+				$this->absenceIcalMailService->sendIcalForApprovedAbsence($savedAbsence);
+			}
+			if ($this->absenceNotificationMailService) {
+				$this->absenceNotificationMailService->sendHrOfficeNotification($savedAbsence, 'manager_approved', $managerUserId);
+			}
+
+			return $savedAbsence;
+		} finally {
+			$this->releaseUserMutationLock($lockKey);
+		}
+	}
+
+	/**
 	 * Get an absence by ID
 	 *
 	 * @param int $id Absence ID
@@ -289,7 +402,7 @@ class AbsenceService
 		if (array_key_exists('substitute_user_id', $data)) {
 			$validateData['substitute_user_id'] = $data['substitute_user_id'];
 		}
-		$this->validateAbsenceData($validateData, $userId, $id, $absence->getCreatedAt());
+		$this->validateAbsenceData($validateData, $userId, $id, $absence->getCreatedAt(), []);
 
 		// Recalculate working days (Mon–Fri minus Feiertage inkl. Firmenfeiertage)
 		$workingDays = $this->computeWorkingDaysForUser($userId, $absence->getStartDate(), $absence->getEndDate());
@@ -993,25 +1106,28 @@ class AbsenceService
 	 */
 	public function getAbsencesByUser(string $userId, array $filters = [], ?int $limit = null, ?int $offset = null): array
 	{
-		// Handle date range filter
-		if (isset($filters['date_range']) && isset($filters['date_range']['start']) && isset($filters['date_range']['end'])) {
-			if (!empty($userId)) {
-				return $this->absenceMapper->findByUserAndDateRange(
-					$userId,
-					$filters['date_range']['start'],
-					$filters['date_range']['end']
-				);
-			}
+		// Default: require non-empty userId (no cross-user listing)
+		if (empty($userId)) {
+			return [];
 		}
 
-		// Handle status filter
+		$absences = [];
+
+		// Date-range consumers such as the calendar must not rely on the latest
+		// 500 rows only; otherwise older migration records disappear from past months.
+		if (isset($filters['date_range']) && isset($filters['date_range']['start']) && isset($filters['date_range']['end'])) {
+			$absences = $this->absenceMapper->findByUserAndDateRange(
+				$userId,
+				$filters['date_range']['start'],
+				$filters['date_range']['end']
+			);
+		} else {
+			$absences = $this->absenceMapper->findByUser($userId, $limit, $offset);
+		}
+
 		if (isset($filters['status'])) {
-			if (empty($userId)) {
-				return [];
-			}
 			$status = $filters['status'];
-			$allAbsences = $this->absenceMapper->findByUser($userId, $limit, $offset);
-			return array_values(array_filter($allAbsences, function ($absence) use ($status) {
+			$absences = array_values(array_filter($absences, function ($absence) use ($status) {
 				// "pending" = awaiting any approval (substitute or manager)
 				if ($status === 'pending') {
 					return in_array($absence->getStatus(), [Absence::STATUS_PENDING, Absence::STATUS_SUBSTITUTE_PENDING], true);
@@ -1020,12 +1136,14 @@ class AbsenceService
 			}));
 		}
 
-		// Default: require non-empty userId (no cross-user listing)
-		if (empty($userId)) {
-			return [];
+		if (isset($filters['type']) && $filters['type'] !== '') {
+			$type = (string)$filters['type'];
+			$absences = array_values(array_filter($absences, static function ($absence) use ($type) {
+				return $absence->getType() === $type;
+			}));
 		}
 
-		return $this->absenceMapper->findByUser($userId, $limit, $offset);
+		return $absences;
 	}
 
 	/**
@@ -1170,9 +1288,10 @@ class AbsenceService
 	 * @param array $data Absence data
 	 * @param string $userId User ID (absence owner)
 	 * @param int|null $excludeAbsenceId When updating, ID of the absence to exclude from overlap check
+	 * @param array<string, bool> $options Recognized keys: `skip_substitute_rules` (bool) — skips substitute requirement and colleague checks (manager-recorded absences).
 	 * @throws \Exception
 	 */
-	private function validateAbsenceData(array $data, string $userId, ?int $excludeAbsenceId = null, ?\DateTimeInterface $vacationRequestCreatedAt = null): void
+	private function validateAbsenceData(array $data, string $userId, ?int $excludeAbsenceId = null, ?\DateTimeInterface $vacationRequestCreatedAt = null, array $options = []): void
 	{
 		// Validate required fields
 		if (empty($data['type']) || empty($data['start_date']) || empty($data['end_date'])) {
@@ -1189,20 +1308,6 @@ class AbsenceService
 
 		// Extract type early (needed for past-date and overlap logic)
 		$type = isset($data['type']) && !is_array($data['type']) ? (string)$data['type'] : (is_array($data['type'] ?? null) && !empty($data['type']) ? (string)reset($data['type']) : '');
-
-		// Validate dates: past start allowed only for sick leave (up to SICK_LEAVE_MAX_PAST_DAYS)
-		$today = new \DateTime();
-		$today->setTime(0, 0, 0);
-		if ($startDate < $today) {
-			if ($type === Absence::TYPE_SICK_LEAVE) {
-				$cutoff = (clone $today)->modify('-' . Constants::SICK_LEAVE_MAX_PAST_DAYS . ' days');
-				if ($startDate < $cutoff) {
-					throw new \Exception($this->l10n->t('Sick leave start date cannot be more than %s days in the past.', [(string)Constants::SICK_LEAVE_MAX_PAST_DAYS]));
-				}
-			} else {
-				throw new \Exception($this->l10n->t('Start date cannot be in the past'));
-			}
-		}
 
 		// Check for overlapping absences (exclude current absence when updating)
 		$overlapping = $this->absenceMapper->findOverlapping($userId, $startDate, $endDate, $excludeAbsenceId);
@@ -1266,29 +1371,41 @@ class AbsenceService
 			$this->assertVacationAllocationForRequest($userId, $startDate, $endDate, $excludeAbsenceId, $vacationRequestCreatedAt);
 		}
 
-		// Require substitute for configured types (admin setting)
-		$requireSubstituteTypesJson = $this->config->getAppValue('arbeitszeitcheck', 'require_substitute_types', '[]');
-		$requireSubstituteTypes = json_decode($requireSubstituteTypesJson, true);
-		if (is_array($requireSubstituteTypes) && in_array($type, $requireSubstituteTypes, true)) {
-			$substituteId = isset($data['substitute_user_id']) ? trim((string)$data['substitute_user_id']) : '';
-			if ($substituteId === '') {
-				throw new \Exception($this->l10n->t('A substitute is required for this absence type. Please select who will cover for you.'));
-			}
-		}
+		$skipSubstituteRules = !empty($options['skip_substitute_rules']);
 
-		// Validate substitute: must be a colleague (same team/group), existing and enabled (not self)
-		$substituteId = isset($data['substitute_user_id']) ? trim((string)$data['substitute_user_id']) : '';
-		if ($substituteId !== '') {
-			if ($substituteId === $userId) {
-				throw new \Exception($this->l10n->t('Substitute cannot be yourself'));
+		/* Historical entries (end date strictly before today, in server TZ) are
+		 * exempt from substitute rules: Vertretung is a forward-looking workflow
+		 * (someone needs to *cover* future tasks) and has no meaning for an
+		 * absence that already happened. The frontend mirrors this and disables
+		 * the Vertretung field for past dates, but we enforce it here too so
+		 * API consumers cannot trip over the same rule. */
+		$todayForSubstitute = new \DateTime('today');
+		$absenceFullyInPast = $endDate < $todayForSubstitute;
+
+		if (!$skipSubstituteRules && !$absenceFullyInPast) {
+			$requireSubstituteTypesJson = $this->config->getAppValue('arbeitszeitcheck', 'require_substitute_types', '[]');
+			$requireSubstituteTypes = json_decode($requireSubstituteTypesJson, true);
+			if (is_array($requireSubstituteTypes) && in_array($type, $requireSubstituteTypes, true)) {
+				$substituteId = isset($data['substitute_user_id']) ? trim((string)$data['substitute_user_id']) : '';
+				if ($substituteId === '') {
+					throw new \Exception($this->l10n->t('A substitute is required for this absence type. Please select who will cover for you.'));
+				}
 			}
-			$substituteUser = $this->userManager->get($substituteId);
-			if ($substituteUser === null || !$substituteUser->isEnabled()) {
-				throw new \Exception($this->l10n->t('Substitute must be an existing user'));
-			}
-			$colleagueIds = $this->teamResolver->getColleagueIds($userId);
-			if (!in_array($substituteId, $colleagueIds, true)) {
-				throw new \Exception($this->l10n->t('Substitute must be a colleague in your team. Please select someone who shares a team or group with you.'));
+
+			// Validate substitute: must be a colleague (same team/group), existing and enabled (not self)
+			$substituteId = isset($data['substitute_user_id']) ? trim((string)$data['substitute_user_id']) : '';
+			if ($substituteId !== '') {
+				if ($substituteId === $userId) {
+					throw new \Exception($this->l10n->t('Substitute cannot be yourself'));
+				}
+				$substituteUser = $this->userManager->get($substituteId);
+				if ($substituteUser === null || !$substituteUser->isEnabled()) {
+					throw new \Exception($this->l10n->t('Substitute must be an existing user'));
+				}
+				$colleagueIds = $this->teamResolver->getColleagueIds($userId);
+				if (!in_array($substituteId, $colleagueIds, true)) {
+					throw new \Exception($this->l10n->t('Substitute must be a colleague in your team. Please select someone who shares a team or group with you.'));
+				}
 			}
 		}
 	}

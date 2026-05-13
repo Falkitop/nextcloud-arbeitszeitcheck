@@ -106,6 +106,7 @@ class LayeredVacationDefaultsService
 		$this->acquireWriteLock($lockKey, 'Org vacation default write lock');
 		try {
 			return $this->atomic(function () use ($payload, $performedBy): OrgVacationDefault {
+				$payload = $this->normalizeVacationLayerPayload($payload);
 				$entity = new OrgVacationDefault();
 				$entity->setVacationMode((string)($payload['vacationMode'] ?? Constants::VACATION_MODE_MANUAL_FIXED));
 				$entity->setManualDays(isset($payload['manualDays']) ? $this->parseDecimal($payload['manualDays']) : null);
@@ -243,6 +244,7 @@ class LayeredVacationDefaultsService
 		$this->acquireWriteLock($lockKey, 'Model vacation default write lock');
 		try {
 			return $this->atomic(function () use ($payload, $workingTimeModelId, $performedBy): ModelVacationDefault {
+				$payload = $this->normalizeVacationLayerPayload($payload);
 				$entity = new ModelVacationDefault();
 				$entity->setWorkingTimeModelId($workingTimeModelId);
 				$entity->setVacationMode((string)($payload['vacationMode'] ?? Constants::VACATION_MODE_MANUAL_FIXED));
@@ -338,6 +340,7 @@ class LayeredVacationDefaultsService
 		$this->acquireWriteLock($lockKey, 'Team vacation policy write lock');
 		try {
 			return $this->atomic(function () use ($payload, $teamId, $performedBy): TeamVacationPolicy {
+				$payload = $this->normalizeVacationLayerPayload($payload);
 				$entity = new TeamVacationPolicy();
 				$entity->setTeamId($teamId);
 				$entity->setVacationMode((string)($payload['vacationMode'] ?? Constants::VACATION_MODE_MANUAL_FIXED));
@@ -602,10 +605,32 @@ class LayeredVacationDefaultsService
 			$this->lockingProvider->acquireLock($lockKey, ILockingProvider::LOCK_EXCLUSIVE, $reason);
 		} catch (LockedException $e) {
 			throw new LayeredVacationConflictException(
-				'Another administrator is currently editing this vacation layer. Please refresh and try again.',
+				'Another administrator is currently editing this layer. Refresh and try again.',
 				$e,
 			);
 		}
+	}
+
+	/**
+	 * Remove fields that must not apply for the selected vacation mode so
+	 * HTTP clients cannot persist contradictory state (defence in depth next
+	 * to {@see OrgVacationDefault::validate()} and siblings).
+	 *
+	 * @param array<string, mixed> $payload
+	 * @return array<string, mixed>
+	 */
+	private function normalizeVacationLayerPayload(array $payload): array
+	{
+		$mode = (string)($payload['vacationMode'] ?? Constants::VACATION_MODE_MANUAL_FIXED);
+		if ($mode === Constants::VACATION_MODE_MANUAL_FIXED) {
+			$payload['tariffRuleSetId'] = null;
+		} elseif ($mode === Constants::VACATION_MODE_MODEL_BASED_SIMPLE) {
+			$payload['manualDays'] = null;
+			$payload['tariffRuleSetId'] = null;
+		} elseif ($mode === Constants::VACATION_MODE_TARIFF_RULE_BASED) {
+			$payload['manualDays'] = null;
+		}
+		return $payload;
 	}
 
 	private function assertTariffRuleSetUsable(?int $ruleSetId, ?\DateTime $effectiveFrom): void

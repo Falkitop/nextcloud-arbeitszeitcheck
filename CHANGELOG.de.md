@@ -2,6 +2,21 @@
 
 ### Neu
 
+- **Ein-Klick-Wiederherstellung für „pausierte" Zeiteinträge** (Issue: time-tracking/paused-entry-recovery, adressiert die gemeldeten Fehler „pausierte Einträge nicht bearbeitbar/abschließbar" und „HTTP 500 beim Ausstempeln/Pause beginnen, keine UI-Methode zum Heilen"). Der neue Endpoint `POST /api/time-entries/{id}/complete` beendet einen im Zustand `paused` festsitzenden Eintrag in einem einzigen, race-sicheren Schritt. Die Endzeit nutzt standardmäßig `updated_at` (der Zeitpunkt, an dem das abgebrochene Ausstempeln den Eintrag eingefroren hat) und fällt notfalls auf `start_time` zurück (Null-Dauer-Sicherheitsnetz). ArbZG §4 (automatische Pause) und ArbZG §3 (Tagesmaximum) werden angewendet, damit die resultierende `completed`-Zeile mit einem normalen Ausstempeln compliance-äquivalent ist. Jede Wiederherstellung wird mit `time_entry_paused_completed` revisionssicher protokolliert; die Eigentümerschaft wird geprüft, der Benutzer-Mutex respektiert.
+- **„Sitzung beenden"-Aktion auf Dashboard und Zeiteinträge-Liste**. Bei Status `paused` zeigt die Dashboard-Statuskarte einen klar beschrifteten Button „Sitzung beenden" direkt neben „Nach Pause fortsetzen". Die Zeiteinträge-Liste bekommt pro betroffener Zeile einen Primär-Button „Beenden" sowie ein `role="status"`-Banner, das den Zustand in Klartext erklärt. WCAG 2.1 AA: Mindest-Trefferfläche 44×44, ARIA-Labels und -Titles, niemals nur Farbe als Indikator.
+- **`TimeTrackingService::completePausedEntry()`** als kanonischer programmatischer Wiederherstellungs-Pfad. Der Controller ist jetzt eine schmale Hülle, die nur Eingaben parst, an den Service delegiert und Domain-Exceptions sauber abbildet (`BusinessRuleException` → 400/403, `MonthFinalizedException` → 409, `LockedException` → 423, `DoesNotExistException` → 404) — kein generisches HTTP 500 mehr für bekannte Geschäftszustände.
+- **`TimeEntryMapper::findAllPausedByUser()`** + Post-Migration-Reparaturschritt `RepairOrphanedPausedEntries`, der bei jedem `occ upgrade` idempotent verbliebene `paused`-Zeilen schließt: Zeilen mit `end_time` werden auf `completed` gesetzt, Zeilen ohne `end_time` werden mit `updated_at` (oder `start_time` als Fallback) geschlossen.
+
+### Geändert
+
+- **`TimeTrackingController::buildSafeErrorResponse()`** fängt jetzt explizit `OCP\Lock\LockedException` ab und liefert HTTP 423 mit der übersetzbaren Meldung „Eine andere Änderung an Ihrer Zeiterfassung läuft. Bitte einen Moment warten und erneut versuchen." — der gemeldete generische HTTP 500 bei parallelem Ausstempeln/Pause-Start entfällt damit.
+- **Status-Badges „pausiert"/„Pause"/„abgelehnt"** in der Zeiteinträge-Liste nutzen jetzt semantisches `warning`/`error`-Styling und tragen erklärende `title`-Attribute — der Zustand ist über Icon, Farbe *und* Text erkennbar (WCAG 1.4.1).
+
+### Tests
+
+- Neu: 5 Fälle im `TimeTrackingServiceTest` für den Wiederherstellungs-Pfad — Default-Endzeit aus `updated_at`, expliziter Override mit Erzwingung `end ≥ start`, Ablehnung fremder Einträge, Ablehnung nicht-pausierter Status, Schutz gegen ungültige IDs.
+- 554 Unit-Tests grün (vorher 549).
+
 - **Mehrstufige Urlaubsanspruchsauflösung — Trace-Flags für entartete Zustände & Impact-Vorschau** (Spezifikation: hr/vacation-entitlement-hierarchy Folge­erweiterung). Der Auflösungs-Trace liefert jetzt explizite Marker: `degraded_org_default_collision` (REQ-ENT-10), `partial_history` (REQ-ENT-13 / EC-11), `clamped` + `raw_*`-Werte (EC-08), `rule_set_status_warning` (EC-05) und `degraded='model_lookup_failed'` (EC-04). Auditoren sehen Fehlkonfigurationen und historisch-eingeschränkte Auflösungen sofort statt eines stillen Fallbacks. Der Admin-Simulator stellt die Flags als beschriftete Chips neben dem Ergebnis dar; der Mitarbeiter-Erklär­dialog zeigt eine redigierte Untermenge (`degraded`, `clamped`, `partial_history`) ohne interne IDs (REQ-SEC-05).
 - **Impact-Vorschau-Endpoint** `GET /api/admin/vacation-layers/impact?scope={org,model,team}&targetId={int}` (REQ-UX-03). Der Urlaubsebenen-Dialog zeigt direkt „Bis zu N Mitarbeitende werden von dieser Änderung neu aufgelöst" an, bevor der Admin auf Speichern klickt — WCAG-konform mit Icon, Statustext und ARIA-Live-Region (nie nur Farbe).
 

@@ -523,6 +523,65 @@ class LayeredVacationEntitlementEngineTest extends TestCase
 		$this->assertSame('L3', $result['matchedLayer']);
 	}
 
+	/**
+	 * Simulator inherit-path must mirror {@see VacationEntitlementEngine::computeForDate}
+	 * when layered resolution is disabled: L3 inherit → legacy only, never L0/L1/L2.
+	 */
+	public function testComputeForPolicyInheritWhenLayeredDisabledUsesLegacy(): void
+	{
+		$config = $this->createMock(IConfig::class);
+		$config->method('getAppValue')
+			->willReturnCallback(function (string $app, string $key, string $default) {
+				if ($key === Constants::CONFIG_LAYERED_ENTITLEMENTS_ENABLED) {
+					return '0';
+				}
+				return $default;
+			});
+		[$engine, $mocks] = $this->makeEngine(['config' => $config]);
+		$inherit = $this->makePolicy(true);
+		$mocks['org']->expects($this->never())->method('findActiveByDate');
+		$mocks['teamPolicy']->expects($this->never())->method('findActiveByTeamIds');
+		$mocks['userSettings']->method('getIntegerSetting')->willReturn(21);
+		$result = $engine->computeForPolicy('u1', $inherit, new \DateTimeImmutable('2026-06-01'));
+		$this->assertSame(21.0, $result['days']);
+		$this->assertSame('legacy', $result['matchedLayer']);
+		$legacyStep = null;
+		foreach ($result['trace']['layers_evaluated'] as $row) {
+			if (($row['layer'] ?? null) === 'legacy' && ($row['reason'] ?? null) === 'layered_disabled') {
+				$legacyStep = $row;
+				break;
+			}
+		}
+		$this->assertNotNull($legacyStep, 'trace must record layered_disabled legacy step');
+	}
+
+	/**
+	 * REQ-ENT-13 / EC-11: inherit simulation with an L2 win must surface
+	 * partial_history when as_of_date is strictly before today (membership
+	 * table is current-state only).
+	 */
+	public function testComputeForPolicyInheritSurfacesPartialHistoryForPastAsOfDate(): void
+	{
+		[$engine, $mocks] = $this->makeEngine();
+		$inherit = $this->makePolicy(true);
+		$mocks['teamMember']->method('findByUserId')->willReturn([$this->makeMember(2)]);
+		$mocks['team']->method('getParentMap')->willReturn([2 => null]);
+		$mocks['teamPolicy']->method('findActiveByTeamIds')->willReturn([$this->makeTeamPolicy(7, 2, 26.0)]);
+		$past = new \DateTimeImmutable('2020-06-15');
+		$result = $engine->computeForPolicy('u1', $inherit, $past);
+		$this->assertSame('L2', $result['matchedLayer']);
+		$this->assertTrue($result['trace']['winner']['partial_history'] ?? false);
+		$l2Row = null;
+		foreach ($result['trace']['layers_evaluated'] as $row) {
+			if (($row['layer'] ?? null) === 'L2' && !empty($row['matched'])) {
+				$l2Row = $row;
+				break;
+			}
+		}
+		$this->assertNotNull($l2Row);
+		$this->assertTrue($l2Row['partial_history'] ?? false);
+	}
+
 	/* ---------------------------------------------------------------- *
 	 * Additional matrix: ensure trace `winner` keys are present per layer
 	 * ---------------------------------------------------------------- */

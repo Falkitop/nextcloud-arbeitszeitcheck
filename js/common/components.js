@@ -358,6 +358,7 @@ const ArbeitszeitCheckComponents = {
       backdrop.appendChild(dialog);
       document.body.appendChild(backdrop);
       backdrop.style.display = 'flex';
+      dialog.style.display = 'flex';
 
       // Lock scroll
       document.body.style.overflow = 'hidden';

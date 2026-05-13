@@ -61,6 +61,7 @@ return [
 		['name' => 'time_entry#apiUpdatePost', 'url' => '/api/time-entries/{id}', 'verb' => 'POST'],
 		['name' => 'time_entry#apiDelete', 'url' => '/api/time-entries/{id}', 'verb' => 'DELETE'],
 		['name' => 'time_entry#requestCorrection', 'url' => '/api/time-entries/{id}/request-correction', 'verb' => 'POST'],
+		['name' => 'time_entry#complete', 'url' => '/api/time-entries/{id}/complete', 'verb' => 'POST'],
 		['name' => 'time_entry#checkOverlap', 'url' => '/api/time-entries/check-overlap', 'verb' => 'GET'],
 
 		// Absence management routes
@@ -99,6 +100,7 @@ return [
 		['name' => 'manager#getTeamOverview', 'url' => '/api/manager/team-overview', 'verb' => 'GET'],
 		['name' => 'manager#getEmployeeTimeEntries', 'url' => '/api/manager/employee-time-entries', 'verb' => 'GET'],
 		['name' => 'manager#getEmployeeAbsences', 'url' => '/api/manager/employee-absences', 'verb' => 'GET'],
+		['name' => 'manager#createEmployeeAbsence', 'url' => '/api/manager/employee-absences', 'verb' => 'POST'],
 		['name' => 'manager#getPendingApprovals', 'url' => '/api/manager/pending-approvals', 'verb' => 'GET'],
 		['name' => 'manager#getTeamCompliance', 'url' => '/api/manager/team-compliance', 'verb' => 'GET'],
 		['name' => 'manager#getTeamHoursSummary', 'url' => '/api/manager/team-hours', 'verb' => 'GET'],

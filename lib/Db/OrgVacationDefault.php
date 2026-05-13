@@ -101,6 +101,20 @@ class OrgVacationDefault extends Entity
 		if ($this->vacationMode === Constants::VACATION_MODE_MANUAL_FIXED && $this->manualDays === null) {
 			$errors['manualDays'] = 'Manual days are required for manual mode';
 		}
+		if ($this->vacationMode === Constants::VACATION_MODE_MANUAL_FIXED && $this->tariffRuleSetId !== null) {
+			$errors['tariffRuleSetId'] = 'Tariff rule set must be empty for manual fixed mode';
+		}
+		if ($this->vacationMode === Constants::VACATION_MODE_MODEL_BASED_SIMPLE) {
+			if ($this->manualDays !== null) {
+				$errors['manualDays'] = 'Manual days must be empty for this vacation mode';
+			}
+			if ($this->tariffRuleSetId !== null) {
+				$errors['tariffRuleSetId'] = 'Tariff rule set must be empty for this vacation mode';
+			}
+		}
+		if ($this->vacationMode === Constants::VACATION_MODE_TARIFF_RULE_BASED && $this->manualDays !== null) {
+			$errors['manualDays'] = 'Manual days must be empty for this vacation mode';
+		}
 		if ($this->vacationMode === Constants::VACATION_MODE_TARIFF_RULE_BASED && $this->tariffRuleSetId === null) {
 			$errors['tariffRuleSetId'] = 'Tariff rule set is required for tariff mode';
 		}

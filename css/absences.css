@@ -91,6 +91,67 @@
 	margin-top: 0;
 	margin-bottom: var(--space-3, 0.75rem);
 }
+
+.absence-past-entry-hint {
+	margin: 0 0 var(--space-6, 1.5rem);
+	padding: var(--space-4, 1rem);
+	border: 1px solid color-mix(in srgb, var(--color-primary-element) 32%, var(--arbeitszeitcheck-color-border));
+	border-left: 4px solid var(--color-primary-element);
+	border-radius: var(--radius-base, 8px);
+	background: color-mix(in srgb, var(--color-primary-element) 8%, var(--arbeitszeitcheck-color-background-elevated));
+}
+
+.absence-past-entry-hint h4 {
+	margin: 0 0 var(--space-2, 0.5rem);
+	font-size: 1rem;
+	line-height: 1.35;
+	color: var(--arbeitszeitcheck-color-main-text);
+}
+
+.absence-past-entry-hint p {
+	margin: 0;
+	line-height: 1.5;
+	color: var(--arbeitszeitcheck-color-text-maxcontrast);
+}
+
+/*
+ * Past-record badges across calendar, form details and manager table.
+ * Border + background lift contrast above the WCAG AA 4.5:1 threshold both
+ * in dark and light themes via color-mix on top of an elevated background.
+ * `min-height: 22px` lets a thumb on iPadOS tap the badge without triggering
+ * adjacent click targets (the bug report mentioned iPadOS 26.4 / Chrome).
+ */
+.badge--past-record,
+.absence-past-record-badge {
+	display: inline-flex;
+	align-items: center;
+	width: fit-content;
+	min-height: 22px;
+	margin-top: var(--space-2, 0.5rem);
+	padding: 0.15rem 0.55rem;
+	border-radius: 999px;
+	border: 1px solid color-mix(in srgb, var(--color-primary-element) 55%, var(--arbeitszeitcheck-color-border));
+	background: color-mix(in srgb, var(--color-primary-element) 15%, var(--arbeitszeitcheck-color-background-elevated));
+	color: var(--color-primary-element);
+	font-size: 0.78rem;
+	font-weight: 600;
+	letter-spacing: 0.01em;
+}
+
+/* Visually-disabled form section used to dim the substitute selector for
+ * historical entries without removing it from the DOM (we keep the field
+ * present so the user understands *why* it is unavailable). */
+.absence-form-section--disabled {
+	opacity: 0.6;
+}
+.absence-form-section--disabled .form-select:disabled,
+.absence-form-section--disabled .form-input:disabled {
+	cursor: not-allowed;
+}
+
+.absence-detail-badges .badge--past-record {
+	margin-top: 0;
+}
 .form-help--status {
 	color: var(--arbeitszeitcheck-color-text-maxcontrast);
 	font-style: italic;
@@ -262,11 +323,12 @@
 	line-height: 1.4;
 }
 
-/* "How is this calculated?" affordance on entitlement card */
+/* Optional text action on stat cards (legacy / generic) */
 .stat-card__action {
 	margin-top: var(--space-2, 0.5rem);
 	display: inline-flex;
 	align-items: center;
+	justify-content: center;
 	background: transparent;
 	border: 0;
 	padding: 0;
@@ -277,21 +339,73 @@
 	text-decoration: underline;
 	text-underline-offset: 3px;
 }
+
+/* Entitlement explainer: readable pill-style control (WCAG touch target, not link-like) */
+.stat-card__action--explain {
+	margin-top: var(--space-3, 0.75rem);
+	align-self: stretch;
+	width: 100%;
+	min-height: var(--default-clickable-area, 44px);
+	padding: 0.5rem 0.85rem;
+	box-sizing: border-box;
+	font-size: 0.875rem;
+	font-weight: 600;
+	line-height: 1.25;
+	color: var(--color-primary-element);
+	text-decoration: none;
+	border-radius: var(--radius-xl, 12px);
+	border: 1px solid color-mix(in srgb, var(--color-primary-element) 38%, var(--color-border));
+	background: color-mix(in srgb, var(--color-primary-element) 10%, var(--color-main-background));
+	box-shadow: 0 1px 0 color-mix(in srgb, var(--color-main-text) 6%, transparent);
+	transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.stat-card__action--explain:hover {
+	background: color-mix(in srgb, var(--color-primary-element) 16%, var(--color-main-background));
+	border-color: color-mix(in srgb, var(--color-primary-element) 55%, var(--color-border));
+	box-shadow: 0 1px 2px color-mix(in srgb, var(--color-main-text) 10%, transparent);
+}
+
+.stat-card__action--explain:active {
+	background: color-mix(in srgb, var(--color-primary-element) 22%, var(--color-main-background));
+}
+
 .stat-card__action:focus-visible {
 	outline: 2px solid var(--color-primary-element);
 	outline-offset: 2px;
 	border-radius: 4px;
 }
 
-/* Entitlement explainer dialog */
+.stat-card__action--explain:focus-visible {
+	border-radius: var(--radius-xl, 12px);
+	outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.stat-card__action--explain {
+		transition: none;
+	}
+}
+
+/* Entitlement explainer dialog — viewport-centered (same pattern as admin layer-dialog) */
 .entitlement-explain-dialog {
 	border: 1px solid var(--color-border);
 	border-radius: var(--border-radius-large, 8px);
-	max-width: min(560px, 96vw);
 	padding: 0;
 	background: var(--color-main-background);
 	color: var(--color-main-text);
 	box-shadow: var(--arbeitszeitcheck-shadow-xl, 0 10px 30px rgba(0,0,0,.15));
+	box-sizing: border-box;
+	position: fixed;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	margin: 0;
+	width: min(560px, calc(100vw - 2rem));
+	max-width: calc(100vw - 2rem);
+	max-height: min(90dvh, calc(100vh - 2rem));
+	overflow: auto;
+	z-index: 10000;
 }
 .entitlement-explain-dialog::backdrop {
 	background: color-mix(in srgb, var(--color-main-text) 50%, transparent);
@@ -301,20 +415,41 @@
 	flex-direction: column;
 	gap: 0.75rem;
 	padding: 1.25rem 1.5rem 1.5rem;
+	align-items: stretch;
 }
 .entitlement-explain-dialog__title {
 	margin: 0;
 	font-size: 1.125rem;
 	font-weight: 600;
 	color: var(--color-main-text);
+	text-align: center;
+	text-wrap: balance;
+	max-width: 100%;
 }
 .entitlement-explain-dialog__intro {
-	margin: 0;
+	margin: 0 auto;
 	color: var(--color-text-maxcontrast);
 	line-height: 1.5;
+	text-align: center;
+	text-wrap: pretty;
+	max-width: 42rem;
 }
 .entitlement-explain-dialog__body {
 	padding-top: 0.25rem;
+	width: 100%;
+	text-align: start;
+}
+.entitlement-explain-dialog__lead {
+	margin: 0.35rem 0 0.5rem;
+	text-align: center;
+	line-height: 1.45;
+}
+.entitlement-explain-dialog__lead-text {
+	display: inline;
+}
+.entitlement-explain-dialog__lead-layer {
+	display: inline;
+	font-weight: 700;
 }
 .entitlement-explain-dialog__steps {
 	margin: 0.5rem 0 0.75rem;
@@ -358,7 +493,7 @@
 }
 .entitlement-explain-dialog__actions {
 	display: flex;
-	justify-content: flex-end;
+	justify-content: center;
 	border-top: 1px solid var(--color-border);
 	padding-top: 0.5rem;
 }

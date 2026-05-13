@@ -285,6 +285,12 @@ class VacationEntitlementEngine {
 	 * unsaved {@see UserVacationPolicyAssignment} and the engine returns
 	 * the resolved entitlement *as if* this were the current L3 row.
 	 *
+	 * When the assignment {@see UserVacationPolicyAssignment::isInherit()} is
+	 * true, behaviour matches {@see self::computeForDate()} for the same
+	 * user and date — including the layered feature flag (L2/L1/L0 are
+	 * skipped entirely when {@see self::isLayeredEnabled()} is false) and
+	 * the `partial_history` hint on L2 for back-dated `as_of_date` values.
+	 *
 	 * @return array{days: float, source: string, ruleSetId: int|null, matchedLayer: string, trace: array}
 	 */
 	public function computeForPolicy(string $userId, UserVacationPolicyAssignment $policy, \DateTimeInterface $asOfDate): array {
@@ -299,6 +305,17 @@ class VacationEntitlementEngine {
 		$layersEvaluated = [
 			['layer' => 'L3', 'matched' => false, 'reason' => 'inherit', 'simulated' => true],
 		];
+		if (!$this->isLayeredEnabled()) {
+			$legacy = $this->legacyFallback($userId, $asOfDateOnly);
+			$layersEvaluated[] = [
+				'layer' => 'legacy',
+				'matched' => true,
+				'reason' => 'layered_disabled',
+				'days' => $legacy['days'],
+			];
+			return $this->finalise($legacy, 'legacy', $asOfDateOnly, $layersEvaluated, false);
+		}
+		$partialHistory = $this->asOfPredatesMembershipHistory($asOfDateOnly);
 		$teamResolution = $this->resolveTeamLayer($userId, $asOfDateOnly);
 		if ($teamResolution !== null) {
 			$row = [
@@ -312,11 +329,17 @@ class VacationEntitlementEngine {
 				'days' => $teamResolution['resolved']['days'],
 				'candidates' => $teamResolution['candidates'],
 			];
+			if ($partialHistory) {
+				$row['partial_history'] = true;
+			}
 			if (!empty($teamResolution['hypothetical'])) {
 				$row['hypothetical'] = true;
 			}
 			$layersEvaluated[] = $row;
 			$winnerExtra = [];
+			if ($partialHistory) {
+				$winnerExtra['partial_history'] = true;
+			}
 			if (!empty($teamResolution['hypothetical'])) {
 				$winnerExtra['hypothetical'] = true;
 			}

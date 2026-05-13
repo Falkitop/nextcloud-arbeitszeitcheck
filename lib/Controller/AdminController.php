@@ -2902,6 +2902,7 @@ class AdminController extends Controller
 					'validFrom' => $ruleSet->getValidFrom()?->format('Y-m-d'),
 					'validTo' => $ruleSet->getValidTo()?->format('Y-m-d'),
 					'status' => $ruleSet->getStatus(),
+					'statusLabel' => $this->formatTariffRuleSetStatusLabel($ruleSet->getStatus()),
 					'activationMode' => $ruleSet->getActivationMode(),
 					'referenceModel' => $ruleSet->getReferenceModel(),
 				];
@@ -3347,12 +3348,13 @@ class AdminController extends Controller
 						'parentId' => $t->getParentId(),
 					], $teams),
 				],
-				'ruleSets' => array_map(static function ($r) {
+				'ruleSets' => array_map(function ($r) {
 					return [
 						'id' => $r->getId(),
 						'tariffCode' => $r->getTariffCode(),
 						'version' => $r->getVersion(),
 						'status' => $r->getStatus(),
+						'statusLabel' => $this->formatTariffRuleSetStatusLabel($r->getStatus()),
 					];
 				}, $rulesets),
 			]);
@@ -3431,12 +3433,20 @@ class AdminController extends Controller
 			$targetIdRaw = $this->request->getParam('targetId');
 			$targetId = ($targetIdRaw === null || $targetIdRaw === '') ? null : (int)$targetIdRaw;
 			$preview = $this->layeredVacationDefaultsService->previewImpact($scope, $targetId);
+			$scopeNorm = strtolower((string)($preview['scope'] ?? $scope));
+			$preview['note'] = match ($scopeNorm) {
+				'org' => $this->l10n->t('Upper bound: counts users without an L1/L2/L3 override at all. Some users may still be served by a higher layer.'),
+				'model' => $this->l10n->t('Counts active assignments of this working time model. Users with an L2/L3 override will not be re-resolved by an L1 change.'),
+				'team' => $this->l10n->t('Counts members of the team and its descendants. Users with an L3 override will not be re-resolved by an L2 change.'),
+				default => (string)($preview['note'] ?? ''),
+			};
 			return new JSONResponse(['success' => true, 'data' => $preview]);
 		} catch (LayeredVacationValidationException $e) {
+			$translatedFieldErrors = $this->translateFieldErrors($e->fieldErrors);
 			return new JSONResponse([
 				'success' => false,
-				'error' => $this->l10n->t($e->getMessage()),
-				'errors' => $this->translateFieldErrors($e->fieldErrors),
+				'error' => $this->summarizeLayeredValidationUserMessage($translatedFieldErrors, $e->getMessage()),
+				'errors' => $translatedFieldErrors,
 			], Http::STATUS_BAD_REQUEST);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('previewVacationLayerImpact failed: ' . $e->getMessage(), ['exception' => $e]);
@@ -3486,9 +3496,52 @@ class AdminController extends Controller
 	{
 		$translated = [];
 		foreach ($errors as $field => $message) {
+			if ($field === 'effectiveFrom'
+				&& preg_match(
+					'/^Overlaps existing organisation default #(\d+) \((.+)\)\. Adjust the date range or delete the existing row\.$/',
+					$message,
+					$m
+				)) {
+				$translated[$field] = $this->l10n->t(
+					'Overlaps existing organisation default %1$d (%2$s). Adjust the date range or delete the existing row.',
+					[(int)$m[1], (string)$m[2]]
+				);
+				continue;
+			}
 			$translated[$field] = $this->l10n->t($message);
 		}
 		return $translated;
+	}
+
+	/**
+	 * Human-readable tariff rule set lifecycle label for JSON APIs (admin UI).
+	 */
+	private function formatTariffRuleSetStatusLabel(string $status): string
+	{
+		return match ($status) {
+			Constants::TARIFF_RULE_SET_STATUS_DRAFT => $this->l10n->t('Draft'),
+			Constants::TARIFF_RULE_SET_STATUS_ACTIVE => $this->l10n->t('Active'),
+			Constants::TARIFF_RULE_SET_STATUS_RETIRED => $this->l10n->t('Retired'),
+			default => $this->l10n->t('Unknown tariff rule set status (%s)', [$status]),
+		};
+	}
+
+	/**
+	 * Top-level `error` string for validation responses: one concrete message
+	 * when a single field failed, otherwise a short umbrella message (WCAG
+	 * 3.3.1 — errors described in text, not only "Validation failed").
+	 *
+	 * @param array<string, string> $translatedFieldErrors
+	 */
+	private function summarizeLayeredValidationUserMessage(array $translatedFieldErrors, string $exceptionMessage): string
+	{
+		if ($translatedFieldErrors === []) {
+			return $this->l10n->t($exceptionMessage);
+		}
+		if (count($translatedFieldErrors) === 1) {
+			return (string)reset($translatedFieldErrors);
+		}
+		return $this->l10n->t('Several fields need attention. Review each highlighted field below.');
 	}
 
 	private function handleLayeredSave(callable $action): JSONResponse
@@ -3497,10 +3550,11 @@ class AdminController extends Controller
 			$summary = $action();
 			return new JSONResponse(['success' => true, 'data' => $summary], Http::STATUS_CREATED);
 		} catch (LayeredVacationValidationException $e) {
+			$translatedFieldErrors = $this->translateFieldErrors($e->fieldErrors);
 			return new JSONResponse([
 				'success' => false,
-				'error' => $this->l10n->t($e->getMessage()),
-				'errors' => $this->translateFieldErrors($e->fieldErrors),
+				'error' => $this->summarizeLayeredValidationUserMessage($translatedFieldErrors, $e->getMessage()),
+				'errors' => $translatedFieldErrors,
 			], Http::STATUS_BAD_REQUEST);
 		} catch (LayeredVacationNotFoundException $e) {
 			return new JSONResponse(['success' => false, 'error' => $this->l10n->t($e->getMessage())], Http::STATUS_NOT_FOUND);
@@ -3534,8 +3588,11 @@ class AdminController extends Controller
 	 * Server-rendered shell + JS hydration mirroring the pattern used by
 	 * `admin#teams`, `admin#workingTimeModels`, etc.
 	 */
+	#[NoCSRFRequired]
 	public function vacationLayers(): TemplateResponse
 	{
+		Util::addTranslations('arbeitszeitcheck');
+
 		// Load the same common bundle every other admin page loads, so the
 		// shared theme (colours, focus rings, `.visually-hidden`, app layout,
 		// responsive grid, …) is available here too. Without this the page
@@ -3553,11 +3610,18 @@ class AdminController extends Controller
 		Util::addStyle('arbeitszeitcheck', 'navigation');
 		Util::addStyle('arbeitszeitcheck', 'arbeitszeitcheck-main');
 		Util::addStyle('arbeitszeitcheck', 'admin-vacation-layers');
+		Util::addScript('arbeitszeitcheck', 'common/utils');
+		Util::addScript('arbeitszeitcheck', 'common/components');
+		Util::addScript('arbeitszeitcheck', 'common/messaging');
 		Util::addScript('arbeitszeitcheck', 'admin-vacation-layers');
 		$response = new TemplateResponse('arbeitszeitcheck', 'admin-vacation-layers', [
 			'l' => $this->l10n,
 			'urlGenerator' => $this->urlGenerator,
 			'layeredEnabled' => $this->vacationEntitlementEngine->isLayeredEnabled(),
+			'showSubstitutionLink' => false,
+			'showManagerLink' => true,
+			'showReportsLink' => true,
+			'showAdminNav' => true,
 		]);
 		return $this->configureCSP($response, 'admin');
 	}

@@ -18,6 +18,7 @@
 
   const Utils = window.ArbeitszeitCheckUtils || {};
   const Messaging = window.ArbeitszeitCheckMessaging || {};
+  const Components = window.ArbeitszeitCheckComponents || {};
   const baseUrl = '/apps/arbeitszeitcheck';
 
   // -----------------------------------------------------------------------
@@ -109,11 +110,31 @@
     return map[mode] || mode || '—';
   }
 
+  /** Localised tariff rule set lifecycle label (API may send statusLabel; else map known codes). */
+  function fmtTariffStatusCode(status) {
+    const s = String(status || '').toLowerCase();
+    const map = {
+      draft: t('Draft', 'Draft'),
+      active: t('Active', 'Active'),
+      retired: t('Retired', 'Retired'),
+    };
+    if (map[s]) return map[s];
+    const raw = String(status || '').trim();
+    return raw || '—';
+  }
+
+  function fmtTariffRuleSetStatus(rs) {
+    if (!rs) return '—';
+    if (rs.statusLabel) return String(rs.statusLabel);
+    return fmtTariffStatusCode(rs.status);
+  }
+
   function fmtRuleSet(id) {
     if (!id) return '—';
     const rs = state.ruleSets.find((r) => Number(r.id) === Number(id));
     if (!rs) return `#${id}`;
-    return `${rs.tariffCode || rs.id} (v${rs.version})`;
+    const statusTxt = fmtTariffRuleSetStatus(rs);
+    return `${rs.tariffCode || rs.id} (v${rs.version} · ${statusTxt})`;
   }
 
   function fmtEffective(from, to) {
@@ -326,6 +347,7 @@
     dialogBody.innerHTML = context.body;
     dialogFeedback.textContent = '';
     resetImpactPreview();
+    syncLayerDialogModeFields();
     if (typeof dialog.showModal === 'function') {
       try { dialog.showModal(); } catch (e) { dialog.setAttribute('open', 'open'); }
     } else {
@@ -457,47 +479,135 @@
     const target = ev.target;
     if (!(target instanceof HTMLElement)) return;
     const id = target.id || '';
+    if (id === 'dlg-mode') {
+      syncLayerDialogModeFields();
+    }
     if (id === 'dlg-model' || id === 'dlg-team') {
       schedulePreview();
     }
   });
 
-  // Shared form fragments
-  function modeFieldHtml(allowInherit) {
+  // Clear the inline manual-days error as soon as the user starts fixing
+  // the value. Without this the admin could correct the typo and the
+  // red error message would stick until the next submit attempt, which
+  // is confusing and would fail WCAG 3.3.1 "Error identification" when
+  // the field no longer carries an error state.
+  document.addEventListener('input', (ev) => {
+    if (!dialogContext) return;
+    if (!dialog.open && !dialog.hasAttribute('open')) return;
+    const target = ev.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (target.id === 'dlg-days') {
+      clearManualDaysFieldError();
+    }
+  });
+
+  // Shared form fragments (fieldsets + mode-conditional rows for WCAG / clarity)
+  function fieldsetSection(fieldsetId, legendKey, legendFb, innerHtml) {
+    return `<fieldset class="layer-form__fieldset" id="${escape(fieldsetId)}"><legend class="layer-form__legend">${escape(t(legendKey, legendFb))}</legend>${innerHtml}</fieldset>`;
+  }
+
+  function syncLayerDialogModeFields() {
+    const modeEl = document.getElementById('dlg-mode');
+    if (!modeEl) return;
+    let mode = modeEl.value;
+    const tariffOpt = modeEl.querySelector('option[value="tariff_rule_based"]');
+    if (mode === 'tariff_rule_based' && tariffOpt && tariffOpt.disabled) {
+      mode = 'manual_fixed';
+      modeEl.value = 'manual_fixed';
+    }
+    const rowManual = document.getElementById('dlg-row-manual');
+    const rowTariff = document.getElementById('dlg-row-tariff');
+    const inpDays = document.getElementById('dlg-days');
+    const selRuleset = document.getElementById('dlg-ruleset');
+    const showManual = mode === 'manual_fixed';
+    const showTariff = mode === 'tariff_rule_based';
+
+    if (rowManual) {
+      rowManual.hidden = !showManual;
+      rowManual.setAttribute('aria-hidden', showManual ? 'false' : 'true');
+    }
+    if (inpDays) {
+      inpDays.disabled = !showManual;
+      inpDays.required = showManual;
+      if (!showManual) {
+        inpDays.value = '';
+        // Clear the inline error helper too, otherwise switching from
+        // manual_fixed → model_based_simple after a failed save would
+        // leave a stale error visible against a now-irrelevant field.
+        clearManualDaysFieldError();
+      }
+    }
+    if (rowTariff) {
+      rowTariff.hidden = !showTariff;
+      rowTariff.setAttribute('aria-hidden', showTariff ? 'false' : 'true');
+    }
+    if (selRuleset) {
+      selRuleset.disabled = !showTariff;
+      selRuleset.required = showTariff;
+      if (!showTariff) {
+        selRuleset.value = '';
+        selRuleset.removeAttribute('aria-invalid');
+      }
+    }
+  }
+
+  function modeFieldHtml(allowInherit, tariffAvailable) {
+    const tariffOptDisabled = !tariffAvailable;
     return `
       <div class="layer-form__row">
         <label for="dlg-mode" class="form-label">${escape(t('Mode', 'Mode'))}</label>
         <select id="dlg-mode" name="vacationMode" class="form-select" required>
           <option value="manual_fixed">${escape(fmtMode('manual_fixed'))}</option>
           <option value="model_based_simple">${escape(fmtMode('model_based_simple'))}</option>
-          <option value="tariff_rule_based">${escape(fmtMode('tariff_rule_based'))}</option>
+          <option value="tariff_rule_based"${tariffOptDisabled ? ' disabled' : ''}>${escape(fmtMode('tariff_rule_based'))}</option>
           ${allowInherit ? `<option value="inherit">${escape(fmtMode('inherit'))}</option>` : ''}
         </select>
+        ${!tariffAvailable ? `<p class="layer-form__hint layer-form__hint--info" id="dlg-tariff-unavailable" role="status">${escape(t('No active tariff rule sets exist yet. Create and activate a rule set first, or choose another mode.', 'No active tariff rule sets exist yet. Create and activate a rule set first, or choose another mode.'))}</p>` : ''}
       </div>
     `;
   }
 
   function daysFieldHtml() {
+    // Numeric invariant per spec: 0 ≤ days ≤ 366, rounded to two decimal
+    // places (REQ-ENT-07). We deliberately use `type="text"` + `pattern`
+    // instead of `type="number" step="0.5"` so:
+    //  1. Part-time / tariff prorations such as 31.2 days are not rejected
+    //     by the browser's numeric stepper (the previous step="0.5" UI
+    //     blocked legitimate values).
+    //  2. German-locale users can type a decimal comma (`31,2`) natively
+    //     — the same pattern is used by the L3 manual-days editor in
+    //     `admin-users.js`, so all four layers (L0/L1/L2/L3) accept the
+    //     identical input shape.
+    //  3. The DB column `manual_days FLOAT(6, 2)` and engine
+    //     `roundDays()` (half-up, 2 dp) already constrain precision on
+    //     the write path; the UI now matches that contract exactly.
     return `
-      <div class="layer-form__row">
-        <label for="dlg-days" class="form-label">${escape(t('Manual days (per year)', 'Manual days (per year)'))}</label>
-        <input type="number" id="dlg-days" name="manualDays" class="form-input"
-               min="0" max="366" step="0.5"
-               aria-describedby="dlg-days-help">
-        <p id="dlg-days-help" class="form-help">${escape(t('Required when mode is "Manual (fixed days)". Allowed range: 0–366, in steps of 0.5.', 'Required when mode is "Manual (fixed days)". Allowed range: 0–366, in steps of 0.5.'))}</p>
+      <div class="layer-form__row layer-form__row--mode-conditional" id="dlg-row-manual" hidden>
+        <label for="dlg-days" class="form-label">${escape(t('Manual days (per year)', 'Manual days (per year)'))} <span class="form-required" aria-label="${escape(t('required', 'required'))}">*</span></label>
+        <input type="text" id="dlg-days" name="manualDays" class="form-input"
+               inputmode="decimal"
+               pattern="^[0-9]+([\\.,][0-9]{1,2})?$"
+               autocomplete="off"
+               aria-describedby="dlg-days-help dlg-days-error">
+        <p id="dlg-days-help" class="form-help">${escape(t('Annual vacation days (0–366). Up to two decimal places are allowed, e.g. 25, 25.5, 27.75, or 31.2 — comma or dot both work.', 'Annual vacation days (0–366). Up to two decimal places are allowed, e.g. 25, 25.5, 27.75, or 31.2 — comma or dot both work.'))}</p>
+        <p id="dlg-days-error" class="form-error form-error--inline" role="alert" aria-live="polite" hidden></p>
       </div>
     `;
   }
 
   function ruleSetFieldHtml() {
     const opts = ['<option value="">— ' + escape(t('None', 'None')) + ' —</option>']
-      .concat(state.ruleSets.map((r) => `<option value="${r.id}">${escape(r.tariffCode || r.id)} (v${escape(r.version)} · ${escape(r.status)})</option>`))
+      .concat(state.ruleSets.map((r) => {
+        const statusTxt = fmtTariffRuleSetStatus(r);
+        return `<option value="${r.id}">${escape(r.tariffCode || r.id)} (v${escape(r.version)} · ${escape(statusTxt)})</option>`;
+      }))
       .join('');
     return `
-      <div class="layer-form__row">
+      <div class="layer-form__row layer-form__row--mode-conditional" id="dlg-row-tariff" hidden>
         <label for="dlg-ruleset" class="form-label">${escape(t('Tariff rule set', 'Tariff rule set'))}</label>
         <select id="dlg-ruleset" name="tariffRuleSetId" class="form-select" aria-describedby="dlg-ruleset-help">${opts}</select>
-        <p id="dlg-ruleset-help" class="form-help">${escape(t('Required when mode is "Tariff / collective agreement".', 'Required when mode is "Tariff / collective agreement".'))}</p>
+        <p id="dlg-ruleset-help" class="form-help">${escape(t('Pick the active rule set that defines this entitlement.', 'Pick the active rule set that defines this entitlement.'))}</p>
       </div>
     `;
   }
@@ -528,79 +638,214 @@
     `;
   }
 
+  function teamPriorityHtml() {
+    return `
+      <div class="layer-form__row" id="dlg-row-priority">
+        <label for="dlg-priority" class="form-label">${escape(t('Priority', 'Priority'))}</label>
+        <input type="number" id="dlg-priority" name="priority" class="form-input" value="0" min="-1000" max="1000" step="1" aria-describedby="dlg-priority-help">
+        <p id="dlg-priority-help" class="form-help">${escape(t('Higher priority wins inside the same team depth. Use small integers (e.g. 0–100).', 'Higher priority wins inside the same team depth. Use small integers (e.g. 0–100).'))}</p>
+      </div>
+    `;
+  }
+
   function openOrgDialog() {
+    const tariffAvailable = Array.isArray(state.ruleSets) && state.ruleSets.length > 0;
     openDialog({
       layer: 'org',
       title: t('Add organisation default', 'Add organisation default'),
       intro: t('This default applies to every employee who has no individual rule, no team policy, and no model default for the chosen date range.', 'This default applies to every employee who has no individual rule, no team policy, and no model default for the chosen date range.'),
-      body: `
-        ${modeFieldHtml(false)}
-        ${daysFieldHtml()}
-        ${ruleSetFieldHtml()}
-        ${effectiveFieldsHtml()}
-        ${descriptionFieldHtml()}
-      `,
+      body: [
+        fieldsetSection('dlg-fs-calc', 'How vacation days are calculated', 'How vacation days are calculated',
+          modeFieldHtml(false, tariffAvailable) + daysFieldHtml() + ruleSetFieldHtml()),
+        fieldsetSection('dlg-fs-dates', 'When this rule applies', 'When this rule applies', effectiveFieldsHtml()),
+        fieldsetSection('dlg-fs-note', 'Optional description', 'Optional description', descriptionFieldHtml()),
+      ].join(''),
     });
   }
 
   function openModelDialog() {
+    const tariffAvailable = Array.isArray(state.ruleSets) && state.ruleSets.length > 0;
     const opts = state.model.availableModels.map((m) => `<option value="${m.id}">${escape(m.name)}</option>`).join('');
+    const modelRow = `
+      <div class="layer-form__row layer-form__row--wide">
+        <label for="dlg-model" class="form-label">${escape(t('Working time model', 'Working time model'))}</label>
+        <select id="dlg-model" name="workingTimeModelId" class="form-select" required>${opts}</select>
+      </div>`;
     openDialog({
       layer: 'model',
       title: t('Add working time model default', 'Add working time model default'),
       intro: t('Attach a default entitlement to a working time model. Applies to every employee currently assigned to that model who has neither an individual rule nor a team policy.', 'Attach a default entitlement to a working time model. Applies to every employee currently assigned to that model who has neither an individual rule nor a team policy.'),
-      body: `
-        <div class="layer-form__row layer-form__row--wide">
-          <label for="dlg-model" class="form-label">${escape(t('Working time model', 'Working time model'))}</label>
-          <select id="dlg-model" name="workingTimeModelId" class="form-select" required>${opts}</select>
-        </div>
-        ${modeFieldHtml(false)}
-        ${daysFieldHtml()}
-        ${ruleSetFieldHtml()}
-        ${effectiveFieldsHtml()}
-        ${descriptionFieldHtml()}
-      `,
+      body: [
+        fieldsetSection('dlg-fs-target', 'Working time model', 'Working time model', modelRow),
+        fieldsetSection('dlg-fs-calc', 'How vacation days are calculated', 'How vacation days are calculated',
+          modeFieldHtml(false, tariffAvailable) + daysFieldHtml() + ruleSetFieldHtml()),
+        fieldsetSection('dlg-fs-dates', 'When this rule applies', 'When this rule applies', effectiveFieldsHtml()),
+        fieldsetSection('dlg-fs-note', 'Optional description', 'Optional description', descriptionFieldHtml()),
+      ].join(''),
     });
   }
 
   function openTeamDialog() {
+    const tariffAvailable = Array.isArray(state.ruleSets) && state.ruleSets.length > 0;
     const opts = state.team.availableTeams.map((tm) => `<option value="${tm.id}">${escape(tm.name)}</option>`).join('');
+    const teamRow = `
+      <div class="layer-form__row layer-form__row--wide">
+        <label for="dlg-team" class="form-label">${escape(t('Team', 'Team'))}</label>
+        <select id="dlg-team" name="teamId" class="form-select" required>${opts}</select>
+      </div>`;
     openDialog({
       layer: 'team',
       title: t('Add team / cohort policy', 'Add team / cohort policy'),
       intro: t('Attach a policy to a team. When an employee belongs to several teams, the deepest team wins; ties are broken by the higher priority, then by the smallest team ID.', 'Attach a policy to a team. When an employee belongs to several teams, the deepest team wins; ties are broken by the higher priority, then by the smallest team ID.'),
-      body: `
-        <div class="layer-form__row layer-form__row--wide">
-          <label for="dlg-team" class="form-label">${escape(t('Team', 'Team'))}</label>
-          <select id="dlg-team" name="teamId" class="form-select" required>${opts}</select>
-        </div>
-        ${modeFieldHtml(false)}
-        ${daysFieldHtml()}
-        ${ruleSetFieldHtml()}
-        <div class="layer-form__row">
-          <label for="dlg-priority" class="form-label">${escape(t('Priority', 'Priority'))}</label>
-          <input type="number" id="dlg-priority" name="priority" class="form-input" value="0" min="-1000" max="1000" step="1" aria-describedby="dlg-priority-help">
-          <p id="dlg-priority-help" class="form-help">${escape(t('Higher priority wins inside the same team depth. Use small integers (e.g. 0–100).', 'Higher priority wins inside the same team depth. Use small integers (e.g. 0–100).'))}</p>
-        </div>
-        ${effectiveFieldsHtml()}
-        ${descriptionFieldHtml()}
-      `,
+      body: [
+        fieldsetSection('dlg-fs-target', 'Team', 'Team', teamRow),
+        fieldsetSection('dlg-fs-calc', 'How vacation days are calculated', 'How vacation days are calculated',
+          modeFieldHtml(false, tariffAvailable) + daysFieldHtml() + ruleSetFieldHtml()),
+        fieldsetSection('dlg-fs-tiebreak', 'Tie-breaking when teams overlap', 'Tie-breaking when teams overlap', teamPriorityHtml()),
+        fieldsetSection('dlg-fs-dates', 'When this rule applies', 'When this rule applies', effectiveFieldsHtml()),
+        fieldsetSection('dlg-fs-note', 'Optional description', 'Optional description', descriptionFieldHtml()),
+      ].join(''),
     });
+  }
+
+  // -----------------------------------------------------------------------
+  // Decimal helpers — single canonical parser used by all entry points so
+  // backend (PHP `LayeredVacationDefaultsService::parseDecimal`) and frontend
+  // share semantics: accept comma OR dot, reject anything that is not a
+  // plain non-negative decimal with up to two fraction digits, normalise
+  // to a dot-decimal string the controller can ingest verbatim.
+  //
+  // Why we duplicate the regex on the client side instead of just
+  // shipping the raw string and waiting for the 400:
+  //  - Native `<input pattern>` validation is silent on submit when the
+  //    form is submitted programmatically — we still need to flag the
+  //    field as invalid for AT users.
+  //  - Round-tripping to the server for a typo is poor UX, especially on
+  //    slow networks.
+  //  - We must still defer the *authoritative* validation to the engine
+  //    so this is defence-in-depth, not a replacement.
+  // -----------------------------------------------------------------------
+  const MANUAL_DAYS_MAX = 366; // mirror engine `roundDays` clamp
+  const MANUAL_DAYS_MIN = 0;
+
+  function parseManualDaysInput(raw) {
+    if (raw === null || raw === undefined) {
+      return { ok: false, reason: 'empty' };
+    }
+    const trimmed = String(raw).replace(/\s+/g, '').trim();
+    if (trimmed === '') {
+      return { ok: false, reason: 'empty' };
+    }
+    // Reject sign / scientific notation / multiple separators up front so
+    // a malicious paste like "1e308" or "-5" cannot smuggle in NaN / inf
+    // / negative manual days. The strict pattern is the same one used in
+    // the form attribute so client and HTML semantics never drift.
+    if (!/^[0-9]+([.,][0-9]{1,2})?$/.test(trimmed)) {
+      return { ok: false, reason: 'format' };
+    }
+    const dotted = trimmed.replace(',', '.');
+    const value = Number(dotted);
+    if (!Number.isFinite(value)) {
+      return { ok: false, reason: 'not-finite' };
+    }
+    if (value < MANUAL_DAYS_MIN || value > MANUAL_DAYS_MAX) {
+      return { ok: false, reason: 'range' };
+    }
+    return { ok: true, value, normalized: dotted };
+  }
+
+  function setManualDaysFieldError(message) {
+    const input = document.getElementById('dlg-days');
+    const errorEl = document.getElementById('dlg-days-error');
+    if (input) {
+      input.setAttribute('aria-invalid', 'true');
+    }
+    if (errorEl) {
+      errorEl.textContent = message;
+      errorEl.hidden = false;
+    }
+  }
+
+  function clearManualDaysFieldError() {
+    const input = document.getElementById('dlg-days');
+    const errorEl = document.getElementById('dlg-days-error');
+    if (input) {
+      input.removeAttribute('aria-invalid');
+    }
+    if (errorEl) {
+      errorEl.textContent = '';
+      errorEl.hidden = true;
+    }
+  }
+
+  function manualDaysErrorMessage(reason) {
+    if (reason === 'empty') {
+      return t('Please enter the number of vacation days per year.', 'Please enter the number of vacation days per year.');
+    }
+    if (reason === 'format') {
+      return t('Enter a number between 0 and 366 with up to two decimal places (for example 25, 25.5, 27.75, or 31.2). Comma or dot both work.', 'Enter a number between 0 and 366 with up to two decimal places (for example 25, 25.5, 27.75, or 31.2). Comma or dot both work.');
+    }
+    if (reason === 'range') {
+      return t('Enter a value between 0 and 366 days.', 'Enter a value between 0 and 366 days.');
+    }
+    return t('Enter a valid number of vacation days.', 'Enter a valid number of vacation days.');
   }
 
   // -----------------------------------------------------------------------
   // Save handlers
   // -----------------------------------------------------------------------
   function readForm() {
-    const formData = new FormData(dialogForm);
-    const obj = {};
-    formData.forEach((value, key) => {
-      const trimmed = typeof value === 'string' ? value.trim() : value;
-      obj[key] = trimmed === '' ? null : trimmed;
-    });
-    if (obj.manualDays != null) obj.manualDays = String(obj.manualDays).replace(',', '.');
-    if (obj.priority != null) obj.priority = parseInt(String(obj.priority), 10);
-    return obj;
+    const modeEl = document.getElementById('dlg-mode');
+    const mode = modeEl ? modeEl.value : 'manual_fixed';
+    const fromEl = document.getElementById('dlg-from');
+    const toEl = document.getElementById('dlg-to');
+    const descEl = document.getElementById('dlg-desc');
+
+    const payload = {
+      vacationMode: mode,
+      effectiveFrom: fromEl && fromEl.value ? String(fromEl.value).trim() : null,
+      effectiveTo: toEl && toEl.value ? String(toEl.value).trim() : null,
+      description: descEl && String(descEl.value).trim() !== '' ? String(descEl.value).trim() : null,
+    };
+
+    if (dialogContext.layer === 'model') {
+      const m = document.getElementById('dlg-model');
+      payload.workingTimeModelId = m && m.value ? parseInt(String(m.value), 10) : 0;
+    }
+    if (dialogContext.layer === 'team') {
+      const team = document.getElementById('dlg-team');
+      const pr = document.getElementById('dlg-priority');
+      payload.teamId = team && team.value ? parseInt(String(team.value), 10) : 0;
+      const rawP = pr && pr.value !== '' ? parseInt(String(pr.value), 10) : 0;
+      payload.priority = Number.isFinite(rawP) ? rawP : 0;
+    }
+
+    if (mode === 'manual_fixed') {
+      const d = document.getElementById('dlg-days');
+      if (d && !d.disabled && d.value !== '') {
+        // We already validated `d.value` in the submit handler before
+        // calling readForm(); re-run the parser here defensively so a
+        // refactor that bypasses the handler (e.g. a test that calls
+        // readForm directly) still receives a normalised dot-decimal
+        // string instead of a German "31,2" the backend would parse but
+        // some intermediate JSON consumers might not.
+        const parsed = parseManualDaysInput(d.value);
+        if (parsed.ok) {
+          payload.manualDays = parsed.normalized;
+        } else {
+          // Preserve raw (with comma→dot swap) so the server's own
+          // validator can return the canonical error; client-side error
+          // was already surfaced by the submit handler if we got here.
+          payload.manualDays = String(d.value).replace(',', '.');
+        }
+      }
+    } else if (mode === 'tariff_rule_based') {
+      const r = document.getElementById('dlg-ruleset');
+      if (r && !r.disabled && r.value !== '') {
+        payload.tariffRuleSetId = parseInt(String(r.value), 10);
+      }
+    }
+    return payload;
   }
 
   function showFieldErrors(errors) {
@@ -632,9 +877,31 @@
   dialogForm.addEventListener('submit', (ev) => {
     ev.preventDefault();
     if (!dialogContext) return;
-    const payload = readForm();
     clearFieldErrors();
+    clearManualDaysFieldError();
+    syncLayerDialogModeFields();
     dialogFeedback.textContent = '';
+
+    // Client-side guard on the manual-days input. We still defer the
+    // authoritative check to the engine — this only catches the obvious
+    // typos and keeps the round-trip cost down for HR.
+    const modeEl = document.getElementById('dlg-mode');
+    const mode = modeEl ? modeEl.value : 'manual_fixed';
+    if (mode === 'manual_fixed') {
+      const d = document.getElementById('dlg-days');
+      if (d && !d.disabled) {
+        const parsed = parseManualDaysInput(d.value);
+        if (!parsed.ok) {
+          const msg = manualDaysErrorMessage(parsed.reason);
+          setManualDaysFieldError(msg);
+          dialogFeedback.textContent = msg;
+          try { d.focus(); } catch (e) { /* noop */ }
+          return;
+        }
+      }
+    }
+
+    const payload = readForm();
     let endpoint;
     if (dialogContext.layer === 'org') endpoint = URLS.org;
     else if (dialogContext.layer === 'model') endpoint = URLS.model;
@@ -660,6 +927,7 @@
         }
         dialogFeedback.textContent = msg;
         if (err && err.data && err.data.errors) {
+          syncLayerDialogModeFields();
           showFieldErrors(err.data.errors);
         }
       },
@@ -677,14 +945,47 @@
     if (action === 'add-model') { ev.preventDefault(); openModelDialog(); return; }
     if (action === 'add-team') { ev.preventDefault(); openTeamDialog(); return; }
     const delOrg = target.getAttribute('data-delete-org');
-    if (delOrg) { ev.preventDefault(); confirmDelete(t('Delete organisation default?', 'Delete organisation default?'), () => doDelete(URLS.orgDelete, delOrg)); return; }
+    if (delOrg) {
+      ev.preventDefault();
+      void confirmDelete(t('Delete organisation default?', 'Delete organisation default?'), () => doDelete(URLS.orgDelete, delOrg));
+      return;
+    }
     const delModel = target.getAttribute('data-delete-model');
-    if (delModel) { ev.preventDefault(); confirmDelete(t('Delete model default?', 'Delete model default?'), () => doDelete(URLS.modelDelete, delModel)); return; }
+    if (delModel) {
+      ev.preventDefault();
+      void confirmDelete(t('Delete model default?', 'Delete model default?'), () => doDelete(URLS.modelDelete, delModel));
+      return;
+    }
     const delTeam = target.getAttribute('data-delete-team');
-    if (delTeam) { ev.preventDefault(); confirmDelete(t('Delete team policy?', 'Delete team policy?'), () => doDelete(URLS.teamDelete, delTeam)); return; }
+    if (delTeam) {
+      ev.preventDefault();
+      void confirmDelete(t('Delete team policy?', 'Delete team policy?'), () => doDelete(URLS.teamDelete, delTeam));
+      return;
+    }
   });
 
-  function confirmDelete(message, onConfirm) {
+  /**
+   * Prefer the app confirm dialog (arbeitszeitcheck strings + centered modal).
+   * OC.dialogs uses core copy/styling and is not guaranteed to match the user locale.
+   */
+  async function confirmDelete(message, onConfirm) {
+    if (typeof Components.showConfirmDialog === 'function') {
+      try {
+        const confirmed = await Components.showConfirmDialog({
+          title: t('Confirm deletion', 'Confirm deletion'),
+          message,
+          variant: 'danger',
+          confirmLabel: t('Delete', 'Delete'),
+          cancelLabel: t('Cancel', 'Cancel'),
+        });
+        if (confirmed) {
+          onConfirm();
+        }
+      } catch (e) {
+        /* noop */
+      }
+      return;
+    }
     if (typeof OC !== 'undefined' && OC.dialogs && typeof OC.dialogs.confirmDestructive === 'function') {
       let result;
       try {
@@ -699,7 +1000,9 @@
       if (result && typeof result.then === 'function') {
         result.then((confirmed) => { if (confirmed) onConfirm(); });
       }
-    } else if (window.confirm(message)) {
+      return;
+    }
+    if (window.confirm(message)) {
       onConfirm();
     }
   }
@@ -885,7 +1188,7 @@
       chips.push(`<span class="trace-flag trace-flag--warn">${escape(t('Working time model missing', 'Working time model missing'))}</span>`);
     }
     if (inner.rule_set_status_warning) {
-      chips.push(`<span class="trace-flag trace-flag--warn">${escape(t('Tariff rule set not active', 'Tariff rule set not active'))} (${escape(inner.rule_set_status_warning)})</span>`);
+        chips.push(`<span class="trace-flag trace-flag--warn">${escape(t('Tariff rule set not active', 'Tariff rule set not active'))} (${escape(fmtTariffStatusCode(inner.rule_set_status_warning))})</span>`);
     }
     return chips.join(' ');
   }
@@ -973,4 +1276,18 @@
   // Init
   // -----------------------------------------------------------------------
   loadOverview();
+
+  // Expose pure helpers for unit tests (vitest). We deliberately do NOT
+  // expose mutating helpers, just the parser, so a hostile page script
+  // cannot use this hook to mutate dialog state. Production users do not
+  // depend on this object; if it disappears in a future minor release
+  // that is intentional.
+  if (typeof window !== 'undefined') {
+    window.__ArbeitszeitCheckVacationLayersTestables = {
+      parseManualDaysInput,
+      manualDaysErrorMessage,
+      MANUAL_DAYS_MIN,
+      MANUAL_DAYS_MAX,
+    };
+  }
 })();

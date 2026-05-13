@@ -65,6 +65,7 @@ class TimeTrackingServiceTest extends TestCase {
 		$config->method('getAppValue')->willReturnCallback(fn ($app, $key, $default) => match ($key) {
 			'max_daily_hours' => '10',
 			'min_rest_period' => '11',
+			'app_timezone' => 'Europe/Berlin',
 			default => $default
 		});
 		$config->method('getUserValue')->willReturn('');
@@ -91,6 +92,8 @@ class TimeTrackingServiceTest extends TestCase {
 			$db,
 			$lockingProvider
 		);
+
+		$this->timeEntryMapper->method('findStalePausedAutomaticEntries')->willReturn([]);
 	}
 
 	/**
@@ -296,11 +299,20 @@ class TimeTrackingServiceTest extends TestCase {
 
 		$this->timeEntryMapper->expects($this->once())
 			->method('findPausedOrUnfinishedTodayByUser')
-			->with($userId)
+			->with(
+				$userId,
+				$this->isInstanceOf(\DateTime::class),
+				$this->isInstanceOf(\DateTime::class)
+			)
 			->willReturn($pausedEntry);
 
 		$this->timeEntryMapper->expects($this->once())
 			->method('getTotalHoursByUserAndDateRange')
+			->with(
+				$userId,
+				$this->isInstanceOf(\DateTime::class),
+				$this->isInstanceOf(\DateTime::class)
+			)
 			->willReturn(0.0);
 
 		$this->timeEntryMapper->expects($this->once())
@@ -491,5 +503,188 @@ class TimeTrackingServiceTest extends TestCase {
 		$this->assertFalse($result, 'Below the daily maximum, no auto-completion may occur.');
 		$this->assertNull($entry->getEndedReason(), 'Reason must remain unset below the threshold.');
 		$this->assertSame(TimeEntry::STATUS_ACTIVE, $entry->getStatus());
+	}
+
+	/**
+	 * One-click recovery from a `paused` row must:
+	 *  - flip status to COMPLETED,
+	 *  - default end time to updated_at (moment the entry was frozen),
+	 *  - record an audit-trail reason and policy so the row is auditable,
+	 *  - persist via update() and log a `time_entry_paused_completed` audit event.
+	 */
+	public function testCompletePausedEntryUsesUpdatedAtAsDefaultEndTime(): void
+	{
+		$userId = 'testuser';
+		$start = (new \DateTime())->modify('-1 day')->setTime(9, 0, 0);
+		$pausedAt = (clone $start)->modify('+8 hours'); // 17:00 yesterday
+
+		$entry = new TimeEntry();
+		$entry->setId(77);
+		$entry->setUserId($userId);
+		$entry->setStatus(TimeEntry::STATUS_PAUSED);
+		$entry->setStartTime($start);
+		$entry->setEndTime(null);
+		$entry->setBreaks(json_encode([]));
+		$entry->setIsManualEntry(false);
+		$entry->setCreatedAt(clone $start);
+		$entry->setUpdatedAt($pausedAt);
+
+		$this->timeEntryMapper->expects($this->once())
+			->method('find')
+			->with(77)
+			->willReturn($entry);
+
+		$this->timeEntryMapper->method('findByUserAndDateRange')->willReturn([]);
+
+		$capturedEntry = null;
+		$this->timeEntryMapper->expects($this->once())
+			->method('update')
+			->willReturnCallback(static function (TimeEntry $arg) use (&$capturedEntry): TimeEntry {
+				$capturedEntry = $arg;
+				return $arg;
+			});
+
+		$this->auditLogMapper->expects($this->once())
+			->method('logAction')
+			->with(
+				$userId,
+				'time_entry_paused_completed',
+				'time_entry',
+				77,
+				$this->anything(),
+				$this->anything()
+			);
+
+		$result = $this->service->completePausedEntry($userId, 77);
+
+		$this->assertSame($entry, $result);
+		$this->assertInstanceOf(TimeEntry::class, $capturedEntry);
+		/** @var TimeEntry $capturedEntry */
+		$this->assertSame(TimeEntry::STATUS_COMPLETED, $capturedEntry->getStatus());
+		$this->assertNotNull($capturedEntry->getEndTime());
+		$this->assertGreaterThanOrEqual($start, $capturedEntry->getEndTime(), 'End time must not be before start.');
+		$this->assertNotNull($capturedEntry->getEndedReason(), 'Audit reason must be set for traceability.');
+		$this->assertNotNull($capturedEntry->getPolicyApplied(), 'Policy must be set so audits can identify the recovery path.');
+	}
+
+	/**
+	 * An explicit caller-supplied end time (e.g. from an admin or `occ` command)
+	 * must win over the default updated_at, but the service must still enforce
+	 * `end >= start` so a bad override cannot create a negative duration row.
+	 */
+	public function testCompletePausedEntryRespectsExplicitEndTime(): void
+	{
+		$userId = 'testuser';
+		$start = (new \DateTime())->modify('-1 day')->setTime(9, 0, 0);
+		$pausedAt = (clone $start)->modify('+2 hours');
+		$explicit = (clone $start)->modify('+7 hours 30 minutes'); // 16:30
+
+		$entry = new TimeEntry();
+		$entry->setId(88);
+		$entry->setUserId($userId);
+		$entry->setStatus(TimeEntry::STATUS_PAUSED);
+		$entry->setStartTime($start);
+		$entry->setEndTime(null);
+		$entry->setBreaks(json_encode([]));
+		$entry->setIsManualEntry(false);
+		$entry->setCreatedAt(clone $start);
+		$entry->setUpdatedAt($pausedAt);
+
+		$this->timeEntryMapper->method('find')->with(88)->willReturn($entry);
+		$this->timeEntryMapper->method('findByUserAndDateRange')->willReturn([]);
+
+		$capturedEntry = null;
+		$this->timeEntryMapper->expects($this->once())
+			->method('update')
+			->willReturnCallback(static function (TimeEntry $arg) use (&$capturedEntry): TimeEntry {
+				$capturedEntry = $arg;
+				return $arg;
+			});
+
+		$this->auditLogMapper->expects($this->once())->method('logAction');
+
+		$this->service->completePausedEntry($userId, 88, $explicit);
+
+		$this->assertInstanceOf(TimeEntry::class, $capturedEntry);
+		/** @var TimeEntry $capturedEntry */
+		$this->assertSame(TimeEntry::STATUS_COMPLETED, $capturedEntry->getStatus());
+		$captured = $capturedEntry->getEndTime();
+		$this->assertNotNull($captured);
+		// Daily-max adjustment may cap the end, but it must never come out earlier than the start.
+		$this->assertGreaterThanOrEqual($start, $captured);
+	}
+
+	/**
+	 * Completing an entry the caller does not own must be rejected with a
+	 * business-rule error so the controller can map it to HTTP 403.
+	 */
+	public function testCompletePausedEntryRejectsOtherUsersEntry(): void
+	{
+		$entry = new TimeEntry();
+		$entry->setId(99);
+		$entry->setUserId('owner');
+		$entry->setStatus(TimeEntry::STATUS_PAUSED);
+		$entry->setStartTime(new \DateTime('-2 hours'));
+		$entry->setUpdatedAt(new \DateTime('-1 hour'));
+		$entry->setBreaks(json_encode([]));
+		$entry->setIsManualEntry(false);
+		$entry->setCreatedAt(new \DateTime('-2 hours'));
+
+		$this->timeEntryMapper->method('find')->with(99)->willReturn($entry);
+		$this->timeEntryMapper->expects($this->never())->method('update');
+		$this->auditLogMapper->expects($this->never())->method('logAction');
+
+		$this->l10n->method('t')->willReturnCallback(static fn ($s) => $s);
+
+		$this->expectException(\OCA\ArbeitszeitCheck\Exception\BusinessRuleException::class);
+		$this->expectExceptionMessage('Access denied');
+
+		$this->service->completePausedEntry('intruder', 99);
+	}
+
+	/**
+	 * Completing a non-paused entry must be rejected: this endpoint is the
+	 * dedicated recovery path for the broken `paused` state and must not be
+	 * abused to silently re-finalise already-completed rows.
+	 */
+	public function testCompletePausedEntryRejectsNonPausedStatus(): void
+	{
+		$entry = new TimeEntry();
+		$entry->setId(101);
+		$entry->setUserId('testuser');
+		$entry->setStatus(TimeEntry::STATUS_ACTIVE);
+		$entry->setStartTime(new \DateTime('-2 hours'));
+		$entry->setBreaks(json_encode([]));
+		$entry->setIsManualEntry(false);
+		$entry->setCreatedAt(new \DateTime('-2 hours'));
+		$entry->setUpdatedAt(new \DateTime('-1 hour'));
+
+		$this->timeEntryMapper->method('find')->with(101)->willReturn($entry);
+		$this->timeEntryMapper->expects($this->never())->method('update');
+		$this->auditLogMapper->expects($this->never())->method('logAction');
+
+		$this->l10n->method('t')->willReturnCallback(static fn ($s) => $s);
+
+		$this->expectException(\OCA\ArbeitszeitCheck\Exception\BusinessRuleException::class);
+		$this->expectExceptionMessage('not in a paused state');
+
+		$this->service->completePausedEntry('testuser', 101);
+	}
+
+	/**
+	 * A negative or zero entry ID must be rejected up front. Without this guard
+	 * the mapper would issue a SELECT WHERE id=0 (or worse, attempt index lookup
+	 * by 0/-1) and the user would receive an opaque NOT FOUND that obscures the
+	 * actual programmer error.
+	 */
+	public function testCompletePausedEntryRejectsInvalidId(): void
+	{
+		$this->l10n->method('t')->willReturnCallback(static fn ($s) => $s);
+		$this->timeEntryMapper->expects($this->never())->method('find');
+
+		$this->expectException(\OCA\ArbeitszeitCheck\Exception\BusinessRuleException::class);
+		$this->expectExceptionMessage('Invalid entry ID');
+
+		$this->service->completePausedEntry('testuser', 0);
 	}
 }

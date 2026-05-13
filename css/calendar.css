@@ -229,6 +229,10 @@
 	border-left-color: var(--arbeitszeitcheck-color-primary, var(--color-primary));
 }
 
+.calendar-day--past-absence {
+	background: color-mix(in srgb, var(--color-primary-element) 5%, var(--arbeitszeitcheck-color-background-elevated, var(--color-main-background)));
+}
+
 .calendar-day-number {
 	font-weight: 600;
 	font-size: 1rem;
@@ -260,6 +264,28 @@
 	color: var(--arbeitszeitcheck-color-warning, var(--color-warning));
 	font-weight: 500;
 	text-transform: capitalize;
+}
+
+.calendar-day-past-label,
+.calendar-past-record-badge {
+	display: inline-flex;
+	align-items: center;
+	width: fit-content;
+	max-width: 100%;
+	margin-top: var(--space-1, 0.25rem);
+	padding: 0.1rem 0.35rem;
+	border: 1px solid color-mix(in srgb, var(--color-primary-element) 45%, var(--color-border));
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--color-primary-element) 12%, var(--color-main-background));
+	color: var(--color-primary-element);
+	font-size: 0.7rem;
+	font-weight: 600;
+	line-height: 1.25;
+}
+
+.calendar-past-record-badge {
+	margin-left: var(--space-2, 0.5rem);
+	vertical-align: middle;
 }
 
 /* Calendar Week Grid */
@@ -385,6 +411,12 @@
 	border: 1px solid color-mix(in srgb, var(--color-info) 60%, var(--color-border) 40%);
 }
 
+.legend-color--past-absence {
+	background: color-mix(in srgb, var(--color-primary-element) 10%, var(--color-main-background));
+	border: 1px solid color-mix(in srgb, var(--color-primary-element) 45%, var(--color-border));
+	border-radius: 999px;
+}
+
 .legend-label {
 	font-size: 0.85rem;
 	color: var(--color-text-maxcontrast);
@@ -471,6 +503,29 @@
 	background: var(--arbeitszeitcheck-color-background-hover, var(--color-background-hover, var(--arbeitszeitcheck-color-background-secondary)));
 	border-radius: var(--radius-base, 4px);
 	color: var(--arbeitszeitcheck-color-main-text, var(--color-main-text, var(--arbeitszeitcheck-color-text)));
+}
+
+.day-details-actions {
+	margin-bottom: var(--space-6, 1.5rem);
+	padding: var(--space-4, 1rem);
+	border-radius: var(--radius-base, 4px);
+	border: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
+	background: var(--arbeitszeitcheck-color-background-secondary, var(--color-background-hover, transparent));
+}
+
+.day-details-actions__help {
+	margin: 0 0 var(--space-3, 0.75rem) 0;
+	font-size: 0.9rem;
+	line-height: 1.45;
+	color: var(--arbeitszeitcheck-color-text-maxcontrast, var(--color-text-maxcontrast));
+}
+
+.day-details-actions__link {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 44px;
+	text-decoration: none;
 }
 
 /* Focus styles for keyboard navigation (WCAG 2.1 AA) */

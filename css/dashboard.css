@@ -737,3 +737,33 @@
         padding-right: var(--space-3);
     }
 }
+
+/* ------------------------------------------------------------------------- */
+/* Paused-session recovery on the dashboard                                  */
+/*                                                                            */
+/* When a working session is left in the "paused" state we surface a direct  */
+/* "Complete session" button next to "Resume after break" so users can       */
+/* finalise the entry in a single click. The button must:                    */
+/*   - be readable (WCAG 1.4.3 contrast),                                    */
+/*   - have a comfortable touch target (WCAG 2.5.5 AAA / 2.5.8 AA: 24x24),  */
+/*   - render predictably next to the primary action.                        */
+/* ------------------------------------------------------------------------- */
+
+.btn-complete-entry {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.btn-complete-entry > span[aria-hidden="true"] {
+    font-weight: 700;
+    line-height: 1;
+}
+
+/* Make sure the "Complete session" button on the dashboard meets the WCAG
+   2.5.5 target-size recommendation on touch devices. */
+@media (max-width: 47.9375rem) {
+    .btn-complete-entry {
+        min-height: 44px;
+    }
+}

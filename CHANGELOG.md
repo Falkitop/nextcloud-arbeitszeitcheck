@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **One-click recovery for "paused" time entries** (issue: time-tracking/paused-entry-recovery, addresses upstream reports of "pausierte Einträge nicht bearbeitbar/abschließbar" and "HTTP 500 beim Ausstempeln, keine UI-Methode zum Heilen"). A new dedicated endpoint `POST /api/time-entries/{id}/complete` finalises an entry stuck in `paused` in a single, race-safe step. The end time defaults to `updated_at` (the moment the broken clock-out froze the row) and falls back to `start_time` as a zero-duration safety net; ArbZG §4 (automatic break) and ArbZG §3 (daily maximum) are applied so the resulting `completed` row is compliance-equivalent to a normal clock-out. Every recovery is audit-logged with `time_entry_paused_completed`, ownership is enforced, and the per-user mutation lock is honoured.
+- **"Complete session" affordance on the dashboard and time-entries list**. When a session is in `paused`, the dashboard status card now shows a clearly-labelled "Complete session" button next to "Resume after break", and the time-entries list shows a primary "Complete" button per affected row plus a `role="status"` banner explaining the state in plain language. WCAG 2.1 AA: minimum 44×44 touch target, ARIA labels/titles, never colour-only signalling.
+- **`TimeTrackingService::completePausedEntry()`** as the canonical programmatic recovery path. The controller is now a thin shell that parses input, delegates to the service, and maps domain exceptions (`BusinessRuleException` → 400/403, `MonthFinalizedException` → 409, `LockedException` → 423, `DoesNotExistException` → 404) — never a generic HTTP 500 for a known business state.
+- **`TimeEntryMapper::findAllPausedByUser()`** + post-migration repair step `RepairOrphanedPausedEntries` that idempotently closes any leftover `paused` row on every `occ upgrade`: rows with an `end_time` are flipped to `completed`, rows without one are closed at `updated_at` (or `start_time` as a fallback).
+
+### Changed
+
+- **`TimeTrackingController::buildSafeErrorResponse()`** now catches `OCP\Lock\LockedException` explicitly and returns HTTP 423 with a translatable "Another change to your time tracking is in progress" message, eliminating the opaque HTTP 500 reported on parallel clock-out / break-start.
+- **Paused / break / rejected status badges** in the time-entries list now use semantic `warning` / `error` styling with descriptive `title` attributes so the state is conveyed via icon, colour, *and* text (WCAG 1.4.1).
+
+### Tests
+
+- New: 5 cases in `TimeTrackingServiceTest` covering the recovery path — default end time from `updated_at`, explicit end-time override with `end ≥ start` enforcement, foreign-user rejection, non-paused-state rejection, and invalid-ID guard.
+- All 554 unit tests pass (was 549).
+
 - **Layered vacation entitlement — degraded-state trace flags & impact preview** (issue: hr/vacation-entitlement-hierarchy follow-up). The resolution trace now carries explicit `degraded_org_default_collision` (REQ-ENT-10), `partial_history` (REQ-ENT-13 / EC-11), `clamped` + `raw_*` values (EC-08), `rule_set_status_warning` (EC-05), and `degraded='model_lookup_failed'` (EC-04) markers so auditors can see misconfigurations and best-effort historical resolutions instead of silent fallback. The admin simulator surfaces these flags as labelled chips alongside the result; the employee explainer surfaces a redacted subset (`degraded`, `clamped`, `partial_history`) without leaking any internal IDs (REQ-SEC-05).
 - **Impact preview endpoint** `GET /api/admin/vacation-layers/impact?scope={org,model,team}&targetId={int}` (REQ-UX-03). The vacation-layer dialog now shows "Up to N employees may be re-resolved by this change" inline before the admin clicks Save, with WCAG-compliant colour states that are never colour-only (icon + status text + ARIA live region).
 

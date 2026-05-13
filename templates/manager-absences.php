@@ -72,6 +72,58 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 				</p>
 			</section>
 
+			<section class="section manager-time-entries-page__filters manager-absence-record" aria-labelledby="manager-absence-record-title">
+				<h2 id="manager-absence-record-title" class="manager-absence-record__title"><?php p($l->t('Record approved absence for an employee')); ?></h2>
+				<p class="manager-absence-record__desc"><?php p($l->t('Saves immediately as approved. For past or future dates; substitute rules do not apply. Finalized months stay blocked until an administrator reopens them.')); ?></p>
+				<div id="manager-absence-record-historical-hint"
+				     class="absence-historical-hint manager-absence-record__historical-hint"
+				     role="status"
+				     aria-live="polite"
+				     hidden>
+					<span class="absence-historical-hint__icon" aria-hidden="true">⏱</span>
+					<div class="absence-historical-hint__body">
+						<strong class="absence-historical-hint__title"><?php p($l->t('Historical entry – the dates you selected are in the past')); ?></strong>
+						<p class="absence-historical-hint__text"><?php p($l->t('This will be saved immediately as approved and shown with the "Past record" badge in calendars, timelines and reports. Audit trail captures who recorded it.')); ?></p>
+					</div>
+				</div>
+				<form id="manager-absence-record-form" class="form-grid form-grid--3" novalidate>
+					<div class="form-group">
+						<label for="manager-absence-record-employee"><?php p($l->t('Employee (required)')); ?></label>
+						<select id="manager-absence-record-employee" name="record_employee_id" required>
+							<option value=""><?php p($l->t('Select an employee')); ?></option>
+						</select>
+					</div>
+					<div class="form-group">
+						<label for="manager-absence-record-type"><?php p($l->t('Type')); ?></label>
+						<select id="manager-absence-record-type" name="record_type" required>
+							<option value="vacation"><?php p($l->t('Vacation')); ?></option>
+							<option value="sick_leave"><?php p($l->t('Sick leave')); ?></option>
+							<option value="personal_leave"><?php p($l->t('Personal leave')); ?></option>
+							<option value="parental_leave"><?php p($l->t('Parental leave')); ?></option>
+							<option value="special_leave"><?php p($l->t('Special leave')); ?></option>
+							<option value="unpaid_leave"><?php p($l->t('Unpaid leave')); ?></option>
+							<option value="home_office"><?php p($l->t('Home office')); ?></option>
+							<option value="business_trip"><?php p($l->t('Business trip')); ?></option>
+						</select>
+					</div>
+					<div class="form-group">
+						<label for="manager-absence-record-start"><?php p($l->t('Start date')); ?></label>
+						<input id="manager-absence-record-start" name="record_start_date" type="text" class="datepicker-input" placeholder="<?php p($l->t('dd.mm.yyyy')); ?>" pattern="\d{2}\.\d{2}\.\d{4}" maxlength="10" readonly required />
+					</div>
+					<div class="form-group">
+						<label for="manager-absence-record-end"><?php p($l->t('End date')); ?></label>
+						<input id="manager-absence-record-end" name="record_end_date" type="text" class="datepicker-input" placeholder="<?php p($l->t('dd.mm.yyyy')); ?>" pattern="\d{2}\.\d{2}\.\d{4}" maxlength="10" readonly required />
+					</div>
+					<div class="form-group" style="grid-column: 1 / -1;">
+						<label for="manager-absence-record-reason"><?php p($l->t('Reason')); ?></label>
+						<textarea id="manager-absence-record-reason" name="record_reason" class="form-textarea" rows="3" maxlength="8000" placeholder="<?php p($l->t('Optional reason or notes for your absence request')); ?>"></textarea>
+					</div>
+					<div class="form-group manager-time-entries-page__filter-actions" style="grid-column: 1 / -1;">
+						<button type="submit" class="btn btn--primary" id="manager-absence-record-submit"><?php p($l->t('Save as approved')); ?></button>
+					</div>
+				</form>
+			</section>
+
 			<section class="section manager-time-entries-page__results" aria-labelledby="employee-absences-results-title">
 				<div class="section-header manager-time-entries-page__results-header">
 					<h2 id="employee-absences-results-title"><?php p($l->t('Absences')); ?></h2>
@@ -124,6 +176,10 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 		"{count} entries": <?php echo json_encode($l->t('{count} entries'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
 		"No reason": <?php echo json_encode($l->t('No reason'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
 		"Choose a date range to load absences.": <?php echo json_encode($l->t('Choose a date range to load absences.'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
-		"All in my scope": <?php echo json_encode($l->t('All in my scope'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>
+		"Past record": <?php echo json_encode($l->t('Past record'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
+		"All in my scope": <?php echo json_encode($l->t('All in my scope'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
+		"Select an employee": <?php echo json_encode($l->t('Select an employee'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
+		"Absence recorded and approved.": <?php echo json_encode($l->t('Absence recorded and approved.'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
+		"Could not save absence.": <?php echo json_encode($l->t('Could not save absence.'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>
 	});
 </script>

@@ -48,6 +48,11 @@ class CSPService
         $policy->addAllowedMediaDomain("'self'");
         $policy->addAllowedConnectDomain("'self'");
 
+        // Matomo analytics (remote matomo.js / matomo.php)
+        $policy->addAllowedScriptDomain('https://matomo.software-by-design.de');
+        $policy->addAllowedConnectDomain('https://matomo.software-by-design.de');
+        $policy->addAllowedImageDomain('https://matomo.software-by-design.de');
+
         // Allow data/blob where commonly needed
         $policy->addAllowedImageDomain('data:');
         $policy->addAllowedImageDomain('blob:');

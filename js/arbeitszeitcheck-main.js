@@ -43,6 +43,19 @@
         return year + '-' + month + '-' + day;
     }
 
+    /** Parse YYYY-MM-DD as local civil date (avoids UTC parsing pitfalls). */
+    function parseYmdToLocalDate(ymd) {
+        if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+            return null;
+        }
+        const p = ymd.split('-').map(function (x) { return parseInt(x, 10); });
+        const d = new Date(p[0], p[1] - 1, p[2]);
+        if (d.getFullYear() !== p[0] || d.getMonth() !== p[1] - 1 || d.getDate() !== p[2]) {
+            return null;
+        }
+        return d;
+    }
+
     // Main application object
     const ArbeitszeitCheck = {
         config: window.ArbeitszeitCheck || {},
@@ -495,14 +508,16 @@
                 });
             });
 
-            // Handle edit buttons in table rows (works on all pages including dashboard)
-            const editButtons = document.querySelectorAll('table tbody button[data-entry-id]:not(.btn-delete)');
+            // Handle edit buttons in table rows (works on all pages including dashboard).
+            // The selector must exclude `.btn-delete` AND `.btn-complete-entry` so we don't
+            // accidentally redirect to the edit form when the user clicks "Complete".
+            const editButtons = document.querySelectorAll('table tbody button[data-entry-id]:not(.btn-delete):not(.btn-complete-entry)');
             editButtons.forEach(button => {
                 // Check if button already has a click handler by checking for a data attribute
                 if (button.dataset.editHandlerAttached === 'true') {
                     return; // Skip if already attached
                 }
-                
+
                 button.addEventListener('click', function(e) {
                     e.preventDefault();
                     e.stopPropagation();
@@ -513,9 +528,79 @@
                         window.location.href = editUrl;
                     }
                 });
-                
+
                 // Mark as attached to prevent duplicates
                 button.dataset.editHandlerAttached = 'true';
+            });
+
+            // Handle "Complete" buttons for paused entries (table rows AND dashboard card).
+            // One-click finalisation of an unfinished session: POSTs to /api/time-entries/{id}/complete
+            // and reloads on success so the dashboard/list reflects the new state.
+            this.attachCompletePausedHandlers();
+        },
+
+        /**
+         * Attach a click handler to every `.btn-complete-entry` button currently in the DOM.
+         *
+         * Idempotent: each button is marked with `data-completeHandlerAttached` so a
+         * re-call (e.g. after dynamic DOM updates) never registers the listener twice.
+         * The endpoint, confirmation copy and reload behaviour are kept centralised
+         * so the dashboard and time-entries list cannot drift out of sync.
+         */
+        attachCompletePausedHandlers: function() {
+            const buttons = document.querySelectorAll('.btn-complete-entry[data-entry-id]');
+            buttons.forEach(button => {
+                if (button.dataset.completeHandlerAttached === 'true') {
+                    return;
+                }
+                button.dataset.completeHandlerAttached = 'true';
+
+                button.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const entryId = button.dataset.entryId;
+                    if (!entryId) return;
+
+                    const confirmMsg = (this.config.l10n && this.config.l10n.confirmCompletePaused)
+                        || mainT('Complete this paused session? The end time will be set to when it was paused, and any required breaks will be added automatically. This finalises the entry; you can still edit it afterwards.');
+                    const confirmTitle = (this.config.l10n && this.config.l10n.confirmCompletePausedTitle)
+                        || mainT('Complete paused session');
+                    const dialogOpts = (typeof OC !== 'undefined' && OC.dialogs)
+                        ? { type: OC.dialogs.YES_NO_BUTTONS, modal: true }
+                        : {};
+
+                    this.confirmDestructiveMain(confirmMsg, confirmTitle, dialogOpts).then((confirmed) => {
+                        if (!confirmed) {
+                            return;
+                        }
+
+                        // Build URL via OC.generateUrl so it works on /index.php deployments.
+                        const completeUrl = (typeof OC !== 'undefined' && OC.generateUrl)
+                            ? OC.generateUrl('/apps/arbeitszeitcheck/api/time-entries/' + encodeURIComponent(entryId) + '/complete')
+                            : '/apps/arbeitszeitcheck/api/time-entries/' + encodeURIComponent(entryId) + '/complete';
+
+                        button.disabled = true;
+                        button.setAttribute('aria-busy', 'true');
+
+                        this.callApi(completeUrl, 'POST', null, false)
+                            .then((result) => {
+                                const successMsg = (result && result.message)
+                                    || (this.config.l10n && this.config.l10n.completedPaused)
+                                    || mainT('Paused session was completed and recorded successfully.');
+                                this.showSuccess(successMsg);
+                                // Small delay so the toast is visible before the reload.
+                                setTimeout(() => window.location.reload(), 400);
+                            })
+                            .catch((error) => {
+                                button.disabled = false;
+                                button.removeAttribute('aria-busy');
+                                const msg = (error && error.message)
+                                    || (this.config.l10n && this.config.l10n.error)
+                                    || mainT('Could not complete the paused session. Please try again.');
+                                this.showError(msg);
+                            });
+                    });
+                });
             });
         },
 
@@ -597,9 +682,13 @@
                 });
             }
 
-            // Edit buttons in table rows
-            const editButtons = document.querySelectorAll('table tbody button[data-entry-id]:not(.btn-delete)');
+            // Edit buttons in table rows (skip delete + paused-completion buttons).
+            const editButtons = document.querySelectorAll('table tbody button[data-entry-id]:not(.btn-delete):not(.btn-complete-entry)');
             editButtons.forEach(button => {
+                if (button.dataset.editHandlerAttached === 'true') {
+                    return;
+                }
+                button.dataset.editHandlerAttached = 'true';
                 button.addEventListener('click', (e) => {
                     e.preventDefault();
                     const entryId = button.dataset.entryId;
@@ -611,6 +700,11 @@
                 });
             });
 
+            // Complete buttons (paused entries) — re-run so buttons rendered inside
+            // the time-entries table also get a handler if initEventListeners() ran
+            // before the table existed (e.g. dynamic re-render).
+            this.attachCompletePausedHandlers();
+
             // Delete buttons in table rows
             const deleteButtons = document.querySelectorAll('table tbody .btn-delete[data-entry-id]');
             deleteButtons.forEach(button => {
@@ -618,12 +712,20 @@
                     e.preventDefault();
                     const entryId = button.dataset.entryId;
                     if (!entryId) return;
-                    
+
                     const confirmMsg = this.config.l10n?.confirmDeleteTimeEntry ||
                                      this.config.l10n?.confirmDelete ||
                                      mainT('Are you sure you want to delete this time entry?');
-                    
-                    if (confirm(confirmMsg)) {
+                    const confirmTitle = this.config.l10n?.confirmDeleteTimeEntryTitle ||
+                                     mainT('Delete time entry');
+                    const dialogOpts = (typeof OC !== 'undefined' && OC.dialogs)
+                        ? { type: OC.dialogs.YES_NO_BUTTONS, modal: true }
+                        : {};
+
+                    this.confirmDestructiveMain(confirmMsg, confirmTitle, dialogOpts).then((confirmed) => {
+                        if (!confirmed) {
+                            return;
+                        }
                         // Build delete URL using the API URL pattern or fallback
                         let deleteUrl = this.config.apiUrl?.delete || '';
                         if (deleteUrl && deleteUrl.includes('__ID__')) {
@@ -634,24 +736,28 @@
                             // If API URL doesn't have __ID__ placeholder, append ID
                             deleteUrl = deleteUrl.replace(/\/$/, '') + '/' + entryId;
                         }
-                        
-                        this.callApi(deleteUrl, 'DELETE')
+
+                        button.disabled = true;
+                        button.setAttribute('aria-busy', 'true');
+                        this.callApi(deleteUrl, 'DELETE', null, false)
                             .then(() => {
-                                // Remove the row from the table
                                 const row = button.closest('tr');
                                 if (row) {
                                     row.remove();
                                 }
-                                
-                                // Show success message
-                                const successMsg = this.config.l10n?.deleted || 
+                                const successMsg = this.config.l10n?.deleted ||
                                     mainT('Time entry deleted successfully');
                                 this.showSuccess(successMsg);
                             })
-                            .catch(error => {
+                            .catch((error) => {
                                 console.error('Error deleting time entry:', error);
+                                this.showError(error && error.message ? error.message : (this.config.l10n?.error || mainT('An error occurred')));
+                            })
+                            .finally(() => {
+                                button.disabled = false;
+                                button.removeAttribute('aria-busy');
                             });
-                    }
+                    });
                 });
             });
 
@@ -756,30 +862,8 @@
                 }
             }
 
-            // Create/Edit form: update min date for start/end based on absence type
-            const absenceTypeSel = document.getElementById('absence-type');
-            const absenceStartInput = document.getElementById('absence-start-date');
-            const absenceEndInput = document.getElementById('absence-end-date');
-            if (absenceTypeSel && absenceStartInput && absenceEndInput) {
-                const applyMinDateForType = function() {
-                    const type = absenceTypeSel.value;
-                    const isSickLeave = type === 'sick_leave';
-                    const minVal = isSickLeave && absenceStartInput.getAttribute('data-datepicker-min-sick')
-                        ? absenceStartInput.getAttribute('data-datepicker-min-sick')
-                        : (function() {
-                            const d = new Date();
-                            const dd = String(d.getDate()).padStart(2, '0');
-                            const mm = String(d.getMonth() + 1).padStart(2, '0');
-                            return dd + '.' + mm + '.' + d.getFullYear();
-                        })();
-                    absenceStartInput.setAttribute('data-datepicker-min', minVal);
-                    absenceEndInput.setAttribute('data-datepicker-min', absenceEndInput.getAttribute('data-datepicker-min-sick') && isSickLeave
-                        ? absenceEndInput.getAttribute('data-datepicker-min-sick')
-                        : minVal);
-                };
-                absenceTypeSel.addEventListener('change', applyMinDateForType);
-                applyMinDateForType();
-            }
+            // Past absences are first-class records. The server still enforces
+            // overlaps, entitlement, type rules and finalized-month protection.
 
             // Filter button - toggle filter section (only when both exist)
             const filterBtn = document.getElementById('btn-filter');
@@ -827,35 +911,46 @@
                     const confirmMsg = this.config.l10n?.confirmCancel ||
                                      mainT('Are you sure you want to cancel this absence request?');
                     
-                    if (confirm(confirmMsg)) {
-                        // Build delete URL using the API URL pattern or fallback
+                    const confirmTitle = this.config.l10n?.confirmCancelAbsenceTitle ||
+                                     mainT('Cancel absence request');
+                    const dialogOpts = (typeof OC !== 'undefined' && OC.dialogs)
+                        ? { type: OC.dialogs.YES_NO_BUTTONS, modal: true }
+                        : {};
+
+                    this.confirmDestructiveMain(confirmMsg, confirmTitle, dialogOpts).then((confirmed) => {
+                        if (!confirmed) {
+                            return;
+                        }
                         let deleteUrl = this.config.apiUrl?.delete || '';
                         if (deleteUrl && deleteUrl.includes('__ID__')) {
                             deleteUrl = deleteUrl.replace('__ID__', absenceId);
                         } else if (!deleteUrl) {
                             deleteUrl = OC.generateUrl('/apps/arbeitszeitcheck/api/absences/' + absenceId);
                         } else {
-                            // If API URL doesn't have __ID__ placeholder, append ID
                             deleteUrl = deleteUrl.replace(/\/$/, '') + '/' + absenceId;
                         }
-                        
-                        this.callApi(deleteUrl, 'DELETE')
+
+                        button.disabled = true;
+                        button.setAttribute('aria-busy', 'true');
+                        this.callApi(deleteUrl, 'DELETE', null, false)
                             .then(() => {
-                                // Remove the row from the table
                                 const row = button.closest('tr');
                                 if (row) {
                                     row.remove();
                                 }
-                                
-                                // Show success message
-                                const successMsg = this.config.l10n?.canceled || 
+                                const successMsg = this.config.l10n?.canceled ||
                                     mainT('Absence request cancelled successfully');
                                 this.showSuccess(successMsg);
                             })
-                            .catch(error => {
+                            .catch((error) => {
                                 console.error('Error canceling absence request:', error);
+                                this.showError(error && error.message ? error.message : (this.config.l10n?.error || mainT('An error occurred')));
+                            })
+                            .finally(() => {
+                                button.disabled = false;
+                                button.removeAttribute('aria-busy');
                             });
-                    }
+                    });
                 });
             });
 
@@ -1087,6 +1182,88 @@
         },
 
         /**
+         * Resolve a URL for fetch(): paths from IURLGenerator::linkToRoute already include the web root
+         * (and often /index.php/); passing those through OC.generateUrl again breaks routing (404),
+         * so short-circuit when the path is already absolute under this instance.
+         *
+         * @param {string} endpoint
+         * @returns {string}
+         */
+        resolveRequestUrl: function(endpoint) {
+            if (!endpoint || typeof endpoint !== 'string') {
+                return endpoint;
+            }
+            if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) {
+                return endpoint;
+            }
+            if (endpoint.startsWith('/index.php/')) {
+                return endpoint;
+            }
+            const root = (typeof OC !== 'undefined' && OC.getRootPath) ? String(OC.getRootPath() || '') : '';
+            if (root !== '' && endpoint.startsWith(root + '/')) {
+                return endpoint;
+            }
+            if (typeof OC !== 'undefined' && OC.generateUrl) {
+                return OC.generateUrl(endpoint.startsWith('/') ? endpoint : ('/' + endpoint));
+            }
+            return endpoint.startsWith('/') ? endpoint : ('/' + endpoint);
+        },
+
+        /**
+         * Destructive confirmation: Nextcloud dialog when available (WCAG-friendly), else window.confirm.
+         *
+         * @param {string} message
+         * @param {string} title
+         * @param {object} [options]
+         * @returns {Promise<boolean>}
+         */
+        confirmDestructiveMain: function(message, title, options) {
+            const opts = options || {};
+            return new Promise((resolve) => {
+                let settled = false;
+                const once = function(v) {
+                    if (settled) {
+                        return;
+                    }
+                    settled = true;
+                    resolve(!!v);
+                };
+                if (typeof OC !== 'undefined' && OC.dialogs && typeof OC.dialogs.confirmDestructive === 'function') {
+                    // The button callback is the only authoritative source of the user's
+                    // choice. In Nextcloud 31+ OC.dialogs.confirmDestructive() returns a
+                    // Promise whose resolution value is ALWAYS `undefined` (its internal
+                    // `.then(() => { callback.clicked || callback(false) })` has no
+                    // return), so relying on the Promise value made every confirmation
+                    // resolve as "cancelled". On top of that, the YES_NO_BUTTONS legacy
+                    // path sets `callback._clicked` while the post-show check tests
+                    // `callback.clicked`, so the callback fires twice — first with the
+                    // real choice, then again with `false`. We therefore use the FIRST
+                    // callback invocation only (guarded by the outer `once`) and treat
+                    // the Promise solely as a "dialog closed" fallback.
+                    let ret;
+                    try {
+                        ret = OC.dialogs.confirmDestructive(
+                            message,
+                            title || '',
+                            opts,
+                            function(confirmed) {
+                                once(confirmed);
+                            }
+                        );
+                    } catch (e) {
+                        once(window.confirm(message));
+                        return;
+                    }
+                    if (ret && typeof ret.then === 'function') {
+                        ret.then(() => once(false)).catch(() => once(false));
+                    }
+                } else {
+                    once(window.confirm(message));
+                }
+            });
+        },
+
+        /**
          * Generic API call helper
          * @param {string} endpoint - API endpoint URL
          * @param {string} method - HTTP method (GET, POST, PUT, DELETE)
@@ -1094,16 +1271,7 @@
          * @param {boolean} reloadOnSuccess - Whether to reload page on success (default: true)
          */
         callApi: function(endpoint, method = 'POST', data = null, reloadOnSuccess = true) {
-            // Build full URL: use OC.generateUrl for app paths so Nextcloud base (index.php) is correct
-            let url;
-            if (endpoint.startsWith('http')) {
-                url = endpoint;
-            } else if (typeof OC !== 'undefined' && OC.generateUrl) {
-                // Use Nextcloud's URL generator for correct base path
-                url = OC.generateUrl(endpoint.startsWith('/') ? endpoint : ('/' + endpoint));
-            } else {
-                url = endpoint.startsWith('/') ? endpoint : ('/' + endpoint);
-            }
+            const url = this.resolveRequestUrl(endpoint);
 
             // Build request options (requesttoken required for CSRF)
             const requestToken = this.getRequestToken();
@@ -1130,20 +1298,28 @@
             return fetch(url, options)
                 .then(async response => {
                     // Check if response is JSON
-                    const contentType = response.headers.get('content-type');
+                    const contentType = (response.headers.get('content-type') || '').toLowerCase();
                     let result;
-                    
-                    if (contentType && contentType.includes('application/json')) {
+
+                    if (contentType.includes('application/json')) {
                         result = await response.json();
                     } else {
                         const text = await response.text();
                         try {
                             result = JSON.parse(text);
                         } catch (e) {
-                            result = { success: response.ok, error: text || 'Unknown error' };
+                            const trimmed = (text || '').trim();
+                            if (response.ok && trimmed.charAt(0) === '<') {
+                                result = {
+                                    success: false,
+                                    error: mainT('The server returned an unexpected page instead of data. Try reloading the page. If the problem persists, sign in again.'),
+                                };
+                            } else {
+                                result = { success: response.ok, error: text || 'Unknown error' };
+                            }
                         }
                     }
-                    
+
                     // Check if HTTP response indicates error
                     if (!response.ok) {
                         // HTTP error status (400, 500, etc.)
@@ -1155,7 +1331,7 @@
                         }
                         result.success = false;
                     }
-                    
+
                     // Attach response to result for error handling
                     result._response = response;
                     return result;
@@ -1163,7 +1339,12 @@
                 .then(result => {
                     this.setLoadingState(false);
 
-                    if (result.success !== false && result._response?.ok !== false) {
+                    const res = result._response;
+                    const okHttp = res && res.ok;
+                    const hasSuccessKey = result && typeof result === 'object' && Object.prototype.hasOwnProperty.call(result, 'success');
+                    const bodyOk = !hasSuccessKey || result.success === true;
+
+                    if (okHttp && bodyOk) {
                         // Success
                         if (reloadOnSuccess) {
                             // Small delay to show success feedback
@@ -2056,7 +2237,7 @@
             }
 
             const timeEntriesParams = { start_date: startDate, end_date: endDate, limit: '500' };
-            const absencesParams = { limit: '500' };
+            const absencesParams = { start_date: startDate, end_date: endDate, limit: '500' };
             const holidaysParams = { start: startDate, end: endDate };
 
             Promise.all([
@@ -2159,6 +2340,9 @@
                     if (firstAbsence && firstAbsence.role === 'substitute') {
                         classes.push('calendar-day--has-coverage');
                     }
+                    if (dayData.absences.some(absence => this.isPastAbsenceRecord(absence))) {
+                        classes.push('calendar-day--past-absence');
+                    }
                 }
                 if (dayData.isToday) classes.push('calendar-day--today');
                 if (dayData.isWeekend) classes.push('calendar-day--weekend');
@@ -2213,6 +2397,9 @@
                     }
 
                     const displayLabel = this.getAbsenceDisplayLabel(absence);
+                    if (this.isPastAbsenceRecord(absence)) {
+                        dayContent += `<span class="calendar-day-past-label">${escapeHtml(this.config.l10n?.pastRecord || 'Past record')}</span>`;
+                    }
                     dayContent += `<div class="calendar-day-absence" title="${escapeHtml(displayLabel)}">${absenceIndicator}</div>`;
                 }
                 
@@ -2430,6 +2617,18 @@
         },
 
         /**
+         * Past records ended before today. Keep this based on the absence end date,
+         * not the viewed day, so multi-day historical records are tagged consistently.
+         */
+        isPastAbsenceRecord: function(absence) {
+            const endDate = absence && (absence.end_date || absence.endDate || absence.start_date || absence.startDate);
+            if (!endDate) return false;
+            const today = formatLocalDateYmd(new Date());
+            const end = formatLocalDateYmd(new Date(String(endDate).slice(0, 10) + 'T00:00:00'));
+            return end < today;
+        },
+
+        /**
          * Build accessible label for a day cell (for aria-label)
          */
         getDayCellAriaLabel: function(dateKey, dayData) {
@@ -2444,6 +2643,9 @@
             if (dayData.hasAbsence && dayData.absences.length > 0) {
                 const displayLabel = this.getAbsenceDisplayLabel(dayData.absences[0]);
                 label += ', ' + displayLabel;
+                if (this.isPastAbsenceRecord(dayData.absences[0])) {
+                    label += ', ' + (this.config.l10n?.pastRecord || 'Past record');
+                }
             }
             label += '. ' + (this.config.l10n?.clickForDetails || 'Click for details');
             return label;
@@ -2559,7 +2761,7 @@
                 this.calendarData.lastActiveDayElement = document.activeElement;
             }
 
-            const date = new Date(dateKey);
+            const date = parseYmdToLocalDate(dateKey) || new Date();
             const dayData = this.getDayData(dateKey);
 
             const weekdays = this.config.l10n?.weekdays || ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -2570,6 +2772,20 @@
             label.textContent = `${weekdayName}, ${day}.${month}.${year}`;
 
             let html = '';
+
+            const createBase = (this.config.apiUrl && this.config.apiUrl.absenceCreate)
+                || (typeof OC !== 'undefined' && OC.generateUrl ? OC.generateUrl('/apps/arbeitszeitcheck/absences/create') : '/apps/arbeitszeitcheck/absences/create');
+            const createUrl = createBase + (createBase.indexOf('?') >= 0 ? '&' : '?')
+                + 'start=' + encodeURIComponent(dateKey) + '&end=' + encodeURIComponent(dateKey);
+            const reqAbsLabelPlain = this.config.l10n?.requestAbsenceThisDay || mainT('Request absence for this day');
+            const reqAbsHelpPlain = this.config.l10n?.requestAbsenceThisDayHelp || mainT('Request absence (opens form with this day prefilled). Past dates are allowed for migration.');
+            const reqAbsLabel = escapeHtml(reqAbsLabelPlain);
+            const reqAbsHelp = escapeHtml(reqAbsHelpPlain);
+            const reqAbsAria = escapeHtml(reqAbsLabelPlain);
+            html += `<div class="day-details-actions" role="region" aria-label="${reqAbsAria}">`;
+            html += `<p class="day-details-actions__help" id="day-details-absence-help">${reqAbsHelp}</p>`;
+            html += `<a class="btn btn--primary day-details-actions__link" href="${escapeHtml(createUrl)}">${reqAbsLabel}</a>`;
+            html += '</div>';
 
             // Holiday info
             const holidays = Array.isArray(this.calendarData.holidays) ? this.calendarData.holidays : [];
@@ -2631,7 +2847,10 @@
                     html += `<div class="day-details-section"><h4>${absencesLabel}</h4><ul>`;
                     dayData.absences.forEach(absence => {
                         const displayLabel = this.getAbsenceDisplayLabel(absence);
-                        html += `<li>${escapeHtml(displayLabel)}</li>`;
+                        const pastBadge = this.isPastAbsenceRecord(absence)
+                            ? ` <span class="calendar-past-record-badge">${escapeHtml(this.config.l10n?.pastRecord || 'Past record')}</span>`
+                            : '';
+                        html += `<li>${escapeHtml(displayLabel)}${pastBadge}</li>`;
                     });
                     html += '</ul></div>';
                 }

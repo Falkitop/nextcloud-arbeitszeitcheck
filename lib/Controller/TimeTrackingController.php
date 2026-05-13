@@ -21,6 +21,7 @@ use OCP\AppFramework\Http\JSONResponse;
 use OCP\IRequest;
 use OCP\IUserSession;
 use OCP\IL10N;
+use OCP\Lock\LockedException;
 
 /**
  * TimeTrackingController
@@ -64,9 +65,11 @@ class TimeTrackingController extends Controller
 	 * Business-rule violations (typed via BusinessRuleException) carry a
 	 * message that the service has already translated for the current
 	 * IL10N locale; we forward it verbatim with HTTP 400. Auth failures
-	 * map to HTTP 401. Anything else is treated as an internal error
-	 * and replaced with a generic, localized message so we never leak
-	 * raw exception text (or PII) to end users.
+	 * map to HTTP 401. Concurrent-mutation lock failures map to HTTP 423
+	 * (Locked) so the frontend can present an actionable retry hint instead
+	 * of a generic "internal server error". Anything else is treated as an
+	 * internal error and replaced with a generic, localized message so we
+	 * never leak raw exception text (or PII) to end users.
 	 */
 	private function buildSafeErrorResponse(\Throwable $e): JSONResponse
 	{
@@ -75,6 +78,13 @@ class TimeTrackingController extends Controller
 				'success' => false,
 				'error' => $e->getMessage(),
 			], Http::STATUS_BAD_REQUEST);
+		}
+
+		if ($e instanceof LockedException) {
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('Another time-tracking action is in progress on your account. Please wait a moment and try again.'),
+			], Http::STATUS_LOCKED);
 		}
 
 		if (strpos($e->getMessage(), 'User not authenticated') !== false) {

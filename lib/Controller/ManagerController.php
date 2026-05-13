@@ -1296,6 +1296,134 @@ class ManagerController extends Controller
 	}
 
 	/**
+	 * Create an absence for a team member and store it as already approved (migration / HR corrections).
+	 * JSON body: { "userId": "…", "type": "vacation", "startDate": "YYYY-MM-DD", "endDate": "YYYY-MM-DD", "reason": "…" (optional) }
+	 */
+	#[NoAdminRequired]
+	public function createEmployeeAbsence(): JSONResponse
+	{
+		try {
+			$actorUserId = $this->getUserId();
+			$accessResponse = $this->ensureManagerReadAccess($actorUserId, 'create_employee_absence');
+			if ($accessResponse !== null) {
+				return $accessResponse;
+			}
+
+			$raw = $this->request->getContent();
+			$payload = is_string($raw) && $raw !== '' ? json_decode($raw, true) : null;
+			if (!is_array($payload)) {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('Invalid request body.'),
+				], Http::STATUS_BAD_REQUEST);
+			}
+
+			$targetUserId = isset($payload['userId']) ? trim((string)$payload['userId']) : '';
+			$type = isset($payload['type']) ? trim((string)$payload['type']) : '';
+			$startDate = isset($payload['startDate']) ? trim((string)$payload['startDate']) : '';
+			$endDate = isset($payload['endDate']) ? trim((string)$payload['endDate']) : '';
+			$reason = isset($payload['reason']) ? trim((string)$payload['reason']) : '';
+
+			if ($targetUserId === '' || $type === '' || $startDate === '' || $endDate === '') {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('userId, type, startDate, and endDate are required.'),
+				], Http::STATUS_BAD_REQUEST);
+			}
+
+			if (!$this->permissionService->canManageEmployee($actorUserId, $targetUserId)) {
+				$this->permissionService->logPermissionDenied($actorUserId, 'create_employee_absence', 'user', $targetUserId);
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('Access denied. You can only record absences for employees you manage.'),
+				], Http::STATUS_FORBIDDEN);
+			}
+
+			$targetUser = $this->userManager->get($targetUserId);
+			if ($targetUser === null || !$targetUser->isEnabled()) {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('The selected user does not exist or is disabled.'),
+				], Http::STATUS_BAD_REQUEST);
+			}
+
+			if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $startDate) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $endDate)) {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('Dates must be in YYYY-MM-DD format.'),
+				], Http::STATUS_BAD_REQUEST);
+			}
+
+			if ((function_exists('mb_strlen') ? mb_strlen($reason) : strlen($reason)) > 8000) {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('Reason is too long.'),
+				], Http::STATUS_BAD_REQUEST);
+			}
+
+			try {
+				$ds = new \DateTime($startDate);
+				$de = new \DateTime($endDate);
+				$de->setTime(23, 59, 59);
+				$this->monthClosureService->assertDateRangeMutable($targetUserId, $ds, $de);
+			} catch (MonthFinalizedException $e) {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('This calendar month is finalized. Contact an administrator if a correction must be made.'),
+				], Http::STATUS_CONFLICT);
+			} catch (\Throwable $e) {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('Invalid date range.'),
+				], Http::STATUS_BAD_REQUEST);
+			}
+
+			$data = [
+				'type' => $type,
+				'start_date' => $startDate,
+				'end_date' => $endDate,
+				'reason' => $reason !== '' ? $reason : null,
+			];
+
+			try {
+				$absence = $this->absenceService->createApprovedAbsenceForEmployeeByManager($actorUserId, $targetUserId, $data);
+			} catch (\Exception $e) {
+				\OCP\Log\logger('arbeitszeitcheck')->info(
+					'ManagerController::createEmployeeAbsence validation or business rule: ' . $e->getMessage(),
+					['exception' => $e]
+				);
+				return new JSONResponse([
+					'success' => false,
+					'error' => $e->getMessage(),
+				], Http::STATUS_BAD_REQUEST);
+			} catch (\Throwable $e) {
+				\OCP\Log\logger('arbeitszeitcheck')->error(
+					'ManagerController::createEmployeeAbsence unexpected failure: ' . $e->getMessage(),
+					['exception' => $e]
+				);
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('An internal error occurred. Please contact your administrator.'),
+				], Http::STATUS_INTERNAL_SERVER_ERROR);
+			}
+
+			return new JSONResponse([
+				'success' => true,
+				'absence' => $absence->getSummary(),
+			], Http::STATUS_CREATED);
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error(
+				'Error in ManagerController::createEmployeeAbsence',
+				['exception' => $e]
+			);
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('An internal error occurred. Please contact your administrator.'),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	/**
 	 * Get pending approvals
 	 *
 	 *

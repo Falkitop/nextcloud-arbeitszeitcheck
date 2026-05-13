@@ -439,18 +439,18 @@ class AbsenceController extends Controller
 	 * @return JSONResponse
 	 */
 	#[NoAdminRequired]
-	public function index_api(?string $status = null, ?string $type = null, ?int $limit = Constants::DEFAULT_LIST_LIMIT, ?int $offset = 0): JSONResponse
+	public function index_api(?string $status = null, ?string $type = null, ?int $limit = Constants::DEFAULT_LIST_LIMIT, ?int $offset = 0, ?string $start_date = null, ?string $end_date = null): JSONResponse
 	{
-		return $this->index($status, $type, $limit, $offset);
+		return $this->index($status, $type, $limit, $offset, $start_date, $end_date);
 	}
 
 	/**
 	 * Legacy API (CamelCase alias): Nextcloud routes may call `indexApi()` when the route is defined as `index_api`.
 	 */
 	#[NoAdminRequired]
-	public function indexApi(?string $status = null, ?string $type = null, ?int $limit = Constants::DEFAULT_LIST_LIMIT, ?int $offset = 0): JSONResponse
+	public function indexApi(?string $status = null, ?string $type = null, ?int $limit = Constants::DEFAULT_LIST_LIMIT, ?int $offset = 0, ?string $start_date = null, ?string $end_date = null): JSONResponse
 	{
-		return $this->index_api($status, $type, $limit, $offset);
+		return $this->index_api($status, $type, $limit, $offset, $start_date, $end_date);
 	}
 
 	/**
@@ -464,7 +464,7 @@ class AbsenceController extends Controller
 	 * @return JSONResponse
 	 */
 	#[NoAdminRequired]
-	public function index(?string $status = null, ?string $type = null, ?int $limit = Constants::DEFAULT_LIST_LIMIT, ?int $offset = 0): JSONResponse
+	public function index(?string $status = null, ?string $type = null, ?int $limit = Constants::DEFAULT_LIST_LIMIT, ?int $offset = 0, ?string $start_date = null, ?string $end_date = null): JSONResponse
 	{
 		try {
 			$userId = $this->getUserId();
@@ -478,13 +478,42 @@ class AbsenceController extends Controller
 			if ($type) {
 				$filters['type'] = $type;
 			}
+			if (($start_date !== null && $start_date !== '') || ($end_date !== null && $end_date !== '')) {
+				if ($start_date === null || $start_date === '' || $end_date === null || $end_date === '') {
+					return new JSONResponse([
+						'success' => false,
+						'error' => $this->l10n->t('Start date and end date are required')
+					], Http::STATUS_BAD_REQUEST);
+				}
+				try {
+					$rangeStart = new \DateTime($start_date);
+					$rangeEnd = new \DateTime($end_date);
+					$rangeStart->setTime(0, 0, 0);
+					$rangeEnd->setTime(23, 59, 59);
+				} catch (\Throwable $e) {
+					return new JSONResponse([
+						'success' => false,
+						'error' => $this->l10n->t('Invalid date format')
+					], Http::STATUS_BAD_REQUEST);
+				}
+				if ($rangeStart > $rangeEnd) {
+					return new JSONResponse([
+						'success' => false,
+						'error' => $this->l10n->t('Start date cannot be after end date')
+					], Http::STATUS_BAD_REQUEST);
+				}
+				$filters['date_range'] = [
+					'start' => $rangeStart,
+					'end' => $rangeEnd,
+				];
+			}
 
 			$absences = $this->absenceService->getAbsencesByUser($userId, $filters, $limit, $offset);
 
 			// Also include absences where the current user is configured as substitute,
 			// so upcoming coverages appear in calendar and timeline views.
 			$coverageAbsences = $this->absenceMapper->findBySubstituteUser($userId);
-			$coverageAbsences = array_filter($coverageAbsences, function (Absence $a) use ($status, $type): bool {
+			$coverageAbsences = array_filter($coverageAbsences, function (Absence $a) use ($status, $type, $filters): bool {
 				// Only show absences that the user is actually covering or will cover:
 				// - pending: substitute has already approved, waiting for manager
 				// - approved: fully approved absence
@@ -493,6 +522,16 @@ class AbsenceController extends Controller
 				}
 				if ($type !== null && $type !== '' && $a->getType() !== $type) {
 					return false;
+				}
+				if (isset($filters['date_range'])) {
+					$start = $a->getStartDate();
+					$end = $a->getEndDate();
+					if ($start === null || $end === null) {
+						return false;
+					}
+					if (!($start <= $filters['date_range']['end'] && $end >= $filters['date_range']['start'])) {
+						return false;
+					}
 				}
 				if ($status !== null && $status !== '') {
 					if ($status === 'pending') {
@@ -567,6 +606,29 @@ class AbsenceController extends Controller
 		$hasColleagues = count($colleagues) > 0;
 		$requireSubstituteTypes = $this->getRequireSubstituteTypes();
 
+		$prefillStart = null;
+		$prefillEnd = null;
+		$qStart = trim((string)$this->request->getParam('start', ''));
+		$qEnd = trim((string)$this->request->getParam('end', ''));
+		$ymdOk = static function (string $s): bool {
+			return (bool)preg_match('/^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/', $s);
+		};
+		if ($qStart !== '' && $ymdOk($qStart)) {
+			$ds = \DateTimeImmutable::createFromFormat('!Y-m-d', $qStart);
+			if ($ds instanceof \DateTimeImmutable) {
+				$prefillStart = $ds->format('d.m.Y');
+			}
+		}
+		if ($qEnd !== '' && $ymdOk($qEnd)) {
+			$de = \DateTimeImmutable::createFromFormat('!Y-m-d', $qEnd);
+			if ($de instanceof \DateTimeImmutable) {
+				$prefillEnd = $de->format('d.m.Y');
+			}
+		}
+		if ($prefillStart !== null && $prefillEnd === null) {
+			$prefillEnd = $prefillStart;
+		}
+
 		\OCP\Log\logger('arbeitszeitcheck')->info(
 			'[Vertretung] create() userId=' . $userId . ' colleagues=' . count($colleagues) . ' hasColleagues=' . ($hasColleagues ? '1' : '0'),
 			['app' => 'arbeitszeitcheck']
@@ -589,6 +651,8 @@ class AbsenceController extends Controller
 				'l' => $this->l10n,
 				'employeeHasAssignableManager' => $this->teamResolver->hasAssignableManagerForEmployee($userId),
 				'useAppTeams' => $this->teamResolver->useAppTeams(),
+				'prefillStart' => $prefillStart,
+				'prefillEnd' => $prefillEnd,
 			]
 		);
 		return $this->configureCSP($response);

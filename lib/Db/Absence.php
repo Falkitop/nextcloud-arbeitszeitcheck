@@ -258,7 +258,13 @@ class Absence extends Entity
 	}
 
 	/**
-	 * Get a summary array for API responses
+	 * Get a summary array for API responses.
+	 *
+	 * The `isPast` and `isCurrent` flags are computed against the *server*
+	 * timezone (PHP default), so the frontend never has to re-derive "today"
+	 * in JS where clients on iPadOS / Chrome have been observed to drift up
+	 * to one calendar day due to DST and TZ offset differences. Consumers
+	 * SHOULD prefer these flags over recomputing on the client side.
 	 *
 	 * @return array
 	 */
@@ -268,7 +274,26 @@ class Absence extends Entity
 		$endDate = $this->getEndDate();
 		$createdAt = $this->getCreatedAt();
 		$updatedAt = $this->getUpdatedAt();
-		
+
+		$today = new \DateTime('today');
+		$isPast = $endDate !== null && $endDate < $today;
+		$isCurrent = $startDate !== null && $endDate !== null
+			&& $startDate <= $today && $endDate >= $today;
+		$isFuture = $startDate !== null && $startDate > $today;
+
+		/* `isManagerRecorded` is a structural hint for clients: an approval
+		 * persisted by a human approver (not "system") combined with the
+		 * presence of an approver indicates the absence was recorded by HR /
+		 * a manager rather than auto-approved by the workflow. This is the
+		 * same heuristic the audit-log entry `absence_manager_recorded`
+		 * encodes server-side. */
+		$approvedByUid = $this->getApprovedByUserId();
+		$isManagerRecorded = $this->getStatus() === self::STATUS_APPROVED
+			&& $approvedByUid !== null
+			&& $approvedByUid !== ''
+			&& $approvedByUid !== 'system'
+			&& $approvedByUid !== $this->getUserId();
+
 		return [
 			'id' => $this->getId(),
 			'userId' => $this->getUserId(),
@@ -285,7 +310,11 @@ class Absence extends Entity
 			'approvedAt' => $this->getApprovedAt()?->format('c'),
 			'createdAt' => $createdAt ? $createdAt->format('c') : null,
 			'updatedAt' => $updatedAt ? $updatedAt->format('c') : null,
-			'substituteUserId' => $this->getSubstituteUserId()
+			'substituteUserId' => $this->getSubstituteUserId(),
+			'isPast' => $isPast,
+			'isCurrent' => $isCurrent,
+			'isFuture' => $isFuture,
+			'isManagerRecorded' => $isManagerRecorded,
 		];
 	}
 }

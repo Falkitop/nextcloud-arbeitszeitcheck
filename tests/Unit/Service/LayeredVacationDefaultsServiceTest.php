@@ -178,6 +178,50 @@ class LayeredVacationDefaultsServiceTest extends TestCase
 		self::assertSame(99, $result->getId());
 	}
 
+	public function testUpsertOrgNormalizesModelBasedStripsIrrelevantFields(): void
+	{
+		$this->orgMapper->method('findOverlappingRanges')->willReturn([]);
+		$this->orgMapper->method('closeOverlappingOpenRows')->willReturn([]);
+		$captured = null;
+		$this->orgMapper->expects(self::once())->method('insert')
+			->willReturnCallback(function ($entity) use (&$captured) {
+				$captured = $entity;
+				$saved = new OrgVacationDefault();
+				$saved->setId(1);
+				$saved->setVacationMode($entity->getVacationMode());
+				return $saved;
+			});
+		$this->auditLogMapper->expects(self::once())->method('logAction');
+
+		$this->service->upsertOrgDefault([
+			'vacationMode' => Constants::VACATION_MODE_MODEL_BASED_SIMPLE,
+			'manualDays' => 30.0,
+			'tariffRuleSetId' => 5,
+			'effectiveFrom' => '2026-01-01',
+		], 'admin');
+
+		self::assertInstanceOf(OrgVacationDefault::class, $captured);
+		self::assertSame(Constants::VACATION_MODE_MODEL_BASED_SIMPLE, $captured->getVacationMode());
+		self::assertNull($captured->getManualDays());
+		self::assertNull($captured->getTariffRuleSetId());
+	}
+
+	public function testOrgVacationDefaultValidateCrossFieldConstraints(): void
+	{
+		$manualWithTariff = new OrgVacationDefault();
+		$manualWithTariff->setVacationMode(Constants::VACATION_MODE_MANUAL_FIXED);
+		$manualWithTariff->setManualDays(25.0);
+		$manualWithTariff->setTariffRuleSetId(3);
+		$manualWithTariff->setEffectiveFrom(new \DateTime('2026-01-01'));
+		self::assertArrayHasKey('tariffRuleSetId', $manualWithTariff->validate());
+
+		$modelWithDays = new OrgVacationDefault();
+		$modelWithDays->setVacationMode(Constants::VACATION_MODE_MODEL_BASED_SIMPLE);
+		$modelWithDays->setManualDays(20.0);
+		$modelWithDays->setEffectiveFrom(new \DateTime('2026-01-01'));
+		self::assertArrayHasKey('manualDays', $modelWithDays->validate());
+	}
+
 	public function testUpsertModelRejectsUnknownModel(): void
 	{
 		$this->workingTimeModelMapper->method('find')->willThrowException(new DoesNotExistException('nope'));
