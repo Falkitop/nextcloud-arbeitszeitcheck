@@ -1,13 +1,26 @@
 /**
  * Admin · Vacation entitlement layers (L0 / L1 / L2 / simulator).
  *
- * UX:
+ * UX & accessibility contract:
  *  - Pure vanilla JS, mirrors the patterns used by admin-teams.js so QA &
  *    accessibility behaviour stay consistent across the admin area.
  *  - All form fields are labelled (htmlFor) and feedback uses an aria-live
  *    region (`#vacation-layers-status`).
- *  - The dialog is a native <dialog> with backdrop; focus is trapped by the
- *    browser; ESC closes; SUBMIT triggers save.
+ *  - The dialog is a native `<dialog>` with backdrop; focus is trapped by the
+ *    browser; ESC closes; SUBMIT triggers save; the previously-focused
+ *    trigger receives focus on close (WCAG 2.4.3).
+ *  - The simulator user picker is a full WAI-ARIA 1.2 combobox: the input
+ *    advertises role=combobox, aria-controls and aria-expanded; arrow keys,
+ *    Enter, Home/End and Escape are all handled; the highlighted option is
+ *    surfaced through aria-activedescendant so screen readers always
+ *    announce the active candidate (WCAG 2.1.1, 4.1.2).
+ *  - Empty pre-requisite states (no models / teams / tariff rule sets) are
+ *    surfaced both as disabled "Add …" controls and as inline guidance so
+ *    admins never face a useless dropdown without explanation.
+ *  - Client-side validation is *defence in depth*: every constraint
+ *    enforced here is also enforced on the server (Entity::validate +
+ *    LayeredVacationDefaultsService). The early feedback keeps the
+ *    round-trip cost low for HR and avoids 400/409 surprises.
  *
  * @copyright Copyright (c) 2026 Alexander Mäule
  * @license AGPL-3.0-or-later
@@ -19,7 +32,6 @@
   const Utils = window.ArbeitszeitCheckUtils || {};
   const Messaging = window.ArbeitszeitCheckMessaging || {};
   const Components = window.ArbeitszeitCheckComponents || {};
-  const baseUrl = '/apps/arbeitszeitcheck';
 
   // -----------------------------------------------------------------------
   // Bootstrap (URLs etc.) shipped from the server-rendered template.
@@ -37,7 +49,8 @@
   const URLS = bootstrap.urls || {};
 
   // -----------------------------------------------------------------------
-  // i18n helper
+  // i18n helper — falls back to the provided English string when the
+  // translation runtime is not available (e.g. test environment).
   // -----------------------------------------------------------------------
   function t(key, fallback) {
     if (typeof window.t === 'function') {
@@ -48,10 +61,12 @@
 
   function announce(msg) {
     const node = document.getElementById('vacation-layers-status');
-    if (node) {
-      node.textContent = '';
-      window.setTimeout(() => { node.textContent = msg; }, 30);
-    }
+    if (!node) return;
+    // Toggling the text node forces SRs that coalesce identical updates to
+    // re-announce. We use a brief timeout because some screen readers
+    // (NVDA) require a small gap before they pick up an aria-live mutation.
+    node.textContent = '';
+    window.setTimeout(() => { node.textContent = msg; }, 30);
   }
 
   function notifyError(message) {
@@ -76,6 +91,8 @@
     model: { defaults: [], availableModels: [] },
     team: { policies: [], availableTeams: [] },
     ruleSets: [],
+    loaded: false,
+    overviewInFlight: false,
   };
 
   // -----------------------------------------------------------------------
@@ -175,13 +192,20 @@
     return model ? model.name : `#${id}`;
   }
 
+  function hasActiveTariffRuleSet() {
+    return Array.isArray(state.ruleSets) && state.ruleSets.some((r) => String(r.status || '').toLowerCase() === 'active');
+  }
+
   // -----------------------------------------------------------------------
   // Data load
   // -----------------------------------------------------------------------
   function loadOverview() {
+    if (state.overviewInFlight) return;
+    state.overviewInFlight = true;
     Utils.ajax(URLS.overview, {
       method: 'GET',
       onSuccess: (data) => {
+        state.overviewInFlight = false;
         if (!data || data.success !== true) {
           notifyError(t('Could not load vacation entitlement layers', 'Could not load vacation entitlement layers'));
           return;
@@ -190,9 +214,11 @@
         state.model = data.model || { defaults: [], availableModels: [] };
         state.team = data.team || { policies: [], availableTeams: [] };
         state.ruleSets = Array.isArray(data.ruleSets) ? data.ruleSets : [];
+        state.loaded = true;
         renderAll();
       },
       onError: (err) => {
+        state.overviewInFlight = false;
         notifyError((err && err.error) || t('Could not load vacation entitlement layers', 'Could not load vacation entitlement layers'));
       },
     });
@@ -206,6 +232,8 @@
     renderL1();
     renderL2();
     renderHypotheticalTeamPicker();
+    syncAddButtons();
+    renderPrereqHints();
   }
 
   /**
@@ -238,6 +266,82 @@
       .map((tm) => `<option value="${escape(tm.id)}">${escape(tm.name)}</option>`)
       .join('');
     select.innerHTML = opts;
+    if (teams.length === 0) {
+      select.disabled = true;
+    } else {
+      select.disabled = false;
+    }
+    const clearBtn = document.getElementById('sim-hypothetical-clear');
+    if (clearBtn) {
+      clearBtn.disabled = teams.length === 0;
+    }
+  }
+
+  /**
+   * Update the "Count" chips in every layer card header. Purely cosmetic
+   * — gives admins a glanceable overview without expanding the history.
+   */
+  function setLayerCount(elId, count, singularKey, pluralKey) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    const n = Number(count) || 0;
+    const label = n === 1
+      ? (t(singularKey, singularKey) || singularKey).replace('{n}', String(n))
+      : (t(pluralKey, pluralKey) || pluralKey).replace('{n}', String(n));
+    el.textContent = label;
+    el.setAttribute('data-count', String(n));
+  }
+
+  /** Enable/disable Add buttons based on prerequisites in `state`. */
+  function syncAddButtons() {
+    const addModelBtn = document.querySelector('[data-action="add-model"]');
+    if (addModelBtn) {
+      const noModels = !Array.isArray(state.model.availableModels) || state.model.availableModels.length === 0;
+      addModelBtn.disabled = noModels;
+      addModelBtn.setAttribute('aria-disabled', noModels ? 'true' : 'false');
+      if (noModels) {
+        addModelBtn.setAttribute('title', t('Create at least one working time model first.', 'Create at least one working time model first.'));
+      } else {
+        addModelBtn.removeAttribute('title');
+      }
+    }
+    const addTeamBtn = document.querySelector('[data-action="add-team"]');
+    if (addTeamBtn) {
+      const noTeams = !Array.isArray(state.team.availableTeams) || state.team.availableTeams.length === 0;
+      addTeamBtn.disabled = noTeams;
+      addTeamBtn.setAttribute('aria-disabled', noTeams ? 'true' : 'false');
+      if (noTeams) {
+        addTeamBtn.setAttribute('title', t('Create at least one team first.', 'Create at least one team first.'));
+      } else {
+        addTeamBtn.removeAttribute('title');
+      }
+    }
+  }
+
+  /** Render inline prerequisite hints under each Add button. */
+  function renderPrereqHints() {
+    const hintModel = document.getElementById('l1-prereq');
+    if (hintModel) {
+      const noModels = !Array.isArray(state.model.availableModels) || state.model.availableModels.length === 0;
+      if (noModels) {
+        hintModel.hidden = false;
+        hintModel.textContent = t('No working time models configured yet. Create one in “Working time models” to attach a default here.', 'No working time models configured yet. Create one in “Working time models” to attach a default here.');
+      } else {
+        hintModel.hidden = true;
+        hintModel.textContent = '';
+      }
+    }
+    const hintTeam = document.getElementById('l2-prereq');
+    if (hintTeam) {
+      const noTeams = !Array.isArray(state.team.availableTeams) || state.team.availableTeams.length === 0;
+      if (noTeams) {
+        hintTeam.hidden = false;
+        hintTeam.textContent = t('No teams configured yet. Create one in “Teams” to attach a policy here.', 'No teams configured yet. Create one in “Teams” to attach a policy here.');
+      } else {
+        hintTeam.hidden = true;
+        hintTeam.textContent = '';
+      }
+    }
   }
 
   function renderL0() {
@@ -260,6 +364,8 @@
         ]));
       }
     }
+    setLayerCount('l0-count', state.org.history.length,
+      '{n} entry', '{n} entries');
     const tbody = document.getElementById('l0-history-rows');
     if (!tbody) return;
     if (state.org.history.length === 0) {
@@ -281,6 +387,8 @@
   }
 
   function renderL1() {
+    setLayerCount('l1-count', state.model.defaults.length,
+      '{n} entry', '{n} entries');
     const tbody = document.getElementById('l1-rows');
     if (!tbody) return;
     if (state.model.defaults.length === 0) {
@@ -303,6 +411,8 @@
   }
 
   function renderL2() {
+    setLayerCount('l2-count', state.team.policies.length,
+      '{n} entry', '{n} entries');
     const tbody = document.getElementById('l2-rows');
     if (!tbody) return;
     if (state.team.policies.length === 0) {
@@ -344,7 +454,9 @@
   const dialogBody = document.getElementById('layer-dialog-body');
   const dialogFeedback = document.getElementById('layer-dialog-feedback');
   const dialogForm = document.getElementById('layer-dialog-form');
+  const dialogSaveBtn = document.getElementById('layer-dialog-save');
   let dialogContext = null; // { layer: 'org'|'model'|'team' }
+  let dialogSaveInFlight = false;
   // WCAG 2.4.3 — remember the trigger so we can return focus when the
   // dialog closes (otherwise focus drops to <body> and keyboard users have
   // to tab back from the very top).
@@ -353,20 +465,29 @@
   function openDialog(context) {
     dialogReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     dialogContext = context;
-    dialogTitle.textContent = context.title;
-    dialogIntro.textContent = context.intro || '';
-    dialogBody.innerHTML = context.body;
-    dialogFeedback.textContent = '';
+    if (dialogTitle) dialogTitle.textContent = context.title;
+    if (dialogIntro) dialogIntro.textContent = context.intro || '';
+    if (dialogBody) dialogBody.innerHTML = context.body;
+    if (dialogFeedback) dialogFeedback.textContent = '';
+    dialogSaveInFlight = false;
+    setSaveButtonBusy(false);
     resetImpactPreview();
     syncLayerDialogModeFields();
-    if (typeof dialog.showModal === 'function') {
+    if (dialog && typeof dialog.showModal === 'function') {
       try { dialog.showModal(); } catch (e) { dialog.setAttribute('open', 'open'); }
-    } else {
+    } else if (dialog) {
       dialog.setAttribute('open', 'open');
     }
-    const first = dialog.querySelector('input, select, textarea');
-    if (first) {
-      try { first.focus(); } catch (e) { /* noop */ }
+    // WAI-ARIA Authoring Practices 1.2: focus the first focusable form
+    // control on open. Falls back to the close button if the body is
+    // pathologically empty.
+    if (dialog) {
+      const first = dialog.querySelector('input:not([disabled]):not([hidden]), select:not([disabled]):not([hidden]), textarea:not([disabled])');
+      const fallback = document.getElementById('layer-dialog-cancel');
+      const focusTarget = first || fallback;
+      if (focusTarget) {
+        try { focusTarget.focus({ preventScroll: false }); } catch (e) { /* noop */ }
+      }
     }
     // Initial preview — for `org` no target is needed; for `model` / `team`
     // we wait for the user to pick a target before firing.
@@ -374,15 +495,30 @@
   }
 
   function closeDialog() {
-    if (typeof dialog.close === 'function') {
+    if (dialog && typeof dialog.close === 'function') {
       try { dialog.close(); } catch (e) { /* noop */ }
     }
-    dialog.removeAttribute('open');
+    if (dialog) dialog.removeAttribute('open');
     dialogContext = null;
-    if (dialogReturnFocus && typeof dialogReturnFocus.focus === 'function') {
-      try { dialogReturnFocus.focus(); } catch (e) { /* noop */ }
-    }
+    dialogSaveInFlight = false;
+    setSaveButtonBusy(false);
+    restoreReturnFocus();
+  }
+
+  function restoreReturnFocus() {
+    const target = dialogReturnFocus;
     dialogReturnFocus = null;
+    // Safety: the trigger may have been removed from the DOM during the
+    // save round-trip (e.g. an inline render call wiped & re-rendered the
+    // history table while the dialog was open). Fall back to the page H1
+    // so the keyboard user does not end up with focus on <body>.
+    if (target && document.body.contains(target) && typeof target.focus === 'function') {
+      try { target.focus(); return; } catch (e) { /* noop */ }
+    }
+    const fallback = document.getElementById('azc-vacation-layers-title');
+    if (fallback) {
+      try { fallback.setAttribute('tabindex', '-1'); fallback.focus({ preventScroll: false }); } catch (e) { /* noop */ }
+    }
   }
 
   // Native <dialog>'s ESC closes via "cancel" — wire focus return there too.
@@ -391,14 +527,14 @@
       // The browser will close the dialog automatically; we only need to
       // restore focus and clear our state.
       dialogContext = null;
-      if (dialogReturnFocus && typeof dialogReturnFocus.focus === 'function') {
-        try { dialogReturnFocus.focus(); } catch (e) { /* noop */ }
-      }
-      dialogReturnFocus = null;
+      dialogSaveInFlight = false;
+      setSaveButtonBusy(false);
+      restoreReturnFocus();
     });
   }
 
-  document.getElementById('layer-dialog-cancel').addEventListener('click', closeDialog);
+  const dialogCancelBtn = document.getElementById('layer-dialog-cancel');
+  if (dialogCancelBtn) dialogCancelBtn.addEventListener('click', closeDialog);
 
   // --------------------------------------------------------------------
   // Impact preview (REQ-UX-03): live "this change will affect ~N users"
@@ -420,10 +556,10 @@
     }
   }
 
-  function setImpactState(state, message) {
+  function setImpactState(stateName, message) {
     if (!impactBox || !impactText) return;
     impactBox.hidden = false;
-    impactBox.setAttribute('data-state', state);
+    impactBox.setAttribute('data-state', stateName);
     impactText.textContent = message;
   }
 
@@ -486,7 +622,7 @@
   // re-fire on every keystroke).
   document.addEventListener('change', (ev) => {
     if (!dialogContext) return;
-    if (!dialog.open && !dialog.hasAttribute('open')) return;
+    if (!dialog || (!dialog.open && !dialog.hasAttribute('open'))) return;
     const target = ev.target;
     if (!(target instanceof HTMLElement)) return;
     const id = target.id || '';
@@ -494,7 +630,20 @@
       syncLayerDialogModeFields();
     }
     if (id === 'dlg-model' || id === 'dlg-team') {
+      // Clear the inline aria-invalid as soon as the user picks a new
+      // option (WCAG 3.3.1) and re-run the impact preview to reflect the
+      // new target id.
+      target.removeAttribute('aria-invalid');
       schedulePreview();
+    }
+    if (id === 'dlg-ruleset') {
+      clearTariffRuleSetFieldError();
+    }
+    if (id === 'dlg-from' || id === 'dlg-to') {
+      // Clear the stale date-range error as soon as the user touches
+      // either field so the form does not stay flagged after the value
+      // becomes valid again (WCAG 3.3.1).
+      clearDateRangeFieldError();
     }
   });
 
@@ -505,11 +654,14 @@
   // the field no longer carries an error state.
   document.addEventListener('input', (ev) => {
     if (!dialogContext) return;
-    if (!dialog.open && !dialog.hasAttribute('open')) return;
+    if (!dialog || (!dialog.open && !dialog.hasAttribute('open'))) return;
     const target = ev.target;
     if (!(target instanceof HTMLElement)) return;
     if (target.id === 'dlg-days') {
       clearManualDaysFieldError();
+    }
+    if (target.id === 'dlg-from' || target.id === 'dlg-to') {
+      clearDateRangeFieldError();
     }
   });
 
@@ -559,6 +711,7 @@
       if (!showTariff) {
         selRuleset.value = '';
         selRuleset.removeAttribute('aria-invalid');
+        clearTariffRuleSetFieldError();
       }
     }
   }
@@ -567,7 +720,7 @@
     const tariffOptDisabled = !tariffAvailable;
     return `
       <div class="layer-form__row">
-        <label for="dlg-mode" class="form-label">${escape(t('Mode', 'Mode'))}</label>
+        <label for="dlg-mode" class="form-label">${escape(t('Mode', 'Mode'))} <span class="form-required" aria-label="${escape(t('required', 'required'))}">*</span></label>
         <select id="dlg-mode" name="vacationMode" class="form-select" required>
           <option value="manual_fixed">${escape(fmtMode('manual_fixed'))}</option>
           <option value="model_based_simple">${escape(fmtMode('model_based_simple'))}</option>
@@ -600,6 +753,7 @@
                inputmode="decimal"
                pattern="^[0-9]+([\\.,][0-9]{1,2})?$"
                autocomplete="off"
+               aria-required="true"
                aria-describedby="dlg-days-help dlg-days-error">
         <p id="dlg-days-help" class="form-help">${escape(t('Annual vacation days (0–366). Up to two decimal places are allowed, e.g. 25, 25.5, 27.75, or 31.2 — comma or dot both work.', 'Annual vacation days (0–366). Up to two decimal places are allowed, e.g. 25, 25.5, 27.75, or 31.2 — comma or dot both work.'))}</p>
         <p id="dlg-days-error" class="form-error form-error--inline" role="alert" aria-live="polite" hidden></p>
@@ -616,9 +770,10 @@
       .join('');
     return `
       <div class="layer-form__row layer-form__row--mode-conditional" id="dlg-row-tariff" hidden>
-        <label for="dlg-ruleset" class="form-label">${escape(t('Tariff rule set', 'Tariff rule set'))}</label>
-        <select id="dlg-ruleset" name="tariffRuleSetId" class="form-select" aria-describedby="dlg-ruleset-help">${opts}</select>
+        <label for="dlg-ruleset" class="form-label">${escape(t('Tariff rule set', 'Tariff rule set'))} <span class="form-required" aria-label="${escape(t('required', 'required'))}">*</span></label>
+        <select id="dlg-ruleset" name="tariffRuleSetId" class="form-select" aria-describedby="dlg-ruleset-help dlg-ruleset-error">${opts}</select>
         <p id="dlg-ruleset-help" class="form-help">${escape(t('Pick the active rule set that defines this entitlement.', 'Pick the active rule set that defines this entitlement.'))}</p>
+        <p id="dlg-ruleset-error" class="form-error form-error--inline" role="alert" aria-live="polite" hidden></p>
       </div>
     `;
   }
@@ -638,13 +793,14 @@
     const today = todayYmd();
     return `
       <div class="layer-form__row">
-        <label for="dlg-from" class="form-label">${escape(t('Effective from', 'Effective from'))}</label>
-        <input type="date" id="dlg-from" name="effectiveFrom" class="form-input" value="${today}" required>
+        <label for="dlg-from" class="form-label">${escape(t('Effective from', 'Effective from'))} <span class="form-required" aria-label="${escape(t('required', 'required'))}">*</span></label>
+        <input type="date" id="dlg-from" name="effectiveFrom" class="form-input" value="${today}" aria-required="true" aria-describedby="dlg-dates-error" required>
       </div>
       <div class="layer-form__row">
         <label for="dlg-to" class="form-label">${escape(t('Effective to', 'Effective to'))} <span class="form-help">(${escape(t('optional', 'optional'))})</span></label>
-        <input type="date" id="dlg-to" name="effectiveTo" class="form-input">
-        <p class="form-help">${escape(t('Leave empty for "until further notice". You can always supersede a row by adding a newer one.', 'Leave empty for "until further notice". You can always supersede a row by adding a newer one.'))}</p>
+        <input type="date" id="dlg-to" name="effectiveTo" class="form-input" aria-describedby="dlg-to-help dlg-dates-error">
+        <p id="dlg-to-help" class="form-help">${escape(t('Leave empty for "until further notice". You can always supersede a row by adding a newer one.', 'Leave empty for "until further notice". You can always supersede a row by adding a newer one.'))}</p>
+        <p id="dlg-dates-error" class="form-error form-error--inline" role="alert" aria-live="polite" hidden></p>
       </div>
     `;
   }
@@ -660,7 +816,7 @@
   }
 
   function openOrgDialog() {
-    const tariffAvailable = Array.isArray(state.ruleSets) && state.ruleSets.length > 0;
+    const tariffAvailable = hasActiveTariffRuleSet();
     openDialog({
       layer: 'org',
       title: t('Add organisation default', 'Add organisation default'),
@@ -675,12 +831,16 @@
   }
 
   function openModelDialog() {
-    const tariffAvailable = Array.isArray(state.ruleSets) && state.ruleSets.length > 0;
+    if (!Array.isArray(state.model.availableModels) || state.model.availableModels.length === 0) {
+      notifyError(t('Create at least one working time model first.', 'Create at least one working time model first.'));
+      return;
+    }
+    const tariffAvailable = hasActiveTariffRuleSet();
     const opts = state.model.availableModels.map((m) => `<option value="${m.id}">${escape(m.name)}</option>`).join('');
     const modelRow = `
       <div class="layer-form__row layer-form__row--wide">
-        <label for="dlg-model" class="form-label">${escape(t('Working time model', 'Working time model'))}</label>
-        <select id="dlg-model" name="workingTimeModelId" class="form-select" required>${opts}</select>
+        <label for="dlg-model" class="form-label">${escape(t('Working time model', 'Working time model'))} <span class="form-required" aria-label="${escape(t('required', 'required'))}">*</span></label>
+        <select id="dlg-model" name="workingTimeModelId" class="form-select" aria-required="true" required>${opts}</select>
       </div>`;
     openDialog({
       layer: 'model',
@@ -697,12 +857,16 @@
   }
 
   function openTeamDialog() {
-    const tariffAvailable = Array.isArray(state.ruleSets) && state.ruleSets.length > 0;
+    if (!Array.isArray(state.team.availableTeams) || state.team.availableTeams.length === 0) {
+      notifyError(t('Create at least one team first.', 'Create at least one team first.'));
+      return;
+    }
+    const tariffAvailable = hasActiveTariffRuleSet();
     const opts = state.team.availableTeams.map((tm) => `<option value="${tm.id}">${escape(tm.name)}</option>`).join('');
     const teamRow = `
       <div class="layer-form__row layer-form__row--wide">
-        <label for="dlg-team" class="form-label">${escape(t('Team', 'Team'))}</label>
-        <select id="dlg-team" name="teamId" class="form-select" required>${opts}</select>
+        <label for="dlg-team" class="form-label">${escape(t('Team', 'Team'))} <span class="form-required" aria-label="${escape(t('required', 'required'))}">*</span></label>
+        <select id="dlg-team" name="teamId" class="form-select" aria-required="true" required>${opts}</select>
       </div>`;
     openDialog({
       layer: 'team',
@@ -802,6 +966,88 @@
     return t('Enter a valid number of vacation days.', 'Enter a valid number of vacation days.');
   }
 
+  function setTariffRuleSetFieldError(message) {
+    const input = document.getElementById('dlg-ruleset');
+    const errorEl = document.getElementById('dlg-ruleset-error');
+    if (input) input.setAttribute('aria-invalid', 'true');
+    if (errorEl) {
+      errorEl.textContent = message;
+      errorEl.hidden = false;
+    }
+  }
+
+  function clearTariffRuleSetFieldError() {
+    const input = document.getElementById('dlg-ruleset');
+    const errorEl = document.getElementById('dlg-ruleset-error');
+    if (input) input.removeAttribute('aria-invalid');
+    if (errorEl) {
+      errorEl.textContent = '';
+      errorEl.hidden = true;
+    }
+  }
+
+  function setDateRangeFieldError(message) {
+    const fromEl = document.getElementById('dlg-from');
+    const toEl = document.getElementById('dlg-to');
+    const errorEl = document.getElementById('dlg-dates-error');
+    if (toEl) toEl.setAttribute('aria-invalid', 'true');
+    if (fromEl) fromEl.setAttribute('aria-invalid', 'true');
+    if (errorEl) {
+      errorEl.textContent = message;
+      errorEl.hidden = false;
+    }
+  }
+
+  function clearDateRangeFieldError() {
+    const fromEl = document.getElementById('dlg-from');
+    const toEl = document.getElementById('dlg-to');
+    const errorEl = document.getElementById('dlg-dates-error');
+    if (toEl) toEl.removeAttribute('aria-invalid');
+    if (fromEl) fromEl.removeAttribute('aria-invalid');
+    if (errorEl) {
+      errorEl.textContent = '';
+      errorEl.hidden = true;
+    }
+  }
+
+  /**
+   * Validate that effectiveTo (when set) is on or after effectiveFrom.
+   * Both inputs use `type="date"` so the values are already strict
+   * `YYYY-MM-DD` strings — lexicographic comparison is correct for the
+   * proleptic Gregorian calendar produced by the date picker.
+   * Returns `{ ok: true }` or `{ ok: false, reason }`.
+   */
+  function parseDateRange(fromValue, toValue) {
+    if (!fromValue || typeof fromValue !== 'string' || fromValue.trim() === '') {
+      return { ok: false, reason: 'from-empty' };
+    }
+    const from = fromValue.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      return { ok: false, reason: 'from-format' };
+    }
+    const to = toValue ? toValue.trim() : '';
+    if (to !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      return { ok: false, reason: 'to-format' };
+    }
+    if (to !== '' && to < from) {
+      return { ok: false, reason: 'to-before-from' };
+    }
+    return { ok: true, from, to: to === '' ? null : to };
+  }
+
+  function dateRangeErrorMessage(reason) {
+    if (reason === 'from-empty') {
+      return t('Please enter the start date.', 'Please enter the start date.');
+    }
+    if (reason === 'from-format' || reason === 'to-format') {
+      return t('Use the date picker — only ISO YYYY-MM-DD dates are accepted.', 'Use the date picker — only ISO YYYY-MM-DD dates are accepted.');
+    }
+    if (reason === 'to-before-from') {
+      return t('The end date must be on or after the start date.', 'The end date must be on or after the start date.');
+    }
+    return t('Enter a valid date range.', 'Enter a valid date range.');
+  }
+
   // -----------------------------------------------------------------------
   // Save handlers
   // -----------------------------------------------------------------------
@@ -819,11 +1065,11 @@
       description: descEl && String(descEl.value).trim() !== '' ? String(descEl.value).trim() : null,
     };
 
-    if (dialogContext.layer === 'model') {
+    if (dialogContext && dialogContext.layer === 'model') {
       const m = document.getElementById('dlg-model');
       payload.workingTimeModelId = m && m.value ? parseInt(String(m.value), 10) : 0;
     }
-    if (dialogContext.layer === 'team') {
+    if (dialogContext && dialogContext.layer === 'team') {
       const team = document.getElementById('dlg-team');
       const pr = document.getElementById('dlg-priority');
       payload.teamId = team && team.value ? parseInt(String(team.value), 10) : 0;
@@ -861,89 +1107,170 @@
 
   function showFieldErrors(errors) {
     if (!errors) return;
+    const map = {
+      vacationMode: 'dlg-mode',
+      manualDays: 'dlg-days',
+      tariffRuleSetId: 'dlg-ruleset',
+      effectiveFrom: 'dlg-from',
+      effectiveTo: 'dlg-to',
+      workingTimeModelId: 'dlg-model',
+      teamId: 'dlg-team',
+      priority: 'dlg-priority',
+    };
+    let firstInvalid = null;
     Object.keys(errors).forEach((field) => {
-      const map = {
-        vacationMode: 'dlg-mode',
-        manualDays: 'dlg-days',
-        tariffRuleSetId: 'dlg-ruleset',
-        effectiveFrom: 'dlg-from',
-        effectiveTo: 'dlg-to',
-        workingTimeModelId: 'dlg-model',
-        teamId: 'dlg-team',
-        priority: 'dlg-priority',
-      };
       const id = map[field];
       if (!id) return;
       const el = document.getElementById(id);
       if (el) {
         el.setAttribute('aria-invalid', 'true');
+        if (!firstInvalid) firstInvalid = el;
+      }
+      if (field === 'manualDays') {
+        setManualDaysFieldError(String(errors[field] || manualDaysErrorMessage('format')));
+      } else if (field === 'tariffRuleSetId') {
+        setTariffRuleSetFieldError(String(errors[field] || ''));
+      } else if (field === 'effectiveFrom' || field === 'effectiveTo') {
+        setDateRangeFieldError(String(errors[field] || ''));
       }
     });
+    if (firstInvalid) {
+      try { firstInvalid.focus({ preventScroll: false }); } catch (e) { /* noop */ }
+    }
   }
 
   function clearFieldErrors() {
+    if (!dialogBody) return;
     dialogBody.querySelectorAll('[aria-invalid="true"]').forEach((el) => el.removeAttribute('aria-invalid'));
   }
 
-  dialogForm.addEventListener('submit', (ev) => {
-    ev.preventDefault();
-    if (!dialogContext) return;
-    clearFieldErrors();
-    clearManualDaysFieldError();
-    syncLayerDialogModeFields();
-    dialogFeedback.textContent = '';
+  function setSaveButtonBusy(busy) {
+    if (!dialogSaveBtn) return;
+    dialogSaveBtn.disabled = !!busy;
+    dialogSaveBtn.setAttribute('aria-busy', busy ? 'true' : 'false');
+    if (busy) {
+      dialogSaveBtn.dataset.label = dialogSaveBtn.dataset.label || dialogSaveBtn.textContent;
+      dialogSaveBtn.textContent = t('Saving…', 'Saving…');
+    } else if (dialogSaveBtn.dataset.label) {
+      dialogSaveBtn.textContent = dialogSaveBtn.dataset.label;
+    }
+  }
 
-    // Client-side guard on the manual-days input. We still defer the
-    // authoritative check to the engine — this only catches the obvious
-    // typos and keeps the round-trip cost down for HR.
-    const modeEl = document.getElementById('dlg-mode');
-    const mode = modeEl ? modeEl.value : 'manual_fixed';
-    if (mode === 'manual_fixed') {
-      const d = document.getElementById('dlg-days');
-      if (d && !d.disabled) {
-        const parsed = parseManualDaysInput(d.value);
-        if (!parsed.ok) {
-          const msg = manualDaysErrorMessage(parsed.reason);
-          setManualDaysFieldError(msg);
-          dialogFeedback.textContent = msg;
-          try { d.focus(); } catch (e) { /* noop */ }
+  if (dialogForm) {
+    dialogForm.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      if (!dialogContext) return;
+      if (dialogSaveInFlight) return;
+      clearFieldErrors();
+      clearManualDaysFieldError();
+      clearTariffRuleSetFieldError();
+      clearDateRangeFieldError();
+      syncLayerDialogModeFields();
+      if (dialogFeedback) dialogFeedback.textContent = '';
+
+      // Client-side guards. We still defer the authoritative checks to
+      // the engine — this only catches the obvious typos and keeps the
+      // round-trip cost down for HR.
+      const modeEl = document.getElementById('dlg-mode');
+      const mode = modeEl ? modeEl.value : 'manual_fixed';
+      const fromEl = document.getElementById('dlg-from');
+      const toEl = document.getElementById('dlg-to');
+
+      // Layer-specific required fields first so the error focuses the
+      // most actionable control.
+      if (dialogContext.layer === 'model') {
+        const m = document.getElementById('dlg-model');
+        if (!m || !m.value) {
+          const msg = t('Pick a working time model.', 'Pick a working time model.');
+          if (m) m.setAttribute('aria-invalid', 'true');
+          if (dialogFeedback) dialogFeedback.textContent = msg;
+          if (m) { try { m.focus(); } catch (e) { /* noop */ } }
           return;
         }
       }
-    }
-
-    const payload = readForm();
-    let endpoint;
-    if (dialogContext.layer === 'org') endpoint = URLS.org;
-    else if (dialogContext.layer === 'model') endpoint = URLS.model;
-    else if (dialogContext.layer === 'team') endpoint = URLS.team;
-    else return;
-
-    Utils.ajax(endpoint, {
-      method: 'POST',
-      data: payload,
-      onSuccess: () => {
-        notifySuccess(t('Saved.', 'Saved.'));
-        closeDialog();
-        loadOverview();
-      },
-      onError: (err) => {
-        const status = err && err.status;
-        let msg = (err && err.error) || t('Could not save', 'Could not save');
-        if (status === 409) {
-          // EC-07: another admin is editing the same layer — give a
-          // specific, actionable hint so the user doesn't just retry blindly.
-          msg = (err && err.error)
-            || t('Another administrator is currently editing this layer. Refresh and try again.', 'Another administrator is currently editing this layer. Refresh and try again.');
+      if (dialogContext.layer === 'team') {
+        const tm = document.getElementById('dlg-team');
+        if (!tm || !tm.value) {
+          const msg = t('Pick a team.', 'Pick a team.');
+          if (tm) tm.setAttribute('aria-invalid', 'true');
+          if (dialogFeedback) dialogFeedback.textContent = msg;
+          if (tm) { try { tm.focus(); } catch (e) { /* noop */ } }
+          return;
         }
-        dialogFeedback.textContent = msg;
-        if (err && err.data && err.data.errors) {
-          syncLayerDialogModeFields();
-          showFieldErrors(err.data.errors);
+      }
+
+      const dateCheck = parseDateRange(fromEl ? fromEl.value : '', toEl ? toEl.value : '');
+      if (!dateCheck.ok) {
+        const msg = dateRangeErrorMessage(dateCheck.reason);
+        setDateRangeFieldError(msg);
+        if (dialogFeedback) dialogFeedback.textContent = msg;
+        const focusTarget = (dateCheck.reason === 'to-before-from' || dateCheck.reason === 'to-format') ? toEl : fromEl;
+        if (focusTarget) { try { focusTarget.focus(); } catch (e) { /* noop */ } }
+        return;
+      }
+
+      if (mode === 'manual_fixed') {
+        const d = document.getElementById('dlg-days');
+        if (d && !d.disabled) {
+          const parsed = parseManualDaysInput(d.value);
+          if (!parsed.ok) {
+            const msg = manualDaysErrorMessage(parsed.reason);
+            setManualDaysFieldError(msg);
+            if (dialogFeedback) dialogFeedback.textContent = msg;
+            try { d.focus(); } catch (e) { /* noop */ }
+            return;
+          }
         }
-      },
+      } else if (mode === 'tariff_rule_based') {
+        const r = document.getElementById('dlg-ruleset');
+        if (!r || !r.value) {
+          const msg = t('Pick the active tariff rule set that defines this entitlement.', 'Pick the active tariff rule set that defines this entitlement.');
+          setTariffRuleSetFieldError(msg);
+          if (dialogFeedback) dialogFeedback.textContent = msg;
+          if (r) { try { r.focus(); } catch (e) { /* noop */ } }
+          return;
+        }
+      }
+
+      const payload = readForm();
+      let endpoint;
+      if (dialogContext.layer === 'org') endpoint = URLS.org;
+      else if (dialogContext.layer === 'model') endpoint = URLS.model;
+      else if (dialogContext.layer === 'team') endpoint = URLS.team;
+      else return;
+
+      dialogSaveInFlight = true;
+      setSaveButtonBusy(true);
+      Utils.ajax(endpoint, {
+        method: 'POST',
+        data: payload,
+        onSuccess: () => {
+          dialogSaveInFlight = false;
+          setSaveButtonBusy(false);
+          notifySuccess(t('Saved.', 'Saved.'));
+          closeDialog();
+          loadOverview();
+        },
+        onError: (err) => {
+          dialogSaveInFlight = false;
+          setSaveButtonBusy(false);
+          const status = err && err.status;
+          let msg = (err && err.error) || t('Could not save', 'Could not save');
+          if (status === 409) {
+            // EC-07: another admin is editing the same layer — give a
+            // specific, actionable hint so the user doesn't just retry blindly.
+            msg = (err && err.error)
+              || t('Another administrator is currently editing this layer. Refresh and try again.', 'Another administrator is currently editing this layer. Refresh and try again.');
+          }
+          if (dialogFeedback) dialogFeedback.textContent = msg;
+          if (err && err.data && err.data.errors) {
+            syncLayerDialogModeFields();
+            showFieldErrors(err.data.errors);
+          }
+        },
+      });
     });
-  });
+  }
 
   // -----------------------------------------------------------------------
   // Action wiring
@@ -1033,78 +1360,276 @@
   }
 
   // -----------------------------------------------------------------------
-  // Simulator
+  // Simulator — WAI-ARIA combobox + result rendering
   // -----------------------------------------------------------------------
   const simForm = document.getElementById('sim-form');
   const simUser = document.getElementById('sim-user');
   const simSuggest = document.getElementById('sim-user-suggest');
   const simResult = document.getElementById('sim-result');
+  const simSubmitBtn = simForm ? simForm.querySelector('button[type="submit"]') : null;
   let simSuggestTimer = null;
+  let simSuggestReqId = 0;
   let simSelectedUserId = null;
+  let simSelectedUserDisplay = null;
+  let simSuggestItems = []; // [{ uid, display }]
+  let simSuggestActiveIndex = -1;
+  let simIsSubmitting = false;
+  const SIM_SUGGEST_OPTION_PREFIX = 'sim-user-suggest-opt-';
+
+  function syncComboboxAria() {
+    if (!simUser || !simSuggest) return;
+    const open = !simSuggest.hidden && simSuggestItems.length > 0;
+    simUser.setAttribute('aria-expanded', open ? 'true' : 'false');
+    Array.from(simSuggest.children).forEach((li, i) => {
+      const isActive = i === simSuggestActiveIndex;
+      li.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      if (isActive) {
+        li.classList.add('form-suggest__option--active');
+      } else {
+        li.classList.remove('form-suggest__option--active');
+      }
+    });
+    if (open && simSuggestActiveIndex >= 0 && simSuggestActiveIndex < simSuggestItems.length) {
+      simUser.setAttribute('aria-activedescendant', `${SIM_SUGGEST_OPTION_PREFIX}${simSuggestActiveIndex}`);
+      const activeLi = simSuggest.children[simSuggestActiveIndex];
+      if (activeLi && typeof activeLi.scrollIntoView === 'function') {
+        try { activeLi.scrollIntoView({ block: 'nearest' }); } catch (e) { /* noop */ }
+      }
+    } else {
+      simUser.removeAttribute('aria-activedescendant');
+    }
+  }
+
+  function renderSuggestList() {
+    if (!simSuggest) return;
+    if (simSuggestItems.length === 0) {
+      simSuggest.hidden = true;
+      simSuggest.innerHTML = '';
+      simSuggestActiveIndex = -1;
+      syncComboboxAria();
+      return;
+    }
+    simSuggest.innerHTML = simSuggestItems.map((item, i) => {
+      const id = `${SIM_SUGGEST_OPTION_PREFIX}${i}`;
+      return `<li id="${id}" role="option" aria-selected="false" data-index="${i}" data-uid="${escape(item.uid)}" data-display="${escape(item.display)}">${escape(item.display)} <span class="form-help">${escape(item.uid)}</span></li>`;
+    }).join('');
+    simSuggest.hidden = false;
+    syncComboboxAria();
+  }
+
+  function closeSuggestList() {
+    if (!simSuggest) return;
+    simSuggest.hidden = true;
+    simSuggest.innerHTML = '';
+    simSuggestItems = [];
+    simSuggestActiveIndex = -1;
+    syncComboboxAria();
+  }
+
+  function commitSuggestSelection(index) {
+    if (index < 0 || index >= simSuggestItems.length) return false;
+    const item = simSuggestItems[index];
+    simSelectedUserId = String(item.uid || '');
+    simSelectedUserDisplay = String(item.display || item.uid || '');
+    if (simUser) {
+      simUser.value = simSelectedUserDisplay;
+    }
+    closeSuggestList();
+    return true;
+  }
+
+  function moveSuggestActive(delta) {
+    if (simSuggestItems.length === 0) return;
+    let next = simSuggestActiveIndex + delta;
+    if (next < 0) next = simSuggestItems.length - 1;
+    if (next >= simSuggestItems.length) next = 0;
+    simSuggestActiveIndex = next;
+    syncComboboxAria();
+  }
 
   if (simUser && simSuggest) {
+    // Combobox semantics: the input itself is the combobox; the listbox
+    // is `aria-owns/controls`-linked via the template. We set role and
+    // properties here defensively so the JS-rendered listbox is fully
+    // declared.
+    simUser.setAttribute('role', 'combobox');
+    simUser.setAttribute('aria-autocomplete', 'list');
+    simUser.setAttribute('aria-controls', 'sim-user-suggest');
+    simUser.setAttribute('aria-expanded', 'false');
+    simUser.setAttribute('aria-haspopup', 'listbox');
+
     simUser.addEventListener('input', () => {
       window.clearTimeout(simSuggestTimer);
       const term = simUser.value.trim();
       simSelectedUserId = null;
+      simSelectedUserDisplay = null;
       if (term.length < 2) {
-        simSuggest.hidden = true;
-        simSuggest.innerHTML = '';
+        closeSuggestList();
         return;
       }
       simSuggestTimer = window.setTimeout(() => fetchSuggestions(term), 200);
     });
+
     simUser.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape') {
-        simSuggest.hidden = true;
-        simSuggest.innerHTML = '';
+        if (!simSuggest.hidden) {
+          ev.preventDefault();
+          closeSuggestList();
+        }
+        return;
       }
+      if (ev.key === 'ArrowDown') {
+        ev.preventDefault();
+        if (simSuggest.hidden && simUser.value.trim().length >= 2) {
+          // Re-open last list if still cached, otherwise re-fetch.
+          if (simSuggestItems.length > 0) {
+            simSuggest.hidden = false;
+            simSuggestActiveIndex = 0;
+            syncComboboxAria();
+            return;
+          }
+          fetchSuggestions(simUser.value.trim());
+          return;
+        }
+        moveSuggestActive(1);
+        return;
+      }
+      if (ev.key === 'ArrowUp') {
+        ev.preventDefault();
+        if (simSuggest.hidden && simUser.value.trim().length >= 2 && simSuggestItems.length > 0) {
+          simSuggest.hidden = false;
+          simSuggestActiveIndex = simSuggestItems.length - 1;
+          syncComboboxAria();
+          return;
+        }
+        moveSuggestActive(-1);
+        return;
+      }
+      if (ev.key === 'Home' && !simSuggest.hidden) {
+        ev.preventDefault();
+        simSuggestActiveIndex = 0;
+        syncComboboxAria();
+        return;
+      }
+      if (ev.key === 'End' && !simSuggest.hidden) {
+        ev.preventDefault();
+        simSuggestActiveIndex = simSuggestItems.length - 1;
+        syncComboboxAria();
+        return;
+      }
+      if (ev.key === 'Enter') {
+        if (!simSuggest.hidden && simSuggestActiveIndex >= 0) {
+          ev.preventDefault();
+          commitSuggestSelection(simSuggestActiveIndex);
+        }
+        return;
+      }
+      if (ev.key === 'Tab' && !simSuggest.hidden && simSuggestActiveIndex >= 0) {
+        commitSuggestSelection(simSuggestActiveIndex);
+        return;
+      }
+    });
+
+    simUser.addEventListener('blur', () => {
+      // Close on blur but only after the click handler had a chance to
+      // run; using a microtask delay is enough.
+      window.setTimeout(() => {
+        if (document.activeElement !== simUser && !simSuggest.contains(document.activeElement)) {
+          closeSuggestList();
+        }
+      }, 100);
+    });
+
+    simSuggest.addEventListener('mousedown', (ev) => {
+      // Prevent the click from blurring the input before we can finalise
+      // the selection.
+      ev.preventDefault();
     });
     simSuggest.addEventListener('click', (ev) => {
       const li = ev.target.closest('li[data-uid]');
       if (!li) return;
-      simSelectedUserId = li.getAttribute('data-uid');
-      simUser.value = li.getAttribute('data-display') || simSelectedUserId;
-      simSuggest.hidden = true;
-      simSuggest.innerHTML = '';
+      const idx = Number(li.getAttribute('data-index'));
+      if (Number.isFinite(idx)) {
+        commitSuggestSelection(idx);
+        if (simUser) {
+          try { simUser.focus(); } catch (e) { /* noop */ }
+        }
+      }
     });
   }
 
   function fetchSuggestions(term) {
+    if (!URLS.userSearch) return;
+    const reqId = ++simSuggestReqId;
     const url = URLS.userSearch + '?search=' + encodeURIComponent(term) + '&limit=10';
     Utils.ajax(url, {
       method: 'GET',
       onSuccess: (data) => {
-        const list = (data && (data.users || data.data || [])).slice(0, 10);
-        if (!Array.isArray(list) || list.length === 0) {
-          simSuggest.hidden = true;
-          simSuggest.innerHTML = '';
+        if (reqId !== simSuggestReqId) return; // stale response
+        const raw = (data && (data.users || data.data || []));
+        const list = Array.isArray(raw) ? raw.slice(0, 10) : [];
+        simSuggestItems = list.map((u) => ({
+          uid: String(u.userId || u.uid || u.id || ''),
+          display: String(u.displayName || u.display_name || u.userId || u.uid || u.id || ''),
+        })).filter((item) => item.uid !== '');
+        if (simSuggestItems.length === 0) {
+          // Show "no matches" surface — purely informational so screen
+          // readers know the search returned nothing instead of staying
+          // silent (WCAG 4.1.3 Status Messages).
+          if (simSuggest) {
+            simSuggest.innerHTML = `<li class="form-suggest__empty" role="option" aria-selected="false" aria-disabled="true">${escape(t('No matching employees found.', 'No matching employees found.'))}</li>`;
+            simSuggest.hidden = false;
+          }
+          simSuggestActiveIndex = -1;
+          syncComboboxAria();
+          announce(t('No matching employees found.', 'No matching employees found.'));
           return;
         }
-        simSuggest.innerHTML = list.map((u) => {
-          const uid = u.userId || u.uid || u.id || '';
-          const display = u.displayName || u.display_name || uid;
-          return `<li role="option" data-uid="${escape(uid)}" data-display="${escape(display)}">${escape(display)} <span class="form-help">${escape(uid)}</span></li>`;
-        }).join('');
-        simSuggest.hidden = false;
+        simSuggestActiveIndex = -1;
+        renderSuggestList();
       },
       onError: () => {
-        simSuggest.hidden = true;
-        simSuggest.innerHTML = '';
+        if (reqId !== simSuggestReqId) return;
+        closeSuggestList();
       },
     });
+  }
+
+  function setSimSubmitBusy(busy) {
+    if (!simSubmitBtn) return;
+    simSubmitBtn.disabled = !!busy;
+    simSubmitBtn.setAttribute('aria-busy', busy ? 'true' : 'false');
   }
 
   if (simForm) {
     simForm.addEventListener('submit', (ev) => {
       ev.preventDefault();
-      const userId = simSelectedUserId || (simUser ? simUser.value.trim() : '');
-      const asOfDate = document.getElementById('sim-date').value || todayYmd();
+      if (simIsSubmitting) return;
+      const typedValue = simUser ? simUser.value.trim() : '';
+      const userId = simSelectedUserId || typedValue;
+      const asOfEl = document.getElementById('sim-date');
+      const asOfDate = (asOfEl && asOfEl.value) ? asOfEl.value : todayYmd();
       if (!userId) {
-        notifyError(t('Please pick an employee first.', 'Please pick an employee first.'));
-        if (simUser) simUser.focus();
+        const msg = t('Please pick an employee from the suggestions first.', 'Please pick an employee from the suggestions first.');
+        notifyError(msg);
+        if (simResult) {
+          simResult.innerHTML = `<p class="layer-card__placeholder" role="alert">${escape(msg)}</p>`;
+        }
+        if (simUser) {
+          simUser.setAttribute('aria-invalid', 'true');
+          try { simUser.focus(); } catch (e) { /* noop */ }
+        }
         return;
       }
+      if (simUser) simUser.removeAttribute('aria-invalid');
+      // Warn (but allow) when the user typed a value but never picked one
+      // from the suggestions — preserves the existing "type a UID exactly"
+      // affordance for admins on power-tool workflows while still
+      // surfacing the risk for the common case.
+      const usedFreeText = !simSelectedUserId && typedValue !== '' && (
+        simSelectedUserDisplay === null
+        || typedValue.toLowerCase() !== String(simSelectedUserDisplay).toLowerCase()
+      );
       const hypothetical = document.getElementById('sim-hypothetical-teams');
       const hypotheticalTeamIds = hypothetical
         ? Array.from(hypothetical.selectedOptions).map((o) => parseInt(o.value, 10)).filter((n) => Number.isInteger(n) && n > 0)
@@ -1113,13 +1638,32 @@
       if (hypotheticalTeamIds.length > 0) {
         payload.hypotheticalTeamIds = hypotheticalTeamIds;
       }
+      simIsSubmitting = true;
+      setSimSubmitBusy(true);
+      if (simResult) {
+        simResult.innerHTML = `<p class="layer-card__placeholder">${escape(t('Running simulation…', 'Running simulation…'))}</p>`;
+      }
+      announce(t('Running simulation…', 'Running simulation…'));
       Utils.ajax(URLS.simulate, {
         method: 'POST',
         data: payload,
-        onSuccess: (data) => renderSimResult(data),
+        onSuccess: (data) => {
+          simIsSubmitting = false;
+          setSimSubmitBusy(false);
+          renderSimResult(data, { usedFreeText });
+        },
         onError: (err) => {
-          const errMsg = (err && err.error) || t('Could not run simulation', 'Could not run simulation');
-          simResult.innerHTML = `<p class="layer-card__placeholder" role="alert">${escape(errMsg)}</p>`;
+          simIsSubmitting = false;
+          setSimSubmitBusy(false);
+          const status = err && err.status;
+          let errMsg = (err && err.error) || t('Could not run simulation', 'Could not run simulation');
+          if (status === 404) {
+            errMsg = t('No employee found for this identifier. Pick someone from the suggestions list.', 'No employee found for this identifier. Pick someone from the suggestions list.');
+            if (simUser) simUser.setAttribute('aria-invalid', 'true');
+          }
+          if (simResult) {
+            simResult.innerHTML = `<p class="layer-card__placeholder" role="alert">${escape(errMsg)}</p>`;
+          }
           announce(errMsg);
         },
       });
@@ -1129,7 +1673,11 @@
     if (simReset) {
       simReset.addEventListener('click', () => {
         simSelectedUserId = null;
-        if (simUser) simUser.value = '';
+        simSelectedUserDisplay = null;
+        if (simUser) {
+          simUser.value = '';
+          simUser.removeAttribute('aria-invalid');
+        }
         const simDate = document.getElementById('sim-date');
         if (simDate) simDate.value = todayYmd();
         const hypothetical = document.getElementById('sim-hypothetical-teams');
@@ -1137,6 +1685,17 @@
           Array.from(hypothetical.options).forEach((o) => { o.selected = false; });
         }
         if (simResult) simResult.innerHTML = '';
+        closeSuggestList();
+      });
+    }
+    const simHypClear = document.getElementById('sim-hypothetical-clear');
+    if (simHypClear) {
+      simHypClear.addEventListener('click', () => {
+        const hypothetical = document.getElementById('sim-hypothetical-teams');
+        if (hypothetical) {
+          Array.from(hypothetical.options).forEach((o) => { o.selected = false; });
+        }
+        announce(t('Hypothetical team selection cleared.', 'Hypothetical team selection cleared.'));
       });
     }
   }
@@ -1199,16 +1758,18 @@
       chips.push(`<span class="trace-flag trace-flag--warn">${escape(t('Working time model missing', 'Working time model missing'))}</span>`);
     }
     if (inner.rule_set_status_warning) {
-        chips.push(`<span class="trace-flag trace-flag--warn">${escape(t('Tariff rule set not active', 'Tariff rule set not active'))} (${escape(fmtTariffStatusCode(inner.rule_set_status_warning))})</span>`);
+      chips.push(`<span class="trace-flag trace-flag--warn">${escape(t('Tariff rule set not active', 'Tariff rule set not active'))} (${escape(fmtTariffStatusCode(inner.rule_set_status_warning))})</span>`);
     }
     return chips.join(' ');
   }
 
-  function renderSimResult(data) {
+  function renderSimResult(data, opts) {
+    if (!simResult) return;
     if (!data || data.success !== true) {
       simResult.innerHTML = `<p class="layer-card__placeholder" role="alert">${escape(t('Could not run simulation', 'Could not run simulation'))}</p>`;
       return;
     }
+    const options = opts || {};
     const trace = data.calculationTrace || {};
     const layers = Array.isArray(trace.layers_evaluated) ? trace.layers_evaluated : [];
     const matchedLayer = (trace.matched_layer || data.matchedLayer) || '—';
@@ -1226,10 +1787,10 @@
         : '';
       return `
         <tr data-matched="${matched ? 'true' : 'false'}">
-          <td><strong>${escape(layer.layer || '')}</strong><br><span class="form-help">${escape(humanLayerLabel(layer.layer))}</span></td>
-          <td>${matched ? escape(t('Match', 'Match')) : escape(t('Skipped', 'Skipped'))}</td>
-          <td>${escape(fmtMode(layer.mode || layer.reason || ''))}${flagsHtml ? '<br>' + flagsHtml : ''}${teamLabel}${modelLabel}${candidatesHtml}</td>
-          <td>${escape(layer.days != null ? fmtDays(layer.days) : '—')}</td>
+          <td data-label="${escape(t('Layer', 'Layer'))}"><strong>${escape(layer.layer || '')}</strong><br><span class="form-help">${escape(humanLayerLabel(layer.layer))}</span></td>
+          <td data-label="${escape(t('Outcome', 'Outcome'))}">${matched ? escape(t('Match', 'Match')) : escape(t('Skipped', 'Skipped'))}</td>
+          <td data-label="${escape(t('Reason / Mode', 'Reason / Mode'))}">${escape(fmtMode(layer.mode || layer.reason || ''))}${flagsHtml ? '<br>' + flagsHtml : ''}${teamLabel}${modelLabel}${candidatesHtml}</td>
+          <td data-label="${escape(t('Days', 'Days'))}">${escape(layer.days != null ? fmtDays(layer.days) : '—')}</td>
         </tr>
       `;
     }).join('');
@@ -1241,6 +1802,12 @@
     if (Array.isArray(data.hypotheticalTeamIds) && data.hypotheticalTeamIds.length > 0) {
       const names = data.hypotheticalTeamIds.map(getTeamLabel).join(', ');
       banners.push(`<p class="layer-sim__banner layer-sim__banner--info" role="status">${escape(t('What-if mode: hypothetical team membership applied —', 'What-if mode: hypothetical team membership applied —'))} ${escape(names)}.</p>`);
+    }
+    if (matchedLayer === 'legacy') {
+      banners.push(`<p class="layer-sim__banner layer-sim__banner--warn" role="status">${escape(t('No layered configuration matched. The legacy 25 days/year fallback applied — consider configuring an L0 organisation default so new employees inherit a proper entitlement.', 'No layered configuration matched. The legacy 25 days/year fallback applied — consider configuring an L0 organisation default so new employees inherit a proper entitlement.'))}</p>`);
+    }
+    if (options.usedFreeText) {
+      banners.push(`<p class="layer-sim__banner layer-sim__banner--info" role="status">${escape(t('Hint: you submitted a free-text user identifier rather than picking from the suggestions. If this is not the right employee, clear the field and search again.', 'Hint: you submitted a free-text user identifier rather than picking from the suggestions. If this is not the right employee, clear the field and search again.'))}</p>`);
     }
     const summaryDays = fmtDays(data.effectiveEntitlementDays);
     const summarySentence = data.hypotheticalTeamIds && data.hypotheticalTeamIds.length > 0
@@ -1289,7 +1856,7 @@
   loadOverview();
 
   // Expose pure helpers for unit tests (vitest). We deliberately do NOT
-  // expose mutating helpers, just the parser, so a hostile page script
+  // expose mutating helpers, just the parsers, so a hostile page script
   // cannot use this hook to mutate dialog state. Production users do not
   // depend on this object; if it disappears in a future minor release
   // that is intentional.
@@ -1297,6 +1864,8 @@
     window.__ArbeitszeitCheckVacationLayersTestables = {
       parseManualDaysInput,
       manualDaysErrorMessage,
+      parseDateRange,
+      dateRangeErrorMessage,
       MANUAL_DAYS_MIN,
       MANUAL_DAYS_MAX,
     };

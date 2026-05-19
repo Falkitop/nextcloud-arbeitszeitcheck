@@ -1,3 +1,25 @@
+## 1.3.5 – 2026-05-19
+
+### Neu
+
+- **Admin „Urlaubsanspruchsebenen“ – Komplett-Politur für Produktion** (`js/admin-vacation-layers.js`, `templates/admin-vacation-layers.php`, `css/admin-vacation-layers.css`):
+  - **Vollständige WAI-ARIA-1.2-Combobox** für die Mitarbeiter-Suche im Simulator (Pfeiltasten, Home/End, Enter zum Übernehmen, Escape zum Schließen; `aria-activedescendant`, `aria-expanded`, `aria-controls`, `aria-haspopup`).
+  - **Sichtbarer Leerzustand**: „Keine passenden Mitarbeitenden gefunden“ wird als `role="status"`-Eintrag angezeigt.
+  - **Voraussetzungsprüfungen** auf der Seite: Schaltflächen „Modellstandard hinzufügen“ und „Teamrichtlinie hinzufügen“ werden deaktiviert (inkl. `title` und `aria-disabled`) wenn keine Arbeitszeitmodelle / Teams konfiguriert sind; ein begleitender Hinweis erklärt, wo die Voraussetzung anzulegen ist.
+  - **Clientseitige Datumsbereichs-Validierung** (`Gültig von ≤ Gültig bis`, beide strikt `YYYY-MM-DD`) mit Inline-Fehler unter dem Feld — kein 400-Roundtrip mehr für offensichtliche Tippfehler.
+  - **Tarif-Regelsatz clientseitig Pflichtfeld** wenn der Modus `tariff_rule_based` ist (Vertrag des Engines wird gespiegelt).
+  - **Doppelklick-Schutz** für „Speichern“ und „Simulation starten“: in-flight Requests deaktivieren den Button (`aria-busy="true"`, Label wird zu „Speichern …“ / „Simulation läuft …“).
+  - **Sicherer Fokus-Return** beim Dialog-Schließen: wenn das auslösende Element während des Speicher-Roundtrips entfernt wurde, übernimmt die Seitenüberschrift den Fokus (statt `<body>`).
+  - **Anzahl-Chips** neben jedem Abschnittstitel (`L0` / `L1` / `L2`).
+  - **Leeren-Reset-Knopf** für die hypothetische Team-Auswahl im Simulator.
+  - **Mobile-Friendly Trace-Tabelle**: die Auflösungs-Trace fällt unterhalb 720 px auf ein Card-Layout zurück.
+  - **`forced-colors: active`**-Regeln erhalten Rahmen, Fokus-Ringe und aktive Hervorhebung im Windows-Hochkontrastmodus.
+  - **3-px-Fokus-Outlines** und `outline-offset: 2px` für sämtliche interaktiven Oberflächen.
+  - **`clip-path: inset(50%)`** für `.visually-hidden` (veraltetes `clip: rect(...)` entfernt).
+  - **Tests**: 25 neue Vitest-Cases (`js/admin-vacation-layers.test.js`) für Parser, Datumsbereichs-Validator, Combobox-Tastatur, Empty-State-Logik. Alle 40 JS-Tests + 624 PHP-Tests laufen grün.
+
+## [Unreleased]
+
 ## 1.3.4 – 2026-05-19
 
 ### Neu

@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.3.5 - 2026-05-19
+
+### Added
+
+- **Admin "Vacation entitlement layers" — production-grade UX & accessibility overhaul** (`js/admin-vacation-layers.js`, `templates/admin-vacation-layers.php`, `css/admin-vacation-layers.css`):
+  - **Full WAI-ARIA 1.2 combobox** on the simulator user search. The input now advertises `role="combobox"`, `aria-autocomplete="list"`, `aria-controls`, `aria-expanded`, `aria-haspopup` and `aria-activedescendant`; ArrowUp/Down/Home/End traverse the listbox, Enter/Tab commit the selection, Escape closes without changing the value. `aria-selected` is mirrored on every option so screen readers always announce the highlighted candidate (WCAG 2.1.1, 4.1.2).
+  - **Explicit "no matches" status entry** for the user-search listbox so screen readers receive a `role="status"` update instead of silent failure (WCAG 4.1.3).
+  - **Empty-state guards**: "Add model default" and "Add team policy" buttons disable themselves with a `title` and `aria-disabled` when no working time models / teams exist, and an inline `role="status"` hint explains where to create the prerequisite. The dialogs themselves also bail out with an announced error if the precondition is missing.
+  - **Client-side date-range validation** (`effectiveFrom ≤ effectiveTo`, both strict YYYY-MM-DD) with an inline `aria-live="polite"` error on the `effective_to` field — no more silent round-trips that surface as a 400 only after Save.
+  - **Tariff rule set selection now required client-side** when the mode is `tariff_rule_based`, mirroring the engine's contract before the round-trip.
+  - **Double-submit protection** on both the form drawer save and the simulator: in-flight requests disable the button, set `aria-busy="true"` and swap the label to "Saving…" / "Running simulation…".
+  - **Safer focus return on dialog close**: if the trigger was removed from the DOM during the save round-trip the page H1 takes the focus instead of `<body>` (`tabindex="-1"` fallback), keeping keyboard users anchored.
+  - **Layer count chips** next to each `L0 / L1 / L2` section title and an inline placeholder hint when no model / team is configured yet.
+  - **Hypothetical-team clear button** in the simulator so HR can reset a what-if scenario in one click; a visible legend, fieldset and `role="status"` announcement document the reset.
+  - **Free-text user search hint**: when the admin submits a typed-but-unpicked identifier, the result card adds an info banner telling them how to re-search if the wrong person was found. The endpoint already returns a clean 404 for unknown UIDs (admin IDOR guard REQ-EC-10), which the JS now surfaces as a specific, actionable error.
+  - **Mobile-first trace table**: the simulator's resolution trace collapses to a card layout below 720 px with `data-label` pseudo-headers, matching the existing `layer-card__history-table` mobile treatment.
+  - **`forced-colors: active` rules** preserve every border, focus ring and active-option highlight in Windows High-Contrast mode.
+  - **3 px focus outlines** with `outline-offset: 2px` on every interactive surface (buttons, summary toggles, simulator result region), replacing the previous 2 px outline which was borderline against the primary-element fill.
+  - **`clip-path: inset(50%)`** for the `.visually-hidden` helper (deprecated `clip: rect(...)` removed).
+  - **Test coverage**: 25 new vitest cases in `js/admin-vacation-layers.test.js` for the manual-days parser (including comma / scientific-notation / range / boundary cases), the date-range validator, the combobox keyboard interactions (ArrowDown/Up/Enter/Escape, "no matches" empty-state) and the empty-state guard behaviour. All 40 JS unit tests + 624 PHP unit tests pass.
+
+## [Unreleased]
+
 ## 1.3.4 - 2026-05-19
 
 ### Added

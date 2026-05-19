@@ -12,8 +12,9 @@ declare(strict_types=1);
  *    drawer and a live "What this will do" preview via the simulator.
  *  - Empty states explicitly tell the admin "the default fallback (25 d.)
  *    is used until you configure this layer".
- *  - WCAG 2.1 AA: semantic landmarks, labelled form fields, role=tab[panel],
- *    aria-live status, sufficient contrast (via CSS variables).
+ *  - WCAG 2.1 AA: semantic landmarks, labelled form fields, full ARIA 1.2
+ *    combobox on the simulator user search, role="dialog" with aria-modal
+ *    on the form drawer, aria-live status, sufficient contrast.
  *  - Responsive: cards stack <= 920px; layer chips wrap; simulator full-width
  *    on mobile.
  *
@@ -67,6 +68,7 @@ $layeredEnabled = (bool)($_['layeredEnabled'] ?? true);
                     <h2 id="layer-l0-heading" class="layer-card__title">
                         <span class="layer-card__chip">L0</span>
                         <?php p($l->t('Organisation default')); ?>
+                        <span class="layer-card__count" id="l0-count" data-count="0" aria-live="polite"></span>
                     </h2>
                     <p class="layer-card__desc">
                         <?php p($l->t('Used when no team policy, model default, or individual rule applies. This is the safety net for new employees.')); ?>
@@ -83,21 +85,23 @@ $layeredEnabled = (bool)($_['layeredEnabled'] ?? true);
                 </div>
                 <details class="layer-card__history">
                     <summary><?php p($l->t('Show full history')); ?></summary>
-                    <table class="layer-card__history-table" aria-label="<?php p($l->t('Organisation default history')); ?>">
-                        <thead>
-                            <tr>
-                                <th scope="col"><?php p($l->t('Effective')); ?></th>
-                                <th scope="col"><?php p($l->t('Mode')); ?></th>
-                                <th scope="col"><?php p($l->t('Days')); ?></th>
-                                <th scope="col"><?php p($l->t('Tariff rule set')); ?></th>
-                                <th scope="col"><?php p($l->t('Description')); ?></th>
-                                <th scope="col" class="layer-card__history-actions"><?php p($l->t('Actions')); ?></th>
-                            </tr>
-                        </thead>
-                        <tbody id="l0-history-rows">
-                            <tr><td colspan="6" class="layer-card__placeholder"><?php p($l->t('Loading…')); ?></td></tr>
-                        </tbody>
-                    </table>
+                    <div class="layer-card__history-scroll">
+                        <table class="layer-card__history-table" aria-label="<?php p($l->t('Organisation default history')); ?>">
+                            <thead>
+                                <tr>
+                                    <th scope="col"><?php p($l->t('Effective')); ?></th>
+                                    <th scope="col"><?php p($l->t('Mode')); ?></th>
+                                    <th scope="col"><?php p($l->t('Days')); ?></th>
+                                    <th scope="col"><?php p($l->t('Tariff rule set')); ?></th>
+                                    <th scope="col"><?php p($l->t('Description')); ?></th>
+                                    <th scope="col" class="layer-card__history-actions"><?php p($l->t('Actions')); ?></th>
+                                </tr>
+                            </thead>
+                            <tbody id="l0-history-rows">
+                                <tr><td colspan="6" class="layer-card__placeholder"><?php p($l->t('Loading…')); ?></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </details>
             </div>
         </section>
@@ -109,10 +113,12 @@ $layeredEnabled = (bool)($_['layeredEnabled'] ?? true);
                     <h2 id="layer-l1-heading" class="layer-card__title">
                         <span class="layer-card__chip">L1</span>
                         <?php p($l->t('Working time model defaults')); ?>
+                        <span class="layer-card__count" id="l1-count" data-count="0" aria-live="polite"></span>
                     </h2>
                     <p class="layer-card__desc">
                         <?php p($l->t('Defaults attached to a working time model (e.g. “30 hours / week”). Apply automatically to every employee with that model who has no individual or team rule.')); ?>
                     </p>
+                    <p id="l1-prereq" class="layer-card__prereq" role="status" hidden></p>
                 </div>
                 <button type="button" class="btn btn--primary" data-action="add-model"
                         aria-label="<?php p($l->t('Add a default for a working time model')); ?>">
@@ -120,22 +126,24 @@ $layeredEnabled = (bool)($_['layeredEnabled'] ?? true);
                 </button>
             </header>
             <div class="layer-card__body">
-                <table class="layer-card__history-table" aria-label="<?php p($l->t('Working time model defaults')); ?>">
-                    <thead>
-                        <tr>
-                            <th scope="col"><?php p($l->t('Model')); ?></th>
-                            <th scope="col"><?php p($l->t('Effective')); ?></th>
-                            <th scope="col"><?php p($l->t('Mode')); ?></th>
-                            <th scope="col"><?php p($l->t('Days')); ?></th>
-                            <th scope="col"><?php p($l->t('Tariff rule set')); ?></th>
-                            <th scope="col"><?php p($l->t('Description')); ?></th>
-                            <th scope="col" class="layer-card__history-actions"><?php p($l->t('Actions')); ?></th>
-                        </tr>
-                    </thead>
-                    <tbody id="l1-rows">
-                        <tr><td colspan="7" class="layer-card__placeholder"><?php p($l->t('Loading…')); ?></td></tr>
-                    </tbody>
-                </table>
+                <div class="layer-card__history-scroll">
+                    <table class="layer-card__history-table" aria-label="<?php p($l->t('Working time model defaults')); ?>">
+                        <thead>
+                            <tr>
+                                <th scope="col"><?php p($l->t('Model')); ?></th>
+                                <th scope="col"><?php p($l->t('Effective')); ?></th>
+                                <th scope="col"><?php p($l->t('Mode')); ?></th>
+                                <th scope="col"><?php p($l->t('Days')); ?></th>
+                                <th scope="col"><?php p($l->t('Tariff rule set')); ?></th>
+                                <th scope="col"><?php p($l->t('Description')); ?></th>
+                                <th scope="col" class="layer-card__history-actions"><?php p($l->t('Actions')); ?></th>
+                            </tr>
+                        </thead>
+                        <tbody id="l1-rows">
+                            <tr><td colspan="7" class="layer-card__placeholder"><?php p($l->t('Loading…')); ?></td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </section>
 
@@ -146,10 +154,12 @@ $layeredEnabled = (bool)($_['layeredEnabled'] ?? true);
                     <h2 id="layer-l2-heading" class="layer-card__title">
                         <span class="layer-card__chip">L2</span>
                         <?php p($l->t('Team / cohort policies')); ?>
+                        <span class="layer-card__count" id="l2-count" data-count="0" aria-live="polite"></span>
                     </h2>
                     <p class="layer-card__desc">
                         <?php p($l->t('Policies attached to a team. When an employee belongs to several teams, the policy attached to the deepest team in the hierarchy wins; ties are broken by the higher priority, then by the smallest team ID.')); ?>
                     </p>
+                    <p id="l2-prereq" class="layer-card__prereq" role="status" hidden></p>
                 </div>
                 <button type="button" class="btn btn--primary" data-action="add-team"
                         aria-label="<?php p($l->t('Add a team vacation policy')); ?>">
@@ -157,22 +167,24 @@ $layeredEnabled = (bool)($_['layeredEnabled'] ?? true);
                 </button>
             </header>
             <div class="layer-card__body">
-                <table class="layer-card__history-table" aria-label="<?php p($l->t('Team vacation policies')); ?>">
-                    <thead>
-                        <tr>
-                            <th scope="col"><?php p($l->t('Team')); ?></th>
-                            <th scope="col"><?php p($l->t('Effective')); ?></th>
-                            <th scope="col"><?php p($l->t('Mode')); ?></th>
-                            <th scope="col"><?php p($l->t('Days')); ?></th>
-                            <th scope="col"><?php p($l->t('Priority')); ?></th>
-                            <th scope="col"><?php p($l->t('Description')); ?></th>
-                            <th scope="col" class="layer-card__history-actions"><?php p($l->t('Actions')); ?></th>
-                        </tr>
-                    </thead>
-                    <tbody id="l2-rows">
-                        <tr><td colspan="7" class="layer-card__placeholder"><?php p($l->t('Loading…')); ?></td></tr>
-                    </tbody>
-                </table>
+                <div class="layer-card__history-scroll">
+                    <table class="layer-card__history-table" aria-label="<?php p($l->t('Team vacation policies')); ?>">
+                        <thead>
+                            <tr>
+                                <th scope="col"><?php p($l->t('Team')); ?></th>
+                                <th scope="col"><?php p($l->t('Effective')); ?></th>
+                                <th scope="col"><?php p($l->t('Mode')); ?></th>
+                                <th scope="col"><?php p($l->t('Days')); ?></th>
+                                <th scope="col"><?php p($l->t('Priority')); ?></th>
+                                <th scope="col"><?php p($l->t('Description')); ?></th>
+                                <th scope="col" class="layer-card__history-actions"><?php p($l->t('Actions')); ?></th>
+                            </tr>
+                        </thead>
+                        <tbody id="l2-rows">
+                            <tr><td colspan="7" class="layer-card__placeholder"><?php p($l->t('Loading…')); ?></td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </section>
 
@@ -194,19 +206,28 @@ $layeredEnabled = (bool)($_['layeredEnabled'] ?? true);
                     <div class="layer-form__row">
                         <label for="sim-user" class="form-label">
                             <?php p($l->t('Employee')); ?>
-                            <span class="visually-hidden"> (<?php p($l->t('required')); ?>)</span>
+                            <span class="form-required" aria-hidden="true">*</span>
+                            <span class="visually-hidden">(<?php p($l->t('required')); ?>)</span>
                         </label>
+                        <!--
+                         The combobox semantics are added by the JS at runtime (role=combobox,
+                         aria-controls, aria-expanded, aria-autocomplete). We still wire the
+                         static attributes the screen reader needs *before* JS hydration so a
+                         no-JS environment still shows a usable labelled text input.
+                        -->
                         <input type="text" id="sim-user" name="userId" class="form-input"
                                placeholder="<?php p($l->t('Type to search for an employee')); ?>"
                                autocomplete="off"
+                               aria-required="true"
                                aria-describedby="sim-user-help" required>
-                        <p id="sim-user-help" class="form-help"><?php p($l->t('Start typing the user name or login — suggestions will appear.')); ?></p>
-                        <ul id="sim-user-suggest" class="form-suggest" role="listbox" hidden></ul>
+                        <p id="sim-user-help" class="form-help"><?php p($l->t('Start typing the user name or login — suggestions will appear. Use the arrow keys to navigate, Enter to select.')); ?></p>
+                        <ul id="sim-user-suggest" class="form-suggest" role="listbox" aria-label="<?php p($l->t('Employee suggestions')); ?>" hidden></ul>
                     </div>
                     <div class="layer-form__row">
                         <label for="sim-date" class="form-label"><?php p($l->t('As-of date')); ?></label>
                         <input type="date" id="sim-date" name="asOfDate" class="form-input"
                                value="<?php p(date('Y-m-d')); ?>">
+                        <p class="form-help"><?php p($l->t('Defaults to today. Pick a past or future date to see how the entitlement changes.')); ?></p>
                     </div>
                     <div class="layer-form__row layer-form__row--wide">
                         <fieldset class="sim-hypothesis" aria-describedby="sim-hypothesis-help">
@@ -225,6 +246,11 @@ $layeredEnabled = (bool)($_['layeredEnabled'] ?? true);
                             <p id="sim-hypothetical-teams-help" class="form-help">
                                 <?php p($l->t('Hold Ctrl/Cmd or Shift to pick several teams. Leave empty to use the employee’s real membership.')); ?>
                             </p>
+                            <div class="sim-hypothesis__actions">
+                                <button type="button" class="btn btn--secondary btn--small" id="sim-hypothetical-clear">
+                                    <?php p($l->t('Clear hypothetical selection')); ?>
+                                </button>
+                            </div>
                         </fieldset>
                     </div>
                     <div class="layer-form__row layer-form__row--actions">
@@ -246,7 +272,11 @@ $layeredEnabled = (bool)($_['layeredEnabled'] ?? true);
 </div><!-- /#arbeitszeitcheck-app -->
 
 <!-- Hidden form drawers -->
-<dialog id="layer-dialog" class="layer-dialog" aria-labelledby="layer-dialog-title">
+<dialog id="layer-dialog" class="layer-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="layer-dialog-title"
+        aria-describedby="layer-dialog-intro">
     <form id="layer-dialog-form" class="layer-dialog__form" method="dialog" novalidate>
         <h2 id="layer-dialog-title" class="layer-dialog__title"><?php p($l->t('Edit layer')); ?></h2>
         <p id="layer-dialog-intro" class="layer-dialog__intro"></p>
