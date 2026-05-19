@@ -1,3 +1,28 @@
+## 1.3.4 – 2026-05-19
+
+### Neu
+
+- **Einzelne Quelle der Wahrheit für Zeitzonen** (`TimeZoneService`, `js/common/time.js`, `templates/common/time-bootstrap.php`). Backend und Frontend nutzen jeweils einen zentralen Pfad für Speicher-TZ, Anzeige-TZ und „jetzt“; siehe `docs/Time-And-Timezone-Architecture.de.md`.
+- **Audit-sichere Anzeige-TZ** auf allen nutzerseitigen Oberflächen (Manager-Freigaben, Überlappungskonflikte, ArbZG-Ruhezeit, Erinnerungen, Auto-Pause/Ausstempeln, Zeiteinträge-Bearbeitungsformular).
+- **Drift-sicherer Live-Timer** auf dem Dashboard (`server_now` + `performance.now()`-Anker).
+- **`TimeClientBootstrap`** — einheitliche Registrierung der Client-Zeitzonen-Stack inkl. Dashboard-Widgets.
+- **Korrektur-Anfrage-Dialog** für Mitarbeitende (europäisches Datum, Stunden/Minuten-Auswahl, Pflichtbegründung, WCAG-konforme Fehleranzeige).
+- **Gemeinsame JS-L10n-Bundles** für Korrekturen (`time-entry-correction-l10n.php`, `manager-correction-l10n.php`).
+
+### Behoben
+
+- Timer zeigt nach Einstempeln nicht mehr sofort den Client/Server-TZ-Offset.
+- „Letzte Einträge“ und Legacy-`index.php` zeigen konsistent die Anzeige-TZ.
+- Redirect beim Öffnen von „Korrektur anfragen“; lesbare Validierungsfehler auf dunklen Themes; fehlende Übersetzungsschlüssel.
+
+### Geändert
+
+- `AppLocalNaiveDateTimeNormalizer` nur noch als dünne Fassade; Dienste/Controller nutzen `TimeZoneService` direkt.
+
+### Tests & Dokumentation
+
+- Unit-/Integrations-/E2E-Tests für Zeitzonen-Migration und Timer-Offset; neue Architektur-Dokumentation.
+
 ## 1.3.3 – 2026-05-18
 
 ### Behoben
