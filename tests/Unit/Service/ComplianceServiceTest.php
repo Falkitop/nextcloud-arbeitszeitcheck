@@ -21,10 +21,14 @@ use OCA\ArbeitszeitCheck\Service\ComplianceService;
 use OCA\ArbeitszeitCheck\Service\HolidayService;
 use OCA\ArbeitszeitCheck\Service\NotificationService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
+use OCA\ArbeitszeitCheck\Service\TimeZoneService;
 use OCP\IConfig;
+use OCP\IDateTimeZone;
 use OCP\IL10N;
 use OCP\IUserManager;
+use OCP\IUserSession;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
 
 /**
  * Class ComplianceServiceTest
@@ -63,6 +67,18 @@ class ComplianceServiceTest extends TestCase
 	/** @var PermissionService|\PHPUnit\Framework\MockObject\MockObject */
 	private $permissionService;
 
+	private TimeZoneService $timeZoneService;
+
+	private function buildTimeZoneService(IConfig $config): TimeZoneService
+	{
+		$dateTimeZone = $this->createMock(IDateTimeZone::class);
+		$dateTimeZone->method('getTimeZone')->willReturn(new \DateTimeZone('Europe/Berlin'));
+		$userSession = $this->createMock(IUserSession::class);
+		$userSession->method('getUser')->willReturn(null);
+
+		return new TimeZoneService($config, $dateTimeZone, $userSession, new NullLogger());
+	}
+
 	protected function setUp(): void
 	{
 		parent::setUp();
@@ -88,6 +104,8 @@ class ComplianceServiceTest extends TestCase
 				return $text;
 			});
 
+		$this->timeZoneService = $this->buildTimeZoneService($this->config);
+
 		$this->service = new ComplianceService(
 			$this->timeEntryMapper,
 			$this->violationMapper,
@@ -98,7 +116,8 @@ class ComplianceServiceTest extends TestCase
 			$this->notificationService,
 			$this->holidayCalendarService,
 			$this->config,
-			$this->permissionService
+			$this->permissionService,
+			$this->timeZoneService
 		);
 	}
 
@@ -626,7 +645,8 @@ class ComplianceServiceTest extends TestCase
 			$this->notificationService,
 			$this->holidayCalendarService,
 			$this->config,
-			$this->permissionService
+			$this->permissionService,
+			$this->buildTimeZoneService($this->config)
 		);
 
 		$violation = new ComplianceViolation();

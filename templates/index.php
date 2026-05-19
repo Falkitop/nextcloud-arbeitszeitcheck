@@ -2,7 +2,15 @@
 declare(strict_types=1);
 
 /**
- * Main index template for arbeitszeitcheck app
+ * Legacy multi-view template for arbeitszeitcheck.
+ *
+ * NOTE: This template is no longer rendered by any controller; `PageController`
+ * renders `dashboard.php`, `time-entries.php`, `absences.php`, etc. directly.
+ * It is kept here only to satisfy `AccessibilityTest` and to provide a
+ * documented safety net in case a future route accidentally falls back to
+ * the `index` template name. Times below are converted to the user's display
+ * timezone via `templates/common/user-display-timezone.php`, which also
+ * publishes the JS bootstrap (`window.ArbeitszeitCheck.tz` / `serverNow`).
  *
  * @copyright Copyright (c) 2024, Nextcloud GmbH
  * @license AGPL-3.0-or-later
@@ -12,14 +20,32 @@ declare(strict_types=1);
 /** @var \OCP\IL10N $l */
 /** @var \OCP\IURLGenerator $urlGenerator */
 
-
 $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class);
 $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
+
+// Resolves the storage TZ, the user display TZ and emits the JS bootstrap.
+/** @var \DateTimeZone $arbeitszeitCheckStorageTimeZone */
+/** @var \DateTimeZone $arbeitszeitCheckUserDisplayTz */
+/** @var string $arbeitszeitCheckServerNowIso */
+require __DIR__ . '/common/user-display-timezone.php';
 
 $status = $_['status'] ?? [];
 $overtime = $_['overtime'] ?? [];
 $recentEntries = $_['recentEntries'] ?? [];
 $maxDailyHours = (float)\OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitcheck', 'max_daily_hours', '10');
+
+/**
+ * Returns a display copy of the given DateTime converted into the user's
+ * display timezone. Never mutates the original entity object.
+ */
+$arbeitszeitCheckToDisplayTz = static function (?\DateTimeInterface $dt) use ($arbeitszeitCheckUserDisplayTz): ?\DateTime {
+    if (!$dt instanceof \DateTimeInterface) {
+        return null;
+    }
+    $copy = $dt instanceof \DateTime ? clone $dt : \DateTime::createFromInterface($dt);
+    $copy->setTimezone($arbeitszeitCheckUserDisplayTz);
+    return $copy;
+};
 
 // Current session duration calculation for display
 $currentSessionDuration = $status['current_session_duration'] ?? 0;
@@ -128,20 +154,22 @@ $content = '';
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php foreach ($_['recentEntries'] ?? [] as $entry): ?>
+                                <?php foreach ($_['recentEntries'] ?? [] as $entry):
+                                    $rowStart = $arbeitszeitCheckToDisplayTz($entry->getStartTime());
+                                    $rowEnd = $arbeitszeitCheckToDisplayTz($entry->getEndTime());
+                                ?>
                                     <tr>
-                                        <td><?php p($entry->getStartTime()->format('d.m.Y')); ?></td>
-                                        <td><?php p($entry->getStartTime()->format('H:i')); ?></td>
-                                        <td><?php 
-                                            if ($entry->getEndTime()) {
-                                                $endTime = $entry->getEndTime();
-                                                $startDate = $entry->getStartTime()->format('Y-m-d');
-                                                $endDate = $endTime->format('Y-m-d');
+                                        <td><?php p($rowStart ? $rowStart->format('d.m.Y') : '-'); ?></td>
+                                        <td><?php p($rowStart ? $rowStart->format('H:i') : '-'); ?></td>
+                                        <td><?php
+                                            if ($rowEnd && $rowStart) {
+                                                $startDate = $rowStart->format('Y-m-d');
+                                                $endDate = $rowEnd->format('Y-m-d');
                                                 // Show date if end time is on a different day
                                                 if ($startDate !== $endDate) {
-                                                    p($endTime->format('d.m.Y H:i'));
+                                                    p($rowEnd->format('d.m.Y H:i'));
                                                 } else {
-                                                    p($endTime->format('H:i'));
+                                                    p($rowEnd->format('H:i'));
                                                 }
                                             } else {
                                                 p('-');
@@ -203,11 +231,14 @@ $content = '';
                                     <td colspan="5" class="empty-state"><?php p($l->t('No time entries found')); ?></td>
                                 </tr>
                             <?php else: ?>
-                                <?php foreach ($_['entries'] as $entry): ?>
+                                <?php foreach ($_['entries'] as $entry):
+                                    $rowStart = $arbeitszeitCheckToDisplayTz($entry->getStartTime());
+                                    $rowEnd = $arbeitszeitCheckToDisplayTz($entry->getEndTime());
+                                ?>
                                     <tr>
-                                        <td><?php p($entry->getStartTime()->format('d.m.Y')); ?></td>
-                                        <td><?php p($entry->getStartTime()->format('H:i')); ?></td>
-                                        <td><?php p($entry->getEndTime() ? $entry->getEndTime()->format('H:i') : '-'); ?></td>
+                                        <td><?php p($rowStart ? $rowStart->format('d.m.Y') : '-'); ?></td>
+                                        <td><?php p($rowStart ? $rowStart->format('H:i') : '-'); ?></td>
+                                        <td><?php p($rowEnd ? $rowEnd->format('H:i') : '-'); ?></td>
                                         <td><?php p(round($entry->getWorkingDurationHours() ?? 0, 2)); ?> h</td>
                                         <td><span class="badge badge--<?php
                                             echo match($entry->getStatus()) {

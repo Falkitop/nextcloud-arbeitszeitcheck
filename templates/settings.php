@@ -27,6 +27,7 @@ Util::addStyle('arbeitszeitcheck', 'common/accessibility');
 Util::addStyle('arbeitszeitcheck', 'navigation');
 Util::addStyle('arbeitszeitcheck', 'settings');
 Util::addScript('arbeitszeitcheck', 'common/utils');
+Util::addScript('arbeitszeitcheck', 'common/time');
 Util::addScript('arbeitszeitcheck', 'settings');
 
 $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class);

@@ -1,3 +1,16 @@
+## 1.3.3 – 2026-05-18
+
+### Behoben
+
+- **Admin-Urlaubsdaten** (`PUT /api/admin/users/{userId}/vacation-policy`, `POST /api/admin/vacation-policy/simulate`, `GET /api/admin/vacation-layers` sowie **L0/L1/L2**-Payloads in `LayeredVacationDefaultsService`): ungültige und **überlaufende** Kalenderstrings (z. B. `2026-02-30`) werden mit **HTTP 400** bzw. Feldvalidierung abgewiesen — statt stiller PHP-Normalisierung oder **HTTP 500**. Gemeinsame Logik: `OCA\ArbeitszeitCheck\Support\StrictYmdDates`.
+- **`completePausedEntry()` erhält eine vorhandene `end_time`** bei Legacy-Zeilen im Status `paused`, die bereits einen eingefrorenen Endzeitstempel tragen (Status/`end_time`-Inkonsistenz). Ohne diese Absicherung hätte der Service lohnrelevante Stunden mit `updated_at` überschreiben können.
+- **`RepairOrphanedPausedEntries`** setzt bei reiner Status-Korrektur (`paused` → `completed` bei vorhandener `end_time`) jetzt auch `ended_reason` und `policy_applied`, damit Upgrade-Reparaturen audit-konsistent zu den übrigen Schritten bleiben.
+
+### Tests
+
+- Neu: `testCompletePausedEntryPreservesExistingEndTime`.
+- 577 Unit-Tests grün.
+
 ## [Unreleased]
 
 ### Neu
@@ -66,7 +79,7 @@
 ### Schema
 
 - Neue Tabellen: `at_org_vacation_defaults` (L0), `at_model_vacation_defaults` (L1), `at_team_vacation_policies` (L2 mit FK → `at_teams ON DELETE CASCADE`).
-- `at_user_vacation_policies` (L3) erhält Spalte `inherit_lower_layers BOOLEAN NOT NULL DEFAULT 0` — golden-file-äquivalent für alle bestehenden Zeilen.
+- `at_user_vacation_policies` (L3) erhält Spalte `inherit_lower_layers BOOLEAN DEFAULT false` (im Schema nullable wegen Nextcloud-Portabilität; die Anwendung behandelt NULL wie false) — golden-file-äquivalent für alle bestehenden Zeilen.
 
 ### Dokumentation
 

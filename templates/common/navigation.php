@@ -19,6 +19,12 @@ use OCP\Util;
 Util::addScript('arbeitszeitcheck', 'common/navigation');
 Util::addScript('arbeitszeitcheck', 'common/navigation-icons');
 
+// Single, authoritative emission of the JavaScript timezone bootstrap on every
+// page that uses the shared navigation. This guarantees that `ArbeitszeitCheck.tz`
+// and `ArbeitszeitCheck.serverNow` are always defined for the `common/time.js`
+// module, no matter which page rendered the template.
+require __DIR__ . '/time-bootstrap.php';
+
 // URL generator and translation must be passed in from the controller
 /** @var array<string, mixed> $_ */
 /** @var \OCP\IURLGenerator $urlGenerator */

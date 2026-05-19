@@ -19,6 +19,7 @@ use OCA\ArbeitszeitCheck\Db\WorkingTimeModel;
 use OCA\ArbeitszeitCheck\Db\UserWorkingTimeModel;
 use OCA\ArbeitszeitCheck\Service\HolidayService;
 use OCA\ArbeitszeitCheck\Service\OvertimeService;
+use OCA\ArbeitszeitCheck\Service\UserOvertimeSettingsService;
 use OCP\IL10N;
 use PHPUnit\Framework\TestCase;
 
@@ -45,6 +46,9 @@ class OvertimeServiceTest extends TestCase
 	/** @var HolidayService|\PHPUnit\Framework\MockObject\MockObject */
 	private $holidayCalendarService;
 
+	/** @var UserOvertimeSettingsService|\PHPUnit\Framework\MockObject\MockObject */
+	private $overtimeSettingsService;
+
 	protected function setUp(): void
 	{
 		parent::setUp();
@@ -55,13 +59,22 @@ class OvertimeServiceTest extends TestCase
 		$this->l10n = $this->createMock(IL10N::class);
 		$this->holidayCalendarService = $this->createMock(HolidayService::class);
 		$this->holidayCalendarService->method('computeWorkingDaysForUser')->willReturn(5.0);
+		$this->overtimeSettingsService = $this->createMock(UserOvertimeSettingsService::class);
+		$this->overtimeSettingsService->method('getTrackingFrom')->willReturn(null);
+		$this->overtimeSettingsService->method('getOpeningBalanceHours')->willReturn(0.0);
+		$this->overtimeSettingsService->method('resolveEffectiveYearStart')->willReturnCallback(
+			static function (string $userId, int $year): \DateTime {
+				return new \DateTime(sprintf('%04d-01-01 00:00:00', $year));
+			}
+		);
 
 		$this->service = new OvertimeService(
 			$this->timeEntryMapper,
 			$this->workingTimeModelMapper,
 			$this->userWorkingTimeModelMapper,
 			$this->l10n,
-			$this->holidayCalendarService
+			$this->holidayCalendarService,
+			$this->overtimeSettingsService
 		);
 	}
 

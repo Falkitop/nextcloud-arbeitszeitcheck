@@ -3,6 +3,12 @@
 This checklist codifies the audit-critical workflow scenarios that must remain green.
 It complements PHPUnit coverage with explicit end-to-end expectations.
 
+## Timezone / Clock Display (ArbZG evidence)
+- `Version1015` UTC→Berlin migration: conversion math + idempotency flag (`tests/Unit/Migration/Version1015TimezoneMigrationTest.php`).
+- Post-upgrade markers: `app_timezone=Europe/Berlin`, `tz_utc_to_berlin_migration_done=1` (`tests/Integration/TimezoneMigrationStateIntegrationTest.php`).
+- E2E: after clock-in, `#session-timer-value` stays &lt; 5 min and within ~25 s of `current_session_duration`; API returns `server_now` + `startTime` as ISO with offset (`tests/e2e/timezone-smoke.spec.js`).
+- Architecture contract: `docs/Time-And-Timezone-Architecture.en.md`.
+
 ## Time Tracking State Machine
 - Clock-in rejects when already active.
 - Clock-in rejects when currently on break.

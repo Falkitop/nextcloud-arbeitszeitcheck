@@ -18,7 +18,6 @@ use OCA\ArbeitszeitCheck\Db\UserWorkingTimeModelMapper;
 use OCA\ArbeitszeitCheck\Db\WorkingTimeModelMapper;
 use OCA\ArbeitszeitCheck\Db\ComplianceViolationMapper;
 use OCA\ArbeitszeitCheck\Db\AuditLogMapper;
-use OCA\ArbeitszeitCheck\Constants;
 use OCA\ArbeitszeitCheck\Exception\BusinessRuleException;
 use OCA\ArbeitszeitCheck\Exception\MonthFinalizedException;
 use OCA\ArbeitszeitCheck\Service\ProjectCheckIntegrationService;
@@ -46,6 +45,7 @@ class TimeTrackingService
 	private MonthClosureGuard $monthClosureGuard;
 	private IDBConnection $db;
 	private ILockingProvider $lockingProvider;
+	private TimeZoneService $timeZoneService;
 
 	public function __construct(
 		TimeEntryMapper $timeEntryMapper,
@@ -60,7 +60,8 @@ class TimeTrackingService
 		WorkingTimeModelMapper $workingTimeModelMapper,
 		MonthClosureGuard $monthClosureGuard,
 		IDBConnection $db,
-		ILockingProvider $lockingProvider
+		ILockingProvider $lockingProvider,
+		TimeZoneService $timeZoneService
 	) {
 		$this->timeEntryMapper = $timeEntryMapper;
 		$this->violationMapper = $violationMapper;
@@ -75,6 +76,7 @@ class TimeTrackingService
 		$this->monthClosureGuard = $monthClosureGuard;
 		$this->db = $db;
 		$this->lockingProvider = $lockingProvider;
+		$this->timeZoneService = $timeZoneService;
 	}
 
 	private function getMaxDailyHours(): float
@@ -89,16 +91,15 @@ class TimeTrackingService
 
 	private function getAppConfiguredTimeZone(): \DateTimeZone
 	{
-		$tzName = $this->config->getAppValue('arbeitszeitcheck', Constants::CONFIG_APP_TIMEZONE, 'Europe/Berlin');
-		try {
-			return new \DateTimeZone($tzName);
-		} catch (\Throwable $e) {
-			\OCP\Log\logger('arbeitszeitcheck')->warning(
-				'Invalid app timezone configured; falling back to Europe/Berlin: ' . $tzName,
-				['exception' => $e]
-			);
-			return new \DateTimeZone('Europe/Berlin');
-		}
+		return $this->timeZoneService->storageTimeZone();
+	}
+
+	/**
+	 * “Now” for persisting or comparing {@see TimeEntry} naive SQL datetimes (always organisation storage TZ).
+	 */
+	private function nowForAtEntries(): \DateTime
+	{
+		return $this->timeZoneService->nowInStorage();
 	}
 
 	/**
@@ -109,14 +110,7 @@ class TimeTrackingService
 	 */
 	private function getAppLocalTodayWindow(): array
 	{
-		$tz = $this->getAppConfiguredTimeZone();
-		$now = new \DateTimeImmutable('now', $tz);
-		$start = $now->setTime(0, 0, 0);
-		$end = $start->modify('+1 day');
-		return [
-			new \DateTime($start->format('Y-m-d H:i:s')),
-			new \DateTime($end->format('Y-m-d H:i:s')),
-		];
+		return $this->timeZoneService->todayWindowInStorage();
 	}
 
 	/**
@@ -176,7 +170,7 @@ class TimeTrackingService
 				$entry->setStatus(TimeEntry::STATUS_COMPLETED);
 				$entry->setEndedReason(TimeEntry::ENDED_REASON_STALE_PAUSED_REPAIR);
 				$entry->setPolicyApplied('repair');
-				$entry->setUpdatedAt(new \DateTime());
+				$entry->setUpdatedAt($this->nowForAtEntries());
 
 				try {
 					$this->calculateAndSetAutomaticBreak($entry);
@@ -235,7 +229,7 @@ class TimeTrackingService
 					'message' => $noticeMessage,
 					'reason' => TimeEntry::ENDED_REASON_STALE_PAUSED_REPAIR,
 					'count' => $repaired,
-					'at' => (new \DateTime())->format('c'),
+					'at' => $this->nowForAtEntries()->format('c'),
 				]));
 			}
 		} catch (\Throwable $e) {
@@ -273,7 +267,7 @@ class TimeTrackingService
 			$this->repairStalePausedAutomaticEntries($userId);
 			$this->db->beginTransaction();
 			try {
-				$this->monthClosureGuard->assertUserDayMutable($userId, new \DateTime());
+				$this->monthClosureGuard->assertUserDayMutable($userId, $this->nowForAtEntries());
 				$activeEntry = $this->timeEntryMapper->findActiveByUser($userId);
 				if ($activeEntry !== null) {
 					throw new BusinessRuleException($this->l10n->t('User is already clocked in'));
@@ -309,7 +303,7 @@ class TimeTrackingService
 					));
 				}
 
-				$now = new \DateTime();
+				$now = $this->nowForAtEntries();
 				$timeEntry = new TimeEntry();
 				$timeEntry->setUserId($userId);
 				$timeEntry->setStartTime($now);
@@ -373,7 +367,7 @@ class TimeTrackingService
 
 				$this->monthClosureGuard->assertTimeEntryMutable($currentEntry);
 				$oldSummary = $this->safeGetSummary($currentEntry, $userId);
-				$now = new \DateTime();
+				$now = $this->nowForAtEntries();
 				if ($currentEntry->getStatus() === TimeEntry::STATUS_BREAK && $currentEntry->getBreakStartTime() !== null) {
 					$this->archiveBreakToJson($currentEntry, $currentEntry->getBreakStartTime(), $now);
 					$currentEntry->setBreakStartTime(null);
@@ -464,7 +458,7 @@ class TimeTrackingService
 			));
 		}
 
-		$now      = new \DateTime();
+		$now      = $this->nowForAtEntries();
 		$pausedAt = $pausedEntry->getUpdatedAt() ?? $now;
 
 		// Archive the gap since the entry was paused as a break so it is excluded
@@ -523,7 +517,7 @@ class TimeTrackingService
 				}
 
 				$oldSummary = $this->safeGetSummary($activeEntry, $userId);
-				$now = new \DateTime();
+				$now = $this->nowForAtEntries();
 				if ($activeEntry->getBreakStartTime() !== null && $activeEntry->getBreakEndTime() !== null) {
 					$this->archiveBreakToJson($activeEntry, $activeEntry->getBreakStartTime(), $activeEntry->getBreakEndTime());
 					$activeEntry->setBreakStartTime($now);
@@ -573,7 +567,7 @@ class TimeTrackingService
 
 				$this->monthClosureGuard->assertTimeEntryMutable($breakEntry);
 				$oldSummary = $this->safeGetSummary($breakEntry, $userId);
-				$now = new \DateTime();
+				$now = $this->nowForAtEntries();
 				$breakEntry->setBreakEndTime($now);
 				$breakEntry->setStatus(TimeEntry::STATUS_ACTIVE);
 				$breakEntry->setUpdatedAt($now);
@@ -598,7 +592,16 @@ class TimeTrackingService
 	}
 
 	/**
-	 * Get current status for a user
+	 * Get current status for a user.
+	 *
+	 * The response includes a `server_now` ISO-8601 instant the frontend uses
+	 * to drive the live session timer (see `ArbeitszeitCheckTime.syncFromServer`
+	 * in `js/common/time.js`): instead of comparing local `Date.now()` against
+	 * the entry's `startTime` (which produces an immediate ±offset error when
+	 * the client clock or timezone differs from the server's), the frontend
+	 * pins itself to `server_now` and uses a monotonic clock from there on.
+	 * This is the canonical fix for the "I clocked in and the timer immediately
+	 * shows +02:00:00" class of bugs.
 	 *
 	 * @param string $userId
 	 * @return array
@@ -617,6 +620,7 @@ class TimeTrackingService
 			$breakEntry = $this->timeEntryMapper->findOnBreakByUser($userId);
 
 			$currentEntry = $activeEntry ?: $breakEntry;
+			$nowImmutable = $this->timeZoneService->nowImmutableInStorage();
 
 			// If no active/break entry, check for a paused entry from today before
 			// declaring the user fully clocked out.
@@ -625,7 +629,7 @@ class TimeTrackingService
 				$pausedEntry = $this->timeEntryMapper->findPausedOrUnfinishedTodayByUser($userId, $today, $tomorrow);
 				if ($pausedEntry !== null && $pausedEntry->getStatus() === TimeEntry::STATUS_PAUSED) {
 					$sessionStart = $pausedEntry->getStartTime();
-					$pausedAt     = $pausedEntry->getUpdatedAt() ?? new \DateTime();
+					$pausedAt     = $pausedEntry->getUpdatedAt() ?? $this->nowForAtEntries();
 					$sessionDuration = $sessionStart
 						? max(0, $pausedAt->getTimestamp() - $sessionStart->getTimestamp() - (int)($pausedEntry->getBreakDurationHours() * 3600))
 						: 0;
@@ -638,37 +642,39 @@ class TimeTrackingService
 						);
 						$pausedSummary = ['id' => $pausedEntry->getId(), 'userId' => $userId, 'status' => TimeEntry::STATUS_PAUSED];
 					}
-					return $this->appendAutoClockoutNotice([
+					return $this->appendAutoClockoutNotice($this->withServerClock([
 						'status' => TimeEntry::STATUS_PAUSED,
 						'current_entry' => $pausedSummary,
 						'working_today_hours' => $this->getTodayHours($userId),
 						'current_session_duration' => $sessionDuration,
-					], $userId);
+					], $nowImmutable), $userId);
 				}
 
-				return $this->appendAutoClockoutNotice([
+				return $this->appendAutoClockoutNotice($this->withServerClock([
 					'status' => 'clocked_out',
 					'current_entry' => null,
 					'working_today_hours' => $this->getTodayHours($userId),
 					'current_session_duration' => null
-				], $userId);
+				], $nowImmutable), $userId);
 			}
 
-			$now = new \DateTime();
 			$sessionStart = $currentEntry->getStartTime();
-			
-			// Calculate session duration from start time to now
-			$sessionDuration = $sessionStart ? ($now->getTimestamp() - $sessionStart->getTimestamp()) : 0;
-			
+
+			// Calculate session duration from start time to now using UTC epoch
+			// seconds (`getTimestamp()`), so the value is independent of the
+			// TZ either DateTime was constructed in. The two DateTime objects
+			// can carry different zones — only the instants matter.
+			$sessionDuration = $sessionStart ? ($nowImmutable->getTimestamp() - $sessionStart->getTimestamp()) : 0;
+
 			// Subtract all break time from session duration
 			// This includes regular breaks AND pause periods (clock-out to clock-in)
 			// IMPORTANT: Use getBreakDurationHours() which correctly handles overlapping breaks
 			// by merging them, so overlapping time periods are counted only once
 			$totalBreakDurationHours = $currentEntry->getBreakDurationHours();
 			$totalBreakDuration = $totalBreakDurationHours * 3600; // Convert hours to seconds
-			
+
 			$sessionDuration -= $totalBreakDuration;
-			
+
 			// Ensure duration is not negative
 			$sessionDuration = max(0, $sessionDuration);
 
@@ -683,26 +689,48 @@ class TimeTrackingService
 					'id' => $currentEntry->getId(),
 					'userId' => $currentEntry->getUserId(),
 					'status' => $currentEntry->getStatus(),
-					'startTime' => $sessionStart ? $sessionStart->format('c') : null
+					'startTime' => $sessionStart ? $this->timeZoneService->toIso($sessionStart) : null
 				];
 			}
 
-			return $this->appendAutoClockoutNotice([
+			return $this->appendAutoClockoutNotice($this->withServerClock([
 				'status' => $currentEntry->getStatus(),
 				'current_entry' => $entrySummary,
 				'working_today_hours' => $this->getTodayHours($userId),
 				'current_session_duration' => $sessionDuration
-			], $userId);
+			], $nowImmutable), $userId);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in getStatus for user ' . $userId . ': ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(), ["exception" => $e]);
-			// Return a safe default status
-			return $this->appendAutoClockoutNotice([
+			// Return a safe default status (still include the server clock so
+			// the client can keep its drift estimate alive even on error).
+			return $this->appendAutoClockoutNotice($this->withServerClock([
 				'status' => 'clocked_out',
 				'current_entry' => null,
 				'working_today_hours' => 0.0,
 				'current_session_duration' => null
-			], $userId);
+			], $this->timeZoneService->nowImmutableInStorage()), $userId);
 		}
+	}
+
+	/**
+	 * Annotate a status array with the canonical "server clock" fields used by
+	 * the frontend to drive the drift-safe session timer.
+	 *
+	 *  - `server_now`: ISO-8601 instant of the server's "now" (with offset),
+	 *    so JS can pin its monotonic timer to the same moment the server used
+	 *    to compute `current_session_duration`.
+	 *  - `server_timezone`: the configured organisation timezone name (e.g.
+	 *    `Europe/Berlin`). The frontend renders some labels using this; never
+	 *    used for business rules client-side.
+	 *
+	 * @param array<string,mixed> $status
+	 * @return array<string,mixed>
+	 */
+	private function withServerClock(array $status, \DateTimeImmutable $serverNow): array
+	{
+		$status['server_now'] = $this->timeZoneService->toIso($serverNow);
+		$status['server_timezone'] = $this->timeZoneService->storageTimeZoneName();
+		return $status;
 	}
 
 	/**
@@ -820,7 +848,7 @@ class TimeTrackingService
 					} elseif ($currentEntry->getStatus() === TimeEntry::STATUS_PAUSED && $currentEntry->getUpdatedAt()) {
 						$calcEndTime = $currentEntry->getUpdatedAt();
 					} else {
-						$calcEndTime = new \DateTime();
+						$calcEndTime = $this->nowForAtEntries();
 					}
 					
 					// Add entry data directly to calculation array (without cloning the entity)
@@ -1042,7 +1070,7 @@ class TimeTrackingService
 
 		$userId = $timeEntry->getUserId();
 		$startTime = $timeEntry->getStartTime();
-		$now = new \DateTime();
+		$now = $this->nowForAtEntries();
 		
 		// For paused entries (that somehow got here), use updatedAt instead of now
 		if ($timeEntry->getStatus() === TimeEntry::STATUS_PAUSED && $timeEntry->getUpdatedAt()) {
@@ -1282,10 +1310,7 @@ class TimeTrackingService
 	public function calculateTakenBreakMinutes(string $userId): float
 	{
 		try {
-			$today = new \DateTime();
-			$today->setTime(0, 0, 0);
-			$tomorrow = clone $today;
-			$tomorrow->modify('+1 day');
+			[$today, $tomorrow] = $this->getAppLocalTodayWindow();
 
 			$entries = $this->timeEntryMapper->findByUserAndDateRange($userId, $today, $tomorrow);
 			
@@ -1409,7 +1434,7 @@ class TimeTrackingService
 		$policy = $this->resolveBreakFallbackPolicyForUser($userId);
 		$thresholdMinutes = (int)$policy['threshold_minutes'];
 		if ((string)$policy['mode'] === 'flex') {
-			$currentHour = (int)(new \DateTime())->format('G');
+			$currentHour = (int)$this->nowForAtEntries()->format('G');
 			$windowStart = (int)$policy['window_start_hour'];
 			$windowEnd = (int)$policy['window_end_hour'];
 			if ($windowStart >= 0 && $windowEnd <= 24 && $windowStart < $windowEnd && $currentHour >= $windowStart && $currentHour < $windowEnd) {
@@ -1417,7 +1442,7 @@ class TimeTrackingService
 			}
 		}
 
-		$now = new \DateTime();
+		$now = $this->nowForAtEntries();
 		$elapsedMinutes = (int)floor(($now->getTimestamp() - $breakStart->getTimestamp()) / 60);
 		if ($elapsedMinutes < $thresholdMinutes) {
 			return $entry;
@@ -1427,7 +1452,11 @@ class TimeTrackingService
 			$this->clockOut($userId, TimeEntry::ENDED_REASON_AUTO_BREAK_FALLBACK, (string)$policy['mode']);
 			$noticeMessage = $this->l10n->t(
 				'Break was still active after %1$d minutes. Automatic clock-out was applied at %2$s (%3$s policy).',
-				[$thresholdMinutes, $now->format('d.m.Y H:i'), (string)$policy['mode']]
+				[
+					$thresholdMinutes,
+					$this->timeZoneService->formatForDisplay($now, 'd.m.Y H:i', $userId),
+					(string)$policy['mode'],
+				]
 			);
 			$this->config->setUserValue($userId, 'arbeitszeitcheck', 'auto_clockout_notice', json_encode([
 				'message' => $noticeMessage,
@@ -1475,10 +1504,10 @@ class TimeTrackingService
 				}
 
 				$updated = $this->timeEntryMapper->find($currentEntry->getId());
-				$now = new \DateTime();
+				$now = $this->nowForAtEntries();
 				$noticeMessage = $this->l10n->t(
 					'Session was automatically completed at %1$s because the maximum daily working hours were reached (ArbZG §3).',
-					[$now->format('d.m.Y H:i')]
+					[$this->timeZoneService->formatForDisplay($now, 'd.m.Y H:i', $userId)]
 				);
 				$this->config->setUserValue($userId, 'arbeitszeitcheck', 'auto_clockout_notice', json_encode([
 					'message' => $noticeMessage,
@@ -1723,8 +1752,15 @@ class TimeTrackingService
 
 				$endTime = $explicitEndTime !== null ? clone $explicitEndTime : null;
 				if ($endTime === null) {
-					$updatedAt = $entry->getUpdatedAt();
-					$endTime = $updatedAt !== null ? clone $updatedAt : clone $startTime;
+					// Status/end_time mismatch (legacy bug): honour the frozen end_time
+					// instead of overwriting it with updated_at.
+					$existingEnd = $entry->getEndTime();
+					if ($existingEnd !== null) {
+						$endTime = clone $existingEnd;
+					} else {
+						$updatedAt = $entry->getUpdatedAt();
+						$endTime = $updatedAt !== null ? clone $updatedAt : clone $startTime;
+					}
 				}
 
 				if ($endTime < $startTime) {
@@ -1739,7 +1775,7 @@ class TimeTrackingService
 					$entry->setEndedReason(TimeEntry::ENDED_REASON_MANUAL_CLOCK_OUT);
 				}
 				$entry->setPolicyApplied($entry->getPolicyApplied() ?? 'paused_recovery');
-				$entry->setUpdatedAt(new \DateTime());
+				$entry->setUpdatedAt($this->nowForAtEntries());
 
 				try {
 					$this->calculateAndSetAutomaticBreak($entry);

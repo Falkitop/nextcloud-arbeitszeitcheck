@@ -27,6 +27,7 @@ Util::addStyle('arbeitszeitcheck', 'common/accessibility');
 Util::addStyle('arbeitszeitcheck', 'navigation');
 Util::addStyle('arbeitszeitcheck', 'absences');
 Util::addScript('arbeitszeitcheck', 'common/utils');
+Util::addScript('arbeitszeitcheck', 'common/time');
 Util::addScript('arbeitszeitcheck', 'common/datepicker');
 Util::addScript('arbeitszeitcheck', 'arbeitszeitcheck-main');
 

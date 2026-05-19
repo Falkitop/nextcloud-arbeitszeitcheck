@@ -101,7 +101,8 @@
         if (!ymd || typeof ymd !== 'string') {
             return '';
         }
-        const d = new Date(ymd + 'T12:00:00');
+        const api = window.ArbeitszeitCheckTime;
+        const d = api ? api.parseYmd(ymd) : new Date(ymd + 'T12:00:00');
         if (Number.isNaN(d.getTime())) {
             return ymd;
         }

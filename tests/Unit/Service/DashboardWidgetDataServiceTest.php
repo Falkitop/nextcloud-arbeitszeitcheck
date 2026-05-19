@@ -11,11 +11,30 @@ use OCA\ArbeitszeitCheck\Service\OvertimeService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCA\ArbeitszeitCheck\Service\TeamResolverService;
 use OCA\ArbeitszeitCheck\Service\TimeTrackingService;
+use OCA\ArbeitszeitCheck\Service\TimeZoneService;
+use OCP\IConfig;
+use OCP\IDateTimeZone;
 use OCP\IUser;
 use OCP\IUserManager;
+use OCP\IUserSession;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
 
 class DashboardWidgetDataServiceTest extends TestCase {
+	private function createTimeZoneService(): TimeZoneService {
+		$config = $this->createMock(IConfig::class);
+		$config->method('getAppValue')->willReturnCallback(fn ($app, $key, $default) => match ($key) {
+			'app_timezone' => 'Europe/Berlin',
+			default => $default,
+		});
+		$dateTimeZone = $this->createMock(IDateTimeZone::class);
+		$dateTimeZone->method('getTimeZone')->willReturn(new \DateTimeZone('Europe/Berlin'));
+		$userSession = $this->createMock(IUserSession::class);
+		$userSession->method('getUser')->willReturn(null);
+
+		return new TimeZoneService($config, $dateTimeZone, $userSession, new NullLogger());
+	}
+
 	private function createService(
 		TimeTrackingService $timeTrackingService,
 		PermissionService $permissionService,
@@ -29,7 +48,8 @@ class DashboardWidgetDataServiceTest extends TestCase {
 			$this->createMock(AbsenceMapper::class),
 			$teamResolverService ?? $this->createMock(TeamResolverService::class),
 			$permissionService,
-			$userManager
+			$userManager,
+			$this->createTimeZoneService()
 		);
 	}
 

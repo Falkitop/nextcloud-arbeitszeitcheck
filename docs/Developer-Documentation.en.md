@@ -427,6 +427,8 @@ class Version1000Date20241229000000 extends SimpleMigrationStep
 }
 ```
 
+**Nextcloud schema portability (critical for upgrades):** Core runs `OC\DB\MigrationService::ensureOracleConstraints()` on app migrations whenever `info.xml` does **not** declare `<database>` dependencies (the default for this app). Among other rules, **new columns must not combine `Types::BOOLEAN` with `notnull => true`** — the migrator throws *"type Bool and also NotNull"*. Use `notnull => false` with a `default` instead (see `inherit_lower_layers` on `at_user_vacation_policies`) and treat `NULL` like `false` in PHP. See `lib/private/DB/MigrationService.php` in the Nextcloud tree and the developer manual section on database schema.
+
 ### Vacation carryover (Resturlaub)
 
 Carryover is **not** a separate “adjustment” column: the editable opening balance is `carryover_days` on `at_vacation_year_balance` for `(user_id, year)`.
@@ -653,6 +655,7 @@ Today’s entitlement work introduces a policy-driven engine that separates enti
 - User policies:
   - `PUT /api/admin/users/{userId}/vacation-policy`
   - `POST /api/admin/vacation-policy/simulate`
+  - Calendar parameters (`effectiveFrom`, `effectiveTo`, `asOfDate`, and `GET …/vacation-layers?asOfDate=`) accept **only** strict `YYYY-MM-DD` strings that denote a real Gregorian day (overflows such as `2026-02-30` are rejected with HTTP 400, not silently normalised). L0/L1/L2 layer saves use the same rules inside `LayeredVacationDefaultsService` via `OCA\ArbeitszeitCheck\Support\StrictYmdDates`.
 
 **Allocation and traceability integration**
 
@@ -895,13 +898,52 @@ Use PHP translation in templates:
 <?php p($l->t('Hello world')); ?>
 ```
 
-Add translations to `l10n/de.json` and `l10n/en.json`.
+Add the same English source string to `l10n/en.json` and `l10n/de.json`. Run `php scripts/check-l10n-placeholders.php` when strings contain `{placeholders}`.
 
-For JavaScript, use Nextcloud's translation system if needed:
+**JavaScript (dynamic UI):** Prefer server-injected bundles on `window.ArbeitszeitCheck.l10n` so strings are translated before scripts run (works when `window.t` is unavailable on app pages).
+
+| Partial | Included from | Used by |
+|---------|---------------|---------|
+| `templates/common/main-ui-l10n.php` | Most employee/manager pages | `arbeitszeitcheck-main.js` |
+| `templates/common/time-entry-correction-l10n.php` | `templates/time-entries.php` | `time-entry-correction.js` (modal title, validation, dynamic break rows, submit/withdraw) |
+| `templates/common/manager-correction-l10n.php` | `manager-dashboard.php`, `manager-time-entries.php` | `manager-dashboard.js` (pending correction cards), `manager-time-entries.js` (direct “Correct” modal) |
+
+Pattern in JS:
+
 ```javascript
-// Translations are typically handled server-side in PHP templates
-// For dynamic content, use AJAX to fetch translated strings
+function t(key, fallback) {
+  const bundle = window.ArbeitszeitCheck?.l10n || {};
+  const value = bundle[key];
+  return value !== undefined && value !== '' ? value : (fallback || key);
+}
 ```
+
+Register new keys in the partial’s `$msgid` list (or explicit map) and add translations to both JSON files. Template-only strings need only `$l->t()` in PHP.
+
+---
+
+## Time entry correction (employee UI)
+
+**Entry points:** Time entries list → **Request correction** / **Withdraw**; template source `#time-entry-correction-source` is cloned into modal `#time-entry-correction-modal` on first open (`js/time-entry-correction.js`).
+
+**Request API:** `POST /api/time-entries/{id}/request-correction`
+
+| Field | Format | Notes |
+|-------|--------|--------|
+| `justification` | string | Required, 10–2000 characters (enforced client + server) |
+| `date` | `yyyy-mm-dd` or `dd.mm.yyyy` | Work date |
+| `startTime`, `endTime` | `HH:mm` | Wall clock on `date`; if `end ≤ start`, end is next calendar day |
+| `breaks` | `[{start, end}]` optional | Each `HH:mm`; omitted or empty → keep existing breaks |
+
+Legacy clients may still send ISO-8601 `startTime`/`endTime` instants.
+
+**Withdraw API:** `POST /api/time-entries/{id}/cancel-correction` (no body).
+
+**Related server messages** (must stay in `l10n/*.json`): `Direct edits are disabled…`, `A correction is pending approval…`, `At least one proposed change is required.`, `No pending correction to cancel.`, etc. — see `TimeEntryController::requestCorrection` / `cancelCorrection`.
+
+**Manager approvals:** `ManagerController` pending time-entry cards + approve/reject endpoints; UI strings in `manager-correction-l10n.php`. **Manager direct edit:** `POST /api/manager/time-entries/{id}/correct` — see `docs/Compliance-Time-Entry-Workflows.de.md`.
+
+**Tests:** `tests/Unit/Controller/TimeEntryControllerTest.php` (correction paths); workflow matrix in `tests/WORKFLOW_ROLE_MATRIX.md`.
 
 ---
 
@@ -958,6 +1000,17 @@ Run:
 ```bash
 npm run e2e
 ```
+
+Timezone-specific smoke (clock-in timer must not jump by the UTC offset; verifies `server_now` / `ArbeitszeitCheckTime` bootstrap):
+
+```bash
+npm run e2e -- tests/e2e/timezone-smoke.spec.js
+```
+
+PHPUnit coverage for the UTC→Berlin upgrade path:
+
+- `tests/Unit/Migration/Version1015TimezoneMigrationTest.php` — conversion math and idempotency flag.
+- `tests/Integration/TimezoneMigrationStateIntegrationTest.php` — post-upgrade config markers and `TimeZoneService` contract on a live instance.
 
 ### Audit-critical workflow checklist
 

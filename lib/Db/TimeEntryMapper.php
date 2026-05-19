@@ -242,10 +242,9 @@ class TimeEntryMapper extends QBMapper
 	public function findPausedOrUnfinishedTodayByUser(string $userId, ?\DateTime $dayStart = null, ?\DateTime $dayEndExclusive = null): ?TimeEntry
 	{
 		if ($dayStart === null || $dayEndExclusive === null) {
-			$today = new \DateTime();
-			$today->setTime(0, 0, 0);
-			$tomorrow = clone $today;
-			$tomorrow->modify('+1 day');
+			$tz = AppLocalNaiveDateTimeNormalizer::appStorageTimeZoneFromConfig($this->config);
+			$today = new \DateTime('today', $tz);
+			$tomorrow = (clone $today)->modify('+1 day');
 		} else {
 			$today = clone $dayStart;
 			$tomorrow = clone $dayEndExclusive;
@@ -865,7 +864,7 @@ class TimeEntryMapper extends QBMapper
 	 */
 	public function findLastPausedWithinHours(string $userId, int $sinceHours = 48): ?TimeEntry
 	{
-		$cutoff = new \DateTime();
+		$cutoff = AppLocalNaiveDateTimeNormalizer::nowMutableInAppStorage($this->config);
 		$cutoff->modify('-' . $sinceHours . ' hours');
 
 		$qb = $this->db->getQueryBuilder();

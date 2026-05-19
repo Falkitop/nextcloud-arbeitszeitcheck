@@ -6,10 +6,17 @@ namespace OCA\ArbeitszeitCheck\Tests\Unit\Dashboard;
 
 use OCA\ArbeitszeitCheck\Dashboard\EmployeeStatusWidget;
 use OCA\ArbeitszeitCheck\Service\DashboardWidgetDataService;
+use OCA\ArbeitszeitCheck\Service\TimeZoneService;
+use OCA\ArbeitszeitCheck\Support\TimeClientBootstrap;
+use OCP\AppFramework\Services\IInitialState;
 use OCP\Dashboard\Model\WidgetItems;
+use OCP\IConfig;
+use OCP\IDateTimeZone;
 use OCP\IL10N;
 use OCP\IURLGenerator;
+use OCP\IUserSession;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
 
 class EmployeeStatusWidgetTest extends TestCase {
 	/** @var IL10N&\PHPUnit\Framework\MockObject\MockObject */
@@ -18,6 +25,7 @@ class EmployeeStatusWidgetTest extends TestCase {
 	private $urlGenerator;
 	/** @var DashboardWidgetDataService&\PHPUnit\Framework\MockObject\MockObject */
 	private $dataService;
+	private TimeClientBootstrap $timeClientBootstrap;
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -35,6 +43,31 @@ class EmployeeStatusWidgetTest extends TestCase {
 		);
 
 		$this->dataService = $this->createMock(DashboardWidgetDataService::class);
+
+		$config = $this->createMock(IConfig::class);
+		$config->method('getAppValue')->willReturnCallback(fn ($app, $key, $default) => match ($key) {
+			'app_timezone' => 'Europe/Berlin',
+			default => $default,
+		});
+		$dateTimeZone = $this->createMock(IDateTimeZone::class);
+		$dateTimeZone->method('getTimeZone')->willReturn(new \DateTimeZone('Europe/Berlin'));
+		$userSession = $this->createMock(IUserSession::class);
+		$userSession->method('getUser')->willReturn(null);
+		$timeZoneService = new TimeZoneService($config, $dateTimeZone, $userSession, new NullLogger());
+		$this->timeClientBootstrap = new TimeClientBootstrap(
+			$timeZoneService,
+			$dateTimeZone,
+			$this->createMock(IInitialState::class)
+		);
+	}
+
+	private function createWidget(?IL10N $l10n = null): EmployeeStatusWidget {
+		return new EmployeeStatusWidget(
+			$l10n ?? $this->l10n,
+			$this->urlGenerator,
+			$this->dataService,
+			$this->timeClientBootstrap
+		);
 	}
 
 	public function testWidgetReturnsSingleStatusItem(): void {
@@ -44,7 +77,7 @@ class EmployeeStatusWidgetTest extends TestCase {
 			'currentSessionDuration' => 1800,
 		]);
 
-		$widget = new EmployeeStatusWidget($this->l10n, $this->urlGenerator, $this->dataService);
+		$widget = $this->createWidget();
 		$items  = $widget->getItemsV2('u1');
 
 		$this->assertInstanceOf(WidgetItems::class, $items);
@@ -69,7 +102,7 @@ class EmployeeStatusWidgetTest extends TestCase {
 			'currentSessionDuration' => 0,
 		]);
 
-		$widget = new EmployeeStatusWidget($l10n, $this->urlGenerator, $this->dataService);
+		$widget = $this->createWidget($l10n);
 		$widget->getItemsV2('u1');
 
 		$this->assertContains(
@@ -95,7 +128,7 @@ class EmployeeStatusWidgetTest extends TestCase {
 			'currentSessionDuration' => 3600,
 		]);
 
-		$widget   = new EmployeeStatusWidget($this->l10n, $this->urlGenerator, $this->dataService);
+		$widget   = $this->createWidget();
 		$items    = $widget->getItemsV2('u1');
 		$subtitle = $items->getItems()[0]->getSubtitle();
 
@@ -103,7 +136,7 @@ class EmployeeStatusWidgetTest extends TestCase {
 	}
 
 	public function testReloadIntervalIsPositive(): void {
-		$widget = new EmployeeStatusWidget($this->l10n, $this->urlGenerator, $this->dataService);
+		$widget = $this->createWidget();
 		$this->assertGreaterThan(0, $widget->getReloadInterval());
 	}
 
@@ -114,7 +147,7 @@ class EmployeeStatusWidgetTest extends TestCase {
 			'currentSessionDuration' => 3600,
 		]);
 
-		$widget   = new EmployeeStatusWidget($this->l10n, $this->urlGenerator, $this->dataService);
+		$widget   = $this->createWidget();
 		$buttons  = $widget->getWidgetButtons('u1');
 
 		$this->assertNotEmpty($buttons);
@@ -122,7 +155,7 @@ class EmployeeStatusWidgetTest extends TestCase {
 
 	public function testWidgetSurvivesDataServiceException(): void {
 		$this->dataService->method('getEmployeeWidgetData')->willThrowException(new \RuntimeException('simulated'));
-		$widget = new EmployeeStatusWidget($this->l10n, $this->urlGenerator, $this->dataService);
+		$widget = $this->createWidget();
 		$items  = $widget->getItemsV2('u1');
 		$this->assertInstanceOf(WidgetItems::class, $items);
 		$this->assertGreaterThanOrEqual(1, count($items->getItems()));

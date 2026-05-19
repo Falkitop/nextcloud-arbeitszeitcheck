@@ -39,6 +39,8 @@ use OCA\ArbeitszeitCheck\Service\LayeredVacationNotFoundException;
 use OCA\ArbeitszeitCheck\Service\LayeredVacationValidationException;
 use OCA\ArbeitszeitCheck\Service\VacationAllocationService;
 use OCA\ArbeitszeitCheck\Service\VacationEntitlementEngine;
+use OCA\ArbeitszeitCheck\Service\UserOvertimeSettingsService;
+use OCA\ArbeitszeitCheck\Support\StrictYmdDates;
 use OCP\App\IAppManager;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Db\DoesNotExistException;
@@ -97,6 +99,7 @@ class AdminController extends Controller
 	private UserVacationPolicyAssignmentMapper $userVacationPolicyAssignmentMapper;
 	private VacationEntitlementEngine $vacationEntitlementEngine;
 	private LayeredVacationDefaultsService $layeredVacationDefaultsService;
+	private UserOvertimeSettingsService $userOvertimeSettingsService;
 
 	public function __construct(
 		string $appName,
@@ -126,7 +129,8 @@ class AdminController extends Controller
 		TariffRuleModuleMapper $tariffRuleModuleMapper,
 		UserVacationPolicyAssignmentMapper $userVacationPolicyAssignmentMapper,
 		VacationEntitlementEngine $vacationEntitlementEngine,
-		LayeredVacationDefaultsService $layeredVacationDefaultsService
+		LayeredVacationDefaultsService $layeredVacationDefaultsService,
+		UserOvertimeSettingsService $userOvertimeSettingsService
 	) {
 		parent::__construct($appName, $request);
 		$this->timeEntryMapper = $timeEntryMapper;
@@ -154,6 +158,7 @@ class AdminController extends Controller
 		$this->userVacationPolicyAssignmentMapper = $userVacationPolicyAssignmentMapper;
 		$this->vacationEntitlementEngine = $vacationEntitlementEngine;
 		$this->layeredVacationDefaultsService = $layeredVacationDefaultsService;
+		$this->userOvertimeSettingsService = $userOvertimeSettingsService;
 		$this->setCspService($cspService);
 	}
 
@@ -254,6 +259,49 @@ class AdminController extends Controller
 		return (float)$normalized;
 	}
 
+	/**
+	 * Strict calendar day for admin vacation APIs (`YYYY-MM-DD` only — rejects
+	 * timestamps and locale-formatted dates so parsing cannot throw or drift).
+	 *
+	 * @return array{\DateTime, null}|array{null, JSONResponse} Tuple of `[date, null]` or `[null, error]`.
+	 */
+	private function parseStrictYmdDateParam(string $raw): array
+	{
+		$parsed = StrictYmdDates::parseRequired($raw);
+		if ($parsed === null) {
+			return [null, new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('Invalid date; use YYYY-MM-DD.'),
+			], Http::STATUS_BAD_REQUEST)];
+		}
+
+		return [$parsed, null];
+	}
+
+	/**
+	 * Optional end-of-range date: empty input yields `null` without error.
+	 *
+	 * @return array{\DateTime|null, null}|array{null, JSONResponse}
+	 */
+	private function parseOptionalEffectiveToParam(mixed $raw): array
+	{
+		if ($raw === null || $raw === '') {
+			return [null, null];
+		}
+		if (!is_scalar($raw)) {
+			return [null, new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('Invalid date; use YYYY-MM-DD.'),
+			], Http::STATUS_BAD_REQUEST)];
+		}
+		$trimmed = trim((string)$raw);
+		if ($trimmed === '') {
+			return [null, null];
+		}
+
+		return $this->parseStrictYmdDateParam($trimmed);
+	}
+
 	private function resolveActivationStartDate(string $activationMode, \DateTimeImmutable $today): \DateTimeImmutable
 	{
 		return match ($activationMode) {
@@ -288,6 +336,7 @@ class AdminController extends Controller
 
 		// Add common JavaScript files
 		Util::addScript('arbeitszeitcheck', 'common/utils');
+		Util::addScript('arbeitszeitcheck', 'common/time');
 		Util::addScript('arbeitszeitcheck', 'common/components');
 		Util::addScript('arbeitszeitcheck', 'common/messaging');
 		Util::addScript('arbeitszeitcheck', 'admin-dashboard');
@@ -379,6 +428,7 @@ class AdminController extends Controller
 
 		// Add common JavaScript files
 		Util::addScript('arbeitszeitcheck', 'common/utils');
+		Util::addScript('arbeitszeitcheck', 'common/time');
 		Util::addScript('arbeitszeitcheck', 'common/datepicker');
 		Util::addScript('arbeitszeitcheck', 'common/components');
 		Util::addScript('arbeitszeitcheck', 'common/messaging');
@@ -460,6 +510,7 @@ class AdminController extends Controller
 
 		// Add common JavaScript files
 		Util::addScript('arbeitszeitcheck', 'common/utils');
+		Util::addScript('arbeitszeitcheck', 'common/time');
 		Util::addScript('arbeitszeitcheck', 'common/components');
 		Util::addScript('arbeitszeitcheck', 'common/messaging');
 		Util::addScript('arbeitszeitcheck', 'common/validation');
@@ -501,6 +552,8 @@ class AdminController extends Controller
 			'vacationCarryoverMaxDays' => $this->appConfig->getAppValueString(Constants::CONFIG_VACATION_CARRYOVER_MAX_DAYS, ''),
 			'vacationRolloverEnabled' => $this->appConfig->getAppValueString(Constants::CONFIG_VACATION_ROLLOVER_ENABLED, '1') === '1',
 			'vacationRolloverIncludeUnusedAnnual' => $this->appConfig->getAppValueString(Constants::CONFIG_VACATION_ROLLOVER_INCLUDE_UNUSED_ANNUAL, '0') === '1',
+			'timeEntryChangesRequireApproval' => $this->appConfig->getAppValueString(Constants::CONFIG_TIME_ENTRY_CHANGES_REQUIRE_APPROVAL, '0') === '1',
+			'manualTimeEntriesRequireApproval' => $this->appConfig->getAppValueString(Constants::CONFIG_MANUAL_TIME_ENTRIES_REQUIRE_APPROVAL, '0') === '1',
 			'accessAllowedGroups' => $this->getAllowedAccessGroupsFromConfig(),
 			'appAdminUserIds' => $this->getConfiguredAppAdminUserIds(),
 		];
@@ -569,6 +622,7 @@ class AdminController extends Controller
 		Util::addStyle('arbeitszeitcheck', 'admin-holidays');
 
 		Util::addScript('arbeitszeitcheck', 'common/utils');
+		Util::addScript('arbeitszeitcheck', 'common/time');
 		Util::addScript('arbeitszeitcheck', 'common/datepicker');
 		Util::addScript('arbeitszeitcheck', 'common/components');
 		Util::addScript('arbeitszeitcheck', 'common/messaging');
@@ -1168,6 +1222,7 @@ class AdminController extends Controller
 
 		// Add common JavaScript files
 		Util::addScript('arbeitszeitcheck', 'common/utils');
+		Util::addScript('arbeitszeitcheck', 'common/time');
 		Util::addScript('arbeitszeitcheck', 'common/components');
 		Util::addScript('arbeitszeitcheck', 'common/messaging');
 		Util::addScript('arbeitszeitcheck', 'common/validation');
@@ -1225,6 +1280,7 @@ class AdminController extends Controller
 
 		// Add common JavaScript files
 		Util::addScript('arbeitszeitcheck', 'common/utils');
+		Util::addScript('arbeitszeitcheck', 'common/time');
 		Util::addScript('arbeitszeitcheck', 'common/datepicker');
 		Util::addScript('arbeitszeitcheck', 'common/components');
 		Util::addScript('arbeitszeitcheck', 'common/messaging');
@@ -1404,6 +1460,8 @@ class AdminController extends Controller
 				'vacationCarryoverMaxDays' => Constants::CONFIG_VACATION_CARRYOVER_MAX_DAYS,
 				'vacationRolloverEnabled' => Constants::CONFIG_VACATION_ROLLOVER_ENABLED,
 				'vacationRolloverIncludeUnusedAnnual' => Constants::CONFIG_VACATION_ROLLOVER_INCLUDE_UNUSED_ANNUAL,
+				'timeEntryChangesRequireApproval' => Constants::CONFIG_TIME_ENTRY_CHANGES_REQUIRE_APPROVAL,
+				'manualTimeEntriesRequireApproval' => Constants::CONFIG_MANUAL_TIME_ENTRIES_REQUIRE_APPROVAL,
 			];
 
 			$updatedSettings = [];
@@ -1423,6 +1481,7 @@ class AdminController extends Controller
 						'sendEmailSubstitutionRequest', 'sendEmailSubstituteApprovedToEmployee', 'sendEmailSubstituteApprovedToManager',
 						'statutoryAutoReseed',
 						'vacationRolloverEnabled', 'vacationRolloverIncludeUnusedAnnual',
+						'timeEntryChangesRequireApproval', 'manualTimeEntriesRequireApproval',
 					], true)) {
 						$value = ($value === true || $value === 'true' || $value === '1') ? '1' : '0';
 					} elseif ($paramKey === 'maxDailyHours' || $paramKey === 'minRestPeriod' || $paramKey === 'defaultWorkingHours') {
@@ -2249,6 +2308,9 @@ class AdminController extends Controller
 					'enabled' => $user->isEnabled(),
 					'vacationCarryoverDays' => $this->vacationYearBalanceMapper->getCarryoverDays($userId, $currentYear),
 					'vacationCarryoverYear' => $currentYear,
+					'overtimeTrackingFrom' => $this->userOvertimeSettingsService->getTrackingFrom($userId)?->format('Y-m-d'),
+					'overtimeOpeningBalanceHours' => $this->userOvertimeSettingsService->getOpeningBalanceHours($userId, $currentYear),
+					'overtimeOpeningBalanceYear' => $currentYear,
 					'workingTimeModel' => $workingTimeModel ? [
 						'id' => $workingTimeModel->getId(),
 						'name' => $workingTimeModel->getName(),
@@ -3100,13 +3162,26 @@ class AdminController extends Controller
 			// columns to be in sync on persist.
 			$inheritLowerLayers = !empty($params['inheritLowerLayers'])
 				|| $vacationMode === Constants::VACATION_MODE_INHERIT;
+			// REQ-WF-04 / audit parity: persist the `inherit` sentinel whenever the
+			// effective decision is "defer to lower layers", so SQL/reporting
+			// that filters on `vacation_mode = 'inherit'` stays aligned with the
+			// engine (which already uses `isInherit()` for behaviour).
+			if ($inheritLowerLayers) {
+				$vacationMode = Constants::VACATION_MODE_INHERIT;
+			}
 			$manualDays = isset($params['manualDays']) ? $this->parseDecimalInput($params['manualDays'], 0.0) : null;
 			$tariffRuleSetId = isset($params['tariffRuleSetId']) && $params['tariffRuleSetId'] !== null && $params['tariffRuleSetId'] !== ''
 				? (int)$params['tariffRuleSetId']
 				: null;
 			$overrideReason = isset($params['overrideReason']) ? trim((string)$params['overrideReason']) : null;
-			$effectiveFrom = new \DateTime((string)($params['effectiveFrom'] ?? date('Y-m-d')));
-			$effectiveTo = !empty($params['effectiveTo']) ? new \DateTime((string)$params['effectiveTo']) : null;
+			[$effectiveFrom, $fromErr] = $this->parseStrictYmdDateParam((string)($params['effectiveFrom'] ?? date('Y-m-d')));
+			if ($fromErr !== null) {
+				return $fromErr;
+			}
+			[$effectiveTo, $toErr] = $this->parseOptionalEffectiveToParam($params['effectiveTo'] ?? null);
+			if ($toErr !== null) {
+				return $toErr;
+			}
 			// Defensive cross-field consistency: an `inherit` row cannot also
 			// carry manual days or a tariff rule set (those would be silently
 			// ignored by the engine and confuse later operators who saw the
@@ -3194,6 +3269,72 @@ class AdminController extends Controller
 		}
 	}
 
+	/**
+	 * Update per-user overtime Stichtag and opening balance (Eröffnungssaldo).
+	 */
+	public function updateUserOvertimeSettings(string $userId): JSONResponse
+	{
+		try {
+			$user = $this->userManager->get($userId);
+			if ($user === null) {
+				return new JSONResponse(['success' => false, 'error' => $this->l10n->t('User not found')], Http::STATUS_NOT_FOUND);
+			}
+
+			$params = $this->request->getParams();
+			$actor = $this->getPerformedBy();
+
+			if (array_key_exists('trackingFrom', $params)) {
+				$raw = $params['trackingFrom'];
+				if ($raw === null || $raw === '') {
+					$this->userOvertimeSettingsService->setTrackingFrom($userId, null, $actor);
+				} else {
+					[$date, $err] = $this->parseStrictYmdDateParam((string)$raw);
+					if ($err !== null) {
+						return $err;
+					}
+					$this->userOvertimeSettingsService->setTrackingFrom(
+						$userId,
+						\DateTimeImmutable::createFromMutable($date),
+						$actor
+					);
+				}
+			}
+
+			$openingBalance = $params['openingBalance'] ?? null;
+			if (is_array($openingBalance) && isset($openingBalance['year'], $openingBalance['hours'])) {
+				$year = (int)$openingBalance['year'];
+				if ($year < 2000 || $year > 2100) {
+					return new JSONResponse([
+						'success' => false,
+						'error' => $this->l10n->t('Opening balance year must be between 2000 and 2100')
+					], Http::STATUS_BAD_REQUEST);
+				}
+				$hours = $this->parseDecimalInput($openingBalance['hours'], 0.0);
+				if ($hours < -9999 || $hours > 9999) {
+					return new JSONResponse([
+						'success' => false,
+						'error' => $this->l10n->t('Opening balance hours must be between -9999 and 9999')
+					], Http::STATUS_BAD_REQUEST);
+				}
+				$this->userOvertimeSettingsService->setOpeningBalance($userId, $year, $hours, $actor);
+			}
+
+			$currentYear = (int)date('Y');
+			return new JSONResponse([
+				'success' => true,
+				'overtimeTrackingFrom' => $this->userOvertimeSettingsService->getTrackingFrom($userId)?->format('Y-m-d'),
+				'overtimeOpeningBalanceHours' => $this->userOvertimeSettingsService->getOpeningBalanceHours($userId, $currentYear),
+				'overtimeOpeningBalanceYear' => $currentYear,
+			]);
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error('updateUserOvertimeSettings failed', ['exception' => $e]);
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('Failed to update overtime settings')
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
 	public function simulateVacationPolicy(): JSONResponse
 	{
 		try {
@@ -3209,7 +3350,10 @@ class AdminController extends Controller
 			if ($this->userManager->get($userId) === null) {
 				return new JSONResponse(['success' => false, 'error' => $this->l10n->t('User not found')], Http::STATUS_NOT_FOUND);
 			}
-			$asOfDate = new \DateTime((string)($params['asOfDate'] ?? date('Y-m-d')));
+			[$asOfDate, $asOfErr] = $this->parseStrictYmdDateParam((string)($params['asOfDate'] ?? date('Y-m-d')));
+			if ($asOfErr !== null) {
+				return $asOfErr;
+			}
 			$draftPolicy = $params['draftPolicy'] ?? null;
 			// REQ-WF-05: optional hypothetical team membership for what-if
 			// scenarios ("what would this user's entitlement be if we moved
@@ -3241,6 +3385,9 @@ class AdminController extends Controller
 					$draftMode = (string)($draftPolicy['vacationMode'] ?? Constants::VACATION_MODE_MANUAL_FIXED);
 					$draftInherit = !empty($draftPolicy['inheritLowerLayers'])
 						|| $draftMode === Constants::VACATION_MODE_INHERIT;
+					if ($draftInherit) {
+						$draftMode = Constants::VACATION_MODE_INHERIT;
+					}
 					$policy->setVacationMode($draftMode);
 					$policy->setManualDays(
 						$draftInherit
@@ -3312,8 +3459,11 @@ class AdminController extends Controller
 	public function getVacationLayers(): JSONResponse
 	{
 		try {
-			$asOfRaw = (string)($this->request->getParam('asOfDate') ?? date('Y-m-d'));
-			$asOfDate = new \DateTime($asOfRaw);
+			$asOfRaw = trim((string)($this->request->getParam('asOfDate') ?? date('Y-m-d')));
+			[$asOfDate, $asOfErr] = $this->parseStrictYmdDateParam($asOfRaw);
+			if ($asOfErr !== null) {
+				return $asOfErr;
+			}
 			$orgDefaults = $this->layeredVacationDefaultsService->listOrgDefaults();
 			$activeOrg = $this->layeredVacationDefaultsService->getActiveOrgDefault($asOfDate);
 			$modelDefaults = $this->layeredVacationDefaultsService->listModelDefaults();
@@ -3611,6 +3761,7 @@ class AdminController extends Controller
 		Util::addStyle('arbeitszeitcheck', 'arbeitszeitcheck-main');
 		Util::addStyle('arbeitszeitcheck', 'admin-vacation-layers');
 		Util::addScript('arbeitszeitcheck', 'common/utils');
+		Util::addScript('arbeitszeitcheck', 'common/time');
 		Util::addScript('arbeitszeitcheck', 'common/components');
 		Util::addScript('arbeitszeitcheck', 'common/messaging');
 		Util::addScript('arbeitszeitcheck', 'admin-vacation-layers');
@@ -3993,6 +4144,7 @@ class AdminController extends Controller
 		Util::addStyle('arbeitszeitcheck', 'arbeitszeitcheck-main');
 		Util::addStyle('arbeitszeitcheck', 'admin-teams');
 		Util::addScript('arbeitszeitcheck', 'common/utils');
+		Util::addScript('arbeitszeitcheck', 'common/time');
 		Util::addScript('arbeitszeitcheck', 'common/components');
 		Util::addScript('arbeitszeitcheck', 'common/messaging');
 		Util::addScript('arbeitszeitcheck', 'admin-teams');

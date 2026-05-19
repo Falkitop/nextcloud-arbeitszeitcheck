@@ -66,6 +66,9 @@ function initializeDatepicker(input, options = {}) {
 		console.error('[ArbeitszeitCheck] Datepicker: input not found');
 		return null;
 	}
+	if (element.dataset.datepickerInit === '1' || element.dataset.datepickerInit === 'true') {
+		return { open: function () {}, close: function () {} };
+	}
 
 	const l10n = window.ArbeitszeitCheck?.l10n || {};
 	const t = (s) => {
@@ -291,13 +294,17 @@ function initializeDatepicker(input, options = {}) {
 	element.setAttribute('autocomplete', 'off');
 	element.readOnly = true;
 
+	const openOnFocus = options.openOnFocus !== false;
+
 	element.addEventListener('keydown', function (e) {
 		if (e.key !== 'Tab' && e.key !== 'Escape' && e.key !== 'Enter') {
 			e.preventDefault();
 			openCalendar();
 		}
 	});
-	element.addEventListener('focus', function () { openCalendar(); });
+	if (openOnFocus) {
+		element.addEventListener('focus', function () { openCalendar(); });
+	}
 	element.addEventListener('click', function () { openCalendar(); });
 	element.addEventListener('paste', function (e) { e.preventDefault(); });
 
@@ -317,6 +324,8 @@ function initializeDatepicker(input, options = {}) {
 		openCalendar();
 	});
 	wrapper.appendChild(toggleBtn);
+
+	element.dataset.datepickerInit = '1';
 
 	return { open: openCalendar, close: closeCalendar };
 }
@@ -341,8 +350,9 @@ function initializeDatepicker(input, options = {}) {
 		}
 
 		function initAll() {
-			document.querySelectorAll('.datepicker-input').forEach(function (el) {
+			document.querySelectorAll('.datepicker-input:not([data-datepicker-defer])').forEach(function (el) {
 				if (el.dataset.datepickerInit) return;
+				if (el.closest('#time-entry-correction-source, [data-datepicker-defer]')) return;
 				el.dataset.datepickerInit = '1';
 				var opts = {};
 				var minVal = el.getAttribute('data-datepicker-min');

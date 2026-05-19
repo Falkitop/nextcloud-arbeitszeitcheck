@@ -61,6 +61,7 @@ return [
 		['name' => 'time_entry#apiUpdatePost', 'url' => '/api/time-entries/{id}', 'verb' => 'POST'],
 		['name' => 'time_entry#apiDelete', 'url' => '/api/time-entries/{id}', 'verb' => 'DELETE'],
 		['name' => 'time_entry#requestCorrection', 'url' => '/api/time-entries/{id}/request-correction', 'verb' => 'POST'],
+		['name' => 'time_entry#cancelCorrection', 'url' => '/api/time-entries/{id}/cancel-correction', 'verb' => 'POST'],
 		['name' => 'time_entry#complete', 'url' => '/api/time-entries/{id}/complete', 'verb' => 'POST'],
 		['name' => 'time_entry#checkOverlap', 'url' => '/api/time-entries/check-overlap', 'verb' => 'GET'],
 
@@ -110,6 +111,7 @@ return [
 		['name' => 'manager#getTeamAbsenceCalendar', 'url' => '/api/manager/absence-calendar', 'verb' => 'GET'],
 		['name' => 'manager#approveTimeEntryCorrection', 'url' => '/api/manager/time-entries/{timeEntryId}/approve-correction', 'verb' => 'POST'],
 		['name' => 'manager#rejectTimeEntryCorrection', 'url' => '/api/manager/time-entries/{timeEntryId}/reject-correction', 'verb' => 'POST'],
+		['name' => 'manager#correctTimeEntry', 'url' => '/api/manager/time-entries/{timeEntryId}/correct', 'verb' => 'POST'],
 		['name' => 'manager#getPendingTimeEntryCorrections', 'url' => '/api/manager/pending-time-entry-corrections', 'verb' => 'GET'],
 
 		// Substitute (Vertretungs-Freigabe) routes
@@ -187,6 +189,7 @@ return [
 		['name' => 'admin#activateTariffRuleSet', 'url' => '/api/admin/tariff-rule-sets/{id}/activate', 'verb' => 'POST'],
 		['name' => 'admin#retireTariffRuleSet', 'url' => '/api/admin/tariff-rule-sets/{id}/retire', 'verb' => 'POST'],
 		['name' => 'admin#assignVacationPolicy', 'url' => '/api/admin/users/{userId}/vacation-policy', 'verb' => 'PUT'],
+		['name' => 'admin#updateUserOvertimeSettings', 'url' => '/api/admin/users/{userId}/overtime-settings', 'verb' => 'PUT'],
 		['name' => 'admin#simulateVacationPolicy', 'url' => '/api/admin/vacation-policy/simulate', 'verb' => 'POST'],
 
 		// Layered vacation entitlement (L0/L1/L2) admin endpoints

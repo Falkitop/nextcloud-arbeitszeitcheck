@@ -67,6 +67,7 @@ On **My absences** (or equivalent), next to the annual entitlement figure, use *
 ## 4. Everyday tasks
 
 - **Clock in / out** and **breaks**: Use the time tracking UI; follow your organization’s rules for corrections and comments.
+- **Request a time correction** (when direct edit is not allowed): On **Time entries**, open **Request correction** on a completed entry. Enter the **correct date and times** (same layout as the manual entry form: date field, start/end time lists, optional breaks), and a **reason** of at least 10 characters. Your manager must approve before changes apply. While waiting, the list shows your **proposed** times; use **Withdraw** to cancel the request and restore the original times. A banner at the top explains when entries are pending approval.
 - **Dashboard quick actions workspace**:
   - The dashboard includes a dedicated quick-actions area with **My status**, **Current session**, and direct buttons for **Clock In**, **Pause**, **Continue**, and **Clock Out**.
   - Depending on your role, the same page can also show **Team overview** (manager) and **Company overview** (admin) with compact status lists.

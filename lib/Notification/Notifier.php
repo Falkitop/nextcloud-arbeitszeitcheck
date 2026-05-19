@@ -185,6 +185,16 @@ class Notifier implements INotifier {
 				);
 				break;
 
+			case 'time_entry_manager_corrected':
+				$date = $parameters['date'] ?? date('Y-m-d');
+				$reason = $parameters['reason'] ?? '';
+				$notification->setParsedSubject(
+					$l->t('Your time entry was corrected by your manager')
+				)->setParsedMessage(
+					$l->t('Your manager corrected the time entry for %1$s. Reason: %2$s', [$date, $reason])
+				);
+				break;
+
 			case 'time_entry_correction_rejected':
 				$date = $parameters['date'] ?? date('Y-m-d');
 				$reason = $parameters['reason'] ?? null;

@@ -467,9 +467,18 @@ class TimeEntry extends Entity
 	 *
 	 * @param int $editWindowDays Number of past days within which editing is permitted.
 	 */
+	public function isLockedForEmployeeEdit(): bool
+	{
+		return $this->approvedByUserId !== null || $this->approvedAt !== null;
+	}
+
 	public function canEdit(int $editWindowDays = 14): bool
 	{
-		if ($this->approvedBy !== null) {
+		if ($this->isLockedForEmployeeEdit()) {
+			return false;
+		}
+
+		if ($this->status === self::STATUS_PENDING_APPROVAL) {
 			return false;
 		}
 
@@ -486,9 +495,28 @@ class TimeEntry extends Entity
 		}
 
 		return $this->isManualEntry
-			|| $this->status === self::STATUS_PENDING_APPROVAL
 			|| ($this->status === self::STATUS_COMPLETED && !$this->isManualEntry)
 			|| $this->status === self::STATUS_PAUSED;
+	}
+
+	/**
+	 * Whether the owner may request a supervisor-approved correction.
+	 */
+	public function canRequestCorrection(int $editWindowDays = 14): bool
+	{
+		if ($this->status === self::STATUS_PENDING_APPROVAL) {
+			return false;
+		}
+
+		if (!in_array($this->status, [self::STATUS_COMPLETED, self::STATUS_PAUSED], true)) {
+			return false;
+		}
+
+		if (!$this->startTime instanceof \DateTime) {
+			return false;
+		}
+
+		return true;
 	}
 
 	/**
@@ -520,6 +548,9 @@ class TimeEntry extends Entity
 			$breaksData = json_decode($this->breaks, true);
 		}
 		
+		$pendingProposal = $this->resolvePendingProposal();
+		$hasPendingProposal = $pendingProposal !== null;
+
 		return [
 			'id' => $this->getId(),
 			'userId' => $this->getUserId(),
@@ -527,7 +558,7 @@ class TimeEntry extends Entity
 			'endTime' => $this->getEndTime()?->format('c'),
 			'breakStartTime' => $this->getBreakStartTime()?->format('c'),
 			'breakEndTime' => $this->getBreakEndTime()?->format('c'),
-			'breaks' => $breaksData, // JSON array of all breaks (for multiple breaks support)
+			'breaks' => $breaksData,
 			'durationHours' => $this->getDurationHours(),
 			'breakDurationHours' => $this->getBreakDurationHours(),
 			'workingDurationHours' => $this->getWorkingDurationHours(),
@@ -542,7 +573,37 @@ class TimeEntry extends Entity
 			'updatedAt' => $updatedAt ? $updatedAt->format('c') : null,
 			'approvedBy' => $this->getApprovedBy(),
 			'approvedByUserId' => $this->getApprovedByUserId(),
-			'approvedAt' => $this->getApprovedAt()?->format('c')
+			'approvedAt' => $this->getApprovedAt()?->format('c'),
+			'hasPendingProposal' => $hasPendingProposal,
+			'pendingProposal' => $pendingProposal,
+			'displayStartTime' => $hasPendingProposal && isset($pendingProposal['startTime'])
+				? $pendingProposal['startTime']
+				: ($startTime ? $startTime->format('c') : null),
+			'displayEndTime' => $hasPendingProposal && isset($pendingProposal['endTime'])
+				? $pendingProposal['endTime']
+				: ($this->getEndTime()?->format('c')),
+			'displayBreaks' => $hasPendingProposal && isset($pendingProposal['breaks'])
+				? $pendingProposal['breaks']
+				: $breaksData,
+			'canEdit' => $this->canEdit(),
+			'canRequestCorrection' => $this->canRequestCorrection(),
+			'isLockedForEmployeeEdit' => $this->isLockedForEmployeeEdit(),
 		];
+	}
+
+	/**
+	 * @return array<string, mixed>|null Proposed values when status is pending_approval.
+	 */
+	private function resolvePendingProposal(): ?array
+	{
+		if ($this->status !== self::STATUS_PENDING_APPROVAL) {
+			return null;
+		}
+		$data = json_decode($this->justification ?? '{}', true);
+		if (!is_array($data)) {
+			return null;
+		}
+		$proposed = $data['proposed'] ?? null;
+		return is_array($proposed) && $proposed !== [] ? $proposed : null;
 	}
 }

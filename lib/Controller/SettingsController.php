@@ -179,6 +179,7 @@ class SettingsController extends Controller
 
 		// Add common JavaScript files
 		Util::addScript('arbeitszeitcheck', 'common/utils');
+		Util::addScript('arbeitszeitcheck', 'common/time');
 		Util::addScript('arbeitszeitcheck', 'common/components');
 		Util::addScript('arbeitszeitcheck', 'common/messaging');
 		Util::addScript('arbeitszeitcheck', 'common/validation');

@@ -82,11 +82,11 @@ $teamMembers = $_['teamMembers'] ?? [];
                         <span class="stat-number" aria-hidden="true"><?php p($hoursToday); ?>h</span>
                         <span class="stat-label" aria-hidden="true"><?php p($l->t('Hours Today')); ?></span>
                     </div>
-                    <div class="stat-card manager-stat-card" role="group"
-                        aria-label="<?php p($l->n('%n pending absence request', '%n pending absence requests', $pendingAbsences)); ?>">
+                    <a class="stat-card manager-stat-card manager-stat-card--link" href="#pending-approvals-section"
+                        aria-label="<?php p($l->n('%n pending absence request — jump to approvals', '%n pending absence requests — jump to approvals', $pendingAbsences)); ?>">
                         <span class="stat-number" aria-hidden="true"><?php p($pendingAbsences); ?></span>
                         <span class="stat-label" aria-hidden="true"><?php p($l->t('Pending Absences')); ?></span>
-                    </div>
+                    </a>
                 </div>
             </section>
 
@@ -177,6 +177,8 @@ $teamMembers = $_['teamMembers'] ?? [];
     </div>
 </main>
 </div><!-- /#arbeitszeitcheck-app -->
+
+<?php include __DIR__ . '/common/manager-correction-l10n.php'; ?>
 
 <script nonce="<?php p($_['cspNonce'] ?? ''); ?>">
     window.ArbeitszeitCheck = window.ArbeitszeitCheck || {};

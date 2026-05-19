@@ -121,6 +121,7 @@ class ComplianceController extends Controller
 
 		// Add common JavaScript files
 		Util::addScript('arbeitszeitcheck', 'common/utils');
+		Util::addScript('arbeitszeitcheck', 'common/time');
 		Util::addScript('arbeitszeitcheck', 'common/components');
 		Util::addScript('arbeitszeitcheck', 'common/messaging');
 		Util::addScript('arbeitszeitcheck', 'compliance-dashboard');
@@ -212,6 +213,7 @@ class ComplianceController extends Controller
 
 		// Add common JavaScript files
 		Util::addScript('arbeitszeitcheck', 'common/utils');
+		Util::addScript('arbeitszeitcheck', 'common/time');
 		Util::addScript('arbeitszeitcheck', 'common/datepicker');
 		Util::addScript('arbeitszeitcheck', 'common/messaging');
 		Util::addScript('arbeitszeitcheck', 'compliance-violations');
@@ -291,6 +293,7 @@ class ComplianceController extends Controller
 
 		// Add common JavaScript files
 		Util::addScript('arbeitszeitcheck', 'common/utils');
+		Util::addScript('arbeitszeitcheck', 'common/time');
 		Util::addScript('arbeitszeitcheck', 'common/components');
 		Util::addScript('arbeitszeitcheck', 'common/messaging');
 		Util::addScript('arbeitszeitcheck', 'compliance-reports');

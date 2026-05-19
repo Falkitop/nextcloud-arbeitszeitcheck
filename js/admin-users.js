@@ -393,6 +393,9 @@
         const vacation = user.vacationDaysPerYear ?? user.userWorkingTimeModel?.vacationDaysPerYear ?? DEFAULT_VACATION_DAYS;
         const carryover = user.vacationCarryoverDays != null ? String(user.vacationCarryoverDays) : '0';
         const carryYear = user.vacationCarryoverYear != null ? String(user.vacationCarryoverYear) : String(new Date().getFullYear());
+        const overtimeTrackingFrom = user.overtimeTrackingFrom || '';
+        const overtimeOpening = user.overtimeOpeningBalanceHours != null ? String(user.overtimeOpeningBalanceHours) : '0';
+        const overtimeOpeningYear = user.overtimeOpeningBalanceYear != null ? String(user.overtimeOpeningBalanceYear) : String(new Date().getFullYear());
         const startIso = user.workingTimeModelStartDate ?? user.userWorkingTimeModel?.startDate ?? null;
         const endIso = user.workingTimeModelEndDate ?? user.userWorkingTimeModel?.endDate ?? null;
         const startVal = (startIso && convertISOToEuropean(startIso)) || '';
@@ -521,6 +524,23 @@
                     <p id="user-carryover-year-help" class="form-help">${t('vacationCarryoverYearHelp', 'The calendar year this opening balance applies to (same year as in employees’ vacation statistics—usually the current year). When a new year starts or after migrating from another system, set the Resturlaub opening balance for that year here or use the CSV import command; the app does not roll balances forward automatically.')}</p>
                 </div>
                 </section>
+                <section class="user-edit-section" aria-labelledby="user-edit-overtime-heading">
+                    <h3 id="user-edit-overtime-heading" class="user-edit-section__heading">${Utils.escapeHtml(t('overtimeSettings', 'Overtime balance'))}</h3>
+                <div class="form-group">
+                    <label for="user-overtime-tracking-from" class="form-label">${Utils.escapeHtml(t('overtimeTrackingFrom', 'Overtime tracking from (Stichtag)'))}</label>
+                    <input type="date" id="user-overtime-tracking-from" name="overtimeTrackingFrom" class="form-input" value="${Utils.escapeHtml(overtimeTrackingFrom)}" aria-describedby="user-overtime-tracking-from-help">
+                    <p id="user-overtime-tracking-from-help" class="form-help">${Utils.escapeHtml(t('overtimeTrackingFromHelp', 'Leave empty for legacy calculation from 1 January. When set, year-to-date overtime counts only from this date.'))}</p>
+                </div>
+                <div class="form-group">
+                    <label for="user-overtime-opening" class="form-label">${Utils.escapeHtml(t('overtimeOpeningBalance', 'Opening overtime balance (hours)'))}</label>
+                    <input type="text" id="user-overtime-opening" name="overtimeOpeningBalanceHours" class="form-input" inputmode="decimal" value="${Utils.escapeHtml(overtimeOpening)}" aria-describedby="user-overtime-opening-help">
+                    <p id="user-overtime-opening-help" class="form-help">${Utils.escapeHtml(t('overtimeOpeningBalanceHelp', 'Eröffnungssaldo in hours for the selected year (can be negative).'))}</p>
+                </div>
+                <div class="form-group">
+                    <label for="user-overtime-opening-year" class="form-label">${Utils.escapeHtml(t('overtimeOpeningBalanceYear', 'Year for opening balance'))}</label>
+                    <input type="number" id="user-overtime-opening-year" name="overtimeOpeningBalanceYear" class="form-input" min="2000" max="2100" value="${Utils.escapeHtml(overtimeOpeningYear)}">
+                </div>
+                </section>
                 <section class="user-edit-section" aria-labelledby="user-edit-validity-heading">
                     <h3 id="user-edit-validity-heading" class="user-edit-section__heading">${Utils.escapeHtml(t('validFrom', 'Valid from'))}</h3>
                 <div class="form-group">
@@ -631,7 +651,7 @@
 
             const payload = {
                 userId: user.userId,
-                asOfDate: (startDateEl?.value && previewToISO(startDateEl.value)) || new Date().toISOString().slice(0, 10),
+                asOfDate: (startDateEl?.value && previewToISO(startDateEl.value)) || (window.ArbeitszeitCheckTime ? window.ArbeitszeitCheckTime.todayYmd() : new Date().toISOString().slice(0, 10)),
                 draftPolicy: {
                     vacationMode: mode,
                     inheritLowerLayers: mode === 'inherit',
@@ -747,7 +767,7 @@
             manualDays: parseLocalizedDecimal(formData.get('manualDays')),
             tariffRuleSetId: formData.get('tariffRuleSetId') ? parseInt(String(formData.get('tariffRuleSetId')), 10) : null,
             overrideReason: (formData.get('overrideReason') || '').toString(),
-            effectiveFrom: data.startDate || new Date().toISOString().slice(0, 10),
+            effectiveFrom: data.startDate || (window.ArbeitszeitCheckTime ? window.ArbeitszeitCheckTime.todayYmd() : new Date().toISOString().slice(0, 10)),
             effectiveTo: data.endDate || null
         };
         // Inherit drops all "concrete" fields — they would be ignored by the
@@ -781,10 +801,29 @@
                                 Messaging.showError(policyResponse.error || auMsg('failedToUpdateUser', 'Failed to update user'));
                                 return;
                             }
-                            const successMsg = auMsg('userUpdated', 'User updated successfully');
-                            Messaging.showSuccess(successMsg);
-                            Components.closeModal(document.getElementById('edit-user-modal'));
-                            loadUsers();
+                            const overtimePayload = {
+                                trackingFrom: document.getElementById('user-overtime-tracking-from')?.value || null,
+                                openingBalance: {
+                                    year: parseInt(document.getElementById('user-overtime-opening-year')?.value || String(new Date().getFullYear()), 10),
+                                    hours: document.getElementById('user-overtime-opening')?.value || '0'
+                                }
+                            };
+                            Utils.ajax(buildApiUrl('/apps/arbeitszeitcheck/api/admin/users/' + encodeURIComponent(userId) + '/overtime-settings'), {
+                                method: 'PUT',
+                                data: overtimePayload,
+                                onSuccess: function(otResponse) {
+                                    if (!otResponse.success) {
+                                        Messaging.showError(otResponse.error || auMsg('failedToUpdateUser', 'Failed to update user'));
+                                        return;
+                                    }
+                                    Messaging.showSuccess(auMsg('userUpdated', 'User updated successfully'));
+                                    Components.closeModal(document.getElementById('edit-user-modal'));
+                                    loadUsers();
+                                },
+                                onError: function() {
+                                    Messaging.showError(auMsg('failedToUpdateUser', 'Failed to update user'));
+                                }
+                            });
                         },
                         onError: function(_error) {
                             Messaging.showError(auMsg('failedToUpdateUser', 'Failed to update user'));

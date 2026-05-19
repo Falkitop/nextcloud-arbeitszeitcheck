@@ -81,15 +81,26 @@
   // -----------------------------------------------------------------------
   // Formatting helpers
   // -----------------------------------------------------------------------
+  function timeApi() {
+    return window.ArbeitszeitCheckTime || null;
+  }
+
+  function todayYmd() {
+    const api = timeApi();
+    return api ? api.todayYmd() : new Date().toISOString().slice(0, 10);
+  }
+
   function fmtDate(iso) {
     if (!iso) return '—';
-    try {
-      const d = new Date(iso + (iso.length === 10 ? 'T00:00:00' : ''));
-      if (Number.isNaN(d.getTime())) return iso;
-      return d.toLocaleDateString();
-    } catch (e) {
-      return iso;
+    const api = timeApi();
+    if (api) {
+      if (String(iso).length === 10) {
+        const parsed = api.parseYmd(String(iso).slice(0, 10));
+        return parsed ? api.formatDate(parsed) : iso;
+      }
+      return api.formatDate(iso) || iso;
     }
+    return String(iso);
   }
 
   function fmtDays(value) {
@@ -207,7 +218,7 @@
   function detectOrgCollision() {
     const history = (state.org && Array.isArray(state.org.history)) ? state.org.history : [];
     if (history.length < 2) return false;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayYmd();
     let actives = 0;
     history.forEach((row) => {
       const from = row.effectiveFrom || '';
@@ -624,7 +635,7 @@
   }
 
   function effectiveFieldsHtml() {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayYmd();
     return `
       <div class="layer-form__row">
         <label for="dlg-from" class="form-label">${escape(t('Effective from', 'Effective from'))}</label>
@@ -1088,7 +1099,7 @@
     simForm.addEventListener('submit', (ev) => {
       ev.preventDefault();
       const userId = simSelectedUserId || (simUser ? simUser.value.trim() : '');
-      const asOfDate = document.getElementById('sim-date').value || new Date().toISOString().slice(0, 10);
+      const asOfDate = document.getElementById('sim-date').value || todayYmd();
       if (!userId) {
         notifyError(t('Please pick an employee first.', 'Please pick an employee first.'));
         if (simUser) simUser.focus();
@@ -1120,7 +1131,7 @@
         simSelectedUserId = null;
         if (simUser) simUser.value = '';
         const simDate = document.getElementById('sim-date');
-        if (simDate) simDate.value = new Date().toISOString().slice(0, 10);
+        if (simDate) simDate.value = todayYmd();
         const hypothetical = document.getElementById('sim-hypothetical-teams');
         if (hypothetical) {
           Array.from(hypothetical.options).forEach((o) => { o.selected = false; });

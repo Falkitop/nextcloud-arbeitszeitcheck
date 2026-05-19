@@ -63,11 +63,13 @@ class RepairOrphanedPausedEntries implements IRepairStep
 				return;
 			}
 
-			// 1) paused + end_time NOT NULL  -> status mismatch only, flip to completed.
+			// 1) paused + end_time NOT NULL  -> status mismatch only; keep end_time, flip to completed.
 			$qb1 = $this->db->getQueryBuilder();
 			$fixedStatus = (int)$qb1
 				->update('at_entries')
 				->set('status', $qb1->createNamedParameter(TimeEntry::STATUS_COMPLETED, IQueryBuilder::PARAM_STR))
+				->set('ended_reason', $qb1->createNamedParameter(TimeEntry::ENDED_REASON_STALE_PAUSED_REPAIR, IQueryBuilder::PARAM_STR))
+				->set('policy_applied', $qb1->createNamedParameter('repair', IQueryBuilder::PARAM_STR))
 				->where($qb1->expr()->eq('status', $qb1->createNamedParameter(TimeEntry::STATUS_PAUSED, IQueryBuilder::PARAM_STR)))
 				->andWhere($qb1->expr()->isNotNull('end_time'))
 				->executeStatement();

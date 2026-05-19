@@ -531,6 +531,25 @@ class NotificationService
 	 * @param string|null $reason Rejection reason
 	 * @return void
 	 */
+	public function notifyTimeEntryCorrectedByManager(string $userId, array $timeEntryData, string $reason): void
+	{
+		$notification = $this->notificationManager->createNotification();
+		$notification->setApp('arbeitszeitcheck')
+			->setUser($userId)
+			->setDateTime(new \DateTime())
+			->setObject('time_entry', (string)($timeEntryData['id'] ?? ''))
+			->setSubject('time_entry_manager_corrected', [
+				'entry_id' => $timeEntryData['id'] ?? null,
+				'date' => $timeEntryData['startTime'] ?? null,
+			])
+			->setMessage('time_entry_manager_corrected', [
+				'date' => $timeEntryData['startTime'] ?? null,
+				'reason' => $reason,
+			]);
+
+		$this->notificationManager->notify($notification);
+	}
+
 	public function notifyTimeEntryCorrectionRejected(string $userId, array $timeEntryData, ?string $reason = null): void
 	{
 		$notification = $this->notificationManager->createNotification();

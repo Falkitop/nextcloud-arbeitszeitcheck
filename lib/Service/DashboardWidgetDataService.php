@@ -21,6 +21,7 @@ class DashboardWidgetDataService {
 		private readonly TeamResolverService $teamResolverService,
 		private readonly PermissionService $permissionService,
 		private readonly IUserManager $userManager,
+		private readonly TimeZoneService $timeZoneService,
 	) {
 	}
 
@@ -48,26 +49,15 @@ class DashboardWidgetDataService {
 			$vacationStats = [];
 		}
 
-		// Format session/break start times for display (HH:MM)
-		$sessionStartFormatted = '';
-		$sessionStartRaw = (string)($status['current_entry']['startTime'] ?? '');
-		if ($sessionStartRaw !== '') {
-			try {
-				$sessionStartFormatted = (new \DateTime($sessionStartRaw))->format('H:i');
-			} catch (\Throwable $e) {
-				// leave empty
-			}
-		}
-
-		$breakStartFormatted = '';
-		$breakStartRaw = (string)($status['current_entry']['breakStartTime'] ?? '');
-		if ($breakStartRaw !== '') {
-			try {
-				$breakStartFormatted = (new \DateTime($breakStartRaw))->format('H:i');
-			} catch (\Throwable $e) {
-				// leave empty
-			}
-		}
+		// Format session/break start times for display in the user's Nextcloud TZ.
+		$sessionStartFormatted = $this->formatInstantForWidget(
+			(string)($status['current_entry']['startTime'] ?? ''),
+			$userId
+		);
+		$breakStartFormatted = $this->formatInstantForWidget(
+			(string)($status['current_entry']['breakStartTime'] ?? ''),
+			$userId
+		);
 
 		return [
 			'userId'                 => $userId,
@@ -198,6 +188,21 @@ class DashboardWidgetDataService {
 			'clocked_out' => 0,
 			'other' => 0,
 		];
+	}
+
+	private function formatInstantForWidget(string $raw, string $userId): string {
+		if ($raw === '') {
+			return '';
+		}
+		try {
+			return $this->timeZoneService->formatForDisplay(
+				new \DateTimeImmutable($raw),
+				'H:i',
+				$userId
+			);
+		} catch (\Throwable $e) {
+			return '';
+		}
 	}
 
 	private function incrementStatus(array &$summary, string $status): void {

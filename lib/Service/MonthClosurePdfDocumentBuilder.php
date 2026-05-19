@@ -490,6 +490,14 @@ final class MonthClosurePdfDocumentBuilder
 		return is_float($v) || is_int($v) ? (string)round((float)$v, 2) : (string)$v;
 	}
 
+	/**
+	 * Both clock and date helpers consume ATOM strings ({@see DateTimeInterface::ATOM})
+	 * produced upstream by `format('c')`. ATOM carries the **storage timezone**
+	 * offset, which is the authoritative wall clock for the organisation
+	 * (`Constants::CONFIG_APP_TIMEZONE`). For the finalized month-closure PDF
+	 * — the legal, immutable record — that is the correct frame of reference;
+	 * we never re-render finalized values in a user-specific display TZ.
+	 */
 	private function entryDateShort($atom): string
 	{
 		if ($atom === null || $atom === '') {

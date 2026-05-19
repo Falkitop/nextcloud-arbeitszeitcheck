@@ -94,7 +94,14 @@
         }
 
         tbody.innerHTML = logs.map(log => {
-            const created = log.created_at || log.createdAt || '-';
+            const createdRaw = log.created_at || log.createdAt;
+            const created = createdRaw
+                ? (window.ArbeitszeitCheckTime
+                    ? (window.ArbeitszeitCheckTime.formatDateTime(createdRaw) || '-')
+                    : (Utils.formatDate
+                        ? Utils.formatDate(createdRaw, 'DD.MM.YYYY HH:mm')
+                        : String(createdRaw)))
+                : '-';
             const user = log.user_display_name || log.userDisplayName || log.user_id || log.userId;
             const performed = log.performed_by_display_name || log.performedByDisplayName || log.performed_by || log.performedBy || '-';
             const entity = log.entity_type || log.entityType;

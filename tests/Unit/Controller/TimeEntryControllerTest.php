@@ -21,18 +21,22 @@ use OCA\ArbeitszeitCheck\Db\AuditLogMapper;
 use OCA\ArbeitszeitCheck\Service\ComplianceService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCA\ArbeitszeitCheck\Service\TimeTrackingService;
+use OCA\ArbeitszeitCheck\Service\TimeZoneService;
+use OCA\ArbeitszeitCheck\Service\TimeEntryCorrectionService;
 use OCA\ArbeitszeitCheck\Service\TeamResolverService;
 use OCA\ArbeitszeitCheck\Service\NotificationService;
 use OCA\ArbeitszeitCheck\Service\MonthClosureGuard;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\IConfig;
+use OCP\IDateTimeZone;
 use OCP\IRequest;
 use OCP\IURLGenerator;
 use OCP\IL10N;
 use OCP\IUser;
 use OCP\IUserSession;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
 
 /**
  * Class TimeEntryControllerTest
@@ -127,6 +131,17 @@ class TimeEntryControllerTest extends TestCase
 
 		$this->timeEntryMapper->method('findOverlapping')->willReturn([]);
 
+		$tzConfig = $this->createMock(IConfig::class);
+		$tzConfig->method('getAppValue')->willReturnCallback(static fn ($app, $key, $default) => match ($key) {
+			'app_timezone' => 'Europe/Berlin',
+			default => $default,
+		});
+		$tzDateTimeZone = $this->createMock(IDateTimeZone::class);
+		$tzDateTimeZone->method('getTimeZone')->willReturn(new \DateTimeZone('Europe/Berlin'));
+		$tzUserSession = $this->createMock(IUserSession::class);
+		$tzUserSession->method('getUser')->willReturn(null);
+		$timeZoneService = new TimeZoneService($tzConfig, $tzDateTimeZone, $tzUserSession, new NullLogger());
+
 		$this->controller = new TimeEntryController(
 			'arbeitszeitcheck',
 			$this->request,
@@ -144,7 +159,9 @@ class TimeEntryControllerTest extends TestCase
 			$this->notificationService,
 			$this->monthClosureGuard,
 			$this->absenceMapper,
-			$this->permissionService
+			$this->permissionService,
+			$timeZoneService,
+			$this->createMock(TimeEntryCorrectionService::class)
 		);
 	}
 
@@ -749,8 +766,7 @@ class TimeEntryControllerTest extends TestCase
 
 		$this->userSession->method('getUser')->willReturn($user);
 
-		$this->request->expects($this->once())
-			->method('getParams')
+		$this->request->method('getParams')
 			->willReturn([
 				'date' => '2024-01-15',
 				'hours' => 8.0,
@@ -758,8 +774,12 @@ class TimeEntryControllerTest extends TestCase
 				'projectCheckProjectId' => 'project123'
 			]);
 
-		$savedEntry = $this->createMock(TimeEntry::class);
-		$savedEntry->method('getSummary')->willReturn(['id' => 1]);
+		$savedEntry = new TimeEntry();
+		$savedEntry->setId(1);
+		$savedEntry->setUserId($userId);
+		$savedEntry->setStatus(TimeEntry::STATUS_COMPLETED);
+		$savedEntry->setStartTime(new \DateTime('2024-01-15 09:00:00'));
+		$savedEntry->setEndTime(new \DateTime('2024-01-15 17:00:00'));
 
 		$this->timeEntryMapper->expects($this->once())
 			->method('insert')

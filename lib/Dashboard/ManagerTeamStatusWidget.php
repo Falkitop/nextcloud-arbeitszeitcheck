@@ -6,6 +6,7 @@ namespace OCA\ArbeitszeitCheck\Dashboard;
 
 use OCA\ArbeitszeitCheck\AppInfo\Application;
 use OCA\ArbeitszeitCheck\Service\DashboardWidgetDataService;
+use OCA\ArbeitszeitCheck\Support\TimeClientBootstrap;
 use OCP\Dashboard\IAPIWidgetV2;
 use OCP\Dashboard\IButtonWidget;
 use OCP\Dashboard\IIconWidget;
@@ -17,10 +18,13 @@ use OCP\IL10N;
 use OCP\IURLGenerator;
 
 class ManagerTeamStatusWidget implements IAPIWidgetV2, IButtonWidget, IIconWidget, IReloadableWidget {
+	use RegistersTimeClientTrait;
+
 	public function __construct(
 		private readonly IL10N $l10n,
 		private readonly IURLGenerator $urlGenerator,
 		private readonly DashboardWidgetDataService $widgetDataService,
+		private readonly TimeClientBootstrap $timeClientBootstrap,
 	) {
 	}
 
@@ -49,6 +53,7 @@ class ManagerTeamStatusWidget implements IAPIWidgetV2, IButtonWidget, IIconWidge
 	}
 
 	public function load(): void {
+		$this->registerTimeClientForWidget($this->timeClientBootstrap);
 	}
 
 	public function getItemsV2(string $userId, ?string $since = null, int $limit = 7): WidgetItems {

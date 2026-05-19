@@ -411,10 +411,8 @@
 .layer-dialog__feedback {
   margin: 0;
   min-height: 1.25rem;
-  color: var(--color-error);
   font-size: .9375rem;
 }
-.layer-dialog__feedback:empty { display: none; }
 
 /* Impact preview (REQ-UX-03) — surfaces "this change will affect ~N users"
    inline above the action bar so admins can't miss it before clicking Save.
@@ -450,8 +448,8 @@
 }
 .layer-dialog__impact[data-state="error"] {
   border-color: color-mix(in srgb, var(--color-error) 30%, var(--color-border));
-  background: color-mix(in srgb, var(--color-error) 8%, var(--color-background-hover));
-  color: var(--color-error);
+  background: color-mix(in srgb, var(--color-error) 14%, var(--color-main-background));
+  color: var(--color-main-text);
 }
 .layer-dialog__impact-icon {
   display: inline-flex;

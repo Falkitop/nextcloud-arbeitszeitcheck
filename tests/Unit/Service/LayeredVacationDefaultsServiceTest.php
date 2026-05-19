@@ -97,6 +97,37 @@ class LayeredVacationDefaultsServiceTest extends TestCase
 		], 'admin');
 	}
 
+	public function testUpsertOrgRejectsInvalidEffectiveFrom(): void
+	{
+		$this->orgMapper->expects(self::never())->method('insert');
+		try {
+			$this->service->upsertOrgDefault([
+				'vacationMode' => Constants::VACATION_MODE_MODEL_BASED_SIMPLE,
+				'effectiveFrom' => '31.12.2026',
+			], 'admin');
+			self::fail('Expected LayeredVacationValidationException');
+		} catch (LayeredVacationValidationException $e) {
+			self::assertArrayHasKey('effectiveFrom', $e->fieldErrors);
+			self::assertSame('Invalid date; use YYYY-MM-DD.', $e->fieldErrors['effectiveFrom']);
+		}
+	}
+
+	public function testUpsertOrgRejectsOverflowEffectiveTo(): void
+	{
+		$this->orgMapper->expects(self::never())->method('insert');
+		try {
+			$this->service->upsertOrgDefault([
+				'vacationMode' => Constants::VACATION_MODE_MODEL_BASED_SIMPLE,
+				'effectiveFrom' => '2026-01-01',
+				'effectiveTo' => '2026-02-30',
+			], 'admin');
+			self::fail('Expected LayeredVacationValidationException');
+		} catch (LayeredVacationValidationException $e) {
+			self::assertArrayHasKey('effectiveTo', $e->fieldErrors);
+			self::assertSame('Invalid date; use YYYY-MM-DD.', $e->fieldErrors['effectiveTo']);
+		}
+	}
+
 	public function testUpsertOrgPersistsAndAudits(): void
 	{
 		$this->orgMapper->method('findOverlappingRanges')->willReturn([]);

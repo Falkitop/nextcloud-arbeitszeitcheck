@@ -446,11 +446,6 @@
 
 .report-error {
 	margin: 0;
-	padding: var(--space-3, 0.75rem);
-	background: var(--color-error);
-	color: var(--color-error-text, var(--color-primary-text));
-	border-radius: var(--border-radius);
-	font-weight: 500;
 }
 
 .report-loading {

@@ -28,6 +28,7 @@ Util::addStyle('arbeitszeitcheck', 'common/accessibility');
 Util::addStyle('arbeitszeitcheck', 'navigation');
 Util::addStyle('arbeitszeitcheck', 'dashboard');
 Util::addScript('arbeitszeitcheck', 'common/utils');
+Util::addScript('arbeitszeitcheck', 'common/time');
 Util::addScript('arbeitszeitcheck', 'arbeitszeitcheck-main');
 
 $status = $_['status'] ?? [];
@@ -38,28 +39,49 @@ $recentEntries = $_['recentEntries'] ?? [];
 $dashboardError = isset($_['error']) && is_string($_['error']) ? trim($_['error']) : '';
 $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class);
 $dashStats = $_['stats'] ?? [];
-$appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitcheck', 'app_timezone', 'Europe/Berlin');
+
+// Single source of truth for storage TZ, user display TZ and the server-clock
+// anchor the JS timer pins itself to. Defines $arbeitszeitCheckStorageTimeZone,
+// $arbeitszeitCheckUserDisplayTz, $arbeitszeitCheckServerNowIso and emits the
+// `window.ArbeitszeitCheck.tz` / `window.ArbeitszeitCheck.serverNow` bootstrap.
+/** @var \DateTimeZone $arbeitszeitCheckStorageTimeZone */
+/** @var \DateTimeZone $arbeitszeitCheckUserDisplayTz */
+/** @var string $arbeitszeitCheckServerNowIso */
 require __DIR__ . '/common/user-display-timezone.php';
+$appTimezone = $arbeitszeitCheckStorageTimeZone->getName();
 
-// Current session duration calculation for display
-$currentSessionDuration = $status['current_session_duration'] ?? 0;
-$hours = floor($currentSessionDuration / 3600);
-$minutes = floor(($currentSessionDuration % 3600) / 60);
-$seconds = $currentSessionDuration % 60;
-$durationFormatted = sprintf('%02d:%02d:%02d', $hours, $minutes, $seconds);
+// Format a duration in seconds as HH:MM:SS for the static initial render.
+// The live JS counter takes over the moment `js/common/time.js` loads, so
+// this value is only ever visible for one frame before being replaced.
+$arbeitszeitCheckFormatDuration = static function (int $seconds): string {
+    $seconds = max(0, $seconds);
+    return sprintf(
+        '%02d:%02d:%02d',
+        intdiv($seconds, 3600),
+        intdiv($seconds % 3600, 60),
+        $seconds % 60
+    );
+};
 
-// Break duration calculation for display (if on break)
+// Current session duration calculation for display. The status payload from
+// `TimeTrackingService::getStatus()` already pre-computed this against the
+// server clock, so the initial paint matches what the live timer will show
+// once `ArbeitszeitCheckTime.syncFromServer()` resumes from `server_now`.
+$currentSessionDuration = (int)round((float)($status['current_session_duration'] ?? 0));
+$durationFormatted = $arbeitszeitCheckFormatDuration($currentSessionDuration);
+
+// Break duration calculation for display (if on break). Use the server clock
+// the status response was anchored at (`server_now`) so the initial paint is
+// consistent with the live counter, instead of the PHP-template render time
+// (which can be milliseconds ahead of the API instant).
 $breakDurationFormatted = '00:00:00';
 $breakStartTime = null;
 if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_entry']['breakStartTime'])) {
     try {
         $breakStartTime = new \DateTime($status['current_entry']['breakStartTime']);
-        $now = new \DateTime();
-        $breakDuration = $now->getTimestamp() - $breakStartTime->getTimestamp();
-        $breakHours = floor($breakDuration / 3600);
-        $breakMinutes = floor(($breakDuration % 3600) / 60);
-        $breakSeconds = $breakDuration % 60;
-        $breakDurationFormatted = sprintf('%02d:%02d:%02d', $breakHours, $breakMinutes, $breakSeconds);
+        $serverNow = new \DateTime($arbeitszeitCheckServerNowIso);
+        $breakDuration = $serverNow->getTimestamp() - $breakStartTime->getTimestamp();
+        $breakDurationFormatted = $arbeitszeitCheckFormatDuration((int)$breakDuration);
     } catch (\Throwable $e) {
         $breakStartTime = null;
     }
@@ -93,6 +115,26 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                 <div class="alert alert--error" role="alert" aria-live="assertive">
                     <strong><?php p($l->t('Some dashboard data could not be loaded.')); ?></strong>
                     <p><?php p($dashboardError); ?></p>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <?php
+        $pendingCorrectionCount = (int)($_['pendingCorrectionCount'] ?? 0);
+        if ($pendingCorrectionCount > 0):
+            $timeEntriesUrl = $urlGenerator->linkToRoute('arbeitszeitcheck.page.timeEntries');
+        ?>
+            <div class="section pending-correction-banner" role="region" aria-labelledby="dashboard-pending-correction-title">
+                <div class="alert alert--warning" role="status">
+                    <p id="dashboard-pending-correction-title" class="alert__text">
+                        <strong><?php p($l->n(
+                            '%n of your time entries is waiting for manager approval.',
+                            '%n of your time entries are waiting for manager approval.',
+                            $pendingCorrectionCount
+                        )); ?></strong>
+                        <?php p($l->t('Open your time entries to see proposed times or withdraw the request.')); ?>
+                    </p>
+                    <a href="<?php p($timeEntriesUrl); ?>" class="btn btn--secondary"><?php p($l->t('View time entries')); ?></a>
                 </div>
             </div>
         <?php endif; ?>
@@ -188,9 +230,9 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                             <span class="dashboard-status-card__icon" aria-hidden="true"><?php p($statusIcon); ?></span>
                             <h3 id="dashboard-status-heading" class="card-title"><?php p($l->t('Current Status')); ?></h3>
                             <div class="timezone-badge"
-                                 aria-label="<?php p($l->t('Time zones: organization %1$s, your account %2$s', [$appTimezone, $arbeitszeitCheckUserDisplayTz->getName()])); ?>"
-                                 title="<?php p($l->t('Clock times are stored using the organization timezone (%1$s) and shown in your personal timezone (%2$s). Exports may follow export settings.', [$appTimezone, $arbeitszeitCheckUserDisplayTz->getName()])); ?>">
-                                <span class="timezone-badge__label"><?php p($appTimezone); ?></span>
+                                 aria-label="<?php p($l->t('Times are shown in your timezone (%s).', [$arbeitszeitCheckUserDisplayTz->getName()])); ?>"
+                                 title="<?php p($l->t('Times are shown in your personal timezone (%1$s). The organisation stores them in %2$s — exports follow the export settings.', [$arbeitszeitCheckUserDisplayTz->getName(), $appTimezone])); ?>">
+                                <span class="timezone-badge__label"><?php p($arbeitszeitCheckUserDisplayTz->getName()); ?></span>
                             </div>
                         </div>
                         <div class="badge badge--<?php p($statusBadgeVariant); ?>">

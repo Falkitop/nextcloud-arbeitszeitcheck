@@ -11,8 +11,9 @@ declare(strict_types=1);
  *    L2 (`at_team_vacation_policies`) tables are created with the correct
  *    columns and indices.
  *  - L3 (`at_user_vacation_policies`) gains the `inherit_lower_layers`
- *    boolean column with default `false`, so the migration is golden-file
- *    equivalent for every existing tenant.
+ *    boolean column (nullable in schema, default `false`) so the migration
+ *    is golden-file equivalent for every existing tenant and passes Nextcloud
+ *    portability checks (BOOLEAN must not be NOT NULL on new columns).
  *  - The L2 → `at_teams` foreign key uses the prefixed table reference
  *    (guards against the install-blocking PostgreSQL bug that bit issue #4).
  *  - Re-running the migration is a no-op (idempotent).
@@ -85,7 +86,7 @@ class LayeredVacationEntitlementSchemaTest extends TestCase
 		self::assertTrue($l3->hasColumn('inherit_lower_layers'), 'L3 inherit_lower_layers column missing');
 		$col = $l3->getColumn('inherit_lower_layers');
 		self::assertFalse((bool)$col->getDefault(), 'L3 inherit_lower_layers must default to false to preserve legacy behaviour');
-		self::assertTrue($col->getNotnull(), 'L3 inherit_lower_layers must be NOT NULL with default false');
+		self::assertFalse($col->getNotnull(), 'L3 inherit_lower_layers must be nullable in schema (Nextcloud forbids BOOLEAN NOT NULL on new columns)');
 	}
 
 	public function testMigrationIsIdempotent(): void

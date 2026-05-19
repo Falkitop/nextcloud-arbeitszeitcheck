@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\ArbeitszeitCheck\Tests\Unit\Service;
 
+use OCA\ArbeitszeitCheck\Constants;
 use OCA\ArbeitszeitCheck\Service\AppLocalNaiveDateTimeNormalizer;
 use PHPUnit\Framework\TestCase;
 
@@ -52,6 +53,22 @@ class AppLocalNaiveDateTimeNormalizerTest extends TestCase
 		$naive = AppLocalNaiveDateTimeNormalizer::parseFlexibleDateTime('2026-05-13T09:00:00', $berlin);
 		$this->assertSame('Europe/Berlin', $naive->getTimezone()->getName());
 		$this->assertSame('09:00', $naive->format('H:i'));
+	}
+
+	public function testNowMutableInAppStorageUsesConfiguredZone(): void
+	{
+		$config = $this->createMock(\OCP\IConfig::class);
+		$config->method('getAppValue')
+			->willReturnCallback(static function (string $appId, string $key, ?string $default = null) {
+				if ($key === Constants::CONFIG_APP_TIMEZONE) {
+					return 'Europe/Berlin';
+				}
+				return $default ?? '';
+			});
+
+		$dt = AppLocalNaiveDateTimeNormalizer::nowMutableInAppStorage($config);
+		$this->assertSame('Europe/Berlin', $dt->getTimezone()->getName());
+		$this->assertLessThanOrEqual(2, abs(time() - $dt->getTimestamp()));
 	}
 
 	public function testNormalizeAtEntryDatetimeStringsInRowEmitsIso8601(): void

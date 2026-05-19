@@ -29,6 +29,9 @@ use OCA\ArbeitszeitCheck\Service\MonthClosureFeature;
 use OCA\ArbeitszeitCheck\Service\MonthClosureGuard;
 use OCA\ArbeitszeitCheck\Service\MonthClosureService;
 use OCA\ArbeitszeitCheck\Exception\MonthFinalizedException;
+use OCA\ArbeitszeitCheck\Service\AppLocalNaiveDateTimeNormalizer;
+use OCA\ArbeitszeitCheck\Service\TimeZoneService;
+use OCA\ArbeitszeitCheck\Service\TimeEntryCorrectionService;
 use OCA\ArbeitszeitCheck\Constants;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Db\DoesNotExistException;
@@ -71,6 +74,8 @@ class ManagerController extends Controller
 	private IConfig $config;
 	private MonthClosureGuard $monthClosureGuard;
 	private MonthClosureService $monthClosureService;
+	private TimeZoneService $timeZoneService;
+	private TimeEntryCorrectionService $correctionService;
 
 	public function __construct(
 		string $appName,
@@ -94,7 +99,9 @@ class ManagerController extends Controller
 		IURLGenerator $urlGenerator,
 		IConfig $config,
 		MonthClosureGuard $monthClosureGuard,
-		MonthClosureService $monthClosureService
+		MonthClosureService $monthClosureService,
+		TimeZoneService $timeZoneService,
+		TimeEntryCorrectionService $correctionService
 	) {
 		parent::__construct($appName, $request);
 		$this->absenceService = $absenceService;
@@ -116,7 +123,31 @@ class ManagerController extends Controller
 		$this->config = $config;
 		$this->monthClosureGuard = $monthClosureGuard;
 		$this->monthClosureService = $monthClosureService;
+		$this->timeZoneService = $timeZoneService;
+		$this->correctionService = $correctionService;
 		$this->setCspService($cspService);
+	}
+
+	/**
+	 * Format a stored DateTime as HH:MM in the given user's display TZ.
+	 * Centralised so every pending-approval / overlap payload uses the same path.
+	 */
+	private function displayClock(?\DateTimeInterface $dt, ?string $userId = null): ?string {
+		if ($dt === null) {
+			return null;
+		}
+		return $this->timeZoneService->formatForDisplay($dt, 'H:i', $userId);
+	}
+
+	/**
+	 * Format a stored DateTime as YYYY-MM-DD in the given user's display TZ.
+	 * The calendar day boundary is the user's wall clock — never the container UTC zone.
+	 */
+	private function displayDate(?\DateTimeInterface $dt, ?string $userId = null): ?string {
+		if ($dt === null) {
+			return null;
+		}
+		return $this->timeZoneService->formatForDisplay($dt, 'Y-m-d', $userId);
 	}
 
 	/**
@@ -329,9 +360,11 @@ class ManagerController extends Controller
 		Util::addStyle('arbeitszeitcheck', 'navigation');
 		Util::addStyle('arbeitszeitcheck', 'arbeitszeitcheck-main');
 		Util::addStyle('arbeitszeitcheck', 'manager-dashboard');
+		Util::addStyle('arbeitszeitcheck', 'time-entry-correction');
 		
 		// Add common JavaScript files
 		Util::addScript('arbeitszeitcheck', 'common/utils');
+		Util::addScript('arbeitszeitcheck', 'common/time');
 		Util::addScript('arbeitszeitcheck', 'common/components');
 		Util::addScript('arbeitszeitcheck', 'common/messaging');
 		Util::addScript('arbeitszeitcheck', 'manager-dashboard');
@@ -447,9 +480,12 @@ class ManagerController extends Controller
 		Util::addStyle('arbeitszeitcheck', 'common/responsive');
 		Util::addStyle('arbeitszeitcheck', 'navigation');
 		Util::addStyle('arbeitszeitcheck', 'manager-time-entries');
+		Util::addStyle('arbeitszeitcheck', 'time-entry-correction');
 
 		Util::addScript('arbeitszeitcheck', 'common/utils');
+		Util::addScript('arbeitszeitcheck', 'common/time');
 		Util::addScript('arbeitszeitcheck', 'common/messaging');
+		Util::addScript('arbeitszeitcheck', 'common/components');
 		Util::addScript('arbeitszeitcheck', 'common/datepicker');
 		Util::addScript('arbeitszeitcheck', 'manager-time-entries');
 
@@ -517,6 +553,7 @@ class ManagerController extends Controller
 		Util::addStyle('arbeitszeitcheck', 'manager-time-entries');
 
 		Util::addScript('arbeitszeitcheck', 'common/utils');
+		Util::addScript('arbeitszeitcheck', 'common/time');
 		Util::addScript('arbeitszeitcheck', 'common/messaging');
 		Util::addScript('arbeitszeitcheck', 'common/datepicker');
 		Util::addScript('arbeitszeitcheck', 'manager-absences');
@@ -590,6 +627,7 @@ class ManagerController extends Controller
 		Util::addStyle('arbeitszeitcheck', 'manager-month-closures');
 
 		Util::addScript('arbeitszeitcheck', 'common/utils');
+		Util::addScript('arbeitszeitcheck', 'common/time');
 		Util::addScript('arbeitszeitcheck', 'common/messaging');
 		Util::addScript('arbeitszeitcheck', 'manager-month-closures');
 
@@ -1073,19 +1111,9 @@ class ManagerController extends Controller
 
 			$entryRows = [];
 			foreach ($entries as $entry) {
-				$entryRows[] = [
-					'id' => $entry->getId(),
-					'userId' => $entry->getUserId(),
-					'displayName' => $this->getDisplayName($entry->getUserId()),
-					'startTime' => $entry->getStartTime()?->format('c'),
-					'endTime' => $entry->getEndTime()?->format('c'),
-					'durationHours' => $entry->getDurationHours(),
-					'workingDurationHours' => $entry->getWorkingDurationHours(),
-					'breakDurationHours' => $entry->getBreakDurationHours(),
-					'description' => $entry->getDescription(),
-					'status' => $entry->getStatus(),
-					'isManualEntry' => $entry->getIsManualEntry(),
-				];
+				$row = $entry->getSummary();
+				$row['displayName'] = $this->getDisplayName($entry->getUserId());
+				$entryRows[] = $row;
 			}
 
 			return new JSONResponse([
@@ -1501,9 +1529,10 @@ class ManagerController extends Controller
 							'userId' => $entry->getUserId(),
 							'displayName' => $this->getDisplayName($entry->getUserId()),
 							'summary' => [
-								'date' => $startTime ? $startTime->format('Y-m-d') : null,
-								'startTime' => $startTime ? $startTime->format('H:i') : null,
-								'endTime' => $endTime ? $endTime->format('H:i') : null,
+								// Render the affected employee's day and clock in *their* display TZ.
+								'date' => $this->displayDate($startTime, $entry->getUserId()),
+								'startTime' => $this->displayClock($startTime, $entry->getUserId()),
+								'endTime' => $this->displayClock($endTime, $entry->getUserId()),
 								'durationHours' => $entry->getDurationHours(),
 								'description' => $entry->getDescription(),
 								'justification' => $justificationData['justification'] ?? '',
@@ -1858,62 +1887,30 @@ class ManagerController extends Controller
 				return new JSONResponse([
 					'success' => false,
 					'error' => $this->l10n->t('This calendar month is finalized. Contact an administrator if a correction must be made.'),
+					'error_code' => 'month_finalized',
 				], Http::STATUS_CONFLICT);
 			}
 
+			if (is_string($comment)) {
+				$comment = trim($comment);
+				if (mb_strlen($comment) > 2000) {
+					$comment = mb_substr($comment, 0, 2000);
+				}
+				if ($comment === '') {
+					$comment = null;
+				}
+			} else {
+				$comment = null;
+			}
+
 			$oldValues = $entry->getSummary();
-			$justificationData = json_decode($entry->getJustification() ?? '{}', true);
-			$proposal = is_array($justificationData) ? ($justificationData['proposed'] ?? null) : null;
-			if (is_array($proposal) && $proposal !== []) {
-				$validationError = $this->validateCorrectionProposal($entry, $proposal);
-				if ($validationError !== null) {
-					return new JSONResponse([
-						'success' => false,
-						'error' => $validationError
-					], Http::STATUS_BAD_REQUEST);
-				}
-				$this->applyCorrectionProposalToEntry($entry, $proposal);
-			}
-
-			// Approve the correction - finalize the proposed changes
-			$entry->setStatus(\OCA\ArbeitszeitCheck\Db\TimeEntry::STATUS_COMPLETED);
-			$entry->setApprovedByUserId($managerId);
-			$entry->setApprovedAt(new \DateTime());
-			$entry->setUpdatedAt(new \DateTime());
-
-			// If there's a comment, append it to justification
-			if ($comment && is_array($justificationData)) {
-				$justificationData['approval_comment'] = $comment;
-				$justificationData['approved_at'] = date('c');
-				$justificationData['approved_by'] = $managerId;
-				$entry->setJustification(json_encode($justificationData));
-			}
-
-			$updatedEntry = $this->timeEntryMapper->update($entry);
-
-			// Real-time compliance check when approving a time entry
-			// Based on industry best practices: immediate compliance checking upon approval
-			if ($updatedEntry->getStatus() === \OCA\ArbeitszeitCheck\Db\TimeEntry::STATUS_COMPLETED && $updatedEntry->getEndTime() !== null) {
-				try {
-					$realTimeComplianceEnabled = $this->config->getAppValue('arbeitszeitcheck', 'realtime_compliance_check', '1') === '1';
-					
-					if ($realTimeComplianceEnabled && $this->complianceService) {
-						$strictMode = $this->config->getAppValue('arbeitszeitcheck', 'compliance_strict_mode', '0') === '1';
-						$this->complianceService->checkComplianceForCompletedEntry($updatedEntry, $strictMode);
-						
-						\OCP\Log\logger('arbeitszeitcheck')->info('Real-time compliance check performed on approved entry', [
-							'time_entry_id' => $updatedEntry->getId(),
-							'user_id' => $updatedEntry->getUserId(),
-							'approved_by' => $managerId
-						]);
-					}
-				} catch (\Throwable $e) {
-					// Log error but don't fail the approval
-					\OCP\Log\logger('arbeitszeitcheck')->error('Error in compliance check during approval: ' . $e->getMessage(), [
-						'time_entry_id' => $updatedEntry->getId(),
-						'exception' => $e
-					]);
-				}
+			try {
+				$updatedEntry = $this->correctionService->approve($entry, $managerId, $comment);
+			} catch (\InvalidArgumentException $e) {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $e->getMessage()
+				], Http::STATUS_BAD_REQUEST);
 			}
 
 			// Create audit log (full before/after for payroll evidence)
@@ -1991,61 +1988,29 @@ class ManagerController extends Controller
 
 			$oldValues = $entry->getSummary();
 
-			// Get original data from justification to restore
-			$justificationData = json_decode($entry->getJustification() ?? '{}', true);
-			$originalData = $justificationData['original'] ?? [];
-
-			// Restore original values (supports both formats: startTime/endTime and legacy date/hours)
-			if (isset($originalData['startTime'])) {
-				$entry->setStartTime(new \DateTime($originalData['startTime']));
-			} elseif (isset($originalData['date'])) {
-				$entry->setStartTime(new \DateTime($originalData['date']));
-			}
-			if (isset($originalData['endTime'])) {
-				$entry->setEndTime(new \DateTime($originalData['endTime']));
-			} elseif (isset($originalData['hours']) && $entry->getStartTime()) {
-				$endTime = clone $entry->getStartTime();
-				$endTime->modify('+' . (int) round((float) $originalData['hours'] * 3600) . ' seconds');
-				$entry->setEndTime($endTime);
-			}
-			if (isset($originalData['breakStartTime']) && $originalData['breakStartTime'] !== null) {
-				$entry->setBreakStartTime(new \DateTime($originalData['breakStartTime']));
-			} else {
-				$entry->setBreakStartTime(null);
-			}
-			if (isset($originalData['breakEndTime']) && $originalData['breakEndTime'] !== null) {
-				$entry->setBreakEndTime(new \DateTime($originalData['breakEndTime']));
-			} else {
-				$entry->setBreakEndTime(null);
-			}
-			if (array_key_exists('description', $originalData)) {
-				$entry->setDescription($originalData['description'] ?? '');
-			}
-
-			// Reject the correction while preserving authoritative completed records.
-			$entry->setStatus(\OCA\ArbeitszeitCheck\Db\TimeEntry::STATUS_COMPLETED);
-			$entry->setApprovedByUserId(null);
-			$entry->setApprovedAt(null);
-			$entry->setUpdatedAt(new \DateTime());
-
-			// Store rejection reason
-			if ($reason) {
-				$justificationData['rejection_reason'] = $reason;
-				$justificationData['rejected_at'] = date('c');
-				$justificationData['rejected_by'] = $managerId;
-				$entry->setJustification(json_encode($justificationData));
-			}
-
 			try {
 				$this->monthClosureGuard->assertTimeEntryMutable($entry);
 			} catch (MonthFinalizedException $e) {
 				return new JSONResponse([
 					'success' => false,
 					'error' => $this->l10n->t('This calendar month is finalized. Contact an administrator if a correction must be made.'),
+					'error_code' => 'month_finalized',
 				], Http::STATUS_CONFLICT);
 			}
 
-			$updatedEntry = $this->timeEntryMapper->update($entry);
+			if (is_string($reason)) {
+				$reason = trim($reason);
+				if (mb_strlen($reason) > 2000) {
+					$reason = mb_substr($reason, 0, 2000);
+				}
+				if ($reason === '') {
+					$reason = null;
+				}
+			} else {
+				$reason = null;
+			}
+
+			$updatedEntry = $this->correctionService->reject($entry, $managerId, $reason);
 
 			// Create audit log (full before/after for payroll evidence)
 			$newValues = $updatedEntry->getSummary();
@@ -2087,6 +2052,125 @@ class ManagerController extends Controller
 				'success' => false,
 				'error' => $this->l10n->t('An internal error occurred. Please contact your administrator.')
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	/**
+	 * Apply a manager-initiated correction directly (audit trail + employee notification).
+	 */
+	#[NoAdminRequired]
+	public function correctTimeEntry(int $timeEntryId): JSONResponse
+	{
+		try {
+			$managerId = $this->getUserId();
+			$entry = $this->timeEntryMapper->find($timeEntryId);
+
+			if (!$this->permissionService->canManageEmployee($managerId, $entry->getUserId())) {
+				$this->permissionService->logPermissionDenied($managerId, 'correct_time_entry', 'time_entry', (string)$timeEntryId);
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('Access denied. You can only correct time entries for members of your team.')
+				], Http::STATUS_FORBIDDEN);
+			}
+
+			if ($entry->getStatus() === TimeEntry::STATUS_PENDING_APPROVAL) {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('Resolve the pending employee correction first (approve or reject).'),
+					'error_code' => 'correction_pending',
+				], Http::STATUS_CONFLICT);
+			}
+
+			$params = $this->request->getParams();
+			$expectedUpdatedAt = trim((string)($params['expectedUpdatedAt'] ?? ''));
+			if ($expectedUpdatedAt !== '' && $entry->getUpdatedAt() !== null) {
+				$currentUpdatedAt = $entry->getUpdatedAt()->format('c');
+				if ($currentUpdatedAt !== $expectedUpdatedAt) {
+					return new JSONResponse([
+						'success' => false,
+						'error' => $this->l10n->t('This time entry was changed by someone else. Please reload and try again.'),
+						'error_code' => 'entry_modified',
+					], Http::STATUS_CONFLICT);
+				}
+			}
+			$reason = trim((string)($params['reason'] ?? ''));
+			if (mb_strlen($reason) < 10) {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('A reason of at least 10 characters is required.')
+				], Http::STATUS_BAD_REQUEST);
+			}
+			// Bound for DB/audit-log safety.
+			if (mb_strlen($reason) > 2000) {
+				$reason = mb_substr($reason, 0, 2000);
+			}
+
+			$proposal = [];
+			if (isset($params['startTime'])) {
+				$proposal['startTime'] = $params['startTime'];
+			}
+			if (isset($params['endTime'])) {
+				$proposal['endTime'] = $params['endTime'];
+			}
+			if (isset($params['breaks']) && is_array($params['breaks'])) {
+				$proposal['breaks'] = $params['breaks'];
+			}
+			if (array_key_exists('description', $params)) {
+				$proposal['description'] = $params['description'];
+			}
+			if ($proposal === []) {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('At least one field to correct is required.')
+				], Http::STATUS_BAD_REQUEST);
+			}
+
+			try {
+				$this->monthClosureGuard->assertTimeEntryMutable($entry);
+			} catch (MonthFinalizedException $e) {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('This calendar month is finalized. Contact an administrator if a correction must be made.'),
+					'error_code' => 'month_finalized',
+				], Http::STATUS_CONFLICT);
+			}
+
+			$oldValues = $entry->getSummary();
+			try {
+				$updatedEntry = $this->correctionService->applyManagerCorrection($entry, $proposal, $managerId, $reason);
+			} catch (\InvalidArgumentException $e) {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $e->getMessage()
+				], Http::STATUS_BAD_REQUEST);
+			}
+
+			$this->auditLogMapper->logAction(
+				$entry->getUserId(),
+				'time_entry_manager_corrected',
+				'time_entry',
+				$timeEntryId,
+				$oldValues,
+				$updatedEntry->getSummary(),
+				$managerId
+			);
+
+			$this->notificationService->notifyTimeEntryCorrectedByManager(
+				$entry->getUserId(),
+				$updatedEntry->getSummary(),
+				$reason
+			);
+
+			return new JSONResponse([
+				'success' => true,
+				'entry' => $updatedEntry->getSummary(),
+				'message' => $this->l10n->t('Time entry corrected successfully.')
+			]);
+		} catch (DoesNotExistException $e) {
+			return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Time entry not found')], Http::STATUS_NOT_FOUND);
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error('Error in ManagerController::correctTimeEntry', ['exception' => $e]);
+			return new JSONResponse(['success' => false, 'error' => $this->l10n->t('An internal error occurred. Please contact your administrator.')], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}
 
@@ -2248,74 +2332,6 @@ class ManagerController extends Controller
 				'error' => $this->l10n->t('An internal error occurred. Please contact your administrator.')
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
-	}
-
-	private function applyCorrectionProposalToEntry(TimeEntry $entry, array $proposal): void
-	{
-		if (isset($proposal['startTime'])) {
-			$entry->setStartTime(new \DateTime((string)$proposal['startTime']));
-		}
-		if (isset($proposal['endTime'])) {
-			$entry->setEndTime(new \DateTime((string)$proposal['endTime']));
-		}
-		if (array_key_exists('breakStartTime', $proposal)) {
-			$entry->setBreakStartTime($proposal['breakStartTime'] ? new \DateTime((string)$proposal['breakStartTime']) : null);
-		}
-		if (array_key_exists('breakEndTime', $proposal)) {
-			$entry->setBreakEndTime($proposal['breakEndTime'] ? new \DateTime((string)$proposal['breakEndTime']) : null);
-		}
-		if (array_key_exists('description', $proposal)) {
-			$entry->setDescription($proposal['description'] === null ? null : (string)$proposal['description']);
-		}
-		if (isset($proposal['date'])) {
-			$newStart = new \DateTime((string)$proposal['date']);
-			$entry->setStartTime($newStart);
-			if (isset($proposal['hours'])) {
-				$endTime = clone $newStart;
-				$endTime->modify('+' . round(((float)$proposal['hours']) * 3600) . ' seconds');
-				$entry->setEndTime($endTime);
-			}
-		} elseif (isset($proposal['hours']) && $entry->getStartTime()) {
-			$endTime = clone $entry->getStartTime();
-			$endTime->modify('+' . round(((float)$proposal['hours']) * 3600) . ' seconds');
-			$entry->setEndTime($endTime);
-		}
-	}
-
-	private function validateCorrectionProposal(TimeEntry $entry, array $proposal): ?string
-	{
-		$candidate = clone $entry;
-		$this->applyCorrectionProposalToEntry($candidate, $proposal);
-
-		try {
-			$this->monthClosureGuard->assertTimeEntryMutable($candidate);
-		} catch (MonthFinalizedException $e) {
-			return $this->l10n->t('This calendar month is finalized. Contact an administrator if a correction must be made.');
-		}
-
-		if ($candidate->getStartTime()) {
-			$restPeriodCheck = $this->complianceService->checkRestPeriodForStartTime($entry->getUserId(), $candidate->getStartTime(), $entry->getId());
-			if (!($restPeriodCheck['valid'] ?? false)) {
-				return (string)($restPeriodCheck['message'] ?? $this->l10n->t('Rest period validation failed.'));
-			}
-		}
-
-		if ($candidate->getEndTime() && $candidate->getStartTime()) {
-			$this->timeTrackingService->calculateAndSetAutomaticBreak($candidate);
-			$this->timeTrackingService->adjustEndTimeForDailyMaximum($candidate);
-			$overlapping = $this->timeEntryMapper->findOverlapping($entry->getUserId(), $candidate->getStartTime(), $candidate->getEndTime(), $entry->getId());
-			if (!empty($overlapping)) {
-				return $this->l10n->t('This correction overlaps with existing time entries.');
-			}
-		}
-
-		$errors = $candidate->validate();
-		if (!empty($errors)) {
-			$firstError = reset($errors);
-			return $this->l10n->t((string)$firstError);
-		}
-
-		return null;
 	}
 
 }

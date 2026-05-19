@@ -320,10 +320,6 @@
   text-align: center;
 }
 
-.admin-teams .team-list__error {
-  color: var(--color-error);
-}
-
 /* -------------------------------------------------------------------------
    Responsive — mobile-first, clear touch targets
    ------------------------------------------------------------------------- */

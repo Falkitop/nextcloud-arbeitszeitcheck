@@ -44,7 +44,8 @@ class UserVacationPolicyAssignment extends Entity {
 	protected string $createdBy = 'system';
 	protected ?\DateTime $createdAt = null;
 	protected ?\DateTime $updatedAt = null;
-	protected bool $inheritLowerLayers = false;
+	/** @var bool|null DB column is nullable for Nextcloud schema portability; NULL is treated as false. */
+	protected $inheritLowerLayers = false;
 
 	public function __construct() {
 		$this->addType('userId', 'string');
@@ -61,13 +62,30 @@ class UserVacationPolicyAssignment extends Entity {
 	}
 
 	/**
+	 * {@see Entity::setter} maps DB rows onto properties. PHP's `settype($v, 'bool')`
+	 * treats any non-empty string (including literal "false") as true — unsafe for
+	 * a payroll-relevant flag. Normalise textual booleans before casting.
+	 *
+	 * @param array{0: mixed} $args
+	 */
+	protected function setter(string $name, array $args): void {
+		if ($name === 'inheritLowerLayers' && isset($args[0]) && $args[0] !== null && is_string($args[0])) {
+			$parsed = filter_var($args[0], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+			$args[0] = $parsed ?? false;
+		}
+		parent::setter($name, $args);
+	}
+
+	/**
 	 * True iff this L3 row defers entitlement resolution to lower layers
 	 * (L2 team → L1 model → L0 organisation). Accepts both representations
 	 * tolerated by the API: the explicit boolean column **and** the sentinel
 	 * `vacation_mode = 'inherit'`. Either is sufficient.
 	 */
 	public function isInherit(): bool {
-		if ($this->inheritLowerLayers) {
+		// Strict checks: avoid PHP truthiness traps on corrupted string values in
+		// the DB (e.g. a literal "false" string would be truthy).
+		if ($this->inheritLowerLayers === true || $this->inheritLowerLayers === 1) {
 			return true;
 		}
 		return $this->vacationMode === Constants::VACATION_MODE_INHERIT;

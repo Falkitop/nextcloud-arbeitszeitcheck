@@ -37,20 +37,18 @@
 
     function formatDateForDisplay(dateString) {
         if (!dateString) return '';
-        const locale = getDateLocale();
-
-        // Handle plain yyyy-mm-dd dates (absence ranges) explicitly to avoid timezone shifts.
-        if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
-            const [y, m, d] = dateString.split('-').map((v) => parseInt(v, 10));
-            const date = new Date(y, m - 1, d, 12, 0, 0);
-            if (Number.isNaN(date.getTime())) return dateString;
-            return new Intl.DateTimeFormat(locale, { year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+        const api = window.ArbeitszeitCheckTime;
+        if (api) {
+            if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+                const parsed = api.parseYmd(dateString);
+                return parsed ? api.formatDate(parsed) : dateString;
+            }
+            return api.formatDate(dateString) || dateString;
         }
-
-        // Fallback for ISO timestamps or other parseable values.
-        const date = new Date(dateString);
-        if (Number.isNaN(date.getTime())) return dateString;
-        return new Intl.DateTimeFormat(locale, { year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+        if (Utils.formatDate) {
+            return Utils.formatDate(dateString, 'DD.MM.YYYY') || dateString;
+        }
+        return dateString;
     }
 
     function parseSummary(summary) {
@@ -350,30 +348,70 @@
         });
     }
 
+    function formatCorrectionTime(iso) {
+        if (!iso) {
+            return '–';
+        }
+        const api = window.ArbeitszeitCheckTime;
+        if (api) {
+            const d = api.formatDate(iso);
+            const tm = api.formatTime(iso);
+            return d && tm ? d + ' ' + tm : (tm || d || iso);
+        }
+        return String(iso).slice(0, 16).replace('T', ' ');
+    }
+
+    function formatCorrectionBreaks(breaks) {
+        if (!Array.isArray(breaks) || breaks.length === 0) {
+            return '–';
+        }
+        return breaks.map(function(b) {
+            return formatCorrectionTime(b.start || b.startTime) + ' – ' + formatCorrectionTime(b.end || b.endTime);
+        }).join('; ');
+    }
+
+    function buildCorrectionDiffRow(label, origVal, propVal) {
+        return (
+            '<div class="manager-correction-diff__row">' +
+            '<span class="manager-correction-diff__field">' + escapeHtml(label) + '</span>' +
+            '<span class="manager-correction-diff__orig">' + escapeHtml(origVal) + '</span>' +
+            '<span class="manager-correction-diff__prop">' + escapeHtml(propVal) + '</span>' +
+            '</div>'
+        );
+    }
+
     function renderTimeEntryCard(item) {
-        const s = item.summary || {};
         const id = item.id;
         const displayName = escapeHtml(item.displayName || item.userId || '');
-        const date = formatDateForDisplay(s.date || '');
-        const startTime = s.startTime || '';
-        const endTime = s.endTime || '';
-        const durationHours = s.durationHours != null ? s.durationHours : '';
-        const justification = s.justification ? escapeHtml(String(s.justification).substring(0, 200)) : '';
-        const orig = s.original || {};
-        const prop = s.proposed || {};
-        const origStr = orig.date || orig.startTime || orig.endTime ? [orig.date, orig.startTime || orig.start, orig.endTime || orig.end].filter(Boolean).join(' ') : '';
-        const propStr = prop.date || prop.startTime || prop.start || prop.endTime || prop.end ? [prop.date, prop.startTime || prop.start, prop.endTime || prop.end].filter(Boolean).join(' ') : '';
+        const date = formatDateForDisplay((item.startTime || '').slice(0, 10));
+        const justificationText = item.justification || '';
+        const justification = justificationText ? escapeHtml(String(justificationText).substring(0, 300)) : '';
+        const orig = item.original || {};
+        const prop = item.proposed || {};
+
+        const diffHtml = [
+            '<div class="manager-correction-diff" role="group" aria-label="' + escapeHtml(t('Correction comparison', 'Correction comparison')) + '">',
+            '<div class="manager-correction-diff__header">',
+            '<span class="manager-correction-diff__field"></span>',
+            '<span class="manager-correction-diff__label">' + escapeHtml(t('Current (Ist)', 'Current (Ist)')) + '</span>',
+            '<span class="manager-correction-diff__label">' + escapeHtml(t('Proposed (Soll)', 'Proposed (Soll)')) + '</span>',
+            '</div>',
+            buildCorrectionDiffRow(t('Start', 'Start'), formatCorrectionTime(orig.startTime), formatCorrectionTime(prop.startTime)),
+            buildCorrectionDiffRow(t('End', 'End'), formatCorrectionTime(orig.endTime), formatCorrectionTime(prop.endTime)),
+            buildCorrectionDiffRow(t('Breaks', 'Breaks'), formatCorrectionBreaks(orig.breaks), formatCorrectionBreaks(prop.breaks)),
+            '</div>',
+        ].join('');
 
         return (
             '<div class="pending-approval-card pending-approval-card--time-entry" data-time-entry-id="' + escapeHtml(String(id)) + '" role="article">' +
             '  <div class="pending-approval-card__body">' +
             '    <p class="pending-approval-card__title"><strong>' + displayName + '</strong> – ' + escapeHtml(t('Time entry correction', 'Time entry correction')) + '</p>' +
-            '    <p class="pending-approval-card__meta">' + escapeHtml(date) + ' ' + escapeHtml(startTime) + ' – ' + escapeHtml(endTime) + (durationHours ? ' (' + escapeHtml(String(durationHours)) + 'h)' : '') + '</p>' +
-            (justification ? '<p class="pending-approval-card__reason"><em>' + justification + (String(s.justification).length > 200 ? '…' : '') + '</em></p>' : '') +
-            (origStr || propStr ? '<p class="pending-approval-card__meta pending-approval-card__meta--small">' + (origStr ? t('Original:', 'Original:') + ' ' + escapeHtml(origStr) : '') + (propStr ? ' → ' + t('Proposed:', 'Proposed:') + ' ' + escapeHtml(propStr) : '') + '</p>' : '') +
+            '    <p class="pending-approval-card__meta">' + escapeHtml(date) + '</p>' +
+            diffHtml +
+            (justification ? '<p class="pending-approval-card__reason"><strong>' + escapeHtml(t('Reason:', 'Reason:')) + '</strong> <em>' + justification + (String(justificationText).length > 300 ? '…' : '') + '</em></p>' : '') +
             '    <div class="pending-approval-card__actions">' +
-            '      <button type="button" class="btn btn--primary btn-approve-time-entry" data-time-entry-id="' + escapeHtml(String(id)) + '" aria-label="' + t('Approve', 'Approve') + ' ' + displayName + '">' + t('Approve', 'Approve') + '</button>' +
-            '      <button type="button" class="btn btn--secondary btn-reject-time-entry" data-time-entry-id="' + escapeHtml(String(id)) + '" aria-label="' + t('Reject', 'Reject') + ' ' + displayName + '">' + t('Reject', 'Reject') + '</button>' +
+            '      <button type="button" class="btn btn--primary btn-approve-time-entry" data-time-entry-id="' + escapeHtml(String(id)) + '" aria-label="' + escapeHtml(t('Approve', 'Approve') + ' ' + (item.displayName || '')) + '">' + t('Approve', 'Approve') + '</button>' +
+            '      <button type="button" class="btn btn--secondary btn-reject-time-entry" data-time-entry-id="' + escapeHtml(String(id)) + '" aria-label="' + escapeHtml(t('Reject', 'Reject') + ' ' + (item.displayName || '')) + '">' + t('Reject', 'Reject') + '</button>' +
             '    </div>' +
             '  </div>' +
             '</div>'

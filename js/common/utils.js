@@ -7,6 +7,37 @@
  */
 
 const ArbeitszeitCheckUtils = {
+  // ===== API DATE/TIME (contract with PHP `format('c')`) =====
+
+  /**
+   * Parse an absolute instant from the PHP JSON API (RFC 3339 / ISO-8601 with offset from DateTime::format('c')).
+   * Use for session start, entry start/end, and any server field serialized with an explicit zone.
+   *
+   * @param {string|number|Date|null|undefined} value
+   * @returns {Date|null}
+   */
+  parseApiInstant(value) {
+    const time = (typeof window !== 'undefined') ? window.ArbeitszeitCheckTime : null;
+    if (time && typeof time.parseApiInstant === 'function') {
+      return time.parseApiInstant(value);
+    }
+    if (value == null || value === '') {
+      return null;
+    }
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? null : value;
+    }
+    const s = String(value).trim();
+    if (!s) {
+      return null;
+    }
+    const ms = Date.parse(s);
+    if (!Number.isFinite(ms)) {
+      return null;
+    }
+    return new Date(ms);
+  },
+
   // ===== DOM UTILITIES =====
 
   /**
@@ -371,21 +402,20 @@ const ArbeitszeitCheckUtils = {
    * @returns {string} Time in 24-hour format (HH:MM or HH:MM:SS)
    */
   formatTime(date, includeSeconds = false) {
+    const time = (typeof window !== 'undefined') ? window.ArbeitszeitCheckTime : null;
+    if (time && typeof time.formatTime === 'function') {
+      return time.formatTime(date, includeSeconds ? { withSeconds: true } : undefined);
+    }
     const d = new Date(date);
-    
-    // Validate date
     if (isNaN(d.getTime())) {
       return '00:00' + (includeSeconds ? ':00' : '');
     }
-    
     const hours = String(d.getHours()).padStart(2, '0');
     const minutes = String(d.getMinutes()).padStart(2, '0');
-    
     if (includeSeconds) {
       const seconds = String(d.getSeconds()).padStart(2, '0');
       return `${hours}:${minutes}:${seconds}`;
     }
-    
     return `${hours}:${minutes}`;
   },
 
@@ -395,15 +425,20 @@ const ArbeitszeitCheckUtils = {
    * Time is always formatted in 24-hour format (HH:mm)
    */
   formatDate(date, format = 'DD.MM.YYYY') {
+    const time = (typeof window !== 'undefined') ? window.ArbeitszeitCheckTime : null;
+    if (time && typeof time.formatWithMask === 'function') {
+      return time.formatWithMask(date, format);
+    }
     const d = new Date(date);
-    
+    if (isNaN(d.getTime())) {
+      return '';
+    }
     const year = d.getFullYear();
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
     const hours = String(d.getHours()).padStart(2, '0');
     const minutes = String(d.getMinutes()).padStart(2, '0');
     const seconds = String(d.getSeconds()).padStart(2, '0');
-    
     return format
       .replace('YYYY', year)
       .replace('MM', month)
@@ -417,10 +452,14 @@ const ArbeitszeitCheckUtils = {
    * Format time duration (seconds to HH:MM:SS)
    */
   formatDuration(seconds) {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    
+    const time = (typeof window !== 'undefined') ? window.ArbeitszeitCheckTime : null;
+    if (time && typeof time.formatDuration === 'function') {
+      return time.formatDuration(seconds);
+    }
+    const total = Math.max(0, Math.floor(Number(seconds) || 0));
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const secs = total % 60;
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   },
 
@@ -437,6 +476,14 @@ const ArbeitszeitCheckUtils = {
    * Get relative time (e.g., "2 hours ago")
    */
   relativeTime(date) {
+    const time = (typeof window !== 'undefined') ? window.ArbeitszeitCheckTime : null;
+    if (time && typeof time.relativeTime === 'function') {
+      const tFn = (typeof window !== 'undefined' && typeof window.t === 'function')
+        ? (s, vars) => window.t('arbeitszeitcheck', s, vars || {})
+        : undefined;
+      return time.relativeTime(date, tFn ? { t: tFn } : undefined);
+    }
+
     const now = new Date();
     const diff = now - new Date(date);
     const seconds = Math.floor(diff / 1000);

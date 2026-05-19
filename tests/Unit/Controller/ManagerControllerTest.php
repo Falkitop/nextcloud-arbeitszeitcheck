@@ -28,6 +28,8 @@ use OCA\ArbeitszeitCheck\Service\OvertimeService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCA\ArbeitszeitCheck\Service\TeamResolverService;
 use OCA\ArbeitszeitCheck\Service\TimeTrackingService;
+use OCA\ArbeitszeitCheck\Service\TimeZoneService;
+use OCA\ArbeitszeitCheck\Service\TimeEntryCorrectionService;
 use OCA\ArbeitszeitCheck\Service\MonthClosureGuard;
 use OCA\ArbeitszeitCheck\Service\MonthClosureService;
 use OCP\AppFramework\Db\DoesNotExistException;
@@ -36,6 +38,7 @@ use OCP\AppFramework\Http\JSONResponse;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\IGroup;
 use OCP\IConfig;
+use OCP\IDateTimeZone;
 use OCP\IRequest;
 use OCP\IURLGenerator;
 use OCP\IUser;
@@ -43,6 +46,7 @@ use OCP\IUserManager;
 use OCP\IUserSession;
 use OCP\IL10N;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
 
 /**
  * Class ManagerControllerTest
@@ -118,6 +122,9 @@ class ManagerControllerTest extends TestCase
 	/** @var MonthClosureService|\PHPUnit\Framework\MockObject\MockObject */
 	private $monthClosureService;
 
+	/** @var TimeEntryCorrectionService|\PHPUnit\Framework\MockObject\MockObject */
+	private $correctionService;
+
 	protected function setUp(): void
 	{
 		parent::setUp();
@@ -153,6 +160,33 @@ class ManagerControllerTest extends TestCase
 			});
 		$this->monthClosureGuard = $this->createMock(MonthClosureGuard::class);
 		$this->monthClosureService = $this->createMock(MonthClosureService::class);
+		$this->correctionService = $this->createMock(TimeEntryCorrectionService::class);
+		$this->correctionService->method('reject')->willReturnCallback(static function (TimeEntry $entry): TimeEntry {
+			$entry->setStatus(TimeEntry::STATUS_COMPLETED);
+			return $entry;
+		});
+		$this->correctionService->method('approve')->willReturnCallback(static function (TimeEntry $entry): TimeEntry {
+			$justificationData = json_decode($entry->getJustification() ?? '{}', true);
+			$proposal = is_array($justificationData) ? ($justificationData['proposed'] ?? []) : [];
+			if (isset($proposal['endTime'])) {
+				$entry->setEndTime(new \DateTime((string)$proposal['endTime']));
+			}
+			$entry->setStatus(TimeEntry::STATUS_COMPLETED);
+			return $entry;
+		});
+
+		// Build a real TimeZoneService so its contract (storage-TZ wall clock,
+		// display-TZ formatting, day windows) is exercised end-to-end.
+		$tzConfig = $this->createMock(IConfig::class);
+		$tzConfig->method('getAppValue')->willReturnCallback(static fn ($app, $key, $default) => match ($key) {
+			'app_timezone' => 'Europe/Berlin',
+			default => $default,
+		});
+		$tzDateTime = $this->createMock(IDateTimeZone::class);
+		$tzDateTime->method('getTimeZone')->willReturn(new \DateTimeZone('Europe/Berlin'));
+		$tzUserSession = $this->createMock(IUserSession::class);
+		$tzUserSession->method('getUser')->willReturn(null);
+		$timeZoneService = new TimeZoneService($tzConfig, $tzDateTime, $tzUserSession, new NullLogger());
 
 		$this->controller = new ManagerController(
 			'arbeitszeitcheck',
@@ -176,7 +210,9 @@ class ManagerControllerTest extends TestCase
 			$this->urlGenerator,
 			$this->config,
 			$this->monthClosureGuard,
-			$this->monthClosureService
+			$this->monthClosureService,
+			$timeZoneService,
+			$this->correctionService
 		);
 	}
 
@@ -833,9 +869,6 @@ class ManagerControllerTest extends TestCase
 		$entry->setUpdatedAt(new \DateTime());
 
 		$this->timeEntryMapper->method('find')->willReturn($entry);
-		$this->timeEntryMapper->method('update')->willReturnCallback(static function (TimeEntry $candidate): TimeEntry {
-			return $candidate;
-		});
 
 		$this->auditLogMapper->expects($this->once())->method('logAction');
 		$this->notificationService->expects($this->once())->method('notifyTimeEntryCorrectionRejected');
@@ -881,15 +914,6 @@ class ManagerControllerTest extends TestCase
 		$this->config->method('getAppValue')->willReturn('1');
 		$this->auditLogMapper->expects($this->once())->method('logAction');
 		$this->notificationService->expects($this->once())->method('notifyTimeEntryCorrectionApproved');
-
-		$this->timeEntryMapper->expects($this->once())
-			->method('update')
-			->with($this->callback(static function (TimeEntry $updated): bool {
-				return $updated->getStatus() === TimeEntry::STATUS_COMPLETED
-					&& $updated->getEndTime() !== null
-					&& $updated->getEndTime()->format('H:i') === '17:30';
-			}))
-			->willReturnCallback(static fn (TimeEntry $updated): TimeEntry => $updated);
 
 		$response = $this->controller->approveTimeEntryCorrection($entryId, 'Approved');
 		$data = $response->getData();

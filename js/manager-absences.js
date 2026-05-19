@@ -32,15 +32,16 @@
 		if (!value) {
 			return '-';
 		}
-		const date = new Date(`${value}T00:00:00`);
-		if (Number.isNaN(date.getTime())) {
-			return '-';
+		const ymd = String(value).slice(0, 10);
+		const api = window.ArbeitszeitCheckTime;
+		if (api && /^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+			const parsed = api.parseYmd(ymd);
+			return parsed ? api.formatDate(parsed) : '-';
 		}
-		return new Intl.DateTimeFormat(state.dateLocale, {
-			year: 'numeric',
-			month: '2-digit',
-			day: '2-digit',
-		}).format(date);
+		if (Utils.formatDate) {
+			return Utils.formatDate(ymd, 'DD.MM.YYYY') || '-';
+		}
+		return ymd;
 	}
 
 	function formatDays(value) {
@@ -59,10 +60,13 @@
 		if (!rawEnd) {
 			return false;
 		}
-		const end = new Date(`${String(rawEnd).slice(0, 10)}T00:00:00`);
-		const today = new Date();
-		today.setHours(0, 0, 0, 0);
-		return !Number.isNaN(end.getTime()) && end < today;
+		const api = window.ArbeitszeitCheckTime;
+		const endYmd = String(rawEnd).slice(0, 10);
+		const todayYmd = api ? api.todayYmd() : '';
+		if (api && /^\d{4}-\d{2}-\d{2}$/.test(endYmd) && todayYmd) {
+			return endYmd < todayYmd;
+		}
+		return false;
 	}
 
 	function setEmpty(message) {
@@ -316,6 +320,14 @@
 	 * persists as APPROVED - but the visible cue helps prevent typos like
 	 * 2024 vs 2025 going unnoticed.
 	 */
+	function europeanToYmd(value) {
+		if (!value || !/^\d{2}\.\d{2}\.\d{4}$/.test(value)) {
+			return '';
+		}
+		const parts = String(value).split('.');
+		return parts[2] + '-' + parts[1] + '-' + parts[0];
+	}
+
 	function parseEuropeanDate(value) {
 		if (!value || !/^\d{2}\.\d{2}\.\d{4}$/.test(value)) {
 			return null;
@@ -340,9 +352,11 @@
 			hint.hidden = true;
 			return;
 		}
-		const today = new Date();
-		today.setHours(0, 0, 0, 0);
-		hint.hidden = !(end < today);
+		const endYmd = europeanToYmd(endEl.value);
+		const todayYmd = window.ArbeitszeitCheckTime
+			? window.ArbeitszeitCheckTime.todayYmd()
+			: '';
+		hint.hidden = !(endYmd && todayYmd && endYmd < todayYmd);
 	}
 
 	function bindRecordHistoricalHint() {
@@ -441,6 +455,22 @@
 		}
 		if (!force && (startInput.value || endInput.value)) {
 			return;
+		}
+		const api = window.ArbeitszeitCheckTime;
+		if (api) {
+			const endYmd = api.todayYmd();
+			const endParsed = api.parseYmd(endYmd);
+			if (endParsed) {
+				const startParsed = new Date(endParsed);
+				startParsed.setMonth(startParsed.getMonth() - 1);
+				startInput.value = Utils.formatDate
+					? Utils.formatDate(startParsed, 'DD.MM.YYYY')
+					: toEuropeanDateString(startParsed);
+				endInput.value = Utils.formatDate
+					? Utils.formatDate(endParsed, 'DD.MM.YYYY')
+					: toEuropeanDateString(endParsed);
+				return;
+			}
 		}
 		const today = new Date();
 		const oneMonthAgo = new Date(today);

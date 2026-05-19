@@ -16,6 +16,7 @@ use OCA\ArbeitszeitCheck\Capabilities;
 use OCA\ArbeitszeitCheck\Repair\BackfillAbsenceDays;
 use OCA\ArbeitszeitCheck\Listener\LoadSidebarScripts;
 use OCA\ArbeitszeitCheck\Listener\CSPListener;
+use OCA\ArbeitszeitCheck\Listener\TimeClientBootstrapListener;
 use OCA\ArbeitszeitCheck\Listener\UserDeletedListener;
 use OCA\ArbeitszeitCheck\Middleware\AppAdminMiddleware;
 use OCA\ArbeitszeitCheck\Notification\Notifier;
@@ -76,6 +77,10 @@ class Application extends App implements IBootstrap {
 		$context->registerEventListener(LoadSidebar::class, LoadSidebarScripts::class);
 		$context->registerEventListener(AddContentSecurityPolicyEvent::class, CSPListener::class);
 		$context->registerEventListener(UserDeletedEvent::class, UserDeletedListener::class);
+		$context->registerEventListener(
+			\OCP\AppFramework\Http\Events\BeforeTemplateRenderedEvent::class,
+			TimeClientBootstrapListener::class
+		);
 
 		// Register mappers
 		$context->registerService(\OCA\ArbeitszeitCheck\Db\TimeEntryMapper::class, function($c) {
@@ -130,6 +135,20 @@ class Application extends App implements IBootstrap {
 		$context->registerService(\OCA\ArbeitszeitCheck\Db\VacationYearBalanceMapper::class, function($c) {
 			return new \OCA\ArbeitszeitCheck\Db\VacationYearBalanceMapper(
 				$c->query(IDBConnection::class)
+			);
+		});
+
+		$context->registerService(\OCA\ArbeitszeitCheck\Db\UserOvertimeYearBalanceMapper::class, function($c) {
+			return new \OCA\ArbeitszeitCheck\Db\UserOvertimeYearBalanceMapper(
+				$c->query(IDBConnection::class)
+			);
+		});
+
+		$context->registerService(\OCA\ArbeitszeitCheck\Service\UserOvertimeSettingsService::class, function($c) {
+			return new \OCA\ArbeitszeitCheck\Service\UserOvertimeSettingsService(
+				$c->query(\OCA\ArbeitszeitCheck\Db\UserSettingsMapper::class),
+				$c->query(\OCA\ArbeitszeitCheck\Db\UserOvertimeYearBalanceMapper::class),
+				$c->query(\OCA\ArbeitszeitCheck\Db\AuditLogMapper::class),
 			);
 		});
 
@@ -270,7 +289,8 @@ class Application extends App implements IBootstrap {
 				$c->query(\OCA\ArbeitszeitCheck\Db\WorkingTimeModelMapper::class),
 				$c->query(\OCA\ArbeitszeitCheck\Service\MonthClosureGuard::class),
 				$c->query(\OCP\IDBConnection::class),
-				$c->query(\OCP\Lock\ILockingProvider::class)
+				$c->query(\OCP\Lock\ILockingProvider::class),
+				$c->query(\OCA\ArbeitszeitCheck\Service\TimeZoneService::class)
 			);
 		});
 
@@ -330,7 +350,8 @@ class Application extends App implements IBootstrap {
 				$c->query(NotificationService::class),
 				$c->query(HolidayService::class),
 				$c->query(\OCP\IConfig::class),
-				$c->query(PermissionService::class)
+				$c->query(PermissionService::class),
+				$c->query(\OCA\ArbeitszeitCheck\Service\TimeZoneService::class)
 			);
 		});
 
@@ -435,7 +456,21 @@ class Application extends App implements IBootstrap {
 				$c->query(\OCA\ArbeitszeitCheck\Db\WorkingTimeModelMapper::class),
 				$c->query(\OCA\ArbeitszeitCheck\Db\UserWorkingTimeModelMapper::class),
 				$c->query(\OCP\IL10N::class),
-				$c->query(HolidayService::class)
+				$c->query(HolidayService::class),
+				$c->query(\OCA\ArbeitszeitCheck\Service\UserOvertimeSettingsService::class),
+			);
+		});
+
+		$context->registerService(\OCA\ArbeitszeitCheck\Service\TimeEntryCorrectionService::class, function($c) {
+			return new \OCA\ArbeitszeitCheck\Service\TimeEntryCorrectionService(
+				$c->query(\OCA\ArbeitszeitCheck\Db\TimeEntryMapper::class),
+				$c->query(\OCA\ArbeitszeitCheck\Service\MonthClosureGuard::class),
+				$c->query(ComplianceService::class),
+				$c->query(TimeTrackingService::class),
+				$c->query(NotificationService::class),
+				$c->query(\OCA\ArbeitszeitCheck\Db\AuditLogMapper::class),
+				$c->query(\OCP\IConfig::class),
+				$c->query(\OCP\IL10N::class),
 			);
 		});
 
@@ -533,6 +568,7 @@ class Application extends App implements IBootstrap {
 				\OCP\Util::addStyle(self::APP_ID, 'navigation');
 				\OCP\Util::addStyle(self::APP_ID, 'app-vanilla');
 				\OCP\Util::addScript(self::APP_ID, 'common/utils');
+				\OCP\Util::addScript(self::APP_ID, 'common/time');
 				\OCP\Util::addScript(self::APP_ID, 'common/components');
 				\OCP\Util::addScript(self::APP_ID, 'common/messaging');
 				\OCP\Util::addScript(self::APP_ID, 'common/validation');

@@ -193,6 +193,18 @@ final class Constants
 	/** @var list<string> */
 	public const OVERTIME_LEVELS = ['yellow', 'red'];
 
+	/** User setting key: ISO Y-m-d date from which overtime balance is tracked (null = Jan 1 legacy). */
+	public const SETTING_OVERTIME_TRACKING_FROM = 'overtime_tracking_from';
+
+	/** App config: require manager approval for edits to completed time entries. Default off. */
+	public const CONFIG_TIME_ENTRY_CHANGES_REQUIRE_APPROVAL = 'time_entry_changes_require_approval';
+
+	/** App config: require manager approval for new manual time entries. Default off. */
+	public const CONFIG_MANUAL_TIME_ENTRIES_REQUIRE_APPROVAL = 'manual_time_entries_require_approval';
+
+	/** Overtime balance algorithm version for audit replay. */
+	public const OVERTIME_ALGORITHM_VERSION = 1;
+
 	/**
 	 * Compliance score weights (critical, warning, info).
 	 */

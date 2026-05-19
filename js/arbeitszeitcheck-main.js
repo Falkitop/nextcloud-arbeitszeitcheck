@@ -26,14 +26,41 @@
         return (typeof window.t === 'function' ? window.t('arbeitszeitcheck', msg) : msg);
     }
 
+    /** @returns {typeof window.ArbeitszeitCheckTime|null} */
+    function timeApi() {
+        return window.ArbeitszeitCheckTime || null;
+    }
+
+    /** Parse API ISO-8601 instants (delegates to {@link ArbeitszeitCheckTime}). */
+    function parseApiInstant(value) {
+        const api = timeApi();
+        if (api) {
+            return api.parseInstant(value);
+        }
+        if (window.ArbeitszeitCheckUtils && typeof window.ArbeitszeitCheckUtils.parseApiInstant === 'function') {
+            return window.ArbeitszeitCheckUtils.parseApiInstant(value);
+        }
+        return null;
+    }
+
+    /** Render clock time in the user's display TZ. */
+    function formatDisplayTime(value, withSeconds) {
+        const api = timeApi();
+        if (api) {
+            return api.formatTime(value, withSeconds ? { withSeconds: true } : undefined);
+        }
+        return '';
+    }
+
     /**
-     * Format a Date as YYYY-MM-DD using local calendar values only (no timezone shifts).
-     *
-     * Using toISOString() here would convert the local time to UTC which can
-     * move dates across day boundaries depending on the user's timezone.
-     * For calendar logic we always want the local civil date.
+     * Calendar-day key `YYYY-MM-DD` in the user's display TZ (never via
+     * `toISOString()`, which would shift to UTC).
      */
     function formatLocalDateYmd(date) {
+        const api = timeApi();
+        if (api && date instanceof Date && !Number.isNaN(date.getTime())) {
+            return api.ymd(date);
+        }
         if (!(date instanceof Date)) {
             return '';
         }
@@ -43,17 +70,29 @@
         return year + '-' + month + '-' + day;
     }
 
-    /** Parse YYYY-MM-DD as local civil date (avoids UTC parsing pitfalls). */
+    /** Parse `YYYY-MM-DD` as a civil date (DST-safe noon anchor). */
     function parseYmdToLocalDate(ymd) {
+        const api = timeApi();
+        if (api) {
+            return api.parseYmd(ymd);
+        }
         if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
             return null;
         }
         const p = ymd.split('-').map(function (x) { return parseInt(x, 10); });
-        const d = new Date(p[0], p[1] - 1, p[2]);
+        const d = new Date(p[0], p[1] - 1, p[2], 12, 0, 0, 0);
         if (d.getFullYear() !== p[0] || d.getMonth() !== p[1] - 1 || d.getDate() !== p[2]) {
             return null;
         }
         return d;
+    }
+
+    function todayYmdLocal() {
+        const api = timeApi();
+        if (api) {
+            return api.todayYmd();
+        }
+        return formatLocalDateYmd(new Date());
     }
 
     // Main application object
@@ -109,7 +148,22 @@
             // Get initial status from config
             const status = this.config.status || {};
             const currentStatus = status.status || 'clocked_out';
-            
+
+            // Sync the drift-safe clock with the server `server_now` anchor on
+            // every (re)initialisation so the very first tick uses the same
+            // instant the server used to compute `current_session_duration`.
+            // Without this, a client whose wall clock is off by N seconds would
+            // observe the timer jumping by N the very first second.
+            if (timeApi() && status && status.server_now) {
+                timeApi().syncFromServer(status.server_now);
+            }
+            const nowMillis = () => {
+                const api = timeApi();
+                return (api && typeof api.serverNowMillis === 'function')
+                    ? api.serverNowMillis()
+                    : Date.now();
+            };
+
             // Initialize working time timer
             const sessionTimerEl = document.querySelector('.session-timer');
             if (sessionTimerEl) {
@@ -124,17 +178,28 @@
                         if (status.current_session_duration !== null && status.current_session_duration !== undefined) {
                             baseWorkingSeconds = Math.floor(status.current_session_duration);
                         } else {
-                            // Fallback: calculate from start time
-                            const startTime = new Date(startTimeStr).getTime();
-                            const now = new Date().getTime();
-                            baseWorkingSeconds = Math.floor((now - startTime) / 1000);
+                            // Fallback when the backend didn't pre-compute the duration:
+                            // diff the start-time ISO instant against the drift-safe
+                            // server clock. ArbeitszeitCheckTime.secondsSince clamps
+                            // negatives (future instants) to zero so a client clock
+                            // running ahead of the server never produces a "negative"
+                            // timer.
+                            if (timeApi() && typeof timeApi().secondsSince === 'function') {
+                                baseWorkingSeconds = timeApi().secondsSince(startTimeStr);
+                            } else {
+                                const startDate = parseApiInstant(startTimeStr);
+                                const startMs = startDate ? startDate.getTime() : NaN;
+                                baseWorkingSeconds = Number.isFinite(startMs)
+                                    ? Math.max(0, Math.floor((nowMillis() - startMs) / 1000))
+                                    : 0;
+                            }
                         }
-                        
+
                         // Track when timer was last updated (for incrementing)
-                        let lastUpdateTime = new Date().getTime();
+                        let lastUpdateTime = nowMillis();
                         let isOnBreak = (currentStatus === 'break');
                         let isClockedIn = (currentStatus === 'active' || currentStatus === 'break');
-                        let lastStatusCheck = new Date().getTime();
+                        let lastStatusCheck = nowMillis();
                         // Initialize working today hours from initial status (includes completed entries + current session)
                         let workingTodayHours = 0.0;
                         if (status.working_today_hours !== null && status.working_today_hours !== undefined) {
@@ -184,6 +249,10 @@
                                             const newStatus = response.status.status || 'clocked_out';
                                             isClockedIn = (newStatus === 'active' || newStatus === 'break');
                                             isOnBreak   = (newStatus === 'break');
+                                            // Re-pin the drift-safe clock to the fresh server anchor.
+                                            if (timeApi() && response.status.server_now) {
+                                                timeApi().syncFromServer(response.status.server_now);
+                                            }
                                             if (response.status.working_today_hours !== null
                                                     && response.status.working_today_hours !== undefined) {
                                                 workingTodayHours = parseFloat(response.status.working_today_hours) || 0.0;
@@ -195,13 +264,13 @@
                                                     lastWtSyncSessionSeconds = baseWorkingSeconds;
                                                 }
                                             }
-                                            lastUpdateTime = new Date().getTime();
+                                            lastUpdateTime = nowMillis();
                                         }
                                     })
                                     .catch(() => {
                                         // Non-fatal: reset lastUpdateTime so elapsed calculation
                                         // starts fresh from the moment the tab becomes visible.
-                                        lastUpdateTime = new Date().getTime();
+                                        lastUpdateTime = nowMillis();
                                     });
                             }
                         };
@@ -209,8 +278,8 @@
 
                         // Update timer every second
                         this.timers.session = setInterval(() => {
-                            const now = new Date().getTime();
-                            
+                            const now = nowMillis();
+
                             // Periodically check status from backend to update isOnBreak and isClockedIn
                             // This ensures the timer correctly pauses/resumes when break status changes
                             // and stops when user clocks out
@@ -222,7 +291,12 @@
                                             const newStatus = response.status.status || 'clocked_out';
                                             const wasOnBreak = isOnBreak;
                                             const wasClockedIn = isClockedIn;
-                                            
+
+                                            // Re-pin the drift-safe clock to the latest server anchor.
+                                            if (timeApi() && response.status.server_now) {
+                                                timeApi().syncFromServer(response.status.server_now);
+                                            }
+
                                             isOnBreak = (newStatus === 'break');
                                             isClockedIn = (newStatus === 'active' || newStatus === 'break');
                                             
@@ -403,27 +477,36 @@
                     if (breakTimerValueEl) {
                         const breakStartTimeStr = breakTimerEl.dataset.breakStartTime;
                         if (breakStartTimeStr) {
-                            const breakStartTime = new Date(breakStartTimeStr).getTime();
-                            
+                            // Parse the ISO instant via the single source of truth.
+                            // Falling back to `new Date(s)` would re-introduce the
+                            // exact UTC-vs-local interpretation pitfall the timer
+                            // bug originally came from.
+                            const breakStartDate = parseApiInstant(breakStartTimeStr);
+                            const breakStartMs = breakStartDate && !Number.isNaN(breakStartDate.getTime())
+                                ? breakStartDate.getTime()
+                                : NaN;
+
                             // Clear any existing break timer
                             if (this.timers.break) {
                                 clearInterval(this.timers.break);
                             }
-                            
-                            // Update break timer every second
-                            this.timers.break = setInterval(() => {
-                                const now = new Date().getTime();
-                                const breakSeconds = Math.floor((now - breakStartTime) / 1000);
-                                
-                                const hours = Math.floor(breakSeconds / 3600);
-                                const minutes = Math.floor((breakSeconds % 3600) / 60);
-                                const seconds = breakSeconds % 60;
-                                
-                                breakTimerValueEl.textContent =
-                                    String(hours).padStart(2, '0') + ':' +
-                                    String(minutes).padStart(2, '0') + ':' +
-                                    String(seconds).padStart(2, '0');
-                            }, 1000);
+
+                            if (Number.isFinite(breakStartMs)) {
+                                // Update break timer every second, driven by the
+                                // drift-safe server clock so a wrong local clock
+                                // cannot make the break appear longer/shorter than
+                                // the server records it.
+                                this.timers.break = setInterval(() => {
+                                    const breakSeconds = Math.max(0, Math.floor((nowMillis() - breakStartMs) / 1000));
+                                    breakTimerValueEl.textContent = (timeApi() && typeof timeApi().formatDuration === 'function')
+                                        ? timeApi().formatDuration(breakSeconds)
+                                        : (
+                                            String(Math.floor(breakSeconds / 3600)).padStart(2, '0') + ':' +
+                                            String(Math.floor((breakSeconds % 3600) / 60)).padStart(2, '0') + ':' +
+                                            String(breakSeconds % 60).padStart(2, '0')
+                                        );
+                                }, 1000);
+                            }
                         }
                     }
                 }
@@ -511,7 +594,7 @@
             // Handle edit buttons in table rows (works on all pages including dashboard).
             // The selector must exclude `.btn-delete` AND `.btn-complete-entry` so we don't
             // accidentally redirect to the edit form when the user clicks "Complete".
-            const editButtons = document.querySelectorAll('table tbody button[data-entry-id]:not(.btn-delete):not(.btn-complete-entry)');
+            const editButtons = document.querySelectorAll('table tbody button[data-entry-id]:not(.btn-delete):not(.btn-complete-entry):not(.btn-request-correction):not(.btn-cancel-correction)');
             editButtons.forEach(button => {
                 // Check if button already has a click handler by checking for a data attribute
                 if (button.dataset.editHandlerAttached === 'true') {
@@ -682,8 +765,9 @@
                 });
             }
 
+
             // Edit buttons in table rows (skip delete + paused-completion buttons).
-            const editButtons = document.querySelectorAll('table tbody button[data-entry-id]:not(.btn-delete):not(.btn-complete-entry)');
+            const editButtons = document.querySelectorAll('table tbody button[data-entry-id]:not(.btn-delete):not(.btn-complete-entry):not(.btn-request-correction):not(.btn-cancel-correction)');
             editButtons.forEach(button => {
                 if (button.dataset.editHandlerAttached === 'true') {
                     return;
@@ -1016,11 +1100,7 @@
         AUTO_CLOCKOUT_MAX_ATTEMPTS: 3,
 
         getAutoClockoutGuardKey: function() {
-            const d = new Date();
-            const y = d.getFullYear();
-            const m = String(d.getMonth() + 1).padStart(2, '0');
-            const day = String(d.getDate()).padStart(2, '0');
-            return 'arbeitszeitcheck-auto-clockout-' + y + '-' + m + '-' + day;
+            return 'arbeitszeitcheck-auto-clockout-' + todayYmdLocal();
         },
 
         readAutoClockoutAttempts: function() {
@@ -1469,25 +1549,15 @@
          * Always uses 24-hour format for time (HH:MM)
          */
         formatDate: function(dateString, includeTime = false) {
-            const date = new Date(dateString);
-            // Use German date format (DD.MM.YYYY)
-            const day = String(date.getDate()).padStart(2, '0');
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const year = date.getFullYear();
-            const formatted = `${day}.${month}.${year}`;
-            
-            if (includeTime) {
-                // Use central utility function for 24-hour time format
-                const formatTime = (window.ArbeitszeitCheckUtils && window.ArbeitszeitCheckUtils.formatTime) || 
-                    ((date) => {
-                        const hours = String(date.getHours()).padStart(2, '0');
-                        const minutes = String(date.getMinutes()).padStart(2, '0');
-                        return `${hours}:${minutes}`;
-                    });
-                const timeStr = formatTime(date);
-                return `${formatted} ${timeStr}`;
+            const utils = window.ArbeitszeitCheckUtils;
+            if (utils && typeof utils.formatDate === 'function') {
+                return utils.formatDate(dateString, includeTime ? 'DD.MM.YYYY HH:mm' : 'DD.MM.YYYY');
             }
-            return formatted;
+            const api = timeApi();
+            if (api) {
+                return includeTime ? api.formatDateTime(dateString) : api.formatDate(dateString);
+            }
+            return String(dateString || '');
         },
 
         /** Cached timeline data for filter re-renders (set after successful load) */
@@ -1646,8 +1716,8 @@
                 entries.forEach(entry => {
                     const startTime = entry.start_time || entry.startTime;
                     if (startTime) {
-                        const d = new Date(startTime);
-                        if (!isNaN(d.getTime())) {
+                        const d = parseApiInstant(startTime);
+                        if (d) {
                             allDates.push(d);
                         }
                     }
@@ -1655,8 +1725,8 @@
                 abs.forEach(absence => {
                     const startDate = absence.start_date || absence.startDate;
                     if (startDate) {
-                        const d = new Date(startDate);
-                        if (!isNaN(d.getTime())) {
+                        const d = parseYmdToLocalDate(String(startDate).slice(0, 10));
+                        if (d) {
                             allDates.push(d);
                         }
                     }
@@ -1769,9 +1839,13 @@
             timeEntries.forEach(entry => {
                 const startTime = entry.start_time || entry.startTime;
                 if (startTime) {
+                    const entryDate = parseApiInstant(startTime);
+                    if (!entryDate) {
+                        return;
+                    }
                     items.push({
                         type: 'time_entry',
-                        date: new Date(startTime),
+                        date: entryDate,
                         data: entry
                     });
                 }
@@ -1781,9 +1855,13 @@
             absences.forEach(absence => {
                 const startDate = absence.start_date || absence.startDate;
                 if (startDate) {
+                    const absenceDate = parseYmdToLocalDate(String(startDate).slice(0, 10));
+                    if (!absenceDate) {
+                        return;
+                    }
                     items.push({
                         type: 'absence',
-                        date: new Date(startDate),
+                        date: absenceDate,
                         data: absence
                     });
                 }
@@ -1795,9 +1873,8 @@
                     if (!holiday || !holiday.date) {
                         return;
                     }
-                    // Treat holiday dates as local dates without time; append T00:00 to avoid timezone drift
-                    const dateObj = new Date(holiday.date + 'T00:00:00');
-                    if (isNaN(dateObj.getTime())) {
+                    const dateObj = parseYmdToLocalDate(String(holiday.date).slice(0, 10));
+                    if (!dateObj) {
                         return;
                     }
                     items.push({
@@ -1833,11 +1910,11 @@
 
             // Render timeline
             let html = '<div class="timeline">';
-            const sortedDates = Object.keys(grouped).sort((a, b) => new Date(b) - new Date(a));
+            const sortedDates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
             
             sortedDates.forEach(dateKey => {
                 // Append T00:00:00 so the date string is parsed as local midnight, not UTC midnight.
-                const date = new Date(dateKey + 'T00:00:00');
+                const date = parseYmdToLocalDate(dateKey) || new Date(dateKey + 'T12:00:00');
                 // Format date using translated month and weekday names
                 const months = this.config.l10n?.months || [
                 mainT('January'),
@@ -1920,9 +1997,9 @@
             
             // If we still don't have working duration, try to calculate from start/end times
             if (workingDurationHours === 0 && startTime && endTime) {
-                const start = new Date(startTime);
-                const end = new Date(endTime);
-                const totalSeconds = (end - start) / 1000;
+                const start = parseApiInstant(startTime);
+                const end = parseApiInstant(endTime);
+                const totalSeconds = (start && end) ? ((end.getTime() - start.getTime()) / 1000) : 0;
                 durationHours = totalSeconds / 3600;
                 // Subtract break time if available
                 workingDurationHours = durationHours - breakDurationHours;
@@ -1930,19 +2007,8 @@
             
             const status = entry.status || 'completed';
             
-            const startDate = startTime ? new Date(startTime) : null;
-            const endDate = endTime ? new Date(endTime) : null;
-            
-            // Format time in 24-hour format (HH:MM) using central utility function
-            const formatTime = (window.ArbeitszeitCheckUtils && window.ArbeitszeitCheckUtils.formatTime) || 
-                ((date) => {
-                    const hours = String(date.getHours()).padStart(2, '0');
-                    const minutes = String(date.getMinutes()).padStart(2, '0');
-                    return `${hours}:${minutes}`;
-                });
-            
-            const startTimeStr = startDate ? formatTime(startDate) : '-';
-            const endTimeStr = endDate ? formatTime(endDate) : '-';
+            const startTimeStr = startTime ? formatDisplayTime(startTime) : '-';
+            const endTimeStr = endTime ? formatDisplayTime(endTime) : '-';
             
             // Format duration: show working hours and break time
             const workingHours = Math.floor(workingDurationHours);
@@ -2033,8 +2099,8 @@
             const translatedType = this.getAbsenceDisplayLabel(absence);
             const isCoverage = absence && absence.role === 'substitute';
 
-            const start = startDate ? new Date(startDate) : null;
-            const end = endDate ? new Date(endDate) : null;
+            const start = startDate ? parseYmdToLocalDate(String(startDate).slice(0, 10)) : null;
+            const end = endDate ? parseYmdToLocalDate(String(endDate).slice(0, 10)) : null;
             
             // Format dates using translated month names
             const _months = this.config.l10n?.months || [
@@ -2563,16 +2629,16 @@
          */
         getDayData: function(dateKey) {
             // Use local-date helpers so "today" and entry dates are never shifted by UTC conversion.
-            const today = formatLocalDateYmd(new Date());
-            // Parse dateKey as local midnight for day-of-week check
-            const date = new Date(dateKey + 'T00:00:00');
-            const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+            const today = todayYmdLocal();
+            const date = parseYmdToLocalDate(dateKey);
+            const isWeekend = date ? (date.getDay() === 0 || date.getDay() === 6) : false;
 
             // Find time entries for this day
             const dayEntries = this.calendarData.timeEntries.filter(entry => {
                 const startTime = entry.start_time || entry.startTime;
                 if (!startTime) return false;
-                const entryDate = formatLocalDateYmd(new Date(startTime));
+                const instant = parseApiInstant(startTime);
+                const entryDate = instant ? formatLocalDateYmd(instant) : '';
                 return entryDate === dateKey;
             });
 
@@ -2582,8 +2648,10 @@
                 const endDate = absence.end_date || absence.endDate;
                 if (!startDate) return false;
                 // Absence dates are calendar dates; parse as local midnight to avoid UTC shift.
-                const start = formatLocalDateYmd(new Date(startDate + 'T00:00:00'));
-                const end = endDate ? formatLocalDateYmd(new Date(endDate + 'T00:00:00')) : start;
+                const startParsed = parseYmdToLocalDate(String(startDate).slice(0, 10));
+                const endParsed = endDate ? parseYmdToLocalDate(String(endDate).slice(0, 10)) : startParsed;
+                const start = startParsed ? formatLocalDateYmd(startParsed) : '';
+                const end = endParsed ? formatLocalDateYmd(endParsed) : start;
                 
                 return dateKey >= start && dateKey <= end;
             });
@@ -2623,8 +2691,9 @@
         isPastAbsenceRecord: function(absence) {
             const endDate = absence && (absence.end_date || absence.endDate || absence.start_date || absence.startDate);
             if (!endDate) return false;
-            const today = formatLocalDateYmd(new Date());
-            const end = formatLocalDateYmd(new Date(String(endDate).slice(0, 10) + 'T00:00:00'));
+            const today = todayYmdLocal();
+            const endParsed = parseYmdToLocalDate(String(endDate).slice(0, 10));
+            const end = endParsed ? formatLocalDateYmd(endParsed) : '';
             return end < today;
         },
 
@@ -2822,15 +2891,8 @@
                         const breakHours = Math.floor(breakDuration / 3600);
                         const breakMinutes = Math.floor((breakDuration % 3600) / 60);
                         
-                        // Format time in 24-hour format (HH:MM) using central utility function
-                        const formatTime = (window.ArbeitszeitCheckUtils && window.ArbeitszeitCheckUtils.formatTime) || 
-                            ((date) => {
-                                const hours = String(date.getHours()).padStart(2, '0');
-                                const minutes = String(date.getMinutes()).padStart(2, '0');
-                                return `${hours}:${minutes}`;
-                            });
-                        const start = startTime ? formatTime(new Date(startTime)) : '-';
-                        const end = endTime ? formatTime(new Date(endTime)) : '-';
+                        const start = startTime ? formatDisplayTime(startTime) : '-';
+                        const end = endTime ? formatDisplayTime(endTime) : '-';
                         
                         let entryHtml = `<li><strong>${start} - ${end}</strong> (${hours}h ${minutes}m`;
                         if (breakDuration > 0) {

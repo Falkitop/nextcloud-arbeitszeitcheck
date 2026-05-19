@@ -1,0 +1,301 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Regression / contract tests for {@see TimeEntryCorrectionService}.
+ *
+ * Focus is on the security-critical and audit-critical behaviour:
+ *  - approve() persists the proposal AND triggers ArbZG §4/§3 adjustments
+ *  - reject() restores the original (incl. breaks JSON)
+ *  - cancelByEmployee() deletes manual_create rows / restores correction rows
+ *  - applyBreaksJson semantics (15-minute floor, replace-not-merge)
+ *  - applyManagerCorrection preserves the previous justification for traceability
+ *
+ * @copyright Copyright (c) 2026, Nextcloud GmbH
+ * @license AGPL-3.0-or-later
+ */
+
+namespace OCA\ArbeitszeitCheck\Tests\Unit\Service;
+
+use OCA\ArbeitszeitCheck\Db\AuditLogMapper;
+use OCA\ArbeitszeitCheck\Db\TimeEntry;
+use OCA\ArbeitszeitCheck\Db\TimeEntryMapper;
+use OCA\ArbeitszeitCheck\Service\ComplianceService;
+use OCA\ArbeitszeitCheck\Service\MonthClosureGuard;
+use OCA\ArbeitszeitCheck\Service\NotificationService;
+use OCA\ArbeitszeitCheck\Service\TimeEntryCorrectionService;
+use OCA\ArbeitszeitCheck\Service\TimeTrackingService;
+use OCP\IConfig;
+use OCP\IL10N;
+use PHPUnit\Framework\TestCase;
+
+class TimeEntryCorrectionServiceTest extends TestCase
+{
+	/** @var TimeEntryMapper|\PHPUnit\Framework\MockObject\MockObject */
+	private $timeEntryMapper;
+	/** @var MonthClosureGuard|\PHPUnit\Framework\MockObject\MockObject */
+	private $monthClosureGuard;
+	/** @var ComplianceService|\PHPUnit\Framework\MockObject\MockObject */
+	private $complianceService;
+	/** @var TimeTrackingService|\PHPUnit\Framework\MockObject\MockObject */
+	private $timeTrackingService;
+	/** @var NotificationService|\PHPUnit\Framework\MockObject\MockObject */
+	private $notificationService;
+	/** @var AuditLogMapper|\PHPUnit\Framework\MockObject\MockObject */
+	private $auditLogMapper;
+	/** @var IConfig|\PHPUnit\Framework\MockObject\MockObject */
+	private $config;
+	/** @var IL10N|\PHPUnit\Framework\MockObject\MockObject */
+	private $l10n;
+
+	private TimeEntryCorrectionService $service;
+
+	protected function setUp(): void
+	{
+		parent::setUp();
+
+		$this->timeEntryMapper = $this->createMock(TimeEntryMapper::class);
+		$this->monthClosureGuard = $this->createMock(MonthClosureGuard::class);
+		$this->complianceService = $this->createMock(ComplianceService::class);
+		$this->complianceService->method('checkRestPeriodForStartTime')->willReturn(['valid' => true]);
+		$this->timeTrackingService = $this->createMock(TimeTrackingService::class);
+		$this->notificationService = $this->createMock(NotificationService::class);
+		$this->auditLogMapper = $this->createMock(AuditLogMapper::class);
+		$this->config = $this->createMock(IConfig::class);
+		$this->config->method('getAppValue')->willReturnCallback(
+			static function (string $app, string $key, string $default = '') {
+				if ($key === 'app_timezone') {
+					return 'UTC';
+				}
+				if ($key === 'realtime_compliance_check') {
+					return '0';
+				}
+				return $default;
+			}
+		);
+		$this->l10n = $this->createMock(IL10N::class);
+		$this->l10n->method('t')->willReturnCallback(static fn (string $text) => $text);
+
+		$this->timeEntryMapper->method('findOverlapping')->willReturn([]);
+		$this->timeEntryMapper->method('update')->willReturnCallback(static fn (TimeEntry $e): TimeEntry => $e);
+
+		$this->service = new TimeEntryCorrectionService(
+			$this->timeEntryMapper,
+			$this->monthClosureGuard,
+			$this->complianceService,
+			$this->timeTrackingService,
+			$this->notificationService,
+			$this->auditLogMapper,
+			$this->config,
+			$this->l10n,
+		);
+	}
+
+	private function buildEntry(): TimeEntry
+	{
+		$entry = new TimeEntry();
+		$entry->setId(42);
+		$entry->setUserId('alice');
+		$entry->setStartTime(new \DateTime('2026-01-15T09:00:00+00:00'));
+		$entry->setEndTime(new \DateTime('2026-01-15T17:00:00+00:00'));
+		$entry->setDescription('original work');
+		$entry->setStatus(TimeEntry::STATUS_COMPLETED);
+		return $entry;
+	}
+
+	public function testApproveAppliesProposalAndArbzgAdjustments(): void
+	{
+		$entry = $this->buildEntry();
+		$entry->setStatus(TimeEntry::STATUS_PENDING_APPROVAL);
+		$entry->setJustification(json_encode([
+			'justification' => 'Forgot to clock out on time, please correct.',
+			'original' => [
+				'startTime' => '2026-01-15T09:00:00+00:00',
+				'endTime' => '2026-01-15T17:00:00+00:00',
+				'description' => 'original work',
+			],
+			'proposed' => [
+				'startTime' => '2026-01-15T08:00:00+00:00',
+				'endTime' => '2026-01-15T19:00:00+00:00',
+				'description' => 'corrected work',
+			],
+		]));
+
+		// The proposal is a 11h shift -> ArbZG §4 mandates a break,
+		// §3 caps daily to 10h. Both helpers MUST be invoked on the persisted entry.
+		$this->timeTrackingService->expects($this->atLeastOnce())
+			->method('calculateAndSetAutomaticBreak')
+			->with($this->isInstanceOf(TimeEntry::class));
+		$this->timeTrackingService->expects($this->atLeastOnce())
+			->method('adjustEndTimeForDailyMaximum')
+			->with($this->isInstanceOf(TimeEntry::class));
+
+		$result = $this->service->approve($entry, 'manager1', 'Looks good');
+
+		$this->assertSame(TimeEntry::STATUS_COMPLETED, $result->getStatus());
+		$this->assertSame('manager1', $result->getApprovedByUserId());
+		$this->assertSame('2026-01-15T08:00:00+0000', $result->getStartTime()->format('Y-m-d\TH:i:sO'));
+		$this->assertSame('corrected work', $result->getDescription());
+		$json = json_decode($result->getJustification(), true);
+		$this->assertIsArray($json);
+		$this->assertSame('Looks good', $json['approval_comment']);
+		$this->assertSame('manager1', $json['approved_by']);
+	}
+
+	public function testRejectRestoresOriginalIncludingBreaksJson(): void
+	{
+		$entry = $this->buildEntry();
+		$entry->setStatus(TimeEntry::STATUS_PENDING_APPROVAL);
+		$entry->setStartTime(new \DateTime('2026-01-15T08:00:00+00:00'));
+		$entry->setEndTime(new \DateTime('2026-01-15T19:00:00+00:00'));
+		$entry->setDescription('proposed work');
+		$entry->setJustification(json_encode([
+			'justification' => 'Requested extension.',
+			'original' => [
+				'startTime' => '2026-01-15T09:00:00+00:00',
+				'endTime' => '2026-01-15T17:00:00+00:00',
+				'description' => 'original work',
+				'breaks' => [
+					['start' => '2026-01-15T12:00:00+00:00', 'end' => '2026-01-15T12:30:00+00:00'],
+				],
+			],
+			'proposed' => [
+				'startTime' => '2026-01-15T08:00:00+00:00',
+				'endTime' => '2026-01-15T19:00:00+00:00',
+			],
+		]));
+
+		$result = $this->service->reject($entry, 'manager1', 'Not approved.');
+
+		$this->assertSame(TimeEntry::STATUS_COMPLETED, $result->getStatus());
+		$this->assertNull($result->getApprovedByUserId());
+		$this->assertSame('2026-01-15T09:00:00+0000', $result->getStartTime()->format('Y-m-d\TH:i:sO'));
+		$this->assertSame('2026-01-15T17:00:00+0000', $result->getEndTime()->format('Y-m-d\TH:i:sO'));
+		$this->assertSame('original work', $result->getDescription());
+
+		$decodedBreaks = json_decode($result->getBreaks(), true);
+		$this->assertIsArray($decodedBreaks);
+		$this->assertCount(1, $decodedBreaks);
+
+		$justification = json_decode($result->getJustification(), true);
+		$this->assertSame('Not approved.', $justification['rejection_reason']);
+		$this->assertSame('manager1', $justification['rejected_by']);
+	}
+
+	public function testCancelByEmployeeReturnsNullForManualCreate(): void
+	{
+		$entry = $this->buildEntry();
+		$entry->setStatus(TimeEntry::STATUS_PENDING_APPROVAL);
+		$entry->setJustification(json_encode([
+			'type' => 'manual_create',
+			'justification' => 'created entry retroactively',
+			'proposed' => ['startTime' => '2026-01-15T09:00:00+00:00'],
+		]));
+
+		$result = $this->service->cancelByEmployee($entry);
+
+		$this->assertNull($result, 'manual_create cancellations must signal a row delete');
+	}
+
+	public function testCancelByEmployeeRestoresOriginalForCorrection(): void
+	{
+		$entry = $this->buildEntry();
+		$entry->setStatus(TimeEntry::STATUS_PENDING_APPROVAL);
+		$entry->setStartTime(new \DateTime('2026-01-15T08:00:00+00:00'));
+		$entry->setDescription('proposed work');
+		$entry->setJustification(json_encode([
+			'justification' => 'mistake',
+			'original' => [
+				'startTime' => '2026-01-15T09:00:00+00:00',
+				'endTime' => '2026-01-15T17:00:00+00:00',
+				'description' => 'original work',
+			],
+			'proposed' => ['startTime' => '2026-01-15T08:00:00+00:00'],
+		]));
+
+		$result = $this->service->cancelByEmployee($entry);
+
+		$this->assertNotNull($result);
+		$this->assertSame(TimeEntry::STATUS_COMPLETED, $result->getStatus());
+		$this->assertSame('2026-01-15T09:00:00+0000', $result->getStartTime()->format('Y-m-d\TH:i:sO'));
+		$this->assertSame('original work', $result->getDescription());
+		$this->assertNull($result->getJustification(), 'Justification must be cleared on cancel');
+	}
+
+	public function testApplyManagerCorrectionPreservesPreviousJustification(): void
+	{
+		$entry = $this->buildEntry();
+		$priorJustification = ['rejection_reason' => 'previous rejection', 'rejected_by' => 'manager0'];
+		$entry->setJustification(json_encode($priorJustification));
+
+		$proposal = ['startTime' => '2026-01-15T10:00:00+00:00', 'endTime' => '2026-01-15T16:00:00+00:00'];
+		$result = $this->service->applyManagerCorrection($entry, $proposal, 'manager1', 'Adjusted retroactively per HR.');
+
+		$json = json_decode($result->getJustification(), true);
+		$this->assertTrue($json['manager_correction']);
+		$this->assertSame('manager1', $json['corrected_by']);
+		$this->assertSame('Adjusted retroactively per HR.', $json['reason']);
+		$this->assertSame($priorJustification, $json['previous_justification']);
+	}
+
+	public function testValidateProposalReturnsErrorOnOverlap(): void
+	{
+		$entry = $this->buildEntry();
+		$conflicting = new TimeEntry();
+		$conflicting->setId(99);
+		$mapper = $this->createMock(TimeEntryMapper::class);
+		$mapper->method('findOverlapping')->willReturn([$conflicting]);
+		$mapper->method('update')->willReturnCallback(static fn (TimeEntry $e) => $e);
+
+		$service = new TimeEntryCorrectionService(
+			$mapper,
+			$this->monthClosureGuard,
+			$this->complianceService,
+			$this->timeTrackingService,
+			$this->notificationService,
+			$this->auditLogMapper,
+			$this->config,
+			$this->l10n,
+		);
+
+		$error = $service->validateProposal($entry, [
+			'startTime' => '2026-01-15T10:00:00+00:00',
+			'endTime' => '2026-01-15T16:00:00+00:00',
+		]);
+
+		$this->assertNotNull($error);
+		$this->assertStringContainsString('overlap', strtolower((string)$error));
+	}
+
+	public function testApplyProposalDropsShortBreaks(): void
+	{
+		$entry = $this->buildEntry();
+		$reflection = new \ReflectionMethod($this->service, 'applyProposal');
+		$reflection->setAccessible(true);
+		$reflection->invoke($this->service, $entry, [
+			'breaks' => [
+				['start' => '2026-01-15T12:00:00+00:00', 'end' => '2026-01-15T12:05:00+00:00'], // 5min - dropped
+				['start' => '2026-01-15T13:00:00+00:00', 'end' => '2026-01-15T13:30:00+00:00'], // 30min - kept
+			],
+		]);
+
+		$decoded = json_decode($entry->getBreaks(), true);
+		$this->assertCount(1, $decoded);
+		$this->assertStringStartsWith('2026-01-15T13:00:00', $decoded[0]['start']);
+	}
+
+	public function testApplyProposalEmptyBreaksClearsAll(): void
+	{
+		$entry = $this->buildEntry();
+		$entry->setBreaks(json_encode([
+			['start' => '2026-01-15T12:00:00+00:00', 'end' => '2026-01-15T12:30:00+00:00'],
+		]));
+
+		$reflection = new \ReflectionMethod($this->service, 'applyProposal');
+		$reflection->setAccessible(true);
+		$reflection->invoke($this->service, $entry, ['breaks' => []]);
+
+		$this->assertNull($entry->getBreaks());
+	}
+}

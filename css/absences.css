@@ -186,11 +186,6 @@
 	color: var(--arbeitszeitcheck-color-text-maxcontrast);
 }
 
-.section--form .form-help--error {
-	color: var(--arbeitszeitcheck-color-error, var(--color-error));
-	font-weight: 500;
-}
-
 .section--form .form-select,
 .section--form .form-input,
 .section--form .form-textarea {

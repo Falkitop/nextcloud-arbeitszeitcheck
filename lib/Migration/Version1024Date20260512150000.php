@@ -23,13 +23,15 @@ declare(strict_types=1);
  *                                   removed its policies cascade out so the
  *                                   resolution chain never resolves to a
  *                                   stale rule).
- *  - `at_user_vacation_policies`  : L3, gains `inherit_lower_layers` (nullable
- *                                   boolean) so an explicit policy row can
- *                                   request the layer chain instead of
- *                                   pinning a value. Existing rows are
- *                                   defaulted to `0` (= explicit) so the
- *                                   migration is golden-file equivalent for
- *                                   all existing users.
+ *  - `at_user_vacation_policies`  : L3, gains `inherit_lower_layers` (boolean,
+ *                                   **nullable in schema** with default `false`)
+ *                                   so an explicit policy row can request the
+ *                                   layer chain instead of pinning a value.
+ *                                   The column is not declared NOT NULL because
+ *                                   Nextcloud's migration portability checks
+ *                                   forbid `BOOLEAN NOT NULL` (Oracle / DBAL).
+ *                                   Existing rows receive default `false`
+ *                                   (= explicit); the app treats NULL like false.
  *
  * Notes on FK declarations:
  *  - All FKs are declared by passing the Doctrine `Table` object returned by
@@ -131,13 +133,15 @@ class Version1024Date20260512150000 extends SimpleMigrationStep
 		}
 
 		// L3: extend existing per-user assignments with inherit flag.
-		// Migration is golden-file equivalent: default = 0 (= explicit policy,
+		// Migration is golden-file equivalent: default = false (= explicit policy,
 		// preserve today's behaviour) for every existing row.
+		// `notnull` must stay false: Nextcloud's ensureOracleConstraints() rejects
+		// BOOLEAN + NOT NULL for new columns (see lib/private/DB/MigrationService.php).
 		if ($schema->hasTable('at_user_vacation_policies')) {
 			$table = $schema->getTable('at_user_vacation_policies');
 			if (!$table->hasColumn('inherit_lower_layers')) {
 				$table->addColumn('inherit_lower_layers', Types::BOOLEAN, [
-					'notnull' => true,
+					'notnull' => false,
 					'default' => false,
 				]);
 				$changed = true;

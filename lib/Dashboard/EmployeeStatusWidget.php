@@ -6,6 +6,7 @@ namespace OCA\ArbeitszeitCheck\Dashboard;
 
 use OCA\ArbeitszeitCheck\AppInfo\Application;
 use OCA\ArbeitszeitCheck\Service\DashboardWidgetDataService;
+use OCA\ArbeitszeitCheck\Support\TimeClientBootstrap;
 use OCP\Dashboard\IAPIWidgetV2;
 use OCP\Dashboard\IButtonWidget;
 use OCP\Dashboard\IIconWidget;
@@ -18,6 +19,7 @@ use OCP\IURLGenerator;
 use OCP\Util;
 
 class EmployeeStatusWidget implements IAPIWidgetV2, IButtonWidget, IIconWidget, IReloadableWidget {
+	use RegistersTimeClientTrait;
 	/** In-request cache: Nextcloud may call getItemsV2 and getWidgetButtons in one request. */
 	private ?string $cachedWidgetUserId = null;
 
@@ -28,6 +30,7 @@ class EmployeeStatusWidget implements IAPIWidgetV2, IButtonWidget, IIconWidget, 
 		private readonly IL10N $l10n,
 		private readonly IURLGenerator $urlGenerator,
 		private readonly DashboardWidgetDataService $widgetDataService,
+		private readonly TimeClientBootstrap $timeClientBootstrap,
 	) {
 	}
 
@@ -56,6 +59,7 @@ class EmployeeStatusWidget implements IAPIWidgetV2, IButtonWidget, IIconWidget, 
 	}
 
 	public function load(): void {
+		$this->registerTimeClientForWidget($this->timeClientBootstrap);
 		Util::addScript(Application::APP_ID, 'dashboard-widgets');
 		Util::addStyle(Application::APP_ID, 'dashboard-widgets');
 	}

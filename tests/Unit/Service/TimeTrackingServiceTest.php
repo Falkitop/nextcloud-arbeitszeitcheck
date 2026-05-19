@@ -19,14 +19,18 @@ use OCA\ArbeitszeitCheck\Db\UserWorkingTimeModelMapper;
 use OCA\ArbeitszeitCheck\Db\WorkingTimeModelMapper;
 use OCA\ArbeitszeitCheck\Service\ComplianceService;
 use OCA\ArbeitszeitCheck\Service\TimeTrackingService;
+use OCA\ArbeitszeitCheck\Service\TimeZoneService;
 use OCA\ArbeitszeitCheck\Service\ProjectCheckIntegrationService;
 use OCA\ArbeitszeitCheck\Service\MonthClosureGuard;
 use OCA\ArbeitszeitCheck\Db\TimeEntry;
 use OCP\IConfig;
 use OCP\IDBConnection;
+use OCP\IDateTimeZone;
 use OCP\IL10N;
+use OCP\IUserSession;
 use OCP\Lock\ILockingProvider;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
 
 /**
  * Class TimeTrackingServiceTest
@@ -77,6 +81,16 @@ class TimeTrackingServiceTest extends TestCase {
 		$db = $this->createMock(IDBConnection::class);
 		$lockingProvider = $this->createMock(ILockingProvider::class);
 
+		// TimeZoneService is intentionally instantiated for real here: it has
+		// no side effects and its behaviour is part of the contract under test
+		// (storage TZ resolution, now() in storage TZ, day windows). Using the
+		// real object makes the suite assert that contract end-to-end.
+		$dateTimeZone = $this->createMock(IDateTimeZone::class);
+		$dateTimeZone->method('getTimeZone')->willReturn(new \DateTimeZone('Europe/Berlin'));
+		$userSession = $this->createMock(IUserSession::class);
+		$userSession->method('getUser')->willReturn(null);
+		$timeZoneService = new TimeZoneService($config, $dateTimeZone, $userSession, new NullLogger());
+
 		$this->service = new TimeTrackingService(
 			$this->timeEntryMapper,
 			$this->violationMapper,
@@ -90,7 +104,8 @@ class TimeTrackingServiceTest extends TestCase {
 			$workingTimeModelMapper,
 			$monthClosureGuard,
 			$db,
-			$lockingProvider
+			$lockingProvider,
+			$timeZoneService
 		);
 
 		$this->timeEntryMapper->method('findStalePausedAutomaticEntries')->willReturn([]);
@@ -565,6 +580,50 @@ class TimeTrackingServiceTest extends TestCase {
 		$this->assertGreaterThanOrEqual($start, $capturedEntry->getEndTime(), 'End time must not be before start.');
 		$this->assertNotNull($capturedEntry->getEndedReason(), 'Audit reason must be set for traceability.');
 		$this->assertNotNull($capturedEntry->getPolicyApplied(), 'Policy must be set so audits can identify the recovery path.');
+	}
+
+	/**
+	 * Legacy rows can be `paused` while already carrying an `end_time` (status
+	 * mismatch). Completion must keep that end_time — not overwrite it with
+	 * `updated_at`, which would distort payroll hours.
+	 */
+	public function testCompletePausedEntryPreservesExistingEndTime(): void
+	{
+		$userId = 'testuser';
+		$start = (new \DateTime())->modify('-1 day')->setTime(9, 0, 0);
+		$frozenEnd = (clone $start)->modify('+8 hours');
+		$pausedAt = (clone $frozenEnd)->modify('+30 minutes');
+
+		$entry = new TimeEntry();
+		$entry->setId(78);
+		$entry->setUserId($userId);
+		$entry->setStatus(TimeEntry::STATUS_PAUSED);
+		$entry->setStartTime($start);
+		$entry->setEndTime($frozenEnd);
+		$entry->setBreaks(json_encode([]));
+		$entry->setIsManualEntry(false);
+		$entry->setCreatedAt(clone $start);
+		$entry->setUpdatedAt($pausedAt);
+
+		$this->timeEntryMapper->method('find')->with(78)->willReturn($entry);
+		$this->timeEntryMapper->method('findByUserAndDateRange')->willReturn([]);
+
+		$capturedEntry = null;
+		$this->timeEntryMapper->expects($this->once())
+			->method('update')
+			->willReturnCallback(static function (TimeEntry $arg) use (&$capturedEntry): TimeEntry {
+				$capturedEntry = $arg;
+				return $arg;
+			});
+
+		$this->auditLogMapper->expects($this->once())->method('logAction');
+
+		$this->service->completePausedEntry($userId, 78);
+
+		$this->assertInstanceOf(TimeEntry::class, $capturedEntry);
+		/** @var TimeEntry $capturedEntry */
+		$this->assertSame(TimeEntry::STATUS_COMPLETED, $capturedEntry->getStatus());
+		$this->assertEquals($frozenEnd, $capturedEntry->getEndTime());
 	}
 
 	/**

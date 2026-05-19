@@ -43,6 +43,7 @@ use OCA\ArbeitszeitCheck\Db\TeamVacationPolicy;
 use OCA\ArbeitszeitCheck\Db\TeamVacationPolicyMapper;
 use OCA\ArbeitszeitCheck\Db\UserWorkingTimeModelMapper;
 use OCA\ArbeitszeitCheck\Db\WorkingTimeModelMapper;
+use OCA\ArbeitszeitCheck\Support\StrictYmdDates;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Db\TTransactional;
 use OCP\IDBConnection;
@@ -112,8 +113,9 @@ class LayeredVacationDefaultsService
 				$entity->setManualDays(isset($payload['manualDays']) ? $this->parseDecimal($payload['manualDays']) : null);
 				$entity->setTariffRuleSetId(isset($payload['tariffRuleSetId']) && $payload['tariffRuleSetId'] !== '' ? (int)$payload['tariffRuleSetId'] : null);
 				$entity->setDescription(isset($payload['description']) ? trim((string)$payload['description']) : null);
-				$entity->setEffectiveFrom(new \DateTime((string)$payload['effectiveFrom']));
-				$entity->setEffectiveTo(!empty($payload['effectiveTo']) ? new \DateTime((string)$payload['effectiveTo']) : null);
+				[$effFrom, $effTo] = $this->parseVacationLayerEffectiveRangeOrThrow($payload);
+				$entity->setEffectiveFrom($effFrom);
+				$entity->setEffectiveTo($effTo);
 				$entity->setVersion(1);
 				$entity->setCreatedBy($performedBy);
 				$entity->setCreatedAt(new \DateTime());
@@ -251,8 +253,9 @@ class LayeredVacationDefaultsService
 				$entity->setManualDays(isset($payload['manualDays']) ? $this->parseDecimal($payload['manualDays']) : null);
 				$entity->setTariffRuleSetId(isset($payload['tariffRuleSetId']) && $payload['tariffRuleSetId'] !== '' ? (int)$payload['tariffRuleSetId'] : null);
 				$entity->setDescription(isset($payload['description']) ? trim((string)$payload['description']) : null);
-				$entity->setEffectiveFrom(new \DateTime((string)$payload['effectiveFrom']));
-				$entity->setEffectiveTo(!empty($payload['effectiveTo']) ? new \DateTime((string)$payload['effectiveTo']) : null);
+				[$effFrom, $effTo] = $this->parseVacationLayerEffectiveRangeOrThrow($payload);
+				$entity->setEffectiveFrom($effFrom);
+				$entity->setEffectiveTo($effTo);
 				$entity->setVersion(1);
 				$entity->setCreatedBy($performedBy);
 				$entity->setCreatedAt(new \DateTime());
@@ -348,8 +351,9 @@ class LayeredVacationDefaultsService
 				$entity->setTariffRuleSetId(isset($payload['tariffRuleSetId']) && $payload['tariffRuleSetId'] !== '' ? (int)$payload['tariffRuleSetId'] : null);
 				$entity->setDescription(isset($payload['description']) ? trim((string)$payload['description']) : null);
 				$entity->setPriority(isset($payload['priority']) ? (int)$payload['priority'] : 0);
-				$entity->setEffectiveFrom(new \DateTime((string)$payload['effectiveFrom']));
-				$entity->setEffectiveTo(!empty($payload['effectiveTo']) ? new \DateTime((string)$payload['effectiveTo']) : null);
+				[$effFrom, $effTo] = $this->parseVacationLayerEffectiveRangeOrThrow($payload);
+				$entity->setEffectiveFrom($effFrom);
+				$entity->setEffectiveTo($effTo);
 				$entity->setVersion(1);
 				$entity->setCreatedBy($performedBy);
 				$entity->setCreatedAt(new \DateTime());
@@ -609,6 +613,34 @@ class LayeredVacationDefaultsService
 				$e,
 			);
 		}
+	}
+
+	/**
+	 * @param array<string, mixed> $payload
+	 * @return array{\DateTime, \DateTime|null}
+	 */
+	private function parseVacationLayerEffectiveRangeOrThrow(array $payload): array
+	{
+		$from = StrictYmdDates::parseRequired((string)($payload['effectiveFrom'] ?? ''));
+		if ($from === null) {
+			throw new LayeredVacationValidationException('Validation failed', ['effectiveFrom' => 'Invalid date; use YYYY-MM-DD.']);
+		}
+		$to = null;
+		if (isset($payload['effectiveTo']) && $payload['effectiveTo'] !== null && $payload['effectiveTo'] !== '') {
+			if (!is_scalar($payload['effectiveTo'])) {
+				throw new LayeredVacationValidationException('Validation failed', ['effectiveTo' => 'Invalid date; use YYYY-MM-DD.']);
+			}
+			$trimTo = trim((string)$payload['effectiveTo']);
+			if ($trimTo !== '') {
+				$parsedTo = StrictYmdDates::parseRequired($trimTo);
+				if ($parsedTo === null) {
+					throw new LayeredVacationValidationException('Validation failed', ['effectiveTo' => 'Invalid date; use YYYY-MM-DD.']);
+				}
+				$to = $parsedTo;
+			}
+		}
+
+		return [$from, $to];
 	}
 
 	/**

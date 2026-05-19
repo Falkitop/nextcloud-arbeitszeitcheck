@@ -76,7 +76,15 @@
 		}
 	};
 
+	const timeApi = () => window.ArbeitszeitCheckTime || null;
+
 	const formatDuration = (seconds) => {
+		const api = timeApi();
+		if (api) {
+			const formatted = api.formatDuration(seconds);
+			// Widget shows HH:MM (drop seconds for compact display).
+			return formatted.length >= 8 ? formatted.slice(0, 5) : formatted;
+		}
 		const s = Math.max(0, Math.floor(Number(seconds) || 0));
 		const h = Math.floor(s / 3600);
 		const m = Math.floor((s % 3600) / 60);
@@ -94,11 +102,18 @@
 		}
 	};
 
-	const formatTime = (date) => new Intl.DateTimeFormat(undefined, {
-		hour: '2-digit',
-		minute: '2-digit',
-		second: '2-digit',
-	}).format(date);
+	const formatTime = (value) => {
+		const api = timeApi();
+		if (api) {
+			return api.formatTime(value, { withSeconds: true }) || '';
+		}
+		const date = value instanceof Date ? value : new Date(value);
+		return new Intl.DateTimeFormat(undefined, {
+			hour: '2-digit',
+			minute: '2-digit',
+			second: '2-digit',
+		}).format(date);
+	};
 
 	const showFeedback = (message) => {
 		if (!feedbackEl) {
@@ -130,7 +145,8 @@
 			return;
 		}
 		const template = l10n.lastUpdated || 'Last updated: %1$s';
-		lastUpdatedEl.textContent = template.replace('%1$s', formatTime(new Date()));
+		const now = timeApi() ? timeApi().serverNow() : new Date();
+		lastUpdatedEl.textContent = template.replace('%1$s', formatTime(now));
 	};
 
 	// Normalise status data regardless of whether it comes from the employee

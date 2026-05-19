@@ -3,17 +3,24 @@
 declare(strict_types=1);
 
 /**
- * Interprets naive DATETIME strings from at_* tables in the app's configured timezone.
+ * Pure-static helpers for naive `DATETIME` / `TIMESTAMP` columns in `at_*` tables.
  *
- * Nextcloud's {@see \OCP\AppFramework\Db\Entity} maps SQL DATETIME columns with
- * {@see \DateTime::__construct(string)} which uses PHP's default timezone (often UTC in
- * containers). ArbeitszeitCheck stores wall-clock values in {@see Constants::CONFIG_APP_TIMEZONE}
- * (see migration Version1015Date20260415120000 and {@see TimeTrackingService} day windows).
- * Without this step, the same instant is mis-labelled as UTC and later shifted again when
- * converting to the user's display timezone — e.g. 09:00 Berlin stored as naive "09:00" was read
- * as 09:00 UTC and shown as 11:00 in Europe/Berlin.
+ * Prefer {@see TimeZoneService} for any code path that has access to the DI
+ * container. This class exists for contexts where DI is not available:
  *
- * @copyright Copyright (c) 2026, Nextcloud GmbH
+ *  - {@see \OCP\AppFramework\Db\Entity} hydration (e.g.
+ *    {@see \OCA\ArbeitszeitCheck\Db\TimeEntry}).
+ *  - Pure {@see \OCP\Migration\IRepairStep} migration steps that construct
+ *    the helper themselves.
+ *  - Static factory methods that cannot be refactored to receive
+ *    {@see \OCP\IConfig}.
+ *
+ * **Storage contract:** values persisted to naive SQL are the civil
+ * `Y-m-d H:i:s` digits of an instant expressed in the configured organisation
+ * timezone ({@see \OCA\ArbeitszeitCheck\Constants::CONFIG_APP_TIMEZONE},
+ * default `Europe/Berlin`). See {@see TimeZoneService} for the full contract.
+ *
+ * @copyright Copyright (c) 2026, Alexander Mäule <info@software-by-design.de>
  * @license AGPL-3.0-or-later
  */
 
@@ -24,10 +31,9 @@ use OCA\ArbeitszeitCheck\Constants;
 final class AppLocalNaiveDateTimeNormalizer
 {
 	/**
-	 * Re-bind a {@see \DateTime} loaded from a naive SQL datetime to the storage timezone.
-	 *
-	 * Uses the calendar wall clock components (Y-m-d H:i:s) from $value and attaches $storageTz.
-	 * If parsing fails, returns the original instance unchanged.
+	 * Re-bind a {@see \DateTime} loaded from a naive SQL datetime to the
+	 * given storage timezone. Returns the input unchanged when the wall
+	 * clock cannot be parsed.
 	 */
 	public static function interpretSqlNaiveAsAppTimezone(\DateTime $value, \DateTimeZone $storageTz): \DateTime
 	{
@@ -40,16 +46,21 @@ final class AppLocalNaiveDateTimeNormalizer
 	}
 
 	/**
-	 * Normalise naive SQL datetime columns in a raw associative row (e.g. fetchAll) to ISO-8601 with offset.
-	 *
-	 * Callers that bypass {@see TimeEntryMapper::mapRowToEntity()} still receive unambiguous instants.
+	 * Normalise naive SQL datetime columns in a raw associative row to
+	 * ISO-8601 with offset. Used by callers that bypass entity hydration
+	 * (e.g. `$queryBuilder->executeQuery()->fetchAll()`).
 	 *
 	 * @param array<string, mixed> $row
+	 * @param list<string>         $columns Optional list of columns to convert.
+	 *                                      Defaults to the standard `at_entries` set.
 	 * @return array<string, mixed>
 	 */
-	public static function normalizeAtEntryDatetimeStringsInRow(array $row, \DateTimeZone $storageTz): array
-	{
-		foreach (['start_time', 'end_time', 'break_start_time', 'break_end_time', 'created_at', 'updated_at', 'approved_at'] as $col) {
+	public static function normalizeAtEntryDatetimeStringsInRow(
+		array $row,
+		\DateTimeZone $storageTz,
+		array $columns = ['start_time', 'end_time', 'break_start_time', 'break_end_time', 'created_at', 'updated_at', 'approved_at']
+	): array {
+		foreach ($columns as $col) {
 			if (!\array_key_exists($col, $row)) {
 				continue;
 			}
@@ -59,18 +70,21 @@ final class AppLocalNaiveDateTimeNormalizer
 			}
 			$parsed = \DateTime::createFromFormat('!Y-m-d H:i:s', $v, $storageTz);
 			if ($parsed !== false) {
-				$row[$col] = $parsed->format('c');
+				$row[$col] = $parsed->format(\DateTimeInterface::ATOM);
 			}
 		}
 		return $row;
 	}
 
 	/**
-	 * Parse datetime strings from HTTP/JSON clients. If PHP detects an explicit zone in the string
-	 * ({@see date_parse()} is_localtime), that zone is used; otherwise the value is wall time in
-	 * $naiveInThisZoneIfUnset (same semantics as stored at_* datetimes).
+	 * Parse a datetime string from HTTP/JSON clients.
 	 *
-	 * @throws \InvalidArgumentException when the value cannot be parsed
+	 *  - If PHP detects an explicit zone in the string (e.g. `+02:00`, `Z`,
+	 *    `Europe/Berlin`), that zone is honoured.
+	 *  - Otherwise the value is treated as a wall clock in
+	 *    $naiveInThisZoneIfUnset.
+	 *
+	 * @throws \InvalidArgumentException when the value cannot be parsed.
 	 */
 	public static function parseFlexibleDateTime(string $value, \DateTimeZone $naiveInThisZoneIfUnset): \DateTime
 	{
@@ -89,17 +103,34 @@ final class AppLocalNaiveDateTimeNormalizer
 		return new \DateTime($value, $naiveInThisZoneIfUnset);
 	}
 
+	/**
+	 * Resolve the configured storage timezone from app config.
+	 *
+	 * Prefer {@see TimeZoneService::storageTimeZone()} in DI-enabled code
+	 * (services / controllers / mappers). This static helper is kept for
+	 * entity hydration and migration steps where DI is not available.
+	 */
 	public static function appStorageTimeZoneFromConfig(\OCP\IConfig $config): \DateTimeZone
 	{
-		$name = $config->getAppValue('arbeitszeitcheck', Constants::CONFIG_APP_TIMEZONE, 'Europe/Berlin');
+		$name = (string)$config->getAppValue('arbeitszeitcheck', Constants::CONFIG_APP_TIMEZONE, TimeZoneService::DEFAULT_STORAGE_TZ);
 		try {
 			return new \DateTimeZone($name);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->warning(
-				'Invalid app timezone in config; falling back to Europe/Berlin: ' . $name,
+				'Invalid app timezone in config; falling back to ' . TimeZoneService::DEFAULT_STORAGE_TZ . ': ' . $name,
 				['exception' => $e]
 			);
-			return new \DateTimeZone('Europe/Berlin');
+			return new \DateTimeZone(TimeZoneService::DEFAULT_STORAGE_TZ);
 		}
+	}
+
+	/**
+	 * Mutable "now" in the configured storage timezone.
+	 *
+	 * Prefer {@see TimeZoneService::nowInStorage()} in DI-enabled code.
+	 */
+	public static function nowMutableInAppStorage(\OCP\IConfig $config): \DateTime
+	{
+		return new \DateTime('now', self::appStorageTimeZoneFromConfig($config));
 	}
 }

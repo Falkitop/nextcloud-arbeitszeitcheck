@@ -27,6 +27,7 @@ Util::addStyle('arbeitszeitcheck', 'navigation');
 Util::addStyle('arbeitszeitcheck', 'admin-settings');
 Util::addStyle('arbeitszeitcheck', 'admin-notifications');
 Util::addScript('arbeitszeitcheck', 'common/utils');
+Util::addScript('arbeitszeitcheck', 'common/time');
 Util::addScript('arbeitszeitcheck', 'common/messaging');
 Util::addScript('arbeitszeitcheck', 'admin-notifications');
 

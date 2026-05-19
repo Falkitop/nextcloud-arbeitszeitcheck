@@ -15,6 +15,7 @@ use OCA\ArbeitszeitCheck\Db\TimeEntryMapper;
 use OCA\ArbeitszeitCheck\Db\UserSettingsMapper;
 use OCA\ArbeitszeitCheck\Service\NotificationService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
+use OCA\ArbeitszeitCheck\Service\TimeZoneService;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\TimedJob;
 use OCP\IConfig;
@@ -36,6 +37,7 @@ class ClockOutReminderJob extends TimedJob
 	private IConfig $config;
 	private LoggerInterface $logger;
 	private PermissionService $permissionService;
+	private TimeZoneService $timeZoneService;
 
 	public function __construct(
 		ITimeFactory $timeFactory,
@@ -45,7 +47,8 @@ class ClockOutReminderJob extends TimedJob
 		IUserManager $userManager,
 		IConfig $config,
 		LoggerInterface $logger,
-		PermissionService $permissionService
+		PermissionService $permissionService,
+		TimeZoneService $timeZoneService
 	) {
 		parent::__construct($timeFactory);
 		$this->timeEntryMapper = $timeEntryMapper;
@@ -55,6 +58,7 @@ class ClockOutReminderJob extends TimedJob
 		$this->config = $config;
 		$this->logger = $logger;
 		$this->permissionService = $permissionService;
+		$this->timeZoneService = $timeZoneService;
 
 		// Run every hour
 		$this->setInterval(60 * 60);
@@ -120,9 +124,11 @@ class ClockOutReminderJob extends TimedJob
 					);
 
 					if ($lastReminderTime < (time() - 3600)) {
+						// Format the reminder clock in the affected user's display TZ so
+						// the notification matches their dashboard, not container UTC.
 						$this->notificationService->notifyClockOutReminder($userId, [
 							'id' => $activeEntry->getId(),
-							'start_time' => $startTime->format('H:i'),
+							'start_time' => $this->timeZoneService->formatForDisplay($startTime, 'H:i', $userId),
 							'hours_worked' => round($hoursWorked, 2)
 						]);
 						$this->config->setUserValue(

@@ -169,6 +169,8 @@
         formData.exportMidnightSplitEnabled = isChecked(formData.exportMidnightSplitEnabled);
         formData.monthClosureEnabled = isChecked(formData.monthClosureEnabled);
         formData.statutoryAutoReseed = isChecked(formData.statutoryAutoReseed);
+        formData.timeEntryChangesRequireApproval = isChecked(formData.timeEntryChangesRequireApproval);
+        formData.manualTimeEntriesRequireApproval = isChecked(formData.manualTimeEntriesRequireApproval);
         const accessGroupsRaw = formData['accessAllowedGroups[]'];
         formData.accessAllowedGroups = accessGroupsRaw === undefined
             ? []

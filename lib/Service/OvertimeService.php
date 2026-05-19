@@ -11,6 +11,7 @@ declare(strict_types=1);
 
 namespace OCA\ArbeitszeitCheck\Service;
 
+use OCA\ArbeitszeitCheck\Constants;
 use OCA\ArbeitszeitCheck\Db\TimeEntryMapper;
 use OCA\ArbeitszeitCheck\Db\WorkingTimeModelMapper;
 use OCA\ArbeitszeitCheck\Db\UserWorkingTimeModelMapper;
@@ -27,19 +28,22 @@ class OvertimeService
 	private UserWorkingTimeModelMapper $userWorkingTimeModelMapper;
 	private IL10N $l10n;
 	private HolidayService $holidayCalendarService;
+	private UserOvertimeSettingsService $overtimeSettingsService;
 
 	public function __construct(
 		TimeEntryMapper $timeEntryMapper,
 		WorkingTimeModelMapper $workingTimeModelMapper,
 		UserWorkingTimeModelMapper $userWorkingTimeModelMapper,
 		IL10N $l10n,
-		HolidayService $holidayCalendarService
+		HolidayService $holidayCalendarService,
+		UserOvertimeSettingsService $overtimeSettingsService,
 	) {
 		$this->timeEntryMapper = $timeEntryMapper;
 		$this->workingTimeModelMapper = $workingTimeModelMapper;
 		$this->userWorkingTimeModelMapper = $userWorkingTimeModelMapper;
 		$this->l10n = $l10n;
 		$this->holidayCalendarService = $holidayCalendarService;
+		$this->overtimeSettingsService = $overtimeSettingsService;
 	}
 
 	/**
@@ -53,27 +57,25 @@ class OvertimeService
 	 */
 	public function calculateOvertime(string $userId, \DateTime $startDate, \DateTime $endDate, bool $calculateCumulative = true): array
 	{
-		// Get user's working time model
-		$userModel = $this->userWorkingTimeModelMapper->findCurrentByUser($userId);
-		
-		// Default to 8 hours/day, 40 hours/week if no model assigned
-		$dailyHours = 8.0;
-		$weeklyHours = 40.0;
-		
-		if ($userModel) {
-			try {
-				$model = $this->workingTimeModelMapper->find($userModel->getWorkingTimeModelId());
-				$dailyHours = $model->getDailyHours();
-				$weeklyHours = $model->getWeeklyHours();
-			} catch (\Throwable $e) {
-				// Model not found, use defaults
-			}
+		$startDate = clone $startDate;
+		$endDate = clone $endDate;
+		$startDate->setTime(0, 0, 0);
+		$endDate->setTime(23, 59, 59);
+
+		$yearOfStart = (int)$startDate->format('Y');
+		$effectiveYTDStart = $this->overtimeSettingsService->resolveEffectiveYearStart($userId, $yearOfStart);
+		$opening = $this->overtimeSettingsService->getOpeningBalanceHours($userId, $yearOfStart);
+		$trackingFrom = $this->overtimeSettingsService->getTrackingFrom($userId);
+
+		[$dailyHours, $weeklyHours] = $this->resolveContractHours($userId);
+
+		$periodStart = clone $startDate;
+		if ($periodStart < $effectiveYTDStart) {
+			$periodStart = clone $effectiveYTDStart;
 		}
 
-		// Get all time entries for the period
-		$timeEntries = $this->timeEntryMapper->findByUserAndDateRange($userId, $startDate, $endDate);
-		
-		// Calculate total hours worked (only completed entries)
+		$timeEntries = $this->timeEntryMapper->findByUserAndDateRange($userId, $periodStart, $endDate);
+
 		$totalHoursWorked = 0.0;
 		foreach ($timeEntries as $entry) {
 			if ($entry->getStatus() === TimeEntry::STATUS_COMPLETED && $entry->getEndTime() !== null) {
@@ -81,26 +83,21 @@ class OvertimeService
 			}
 		}
 
-		// Calculate required hours based on working days (Mon–Fri minus holidays for this user)
-		$requiredHours = $this->calculateRequiredHours($userId, $startDate, $endDate, $dailyHours, $weeklyHours);
-
-		// Calculate overtime (positive = overtime, negative = undertime)
+		$requiredHours = $this->calculateRequiredHours($userId, $periodStart, $endDate, $dailyHours, $weeklyHours);
 		$overtimeHours = $totalHoursWorked - $requiredHours;
 
-		// Get cumulative overtime balance (from previous periods)
-		$cumulativeBalance = 0.0;
+		$carryInDelta = 0.0;
 		if ($calculateCumulative) {
 			try {
-				$cumulativeBalance = $this->getCumulativeOvertimeBalance($userId, $startDate);
+				$carryInDelta = $this->getCumulativeWorkDelta($userId, $effectiveYTDStart, $startDate);
 			} catch (\Throwable $e) {
 				\OCP\Log\logger('arbeitszeitcheck')->error('Error calculating cumulative overtime balance: ' . $e->getMessage());
 			}
 		}
 
-		// Calculate new balance
-		$newBalance = $cumulativeBalance + $overtimeHours;
+		$balanceBefore = $opening + $carryInDelta;
+		$balanceAfter = $balanceBefore + $overtimeHours;
 
-		// Contract norm spread over a Mon–Fri week (matches required_hours = workingDays × weeklyHours ÷ 5).
 		$impliedDailyHours = $weeklyHours > 0 ? round($weeklyHours / 5, 2) : 0.0;
 
 		return [
@@ -109,22 +106,22 @@ class OvertimeService
 			'total_hours_worked' => round($totalHoursWorked, 2),
 			'required_hours' => round($requiredHours, 2),
 			'overtime_hours' => round($overtimeHours, 2),
-			'cumulative_balance_before' => round($cumulativeBalance, 2),
-			'cumulative_balance_after' => round($newBalance, 2),
-			'cumulative_balance' => round($newBalance, 2),
+			'cumulative_balance_before' => round($balanceBefore, 2),
+			'cumulative_balance_after' => round($balanceAfter, 2),
+			'cumulative_balance' => round($balanceAfter, 2),
 			'daily_hours' => $dailyHours,
 			'weekly_hours' => $weeklyHours,
 			'implied_daily_hours' => $impliedDailyHours,
 			'required_hours_basis' => 'weekly_contract',
-			'working_days' => $this->countWorkingDays($userId, $startDate, $endDate)
+			'working_days' => $this->countWorkingDays($userId, $periodStart, $endDate),
+			'effective_tracking_from' => $trackingFrom !== null ? $trackingFrom->format('Y-m-d') : null,
+			'opening_balance_hours' => round($opening, 2),
+			'algorithm_version' => Constants::OVERTIME_ALGORITHM_VERSION,
 		];
 	}
 
 	/**
 	 * Calculate overtime for current month
-	 *
-	 * @param string $userId User ID
-	 * @return array Overtime data for current month
 	 */
 	public function calculateMonthlyOvertime(string $userId): array
 	{
@@ -139,9 +136,6 @@ class OvertimeService
 
 	/**
 	 * Calculate overtime for current year
-	 *
-	 * @param string $userId User ID
-	 * @return array Overtime data for current year
 	 */
 	public function calculateYearlyOvertime(string $userId): array
 	{
@@ -155,20 +149,57 @@ class OvertimeService
 	}
 
 	/**
-	 * Get cumulative overtime balance up to a specific date
-	 *
-	 * @param string $userId User ID
-	 * @param \DateTime $beforeDate Calculate balance before this date
-	 * @return float Cumulative overtime balance in hours
+	 * Work delta from $from (inclusive) to $to (exclusive at day boundary).
+	 */
+	public function getCumulativeWorkDelta(string $userId, \DateTime $from, \DateTime $to): float
+	{
+		$fromCopy = clone $from;
+		$fromCopy->setTime(0, 0, 0);
+		$toCopy = clone $to;
+		$toCopy->setTime(0, 0, 0);
+
+		if ($fromCopy >= $toCopy) {
+			return 0.0;
+		}
+
+		$overtimeData = $this->calculateOvertime($userId, $fromCopy, $toCopy, false);
+
+		return $overtimeData['overtime_hours'];
+	}
+
+	/**
+	 * Get cumulative overtime balance up to a specific date (legacy name: returns work delta only).
 	 */
 	public function getCumulativeOvertimeBalance(string $userId, \DateTime $beforeDate): float
 	{
-		// Get user's working time model
-		$userModel = $this->userWorkingTimeModelMapper->findCurrentByUser($userId);
-		
+		$yearOfBefore = (int)$beforeDate->format('Y');
+		$effectiveStart = $this->overtimeSettingsService->resolveEffectiveYearStart($userId, $yearOfBefore);
+
+		return $this->getCumulativeWorkDelta($userId, $effectiveStart, $beforeDate);
+	}
+
+	private function calculateRequiredHours(string $userId, \DateTime $startDate, \DateTime $endDate, float $dailyHours, float $weeklyHours): float
+	{
+		$workingDays = $this->countWorkingDays($userId, $startDate, $endDate);
+		$weeks = $workingDays / 5.0;
+
+		return $weeks * $weeklyHours;
+	}
+
+	private function countWorkingDays(string $userId, \DateTime $startDate, \DateTime $endDate): float
+	{
+		return $this->holidayCalendarService->computeWorkingDaysForUser($userId, $startDate, $endDate);
+	}
+
+	/**
+	 * @return array{0: float, 1: float} [dailyHours, weeklyHours]
+	 */
+	private function resolveContractHours(string $userId): array
+	{
 		$dailyHours = 8.0;
 		$weeklyHours = 40.0;
-		
+
+		$userModel = $this->userWorkingTimeModelMapper->findCurrentByUser($userId);
 		if ($userModel) {
 			try {
 				$model = $this->workingTimeModelMapper->find($userModel->getWorkingTimeModelId());
@@ -179,56 +210,9 @@ class OvertimeService
 			}
 		}
 
-		// Calculate balance from beginning of year to beforeDate
-		$yearStart = new \DateTime($beforeDate->format('Y-01-01'));
-		$yearStart->setTime(0, 0, 0);
-		
-		$beforeDateCopy = clone $beforeDate;
-		$beforeDateCopy->setTime(0, 0, 0);
-
-		$overtimeData = $this->calculateOvertime($userId, $yearStart, $beforeDateCopy, false);
-		
-		return $overtimeData['overtime_hours'];
+		return [$dailyHours, $weeklyHours];
 	}
 
-	/**
-	 * Calculate required hours for a date range based on working time model.
-	 *
-	 * Uses the weekly contract hours only: required = workingDays × (weeklyHours ÷ 5).
-	 * The model's dailyHours field is kept for display and defaults; it does not
-	 * change this calculation so tariff weeks (e.g. 38.7 h) stay consistent.
-	 *
-	 * @param float $dailyHours Stored norm per day (informational; not multiplied here)
-	 */
-	private function calculateRequiredHours(string $userId, \DateTime $startDate, \DateTime $endDate, float $dailyHours, float $weeklyHours): float
-	{
-		$workingDays = $this->countWorkingDays($userId, $startDate, $endDate);
-		$weeks = $workingDays / 5.0;
-
-		return $weeks * $weeklyHours;
-	}
-
-	/**
-	 * Count working days in a date range (excluding weekends)
-	 *
-	 * @param string $userId
-	 * @param \DateTime $startDate
-	 * @param \DateTime $endDate
-	 * @return float Number of working days (Mon–Fri minus holidays, can include half days)
-	 */
-	private function countWorkingDays(string $userId, \DateTime $startDate, \DateTime $endDate): float
-	{
-		// Delegate to HolidayService so that statutory and company holidays
-		// (including half days) are treated consistently across the app.
-		return $this->holidayCalendarService->computeWorkingDaysForUser($userId, $startDate, $endDate);
-	}
-
-	/**
-	 * Get overtime balance for a user (current cumulative balance)
-	 *
-	 * @param string $userId User ID
-	 * @return float Current overtime balance in hours (positive = overtime, negative = undertime)
-	 */
 	public function getOvertimeBalance(string $userId): float
 	{
 		$now = new \DateTime();
@@ -237,17 +221,10 @@ class OvertimeService
 		$now->setTime(23, 59, 59);
 
 		$overtimeData = $this->calculateOvertime($userId, $yearStart, $now);
-		
+
 		return $overtimeData['cumulative_balance_after'];
 	}
 
-	/**
-	 * Get daily overtime for a user
-	 *
-	 * @param string $userId User ID
-	 * @param \DateTime|null $date Date to check (defaults to today)
-	 * @return array Daily overtime data
-	 */
 	public function getDailyOvertime(string $userId, ?\DateTime $date = null): array
 	{
 		if ($date === null) {
@@ -262,13 +239,6 @@ class OvertimeService
 		return $this->calculateOvertime($userId, $startDate, $endDate);
 	}
 
-	/**
-	 * Get weekly overtime for a user
-	 *
-	 * @param string $userId User ID
-	 * @param \DateTime|null $weekStart Start of week (defaults to current week)
-	 * @return array Weekly overtime data
-	 */
 	public function getWeeklyOvertime(string $userId, ?\DateTime $weekStart = null): array
 	{
 		if ($weekStart === null) {

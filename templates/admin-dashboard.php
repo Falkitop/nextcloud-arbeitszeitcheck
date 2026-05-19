@@ -27,24 +27,24 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 
             <!-- Statistics Cards -->
             <div class="stats-grid">
-                <div class="stat-card" 
+                <a class="stat-card stat-card--link" href="<?php p($_['urlGenerator']->linkToRoute('arbeitszeitcheck.admin.users')); ?>"
                      title="<?php p($l->t('Total number of employees with access to time tracking')); ?>"
                      aria-label="<?php p($l->t('Total employees: %s', [$_['statistics']['total_users'] ?? 0])); ?>">
                     <div class="stat-number"><?php p($_['statistics']['total_users'] ?? 0); ?></div>
                     <div class="stat-label"><?php p($l->t('Total employees')); ?></div>
-                </div>
-                <div class="stat-card"
+                </a>
+                <a class="stat-card stat-card--link" href="<?php p($_['urlGenerator']->linkToRoute('arbeitszeitcheck.admin.users')); ?>"
                      title="<?php p($l->t('Number of employees with bookings today')); ?>"
-                     aria-label="<?php p($l->t('Employees active today: %s', [$_['statistics']['active_users_today'] ?? 0])); ?>">
+                     aria-label="<?php p($l->t('Employees active today: %s. Open user administration.', [$_['statistics']['active_users_today'] ?? 0])); ?>">
                     <div class="stat-number"><?php p($_['statistics']['active_users_today'] ?? 0); ?></div>
                     <div class="stat-label"><?php p($l->t('Active today')); ?></div>
-                </div>
-                <div class="stat-card"
+                </a>
+                <a class="stat-card stat-card--link" href="<?php p($_['urlGenerator']->linkToRoute('arbeitszeitcheck.compliance.violations')); ?>"
                      title="<?php p($l->t('Number of open working-time compliance violations')); ?>"
-                     aria-label="<?php p($l->t('Unresolved violations: %s', [$_['statistics']['unresolved_violations'] ?? 0])); ?>">
+                     aria-label="<?php p($l->t('Unresolved violations: %s. Open compliance violations.', [$_['statistics']['unresolved_violations'] ?? 0])); ?>">
                     <div class="stat-number"><?php p($_['statistics']['unresolved_violations'] ?? 0); ?></div>
                     <div class="stat-label"><?php p($l->t('Open issues')); ?></div>
-                </div>
+                </a>
             </div>
 
             <!-- Recent Violations -->

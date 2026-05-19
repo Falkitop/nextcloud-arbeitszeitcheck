@@ -330,40 +330,47 @@
 						reportParameters.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 					}
 
-					// Set default dates (last 30 days) in dd.mm.yyyy format
-					const today = new Date();
-					const thirtyDaysAgo = new Date(today);
-					thirtyDaysAgo.setDate(today.getDate() - 30);
+					// Set default dates (last 30 days) in dd.mm.yyyy format (display TZ).
+					const timeApi = window.ArbeitszeitCheckTime;
+					const utils = window.ArbeitszeitCheckUtils;
 					const toDDMMYYYY = (d) => {
+						if (utils && typeof utils.formatDate === 'function') {
+							return utils.formatDate(d, 'DD.MM.YYYY');
+						}
 						const day = String(d.getDate()).padStart(2, '0');
 						const month = String(d.getMonth() + 1).padStart(2, '0');
 						const year = d.getFullYear();
 						return `${day}.${month}.${year}`;
 					};
+					const todayAnchor = (timeApi && timeApi.parseYmd(timeApi.todayYmd()))
+						? timeApi.parseYmd(timeApi.todayYmd())
+						: new Date();
+					const thirtyDaysAgo = new Date(todayAnchor);
+					thirtyDaysAgo.setDate(todayAnchor.getDate() - 30);
 
 					// Defaults per report type so preview and export ranges match user expectations.
 					let defaultStart = thirtyDaysAgo;
-					let defaultEnd = today;
+					let defaultEnd = todayAnchor;
 
 					if (reportType === 'daily') {
-						defaultStart = today;
-						defaultEnd = today;
+						defaultStart = todayAnchor;
+						defaultEnd = todayAnchor;
 					} else if (reportType === 'weekly') {
 						// Backend aligns week start by subtracting JS weekday (w=0 is Sunday).
-						const jsDay = today.getDay(); // 0=Sun, 6=Sat
-						defaultStart = new Date(today);
-						defaultStart.setDate(today.getDate() - jsDay);
+						const jsDay = todayAnchor.getDay(); // 0=Sun, 6=Sat
+						defaultStart = new Date(todayAnchor);
+						defaultStart.setDate(todayAnchor.getDate() - jsDay);
 						defaultEnd = new Date(defaultStart);
 						defaultEnd.setDate(defaultStart.getDate() + 6);
 					} else if (reportType === 'monthly') {
 						// Rolling window so team/time-entry exports include recent bookings (e.g. overnight
 						// shifts last month) instead of only the current calendar month.
 						defaultStart = thirtyDaysAgo;
-						defaultEnd = today;
+						defaultEnd = todayAnchor;
 					} else {
 						// overtime, absence, compliance: keep last-30-days default
 						defaultStart = thirtyDaysAgo;
-						defaultEnd = today;
+						defaultEnd = todayAnchor;
 					}
 
 					if (startDateInput) startDateInput.value = toDDMMYYYY(defaultStart);

@@ -39,7 +39,7 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 					<div class="form-group">
 						<label for="status-filter"><?php p($l->t('Status')); ?></label>
 						<select id="status-filter" name="status">
-							<option value=""><?php p($l->t('Alle Status')); ?></option>
+							<option value=""><?php p($l->t('All Statuses')); ?></option>
 							<option value="active"><?php p($l->t('Clocked In')); ?></option>
 							<option value="break"><?php p($l->t('On Break')); ?></option>
 							<option value="paused"><?php p($l->t('Paused')); ?></option>
@@ -81,6 +81,7 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 								<th scope="col"><?php p($l->t('Break')); ?></th>
 								<th scope="col"><?php p($l->t('Status')); ?></th>
 								<th scope="col"><?php p($l->t('Description')); ?></th>
+								<th scope="col"><?php p($l->t('Actions')); ?></th>
 							</tr>
 						</thead>
 						<tbody id="employee-time-entries-body"></tbody>
@@ -97,6 +98,8 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 	</div>
 </main>
 </div>
+
+<?php include __DIR__ . '/common/manager-correction-l10n.php'; ?>
 
 <script nonce="<?php p($_['cspNonce'] ?? ''); ?>">
 	window.ArbeitszeitCheck = window.ArbeitszeitCheck || {};

@@ -36,6 +36,7 @@ class ComplianceService
     private HolidayService $holidayCalendarService;
     private IConfig $config;
     private PermissionService $permissionService;
+    private TimeZoneService $timeZoneService;
 
     public function __construct(
         TimeEntryMapper $timeEntryMapper,
@@ -47,7 +48,8 @@ class ComplianceService
         ?NotificationService $notificationService,
         HolidayService $holidayCalendarService,
         IConfig $config,
-        PermissionService $permissionService
+        PermissionService $permissionService,
+        TimeZoneService $timeZoneService
     ) {
         $this->timeEntryMapper = $timeEntryMapper;
         $this->violationMapper = $violationMapper;
@@ -59,6 +61,25 @@ class ComplianceService
         $this->holidayCalendarService = $holidayCalendarService;
         $this->config = $config;
         $this->permissionService = $permissionService;
+        $this->timeZoneService = $timeZoneService;
+    }
+
+    /**
+     * Render a stored DateTime as HH:MM in the affected user's display TZ.
+     * Falls back to the storage TZ when no user is known so the value still
+     * reflects the persisted civil time, never the container's UTC offset.
+     */
+    private function displayClock(\DateTimeInterface $dt, ?string $userId = null): string
+    {
+        return $this->timeZoneService->formatForDisplay($dt, 'H:i', $userId);
+    }
+
+    /**
+     * Render a stored DateTime as `d.m.Y` in the affected user's display TZ.
+     */
+    private function displayDate(\DateTimeInterface $dt, ?string $userId = null): string
+    {
+        return $this->timeZoneService->formatForDisplay($dt, 'd.m.Y', $userId);
     }
 
     private function getMaxDailyHours(): float
@@ -106,7 +127,12 @@ class ComplianceService
                     'severity' => ComplianceViolation::SEVERITY_ERROR,
                     'message' => $this->l10n->t(
                         'Minimum %1$d-hour rest period required between shifts (ArbZG §5). Your last shift ended at %2$s. You can clock in after %3$s (in %4$.1f hours).',
-                        [(int)$minRest, $lastEndTime->format('H:i'), $earliestClockIn->format('H:i'), max(0.0, $hoursRemaining)]
+                        [
+                            (int)$minRest,
+                            $this->displayClock($lastEndTime, $userId),
+                            $this->displayClock($earliestClockIn, $userId),
+                            max(0.0, $hoursRemaining),
+                        ]
                     )
                 ];
             } else {
@@ -517,15 +543,22 @@ class ComplianceService
         $earliestStartTime->modify('+' . (int)$minRest . ' hours');
         $hoursStillNeeded = ($earliestStartTime->getTimestamp() - $startTime->getTimestamp()) / 3600;
         
-        // Format dates for display
-        $lastEndDateFormatted = $lastEndTime->format('d.m.Y');
-        $earliestStartDateFormatted = $earliestStartTime->format('d.m.Y H:i');
-        
+        // Format the user-facing message in the affected user's display TZ so
+        // employees in non-storage zones (rare but legal) see their own clock.
+        $lastEndDateFormatted = $this->displayDate($lastEndTime, $userId);
+        $earliestStartDateFormatted = $this->timeZoneService->formatForDisplay($earliestStartTime, 'd.m.Y H:i', $userId);
+
         return [
             'valid' => false,
             'message' => $this->l10n->t(
                 'Minimum %1$d-hour rest period required between shifts (ArbZG §5). Your last shift ended on %2$s at %3$s. This entry cannot start before %4$s (%5$.1f hours required).',
-                [(int)$minRest, $lastEndDateFormatted, $lastEndTime->format('H:i'), $earliestStartDateFormatted, abs($hoursStillNeeded)]
+                [
+                    (int)$minRest,
+                    $lastEndDateFormatted,
+                    $this->displayClock($lastEndTime, $userId),
+                    $earliestStartDateFormatted,
+                    abs($hoursStillNeeded),
+                ]
             ),
             'earliestStartTime' => $earliestStartTime,
         ];

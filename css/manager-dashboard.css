@@ -78,6 +78,17 @@
   gap: 1rem;
 }
 
+.manager-stat-card--link {
+	display: block;
+	text-decoration: none;
+	color: inherit;
+}
+
+.manager-stat-card--link:focus-visible {
+	outline: 2px solid var(--color-primary-element, #0082c9);
+	outline-offset: 2px;
+}
+
 .manager-stat-card {
   min-width: 0;
   min-height: var(--default-clickable-area, 44px);

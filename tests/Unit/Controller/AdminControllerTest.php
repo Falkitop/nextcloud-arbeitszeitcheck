@@ -30,10 +30,12 @@ use OCA\ArbeitszeitCheck\Db\AuditLog;
 use OCA\ArbeitszeitCheck\Db\TariffRuleModuleMapper;
 use OCA\ArbeitszeitCheck\Db\TariffRuleSet;
 use OCA\ArbeitszeitCheck\Db\TariffRuleSetMapper;
+use OCA\ArbeitszeitCheck\Db\UserVacationPolicyAssignment;
 use OCA\ArbeitszeitCheck\Db\UserVacationPolicyAssignmentMapper;
 use OCA\ArbeitszeitCheck\Service\CSPService;
 use OCA\ArbeitszeitCheck\Service\HolidayService;
 use OCA\ArbeitszeitCheck\Service\VacationEntitlementEngine;
+use OCA\ArbeitszeitCheck\Service\UserOvertimeSettingsService;
 use OCP\App\IAppManager;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\DataDownloadResponse;
@@ -87,6 +89,9 @@ class AdminControllerTest extends TestCase
 	/** @var \OCA\ArbeitszeitCheck\Service\LayeredVacationDefaultsService|\PHPUnit\Framework\MockObject\MockObject */
 	private $layeredVacationDefaultsService;
 
+	/** @var UserVacationPolicyAssignmentMapper|\PHPUnit\Framework\MockObject\MockObject */
+	private $userVacationPolicyAssignmentMapper;
+
 	/** @var IRequest|\PHPUnit\Framework\MockObject\MockObject */
 	private $request;
 	/** @var IGroupManager|\PHPUnit\Framework\MockObject\MockObject */
@@ -127,7 +132,7 @@ class AdminControllerTest extends TestCase
 		$vacationAllocationService->method('applyCapToOpeningBalance')->willReturnCallback(fn (float $d) => $d);
 		$this->tariffRuleSetMapper = $this->createMock(TariffRuleSetMapper::class);
 		$tariffRuleModuleMapper = $this->createMock(TariffRuleModuleMapper::class);
-		$userVacationPolicyAssignmentMapper = $this->createMock(UserVacationPolicyAssignmentMapper::class);
+		$this->userVacationPolicyAssignmentMapper = $this->createMock(UserVacationPolicyAssignmentMapper::class);
 		$this->vacationEntitlementEngine = $this->createMock(VacationEntitlementEngine::class);
 		$this->vacationEntitlementEngine->method('computeForDate')->willReturn([
 			'days' => 25.0,
@@ -163,9 +168,10 @@ class AdminControllerTest extends TestCase
 			$vacationAllocationService,
 			$this->tariffRuleSetMapper,
 			$tariffRuleModuleMapper,
-			$userVacationPolicyAssignmentMapper,
+			$this->userVacationPolicyAssignmentMapper,
 			$this->vacationEntitlementEngine,
-			$this->layeredVacationDefaultsService
+			$this->layeredVacationDefaultsService,
+			$this->createMock(UserOvertimeSettingsService::class)
 		);
 	}
 
@@ -1080,6 +1086,102 @@ class AdminControllerTest extends TestCase
 		$data = $response->getData();
 		$this->assertFalse($data['success']);
 		$this->assertSame('Tariff rule set starts after policy effective date', $data['error']);
+	}
+
+	public function testAssignVacationPolicyNormalizesInheritSentinelWhenInheritFlagTrue(): void
+	{
+		$userId = 'user1';
+		$user = $this->createMock(IUser::class);
+		$this->userManager->method('get')->with($userId)->willReturn($user);
+
+		$this->request->method('getParams')->willReturn([
+			'vacationMode' => Constants::VACATION_MODE_MANUAL_FIXED,
+			'inheritLowerLayers' => true,
+			'effectiveFrom' => '2026-06-01',
+		]);
+
+		$this->userVacationPolicyAssignmentMapper->method('findCurrentByUser')->willReturn(null);
+		$this->userVacationPolicyAssignmentMapper->expects($this->once())
+			->method('insert')
+			->willReturnCallback(function (UserVacationPolicyAssignment $assignment) {
+				$this->assertSame(Constants::VACATION_MODE_INHERIT, $assignment->getVacationMode());
+				$this->assertTrue($assignment->getInheritLowerLayers());
+				$assignment->setId(501);
+				return $assignment;
+			});
+
+		$response = $this->controller->assignVacationPolicy($userId);
+		$this->assertSame(Http::STATUS_CREATED, $response->getStatus());
+		$data = $response->getData();
+		$this->assertTrue($data['success']);
+		$this->assertSame(501, $data['policyId']);
+	}
+
+	public function testGetVacationLayersRejectsInvalidAsOfDate(): void
+	{
+		$this->request->method('getParam')
+			->with('asOfDate', $this->anything())
+			->willReturn('not-a-date');
+
+		$response = $this->controller->getVacationLayers();
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
+		$data = $response->getData();
+		$this->assertFalse($data['success']);
+		$this->assertSame('Invalid date; use YYYY-MM-DD.', $data['error']);
+	}
+
+	public function testAssignVacationPolicyRejectsInvalidEffectiveFrom(): void
+	{
+		$userId = 'user1';
+		$user = $this->createMock(IUser::class);
+		$this->userManager->method('get')->with($userId)->willReturn($user);
+		$this->request->method('getParams')->willReturn([
+			'vacationMode' => Constants::VACATION_MODE_INHERIT,
+			'effectiveFrom' => '31.12.2026',
+		]);
+		$this->userVacationPolicyAssignmentMapper->expects($this->never())->method('insert');
+
+		$response = $this->controller->assignVacationPolicy($userId);
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
+		$data = $response->getData();
+		$this->assertFalse($data['success']);
+		$this->assertSame('Invalid date; use YYYY-MM-DD.', $data['error']);
+	}
+
+	public function testAssignVacationPolicyRejectsInvalidEffectiveTo(): void
+	{
+		$userId = 'user1';
+		$user = $this->createMock(IUser::class);
+		$this->userManager->method('get')->with($userId)->willReturn($user);
+		$this->request->method('getParams')->willReturn([
+			'vacationMode' => Constants::VACATION_MODE_INHERIT,
+			'effectiveFrom' => '2026-06-01',
+			'effectiveTo' => 'not-a-date',
+		]);
+		$this->userVacationPolicyAssignmentMapper->expects($this->never())->method('insert');
+
+		$response = $this->controller->assignVacationPolicy($userId);
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
+		$data = $response->getData();
+		$this->assertFalse($data['success']);
+		$this->assertSame('Invalid date; use YYYY-MM-DD.', $data['error']);
+	}
+
+	public function testSimulateVacationPolicyRejectsInvalidAsOfDate(): void
+	{
+		$user = $this->createMock(IUser::class);
+		$this->userManager->method('get')->with('alice')->willReturn($user);
+		$this->request->method('getParams')->willReturn([
+			'userId' => 'alice',
+			'asOfDate' => '2026-02-30',
+		]);
+		$this->vacationEntitlementEngine->expects($this->never())->method('computeForDate');
+
+		$response = $this->controller->simulateVacationPolicy();
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
+		$data = $response->getData();
+		$this->assertFalse($data['success']);
+		$this->assertSame('Invalid date; use YYYY-MM-DD.', $data['error']);
 	}
 
 	public function testActivateTariffRuleSetWithNextMonthAdjustsValidityAndClosesOverlap(): void

@@ -232,6 +232,10 @@ class PageController extends Controller
 			$isFirstTimeUser = $timeEntryCount === 0 && !$onboardingCompleted;
 
 			$navFlags = $this->getNavigationFlags($userId);
+			$pendingCorrectionCount = count($this->timeEntryMapper->findByUserAndStatus(
+				$userId,
+				\OCA\ArbeitszeitCheck\Db\TimeEntry::STATUS_PENDING_APPROVAL
+			));
 
 			$currentYear = (int)date('Y');
 			$vacationStats = $this->absenceService->getVacationStats($userId, $currentYear);
@@ -259,6 +263,7 @@ class PageController extends Controller
 				],
 				'urlGenerator' => $this->urlGenerator,
 				'l' => $this->l10n,
+				'pendingCorrectionCount' => $pendingCorrectionCount,
 			] + $navFlags;
 
 			$response = new TemplateResponse('arbeitszeitcheck', 'dashboard', $params);
@@ -312,7 +317,11 @@ class PageController extends Controller
 		try {
 			$userId = $this->getUserId();
 			$entries = $this->timeEntryMapper->findByUser($userId, 100);
-			
+			$pendingCorrectionCount = count($this->timeEntryMapper->findByUserAndStatus(
+				$userId,
+				\OCA\ArbeitszeitCheck\Db\TimeEntry::STATUS_PENDING_APPROVAL
+			));
+
 			$timeEntryCount = $this->timeEntryMapper->countByUser($userId);
 			
 			// Get compliance configuration for frontend validation
@@ -337,6 +346,7 @@ class PageController extends Controller
 				'monthClosureEnabled' => $this->config->getAppValue('arbeitszeitcheck', Constants::CONFIG_MONTH_CLOSURE_ENABLED, '0') === '1',
 				'urlGenerator' => $this->urlGenerator,
 				'l' => $this->l10n,
+				'pendingCorrectionCount' => $pendingCorrectionCount,
 			] + $navFlags;
 
 			$response = new TemplateResponse('arbeitszeitcheck', 'time-entries', $params);

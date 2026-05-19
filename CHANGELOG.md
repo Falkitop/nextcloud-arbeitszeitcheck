@@ -5,6 +5,64 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.3.4 - 2026-05-19
+
+### Added
+
+- **Single source of truth for timezone handling** (`lib/Service/TimeZoneService.php`, `js/common/time.js`, `templates/common/time-bootstrap.php`). All backend code now resolves the organisation storage TZ, the user display TZ and "now" via one injectable service, and all frontend code parses/formats datetimes through one idempotent module. See `docs/Time-And-Timezone-Architecture.en.md` for the full contract.
+- **Audit-grade display-TZ enforcement across every user-facing surface.** Manager pending-approval payloads (`ManagerController::getPendingApprovals`), time-entry overlap conflict messages (`TimeEntryController` create/update/manager-create paths), ArbZG §5 rest-period violation messages (`ComplianceService::checkComplianceBeforeClockIn` and `::checkRestPeriodForStartTime`), the clock-out reminder notification (`ClockOutReminderJob`), and the auto break-fallback / daily-maximum auto clock-out notices (`TimeTrackingService`) now route every clock string through `TimeZoneService::formatForDisplay($dt, ..., $userId)` so the affected employee always sees their own wall clock. The time-entries edit form (`templates/time-entries.php`) prefills start/end/break inputs in the user's display TZ as well, matching the dashboard exactly.
+- **Drift-safe live timer** for the dashboard. `TimeTrackingService::getStatus()` now ships a `server_now` (ISO-8601 with offset) and `server_timezone` (IANA name) anchor alongside `current_session_duration`. The JS timer pins itself to that anchor via `ArbeitszeitCheckTime.syncFromServer()` and extrapolates with `performance.now()`, so client clock skew, system-clock changes during the session and background-tab throttling can no longer make the timer drift.
+- **`common/time.js` is loaded everywhere `common/utils.js` is** (admin, manager, settings, compliance, substitute, all employee pages), and `templates/common/navigation.php` now includes the time bootstrap on every page, so `window.ArbeitszeitCheck.tz` / `window.ArbeitszeitCheck.serverNow` are guaranteed to be available before any client datetime code runs.
+- **`TimeClientBootstrap`** (`lib/Support/TimeClientBootstrap.php`) — single registrar for the client timezone stack. Emits config via Nextcloud InitialState + `js/common/time-init.js`, registers scripts idempotently, and is invoked from `time-bootstrap.php`, a `BeforeTemplateRenderedEvent` safety-net listener, and every dashboard widget `load()` so widget-only pages (global NC dashboard) cannot miss the bootstrap.
+- **Employee correction request dialog** (`templates/time-entries.php` + `js/time-entry-correction.js`): single-page modal (no multi-step wizard, no `datetime-local`). Uses the same patterns as the manual time-entry form: European date (`dd.mm.yyyy`), hour/minute `<select>`s, optional breaks, mandatory justification (≥10 characters), “currently stored” snapshot table, and WCAG-friendly status/errors.
+- **Shared JS translation bundles** for corrections: `templates/common/time-entry-correction-l10n.php` (employee list + dialog) and `templates/common/manager-correction-l10n.php` (manager dashboard approvals + employee time entries “Correct” modal). Keys in `l10n/de.json` and `l10n/en.json`.
+- **Server parsing for correction payloads**: `TimeEntryController::buildProposedWorkTimesFromDateAndClock()` accepts `date` + `startTime`/`endTime` as `HH:mm` (overnight shifts: end before start → next calendar day); legacy ISO instants remain supported for API clients.
+
+### Fixed
+
+- **Timer immediately showing the client/server TZ offset after clock-in** (e.g. `02:00:00` for a Berlin user on a UTC container). The session and break timers now use the drift-safe server clock and parse the `startTime` instant via `ArbeitszeitCheckTime.parseInstant`, never raw `new Date(string)` or `Date.parse` against potentially-naive values. The PHP-rendered first frame uses the same `server_now` anchor as the live counter so there is no visible jump on mount.
+- **Recent-entries list on the dashboard showing UTC times instead of the user's local clock**. Initial PHP render now consistently converts to `$arbeitszeitCheckUserDisplayTz` before formatting, and the timezone badge next to "Current Status" explicitly tells the user which zone the times are in.
+- **`templates/index.php` legacy multi-view template** (kept for `AccessibilityTest` and as a safety net for any forgotten route): now requires `templates/common/user-display-timezone.php` and renders every `getStartTime()` / `getEndTime()` value through a local `setTimezone($arbeitszeitCheckUserDisplayTz)` shim so a fallback render would also produce correct wall-clock output. The file is explicitly documented as legacy at the top so auditors do not mistake it for the primary path.
+- **Redirect after opening “Request correction”** on the time-entries list: the global edit handler in `arbeitszeitcheck-main.js` no longer treats `.btn-request-correction` / `.btn-cancel-correction` as edit; the correction script uses `preventDefault` / `stopPropagation`.
+- **Unreadable correction validation errors** on dark/high-contrast themes: theme-safe error surfaces in `css/common/components.css` and correction-specific status styling in `css/time-entry-correction.css`.
+- **Missing translation keys** for pending-correction banners, withdraw confirm, and related API error strings in `l10n/de.json` / `l10n/en.json`.
+
+### Notes for auditors
+
+- The finalized month-closure PDF (`MonthClosurePdfDocumentBuilder`) intentionally renders clock and date values in the **storage timezone** (`Constants::CONFIG_APP_TIMEZONE`). This is the authoritative legal record and must not vary per-user; the choice is now documented inline alongside `fmtClock()` / `entryDateShort()`.
+- CSV / XLSX exports (`TimeEntryExportTransformer`) also render in the storage timezone for the same reason. Conversion happens centrally before formatting, never ad-hoc.
+- **Manager direct correction** (`manager-time-entries.js`) still uses `datetime-local` for start/end; labels and messages are translated via `manager-correction-l10n.php`. Aligning that UI with the employee date+time matrix is a follow-up UX task.
+
+### Changed
+
+- `AppLocalNaiveDateTimeNormalizer` is now a thin, pure-static facade kept only for places without dependency injection (entity hydration, migration / repair steps). All services, controllers, mappers and templates use `TimeZoneService` directly. Its `normalizeAtEntryDatetimeStringsInRow` now emits ISO-8601 with offset (`DateTimeInterface::ATOM`) consistently.
+- `TimeTrackingService` was migrated to `TimeZoneService` for every "now", every today-window query and every ISO serialisation. Behaviour is unchanged on the hot path; the difference is that the storage zone is now resolved through one auditable code path.
+- `ManagerController`, `TimeEntryController`, `ComplianceService` and `ClockOutReminderJob` now take `TimeZoneService` as an explicit constructor dependency; the `Application` DI wiring and unit-test setup were updated to match. This makes the user-facing TZ contract explicit at the type level and gives auditors a single grep target (`TimeZoneService::formatForDisplay`) for every clock string that ever reaches a user.
+
+### Tests
+
+- New: `tests/Unit/Migration/Version1015TimezoneMigrationTest.php` — UTC→Berlin conversion math, invalid input handling, documents double-run hazard, verifies idempotency flag short-circuit and first-run config writes.
+- New: `tests/Integration/TimezoneMigrationStateIntegrationTest.php` — post-upgrade `app_timezone` / `tz_utc_to_berlin_migration_done` markers plus live `TimeZoneService` hydrate/ISO contract.
+- New: `tests/e2e/timezone-smoke.spec.js` — Playwright guard for the clock-in timer offset bug (`server_now`, ISO instants, `#session-timer-value` within seconds of API duration).
+
+### Docs
+
+- New: `docs/Time-And-Timezone-Architecture.en.md` (and `.de.md`) — the binding architecture for date/time handling.
+- Updated: employee/manager correction UX, shared JS l10n partials, and API notes in `docs/Developer-Documentation.en.md`, `docs/User-Manual.{en,de}.md`, and `docs/Compliance-Time-Entry-Workflows.de.md`.
+
+## 1.3.3 - 2026-05-18
+
+### Fixed
+
+- **Admin vacation date inputs** (`PUT /api/admin/users/{userId}/vacation-policy`, `POST /api/admin/vacation-policy/simulate`, `GET /api/admin/vacation-layers`, and **L0/L1/L2** payloads handled by `LayeredVacationDefaultsService`): reject malformed and **overflow** calendar strings (e.g. `2026-02-30`) with **HTTP 400** / field-level validation instead of accepting PHP’s silent normalisation or surfacing **HTTP 500** from `DateTime` edge cases. Shared logic: `OCA\ArbeitszeitCheck\Support\StrictYmdDates`.
+- **`completePausedEntry()` preserves an existing `end_time`** on legacy `paused` rows that already carry a frozen end timestamp (status/end_time mismatch). Without this guard the service could overwrite payroll-relevant hours with `updated_at`.
+- **`RepairOrphanedPausedEntries`** now sets `ended_reason` and `policy_applied` when it only flips `paused` → `completed` for rows that already have `end_time`, keeping upgrade-time repairs audit-consistent with steps 2–3.
+
+### Tests
+
+- New: `testCompletePausedEntryPreservesExistingEndTime`.
+- All 577 unit tests pass.
+
 ## 1.3.2 - 2026-05-18
 
 ### Added
@@ -71,7 +129,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Schema
 
 - New tables: `at_org_vacation_defaults` (L0), `at_model_vacation_defaults` (L1), `at_team_vacation_policies` (L2 with FK → `at_teams ON DELETE CASCADE`).
-- `at_user_vacation_policies` (L3) gains `inherit_lower_layers BOOLEAN NOT NULL DEFAULT 0` — golden-file equivalent for every existing row.
+- `at_user_vacation_policies` (L3) gains `inherit_lower_layers BOOLEAN DEFAULT false` (nullable in schema for Nextcloud portability; application treats NULL like false) — golden-file equivalent for every existing row.
 
 ### Documentation
 

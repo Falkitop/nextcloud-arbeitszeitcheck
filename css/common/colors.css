@@ -145,13 +145,13 @@ body {
 
   /* Notification */
   --arbeitszeitcheck-color-notification-success: var(--color-success);
-  --arbeitszeitcheck-color-notification-success-background: var(--color-primary-light);
+  --arbeitszeitcheck-color-notification-success-background: color-mix(in srgb, var(--color-success) 14%, var(--color-main-background));
   --arbeitszeitcheck-color-notification-error: var(--color-error);
-  --arbeitszeitcheck-color-notification-error-background: var(--color-primary-light);
+  --arbeitszeitcheck-color-notification-error-background: color-mix(in srgb, var(--color-error) 14%, var(--color-main-background));
   --arbeitszeitcheck-color-notification-warning: var(--color-warning);
-  --arbeitszeitcheck-color-notification-warning-background: var(--color-primary-light);
+  --arbeitszeitcheck-color-notification-warning-background: color-mix(in srgb, var(--color-warning) 14%, var(--color-main-background));
   --arbeitszeitcheck-color-notification-info: var(--color-primary);
-  --arbeitszeitcheck-color-notification-info-background: var(--color-primary-light);
+  --arbeitszeitcheck-color-notification-info-background: color-mix(in srgb, var(--color-primary) 14%, var(--color-main-background));
 
   /* Button */
   --arbeitszeitcheck-color-button-primary: var(--color-primary-element);

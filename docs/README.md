@@ -11,7 +11,8 @@ This folder contains the documentation included with ArbeitszeitCheck for admini
 | [GDPR-Compliance-Guide.en.md](GDPR-Compliance-Guide.en.md) | How to operate ArbeitszeitCheck in a GDPR-compliant way (legal basis, data minimization, employee rights, retention) |
 | [Compliance-Implementation.en.md](Compliance-Implementation.en.md) | Technical implementation of ArbZG compliance checks (breaks, rest periods, real-time vs batch) |
 | [Compliance-Implementation.de.md](Compliance-Implementation.de.md) | Same content in German |
-| [Developer-Documentation.en.md](Developer-Documentation.en.md) | Architecture, development setup, contribution guidelines, and technical notes (including vacation carryover / Resturlaub, assignable-manager / auto-approval semantics, HR notification matrix, overtime/undertime traffic light design, vacation entitlement policy engine with layered L0–L3 resolution, tariff rule sets/snapshots, production legacy flag `layered_entitlements_enabled`, centralized frontend URL/security guardrails, and mobile/iPhone UX implementation notes) |
+| [Developer-Documentation.en.md](Developer-Documentation.en.md) | Architecture, development setup, contribution guidelines, and technical notes (including vacation carryover / Resturlaub, assignable-manager / auto-approval semantics, HR notification matrix, overtime/undertime traffic light design, vacation entitlement policy engine with layered L0–L3 resolution, tariff rule sets/snapshots, production legacy flag `layered_entitlements_enabled`, centralized frontend URL/security guardrails, mobile/iPhone UX implementation notes, **time entry correction UI/API**, and **JS l10n partials**) |
+| [Compliance-Time-Entry-Workflows.de.md](Compliance-Time-Entry-Workflows.de.md) | Audit-relevant time-entry workflows (four-eyes, correction request/withdraw, manager approve/correct); German |
 
 ## Related Test Documentation
 

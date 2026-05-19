@@ -66,6 +66,7 @@ Auf der Seite **Meine Abwesenheiten** (o. Ä.) kann neben dem Jahresanspruch d
 ## 4. Alltägliche Aufgaben
 
 - **Kommen/Gehen und Pausen** über die Zeiterfassung; Korrekturen und Begründungen nach internen Regeln.
+- **Korrektur anfordern** (wenn direkte Bearbeitung nicht erlaubt ist): Unter **Zeiteinträge** bei einem abgeschlossenen Eintrag **Korrektur anfordern** wählen. **Datum und Zeiten** eintragen (gleiche Oberfläche wie beim manuellen Formular: Datum, Start/Ende als Auswahllisten, optional Pausen) sowie eine **Begründung** mit mindestens 10 Zeichen. Änderungen gelten erst nach Freigabe durch den Vorgesetzten. Während der Wartezeit zeigt die Liste die **vorgeschlagenen** Zeiten; mit **Zurückziehen** können Sie den Antrag stornieren und die ursprünglichen Zeiten wiederherstellen. Ein Hinweisbanner oben erklärt ausstehende Genehmigungen.
 - **Dashboard-Schnellaktionen (Workspace):**
   - Das Dashboard enthält einen eigenen Schnellaktionsbereich mit **Mein Status**, **Aktuelle Sitzung** und direkten Aktionen für **Clock In**, **Pause**, **Fortsetzen** und **Clock Out**.
   - Je nach Rolle zeigt dieselbe Seite zusätzlich **Teamübersicht** (Führungskraft) und **Unternehmensübersicht** (Admin) mit kompakten Statuslisten.

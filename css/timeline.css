@@ -132,8 +132,8 @@
 
 .timeline-error {
 	text-align: center;
-	padding: var(--space-12, 3rem);
-	color: var(--arbeitszeitcheck-color-error, var(--color-error));
+	margin: var(--space-4, 1rem) auto;
+	max-width: 36rem;
 }
 
 @keyframes spin {
@@ -326,10 +326,6 @@
 	max-width: 40ch;
 	margin-left: auto;
 	margin-right: auto;
-}
-
-.timeline-error {
-	color: var(--arbeitszeitcheck-color-error, var(--color-error));
 }
 
 @media (prefers-reduced-motion: reduce) {

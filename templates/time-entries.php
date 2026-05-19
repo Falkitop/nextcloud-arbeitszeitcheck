@@ -27,11 +27,16 @@ Util::addStyle('arbeitszeitcheck', 'common/responsive');
 Util::addStyle('arbeitszeitcheck', 'common/accessibility');
 Util::addStyle('arbeitszeitcheck', 'navigation');
 Util::addStyle('arbeitszeitcheck', 'time-entries');
+Util::addStyle('arbeitszeitcheck', 'time-entry-correction');
 Util::addStyle('arbeitszeitcheck', 'time-entry-form-accessibility');
 Util::addScript('arbeitszeitcheck', 'common/utils');
+Util::addScript('arbeitszeitcheck', 'common/time');
+Util::addScript('arbeitszeitcheck', 'common/messaging');
+Util::addScript('arbeitszeitcheck', 'common/components');
 Util::addScript('arbeitszeitcheck', 'common/datepicker');
 Util::addScript('arbeitszeitcheck', 'common/validation');
 Util::addScript('arbeitszeitcheck', 'time-entry-form-accessibility');
+Util::addScript('arbeitszeitcheck', 'time-entry-correction');
 Util::addScript('arbeitszeitcheck', 'arbeitszeitcheck-main');
 if (!empty($_['monthClosureEnabled'])) {
     Util::addScript('arbeitszeitcheck', 'month-closure');
@@ -300,9 +305,17 @@ require __DIR__ . '/common/user-display-timezone.php';
                                         <?php p($l->t('Start Time')); ?> 
                                         <span class="form-required" aria-label="<?php p($l->t('required')); ?>">*</span>
                                     </label>
-                                    <?php 
-                                    // Custom 24-hour time input - always shows 24h format regardless of browser locale
-                                    $startTimeValue = $entry ? $entry->getStartTime()->format('H:i') : '09:00';
+                                    <?php
+                                    // Custom 24-hour time input - always shows 24h format regardless of browser locale.
+                                    // Prefill in the *user's* display TZ so what they see in the form matches the
+                                    // dashboard. Storage TZ conversion happens server-side on submit via
+                                    // AppLocalNaiveDateTimeNormalizer, so editing across DST works correctly.
+                                    if ($entry) {
+                                        $startTimeForForm = (clone $entry->getStartTime())->setTimezone($arbeitszeitCheckUserDisplayTz);
+                                        $startTimeValue = $startTimeForForm->format('H:i');
+                                    } else {
+                                        $startTimeValue = '09:00';
+                                    }
                                     $startTimeParts = explode(':', $startTimeValue);
                                     $startHour = $startTimeParts[0] ?? '09';
                                     $startMinute = $startTimeParts[1] ?? '00';
@@ -356,13 +369,16 @@ require __DIR__ . '/common/user-display-timezone.php';
                                         <?php p($l->t('End Time')); ?> 
                                         <span class="form-required" aria-label="<?php p($l->t('required')); ?>">*</span>
                                     </label>
-                                    <?php 
-                                    // Custom 24-hour time input - always shows 24h format regardless of browser locale
+                                    <?php
+                                    // Custom 24-hour time input - always shows 24h format regardless of browser locale.
+                                    // As above, prefill in the user's display TZ.
                                     if ($entry && $entry->getEndTime()) {
-                                        $endTimeValue = $entry->getEndTime()->format('H:i');
+                                        $endForForm = (clone $entry->getEndTime())->setTimezone($arbeitszeitCheckUserDisplayTz);
+                                        $endTimeValue = $endForForm->format('H:i');
                                     } elseif ($entry && $entry->getStatus() === \OCA\ArbeitszeitCheck\Db\TimeEntry::STATUS_PAUSED && $entry->getUpdatedAt()) {
                                         // Orphan paused row: suggest the moment the session was frozen (updated_at) as end time
-                                        $endTimeValue = $entry->getUpdatedAt()->format('H:i');
+                                        $updatedForForm = (clone $entry->getUpdatedAt())->setTimezone($arbeitszeitCheckUserDisplayTz);
+                                        $endTimeValue = $updatedForForm->format('H:i');
                                     } else {
                                         $endTimeValue = '17:00';
                                     }
@@ -456,8 +472,11 @@ require __DIR__ . '/common/user-display-timezone.php';
                                         foreach ($breaks as $break) {
                                             if (isset($break['start']) && isset($break['end'])) {
                                                 try {
-                                                    $breakStart = new \DateTime($break['start']);
-                                                    $breakEnd = new \DateTime($break['end']);
+                                                    // Render the editable break in the user's display TZ to match the
+                                                    // start/end time inputs above; AppLocalNaiveDateTimeNormalizer
+                                                    // converts back to storage TZ on submit.
+                                                    $breakStart = (new \DateTime($break['start']))->setTimezone($arbeitszeitCheckUserDisplayTz);
+                                                    $breakEnd = (new \DateTime($break['end']))->setTimezone($arbeitszeitCheckUserDisplayTz);
                                                     $breakDurationSeconds = $breakEnd->getTimestamp() - $breakStart->getTimestamp();
                                                     $minBreakDurationSeconds = 900; // 15 minutes
 
@@ -476,8 +495,8 @@ require __DIR__ . '/common/user-display-timezone.php';
                                     }
                                     // Also check for single break (breakStartTime/breakEndTime) for backward compatibility
                                     if ($entry->getBreakStartTime() && $entry->getBreakEndTime()) {
-                                        $breakStart = $entry->getBreakStartTime();
-                                        $breakEnd = $entry->getBreakEndTime();
+                                        $breakStart = (clone $entry->getBreakStartTime())->setTimezone($arbeitszeitCheckUserDisplayTz);
+                                        $breakEnd = (clone $entry->getBreakEndTime())->setTimezone($arbeitszeitCheckUserDisplayTz);
                                         $breakDurationSeconds = $breakEnd->getTimestamp() - $breakStart->getTimestamp();
                                         $minBreakDurationSeconds = 900; // 15 minutes
 
@@ -683,6 +702,23 @@ require __DIR__ . '/common/user-display-timezone.php';
                         </p>
                     </div>
                 <?php endif; ?>
+                <?php
+                $pendingCorrectionCount = (int)($_['pendingCorrectionCount'] ?? 0);
+                if ($pendingCorrectionCount > 0):
+                ?>
+                    <div class="pending-correction-banner" role="region" aria-labelledby="pending-correction-banner-title">
+                        <div class="alert alert--warning" role="status">
+                            <p id="pending-correction-banner-title" class="alert__text">
+                                <strong><?php p($l->n(
+                                    '%n time entry is waiting for your manager\'s approval.',
+                                    '%n time entries are waiting for your manager\'s approval.',
+                                    $pendingCorrectionCount
+                                )); ?></strong>
+                                <?php p($l->t('The table below shows your proposed times until a decision is made. You can withdraw a request using the Withdraw button.')); ?>
+                            </p>
+                        </div>
+                    </div>
+                <?php endif; ?>
                 <div class="table-container">
                     <table class="table table--hover" id="time-entries-table" role="table" aria-label="<?php p($l->t('Time entries list')); ?>">
                         <thead>
@@ -702,17 +738,23 @@ require __DIR__ . '/common/user-display-timezone.php';
                             <?php if (!empty($entries)): ?>
                                 <?php foreach (($entries ?? []) as $entry): ?>
                                     <?php
-                                    $rowDisplayStart = clone $entry->getStartTime();
-                                    $rowDisplayStart->setTimezone($arbeitszeitCheckUserDisplayTz);
-                                    $rowDisplayEnd = null;
-                                    if ($entry->getEndTime()) {
-                                        $rowDisplayEnd = clone $entry->getEndTime();
-                                        $rowDisplayEnd->setTimezone($arbeitszeitCheckUserDisplayTz);
-                                    }
+                                    $entrySummary = $entry->getSummary();
+                                    $isPendingRow = $entry->getStatus() === \OCA\ArbeitszeitCheck\Db\TimeEntry::STATUS_PENDING_APPROVAL;
+                                    // Always render STORED (truth) values so Duration/Break/Start/End are consistent.
+                                    // Pending state is communicated via the status badge, the row highlight,
+                                    // and the dashboard/table banner above. The proposed values stay accessible
+                                    // through the request dialog and the manager approval UI.
+                                    $rowDisplayStart = $entry->getStartTime() ? (clone $entry->getStartTime())->setTimezone($arbeitszeitCheckUserDisplayTz) : null;
+                                    $rowDisplayEnd = $entry->getEndTime() ? (clone $entry->getEndTime())->setTimezone($arbeitszeitCheckUserDisplayTz) : null;
+                                    $entrySummaryJson = htmlspecialchars(
+                                        (string)json_encode($entrySummary, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE),
+                                        ENT_QUOTES,
+                                        'UTF-8'
+                                    );
                                     ?>
-                                    <tr data-entry-id="<?php p($entry->getId()); ?>">
-                                        <td><?php p($rowDisplayStart->format('d.m.Y')); ?></td>
-                                        <td><?php p($rowDisplayStart->format('H:i')); ?></td>
+                                    <tr data-entry-id="<?php p($entry->getId()); ?>" class="<?php echo $isPendingRow ? 'time-entry-row--pending' : ''; ?>">
+                                        <td><?php if ($rowDisplayStart) { p($rowDisplayStart->format('d.m.Y')); } else { p('-'); } ?></td>
+                                        <td><?php if ($rowDisplayStart) { p($rowDisplayStart->format('H:i')); } else { p('-'); } ?></td>
                                         <td><?php
                                             if ($rowDisplayEnd) {
                                                 $startDate = $rowDisplayStart->format('Y-m-d');
@@ -892,6 +934,28 @@ require __DIR__ . '/common/user-display-timezone.php';
                                                 </button>
                                             <?php endif; ?>
                                             <?php
+                                            if ($entry->getStatus() === \OCA\ArbeitszeitCheck\Db\TimeEntry::STATUS_PENDING_APPROVAL):
+                                            ?>
+                                                <button class="btn btn--sm btn--secondary btn-cancel-correction"
+                                                    data-entry-id="<?php p($entry->getId()); ?>"
+                                                    type="button"
+                                                    aria-label="<?php p($l->t('Withdraw pending correction')); ?>">
+                                                    <?php p($l->t('Withdraw')); ?>
+                                                </button>
+                                            <?php endif; ?>
+                                            <?php
+                                            $canRequestCorrection = $entry->canRequestCorrection(\OCA\ArbeitszeitCheck\Constants::EDIT_WINDOW_DAYS);
+                                            if ($canRequestCorrection && !$entry->canEdit(\OCA\ArbeitszeitCheck\Constants::EDIT_WINDOW_DAYS)):
+                                            ?>
+                                                <button class="btn btn--sm btn--secondary btn-request-correction"
+                                                    data-entry-id="<?php p($entry->getId()); ?>"
+                                                    data-entry-summary="<?php echo $entrySummaryJson; ?>"
+                                                    type="button"
+                                                    aria-label="<?php p($l->t('Request correction for manager approval')); ?>">
+                                                    <?php p($l->t('Request correction')); ?>
+                                                </button>
+                                            <?php endif; ?>
+                                            <?php
                                             $canEdit = $entry->canEdit(\OCA\ArbeitszeitCheck\Constants::EDIT_WINDOW_DAYS);
                                             if ($canEdit):
                                             ?>
@@ -956,12 +1020,150 @@ require __DIR__ . '/common/user-display-timezone.php';
                 <?php endif; ?>
             </div>
             </section>
+
+            <?php /* Correction dialog — cloned into modal on first open (time-entry-correction.js). */ ?>
+            <div id="time-entry-correction-source" class="visually-hidden" aria-hidden="true" data-datepicker-defer>
+                <form id="time-entry-correction-form" class="correction-dialog__inner" action="#" method="post" novalidate>
+                    <input type="hidden" id="correction-entry-id" name="entryId" value="">
+                    <p id="correction-dialog-desc" class="correction-dialog__intro"><?php p($l->t('Your manager must approve this change before it is saved.')); ?></p>
+
+                    <section class="correction-dialog__block correction-dialog__block--current" aria-labelledby="correction-current-heading">
+                        <h3 id="correction-current-heading" class="correction-dialog__block-title"><?php p($l->t('Currently stored')); ?></h3>
+                        <div class="correction-snapshot__wrap" role="region" aria-label="<?php p($l->t('Times currently saved for this entry')); ?>">
+                            <table class="correction-snapshot__table">
+                                    <caption class="sr-only"><?php p($l->t('Times currently saved for this entry')); ?></caption>
+                                    <tbody id="correction-current-summary"></tbody>
+                                </table>
+                            </div>
+                        </section>
+
+                    <section class="correction-dialog__block correction-dialog__block--proposed" aria-labelledby="correction-proposed-heading">
+                        <h3 id="correction-proposed-heading" class="correction-dialog__block-title"><?php p($l->t('Corrected times')); ?></h3>
+                        <p class="correction-dialog__block-hint"><?php p($l->t('Enter the date and times as they should be recorded.')); ?></p>
+
+                            <fieldset class="correction-fieldset">
+                                <legend class="sr-only"><?php p($l->t('Corrected working day')); ?></legend>
+                            <div class="time-entry-form__date correction-dialog__date">
+                                <div class="form-group">
+                                    <label for="correction-date" id="correction-date-label" class="form-label">
+                                        <?php p($l->t('Date')); ?>
+                                        <span class="form-required" aria-hidden="true">*</span>
+                                        <span class="sr-only"><?php p($l->t('required')); ?></span>
+                                    </label>
+                                    <div class="form-input-wrapper form-input-wrapper--date">
+                                        <input type="text"
+                                            id="correction-date"
+                                            name="date"
+                                            class="form-input correction-date-input"
+                                            data-datepicker-defer
+                                            inputmode="numeric"
+                                            autocomplete="off"
+                                            pattern="\d{2}\.\d{2}\.\d{4}"
+                                            placeholder="<?php p($l->t('dd.mm.yyyy')); ?>"
+                                            aria-labelledby="correction-date-label"
+                                            aria-describedby="correction-date-help"
+                                            required>
+                                        <button type="button"
+                                            id="correction-date-today"
+                                            class="btn btn--sm btn--secondary correction-date-today"
+                                            aria-label="<?php p($l->t('Set date to today')); ?>">
+                                            <?php p($l->t('Today')); ?>
+                                        </button>
+                                    </div>
+                                    <p id="correction-date-help" class="form-help"><?php p($l->t('Format: dd.mm.yyyy')); ?></p>
+                                </div>
+                            </div>
+
+                            <p class="time-pair-matrix__intro" id="correction-work-time-intro"><?php p($l->t('Working Hours')); ?></p>
+                            <div class="time-pair-matrix" role="group" aria-labelledby="correction-work-time-intro">
+                                <div class="time-pair-matrix__grid time-pair-matrix__grid--header">
+                                    <span class="time-pair-matrix__colhead"><?php p($l->t('Start Time')); ?></span>
+                                    <span class="time-pair-matrix__colhead"><?php p($l->t('End Time')); ?></span>
+                                    <span class="time-pair-matrix__colhead time-pair-matrix__colhead--action" aria-hidden="true"></span>
+                                </div>
+                                <div class="time-pair-matrix__grid time-pair-matrix__grid--row">
+                                    <div class="form-group">
+                                        <label for="correction-start-hour" class="form-label"><?php p($l->t('Start')); ?></label>
+                                        <div class="time-input-group" id="correction-start-time-group" role="group" aria-label="<?php p($l->t('Start Time')); ?>">
+                                            <select id="correction-start-hour" class="form-input time-hour" required aria-label="<?php p($l->t('Start hour')); ?>"></select>
+                                            <span class="time-separator" aria-hidden="true">:</span>
+                                            <select id="correction-start-minute" class="form-input time-minute" required aria-label="<?php p($l->t('Start minute')); ?>"></select>
+                                            <input type="hidden" id="correction-start-time" name="startTime" value="">
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="correction-end-hour" class="form-label"><?php p($l->t('End')); ?></label>
+                                        <div class="time-input-group" id="correction-end-time-group" role="group" aria-label="<?php p($l->t('End Time')); ?>">
+                                            <select id="correction-end-hour" class="form-input time-hour" required aria-label="<?php p($l->t('End hour')); ?>"></select>
+                                            <span class="time-separator" aria-hidden="true">:</span>
+                                            <select id="correction-end-minute" class="form-input time-minute" required aria-label="<?php p($l->t('End minute')); ?>"></select>
+                                            <input type="hidden" id="correction-end-time" name="endTime" value="">
+                                        </div>
+                                    </div>
+                                    <div class="time-pair-matrix__action time-pair-matrix__action--spacer" aria-hidden="true"></div>
+                                </div>
+                            </div>
+                            <p class="form-help correction-dialog__hint"><?php p($l->t('Night shift: if end is earlier than start (e.g. 22:00–06:00), end counts as the next day.')); ?></p>
+                        </fieldset>
+                    </section>
+
+                    <fieldset class="correction-fieldset correction-fieldset--breaks" aria-labelledby="correction-breaks-heading">
+                        <legend id="correction-breaks-heading" class="correction-dialog__section-title"><?php p($l->t('Breaks (optional)')); ?></legend>
+                        <p class="correction-dialog__block-hint"><?php p($l->t('Leave empty to keep current breaks. Each break must be at least 15 minutes and within working hours.')); ?></p>
+                        <p id="correction-breaks-empty" class="correction-breaks-empty"><?php p($l->t('No breaks added — current breaks will be kept.')); ?></p>
+                            <p class="time-pair-matrix__intro time-pair-matrix__intro--breaks" id="correction-breaks-intro"><?php p($l->t('Break times')); ?></p>
+                            <div class="time-pair-matrix time-pair-matrix--breaks" role="group" aria-labelledby="correction-breaks-intro">
+                                <div class="time-pair-matrix__grid time-pair-matrix__grid--header">
+                                    <span class="time-pair-matrix__colhead"><?php p($l->t('Start Time')); ?></span>
+                                    <span class="time-pair-matrix__colhead"><?php p($l->t('End Time')); ?></span>
+                                    <span class="time-pair-matrix__colhead time-pair-matrix__colhead--action"><?php p($l->t('Actions')); ?></span>
+                                </div>
+                                <div id="correction-breaks-container"></div>
+                            </div>
+                        <button type="button" class="btn btn--secondary btn--sm" id="correction-add-break"><?php p($l->t('Add break')); ?></button>
+                    </fieldset>
+
+                    <fieldset class="correction-fieldset correction-fieldset--reason" aria-labelledby="correction-reason-heading">
+                        <legend id="correction-reason-heading" class="correction-dialog__section-title">
+                            <?php p($l->t('Reason for correction')); ?>
+                            <span class="form-required" aria-hidden="true">*</span>
+                        </legend>
+                        <p class="correction-dialog__block-hint"><?php p($l->t('Required for the audit trail (at least 10 characters).')); ?></p>
+                        <div class="form-group">
+                            <label for="correction-justification" class="form-label">
+                                <?php p($l->t('Explanation')); ?>
+                                <span class="sr-only"><?php p($l->t('required')); ?></span>
+                            </label>
+                            <textarea id="correction-justification"
+                                name="justification"
+                                class="form-textarea"
+                                rows="4"
+                                required
+                                minlength="10"
+                                maxlength="2000"
+                                aria-required="true"
+                                aria-describedby="correction-justification-help correction-justification-count"></textarea>
+                            <p id="correction-justification-help" class="form-help"><?php p($l->t('Describe what was wrong and why the times should change.')); ?></p>
+                            <p id="correction-justification-count" class="correction-dialog__char-count" aria-live="polite"></p>
+                        </div>
+                    </fieldset>
+
+                    <div id="correction-dialog-status" class="correction-dialog__status" aria-live="polite"></div>
+
+                    <div class="modal-footer correction-dialog__footer">
+                        <button type="button" class="btn btn--secondary" id="correction-dialog-cancel"><?php p($l->t('Cancel')); ?></button>
+                        <button type="submit" class="btn btn--primary" id="correction-wizard-submit" form="time-entry-correction-form"><?php p($l->t('Submit correction request')); ?></button>
+                    </div>
+                </form>
+            </div>
+
         <?php endif; ?>
     </div>
 </main>
 </div><!-- /#arbeitszeitcheck-app -->
 
 <?php include __DIR__ . '/common/main-ui-l10n.php'; ?>
+<?php include __DIR__ . '/common/time-entry-correction-l10n.php'; ?>
 
 <!-- Initialize JavaScript -->
 <script nonce="<?php p($_['cspNonce'] ?? ''); ?>" type="text/javascript">
@@ -1016,7 +1218,9 @@ $__jsEnc = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UN
         create: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.time_entry.apiStore'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
         update: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.time_entry.apiUpdate', ['id' => '__ID__']), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
         delete: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.time_entry.apiDelete', ['id' => '__ID__']), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
-        export: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.export.timeEntries'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>
+        export: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.export.timeEntries'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
+        requestCorrection: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.time_entry.requestCorrection', ['id' => '__ID__']), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
+        cancelCorrection: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.time_entry.cancelCorrection', ['id' => '__ID__']), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>
     };
 
     // Escape HTML for safe injection (XSS prevention)
