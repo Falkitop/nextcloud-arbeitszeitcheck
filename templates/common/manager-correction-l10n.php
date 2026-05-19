@@ -46,12 +46,46 @@ $managerCorrectionStringIds = [
 	'Reject Request',
 	'Failed to approve.',
 	'Failed to reject.',
+	// Strings used by manager-correction-dialog.js / common/time-entry-clock-form.js.
+	'Date',
+	'required',
+	'dd.mm.yyyy',
+	'Today',
+	'Working Hours',
+	'Start Time',
+	'End Time',
+	'Actions',
+	'Remove',
 ];
 
 $managerCorrectionL10n = [];
 foreach ($managerCorrectionStringIds as $msgid) {
 	$managerCorrectionL10n[$msgid] = $l->t($msgid);
 }
+
+// Keyed entries (separate from passthrough $l->t()) so JS can request via key.
+$managerCorrectionL10n = array_merge($managerCorrectionL10n, [
+	'managerCorrectionIntro' => $l->t('Changes are applied immediately and the employee is notified. A reason is required for the audit log.'),
+	'managerCorrectionBreaksHelp' => $l->t('Adjust breaks if needed. Each break must be at least 15 minutes and within working hours.'),
+	'correctionWorkingDayLegend' => $l->t('Corrected working day'),
+	'correctionDateHelp' => $l->t('Format: dd.mm.yyyy'),
+	'correctionNightShiftHint' => $l->t('Night shift: if end is earlier than start (e.g. 22:00–06:00), end counts as the next day.'),
+	'correctionBreaksOptional' => $l->t('Breaks (optional)'),
+	'correctionBreaksEmpty' => $l->t('No breaks added.'),
+	'correctionAddBreak' => $l->t('Add break'),
+	'correctionReasonHelp' => $l->t('Required for the audit trail (at least 10 characters).'),
+	'invalidDate' => $l->t('Please enter a valid date (dd.mm.yyyy).'),
+	'invalidWorkTimes' => $l->t('Please enter valid start and end times.'),
+	'invalidBreakTimes' => $l->t('Please enter valid break times.'),
+	'breakTooShort' => $l->t('Each break must be at least 15 minutes.'),
+	'breakOutsideWork' => $l->t('Breaks must be within working hours.'),
+	'breaksOverlap' => $l->t('Breaks must not overlap.'),
+	'breakNumber' => $l->t('Break {number}'),
+	'reasonRequired' => $l->t('A reason of at least 10 characters is required.'),
+	'remove' => $l->t('Remove'),
+	'start' => $l->t('Start'),
+	'end' => $l->t('End'),
+]);
 
 ?>
 <script nonce="<?php p($_['cspNonce'] ?? ''); ?>">

@@ -73,6 +73,12 @@ class AdminController extends Controller
 	private const MAX_NOTIFICATION_RECIPIENT_LENGTH = 254;
 	private const MAX_NOTIFICATION_RECIPIENTS_RAW_LENGTH = 4000;
 
+	/** Hard cap on candidate users scanned by getDashboardEmployees to bound memory/CPU. */
+	private const DASHBOARD_EMPLOYEES_MAX_SCAN = 5000;
+
+	/** Maximum length of the search string for getDashboardEmployees. */
+	private const DASHBOARD_EMPLOYEES_MAX_SEARCH_LENGTH = 200;
+
 	/** Max date range for admin exports (prevents heavy queries / DoS) */
 	private TimeEntryMapper $timeEntryMapper;
 	private ComplianceViolationMapper $violationMapper;
@@ -337,8 +343,8 @@ class AdminController extends Controller
 		// Add common JavaScript files
 		Util::addScript('arbeitszeitcheck', 'common/utils');
 		Util::addScript('arbeitszeitcheck', 'common/time');
-		Util::addScript('arbeitszeitcheck', 'common/components');
 		Util::addScript('arbeitszeitcheck', 'common/messaging');
+		Util::addScript('arbeitszeitcheck', 'common/components');
 		Util::addScript('arbeitszeitcheck', 'admin-dashboard');
 
 		try {
@@ -368,11 +374,20 @@ class AdminController extends Controller
 				];
 			}
 
+			$withOvertimeTracking = $this->userOvertimeSettingsService->countUsersWithTrackingFrom();
+			$withoutOvertimeTracking = max(0, $totalUsers - $withOvertimeTracking);
+
 			$response = new TemplateResponse('arbeitszeitcheck', 'admin-dashboard', [
 				'statistics' => [
 					'total_users' => $totalUsers,
 					'active_users_today' => $activeUsersToday,
 					'unresolved_violations' => $unresolvedCount
+				],
+				'overtime_onboarding' => [
+					'show_banner' => $totalUsers > 0 && $withoutOvertimeTracking > 0,
+					'without_tracking' => $withoutOvertimeTracking,
+					'with_tracking' => $withOvertimeTracking,
+					'total_users' => $totalUsers,
 				],
 				'recent_violations' => $violationsData,
 				'urlGenerator' => $this->urlGenerator,
@@ -2133,6 +2148,9 @@ class AdminController extends Controller
 			$compliantUsers = max(0, $totalUsers - $usersWithViolationsCount);
 			$compliancePercentage = $totalUsers > 0 ? round(($compliantUsers / $totalUsers) * 100, 1) : 100.0;
 
+			$withOvertimeTracking = $this->userOvertimeSettingsService->countUsersWithTrackingFrom();
+			$withoutOvertimeTracking = max(0, $totalUsers - $withOvertimeTracking);
+
 			return new JSONResponse([
 				'success' => true,
 				'statistics' => [
@@ -2140,7 +2158,12 @@ class AdminController extends Controller
 					'active_users_today' => $activeUsersToday,
 					'unresolved_violations' => $unresolvedCount,
 					'compliance_percentage' => $compliancePercentage,
-					'compliant_users' => $compliantUsers
+					'compliant_users' => $compliantUsers,
+					'overtime_tracking' => [
+						'users_with_tracking_from' => $withOvertimeTracking,
+						'users_without_tracking_from' => $withoutOvertimeTracking,
+						'show_onboarding_hint' => $totalUsers > 0 && $withoutOvertimeTracking > 0,
+					],
 				]
 			]);
 		} catch (\Throwable $e) {
@@ -2149,6 +2172,159 @@ class AdminController extends Controller
 				'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.')
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
+	}
+
+	/**
+	 * Lightweight employee list for admin dashboard drill-down modals.
+	 *
+	 * Performance considerations:
+	 * - Time-entry and overtime-setting lookups are resolved through bulk-built
+	 *   in-memory hash maps to avoid N+1 round-trips even on installs with
+	 *   thousands of users.
+	 * - The number of candidate users scanned is hard-capped at
+	 *   {@see self::DASHBOARD_EMPLOYEES_MAX_SCAN} so this endpoint never
+	 *   degrades into an unbounded query for very large directories. Clients
+	 *   are expected to narrow further via the `search` parameter when the
+	 *   `truncated` flag in the response is set.
+	 *
+	 * Security:
+	 * - Admin-only by middleware (`AdminController` has no `NoAdminRequired`).
+	 * - `#[NoCSRFRequired]` is set because this is a GET endpoint used both by
+	 *   the modal (AJAX with auth cookie) and the CSV download (top-level
+	 *   navigation), neither of which can attach a CSRF token portably.
+	 * - The CSV output is hardened against formula injection
+	 *   ({@see self::sanitizeCsvCellValue()}); display names and emails are
+	 *   user-controlled in Nextcloud.
+	 *
+	 * @param string $filter `all` (default) or `active_today`
+	 */
+	#[NoCSRFRequired]
+	public function getDashboardEmployees(
+		string $filter = 'all',
+		?string $search = null,
+		?int $limit = 100,
+		?int $offset = 0,
+		?string $format = null,
+	): JSONResponse|DataDownloadResponse {
+		try {
+			$filter = strtolower(trim($filter));
+			if (!in_array($filter, ['all', 'active_today'], true)) {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('Invalid filter.'),
+				], Http::STATUS_BAD_REQUEST);
+			}
+
+			$format = $format !== null ? strtolower(trim($format)) : null;
+			if ($format !== null && !in_array($format, ['', 'csv'], true)) {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('Invalid export format.'),
+				], Http::STATUS_BAD_REQUEST);
+			}
+
+			$normalizedLimit = max(1, min((int)($limit ?? 100), Constants::MAX_LIST_LIMIT));
+			$normalizedOffset = max(0, (int)($offset ?? 0));
+			$search = $search !== null ? trim($search) : '';
+			if (mb_strlen($search) > self::DASHBOARD_EMPLOYEES_MAX_SEARCH_LENGTH) {
+				$search = mb_substr($search, 0, self::DASHBOARD_EMPLOYEES_MAX_SEARCH_LENGTH);
+			}
+
+			$today = new \DateTime();
+			$today->setTime(0, 0, 0);
+			$activeTodayIds = $this->timeEntryMapper->findDistinctUserIdsByDate($today);
+			$activeTodayLookup = array_fill_keys($activeTodayIds, true);
+			$trackingFromLookup = array_fill_keys(
+				$this->userOvertimeSettingsService->listUserIdsWithTrackingFrom(),
+				true
+			);
+
+			$scanCap = self::DASHBOARD_EMPLOYEES_MAX_SCAN;
+			$candidateUsers = $this->userManager->search($search, $scanCap + 1, 0);
+			$truncated = count($candidateUsers) > $scanCap;
+			if ($truncated) {
+				$candidateUsers = array_slice($candidateUsers, 0, $scanCap);
+			}
+
+			$rows = [];
+			foreach ($candidateUsers as $user) {
+				$userId = (string)$user->getUID();
+				$isActiveToday = isset($activeTodayLookup[$userId]);
+				if ($filter === 'active_today' && !$isActiveToday) {
+					continue;
+				}
+				$rows[] = [
+					'userId' => $userId,
+					'displayName' => (string)$user->getDisplayName(),
+					'email' => $user->getEMailAddress() ?? '',
+					'enabled' => $user->isEnabled(),
+					'hasTimeEntriesToday' => $isActiveToday,
+					'hasOvertimeTrackingFrom' => isset($trackingFromLookup[$userId]),
+				];
+			}
+
+			usort($rows, static function (array $a, array $b): int {
+				return strcasecmp((string)$a['displayName'], (string)$b['displayName']);
+			});
+
+			$total = count($rows);
+			$page = array_slice($rows, $normalizedOffset, $normalizedLimit);
+
+			if ($format === 'csv') {
+				$exportRows = array_map(static function (array $row): array {
+					return [
+						'user_id' => self::sanitizeCsvCellValue((string)$row['userId']),
+						'display_name' => self::sanitizeCsvCellValue((string)$row['displayName']),
+						'email' => self::sanitizeCsvCellValue((string)$row['email']),
+						'enabled' => $row['enabled'] ? 'yes' : 'no',
+						'active_today' => $row['hasTimeEntriesToday'] ? 'yes' : 'no',
+						'overtime_tracking_from_set' => $row['hasOvertimeTrackingFrom'] ? 'yes' : 'no',
+					];
+				}, $rows);
+
+				$filename = 'employees-' . $filter . '-' . date('Y-m-d') . '.csv';
+				return $this->exportAsCsv($exportRows, $filename);
+			}
+
+			return new JSONResponse([
+				'success' => true,
+				'filter' => $filter,
+				'employees' => $page,
+				'total' => $total,
+				'limit' => $normalizedLimit,
+				'offset' => $normalizedOffset,
+				'truncated' => $truncated,
+				'scan_cap' => $scanCap,
+			]);
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error(
+				'Error in AdminController::getDashboardEmployees: ' . $e->getMessage(),
+				['exception' => $e]
+			);
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.'),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	/**
+	 * Mitigate CSV-formula injection for downstream spreadsheet consumers.
+	 *
+	 * Excel / LibreOffice interpret cells starting with `=`, `+`, `-`, `@`,
+	 * `\t`, or `\r` as formulas. Prefixing such values with a single quote
+	 * neutralises them without changing the visible text once imported.
+	 */
+	private static function sanitizeCsvCellValue(string $value): string
+	{
+		if ($value === '') {
+			return $value;
+		}
+		$first = $value[0];
+		if ($first === '=' || $first === '+' || $first === '-' || $first === '@' || $first === "\t" || $first === "\r") {
+			return "'" . $value;
+		}
+		return $value;
 	}
 
 	/**
@@ -2162,14 +2338,29 @@ class AdminController extends Controller
 	public function getUsers(?string $search = null, ?int $limit = 50, ?int $offset = 0): JSONResponse
 	{
 		try {
+			$activeTodayOnly = $this->request->getParam('active_today') === '1'
+				|| $this->request->getParam('active_today') === 'true';
+
 			// Get all users from Nextcloud
 			$users = $this->userManager->search($search ?? '', $limit, $offset);
 
 			$usersData = [];
 			$currentYear = (int)date('Y');
+			$todayFilter = new \DateTime();
+			$todayFilter->setTime(0, 0, 0);
+			$activeTodayLookup = null;
+			if ($activeTodayOnly) {
+				$activeTodayLookup = array_fill_keys(
+					$this->timeEntryMapper->findDistinctUserIdsByDate($todayFilter),
+					true
+				);
+			}
 			foreach ($users as $user) {
 				try {
 					$userId = (string)$user->getUID();
+					if ($activeTodayLookup !== null && !isset($activeTodayLookup[$userId])) {
+						continue;
+					}
 					$policy = $this->userVacationPolicyAssignmentMapper->findCurrentByUser($userId);
 					$entitlementPreview = $this->vacationEntitlementEngine->computeForDate($userId, new \DateTimeImmutable('today'));
 
@@ -2234,15 +2425,20 @@ class AdminController extends Controller
 			}
 
 			// Get total count for pagination
-			$totalCount = $this->userManager->countUsersTotal(0, false);
-			if ($totalCount === false) {
-				$totalCount = count($users);
+			if ($activeTodayOnly) {
+				$totalCount = count($this->timeEntryMapper->findDistinctUserIdsByDate($todayFilter));
+			} else {
+				$totalCount = $this->userManager->countUsersTotal(0, false);
+				if ($totalCount === false) {
+					$totalCount = count($users);
+				}
 			}
 
 			return new JSONResponse([
 				'success' => true,
 				'users' => $usersData,
-				'total' => $totalCount
+				'total' => $totalCount,
+				'filter' => $activeTodayOnly ? 'active_today' : 'all',
 			]);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in AdminController::getUsers: ' . $e->getMessage(), [

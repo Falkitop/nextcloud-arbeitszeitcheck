@@ -1,3 +1,16 @@
+## 1.3.6 – 2026-05-19
+
+### Neu
+
+- **Manager: Mitarbeiter-Zeiteinträge & Abwesenheiten — barrierefreie Filterleiste** (`templates/manager-time-entries.php`, `manager-absences.php`, `css/manager-time-entries.css`, `js/manager-time-entries.js`, `js/manager-absences.js`): zweizeiliges CSS-Grid mit ausgerichteten Beschriftungen/Steuerelementen, WCAG-2.1-AA-Muster, clientseitige Datumsvalidierung und **maximal 365 Tage** Zeitraum (Browser + Listen-APIs in `ManagerController`).
+- **Manager-Korrekturdialog** auf Mitarbeiter-Zeiteinträgen (`js/manager-correction-dialog.js`, `js/common/time-entry-clock-form.js`, `lib/Support/TimeEntryClockPayloadBuilder.php`): europäisches Datum + Uhrzeit-Matrix, optionale Pausen, serverseitiger Payload-Builder mit Unit-Tests.
+- **`TemplateL10n` + `templates/common/manager-employee-list-l10n.php`**: sichere serverseitige JS-Übersetzungen (ein `json_encode` aus Plain-Strings) — behebt Internal Server Error durch `json_encode($l->t('…%d…'))` ohne `vsprintf`-Argumente.
+
+### Behoben
+
+- **Absturz der Seite „Mitarbeiter-Zeiteinträge“** (`ValueError` in `L10NString` / `vsprintf`) beim Laden der Manager-Listen-L10n.
+- Kleinere Anpassungen an Compliance-Verstößen, Admin-Dashboard und Benutzerhandbuch in diesem Release-Zug.
+
 ## 1.3.5 – 2026-05-19
 
 ### Neu
@@ -30,6 +43,9 @@
 - **`TimeClientBootstrap`** — einheitliche Registrierung der Client-Zeitzonen-Stack inkl. Dashboard-Widgets.
 - **Korrektur-Anfrage-Dialog** für Mitarbeitende (europäisches Datum, Stunden/Minuten-Auswahl, Pflichtbegründung, WCAG-konforme Fehleranzeige).
 - **Gemeinsame JS-L10n-Bundles** für Korrekturen (`time-entry-correction-l10n.php`, `manager-correction-l10n.php`).
+- **Manager-Direktkorrektur:** Datum + Uhrzeit-Matrix und Pausen wie bei Mitarbeitenden (`manager-correction-dialog.js`, `common/time-entry-clock-form.js`).
+- **Admin-Dashboard:** Klickbare Statistik-Kacheln (Mitarbeitendenliste, aktiv heute, CSV-Export), Hinweis bei fehlendem Überstunden-Stichtag.
+- **Manager-Dashboard:** Klickbare Team-Compliance-Zahlen mit Links zu gefilterten Verstößen pro Person.
 
 ### Behoben
 

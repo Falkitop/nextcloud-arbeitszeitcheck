@@ -250,4 +250,68 @@ class UserSettingsMapper extends QBMapper
 		}
 		return (string)$val;
 	}
+
+	/**
+	 * Count distinct users that have a non-empty, non-null value for a setting key.
+	 *
+	 * Rows with `setting_value IS NULL` are excluded automatically because
+	 * SQL `!= ''` against NULL yields UNKNOWN which fails the WHERE clause.
+	 */
+	public function countDistinctUsersWithNonEmptySetting(string $settingKey): int
+	{
+		try {
+			$qb = $this->db->getQueryBuilder();
+			$qb->select($qb->createFunction('COUNT(DISTINCT user_id)'))
+				->from($this->getTableName())
+				->where($qb->expr()->eq('setting_key', $qb->createNamedParameter($settingKey)))
+				->andWhere($qb->expr()->isNotNull('setting_value'))
+				->andWhere($qb->expr()->neq('setting_value', $qb->createNamedParameter('')));
+
+			return (int)$qb->executeQuery()->fetchOne();
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error(
+				'Error counting users with setting ' . $settingKey . ': ' . $e->getMessage(),
+				['exception' => $e]
+			);
+			return 0;
+		}
+	}
+
+	/**
+	 * List user IDs that have a non-empty, non-null value for a setting key.
+	 *
+	 * Used for bulk lookups (e.g. admin dashboard drill-downs) so callers can
+	 * avoid an O(N) per-user round-trip. Returns an empty array on any DB
+	 * error so callers can degrade gracefully.
+	 *
+	 * @return list<string>
+	 */
+	public function findUserIdsWithNonEmptySetting(string $settingKey): array
+	{
+		try {
+			$qb = $this->db->getQueryBuilder();
+			$qb->selectDistinct('user_id')
+				->from($this->getTableName())
+				->where($qb->expr()->eq('setting_key', $qb->createNamedParameter($settingKey)))
+				->andWhere($qb->expr()->isNotNull('setting_value'))
+				->andWhere($qb->expr()->neq('setting_value', $qb->createNamedParameter('')));
+
+			$result = $qb->executeQuery();
+			$userIds = [];
+			while (($row = $result->fetch()) !== false) {
+				$uid = (string)($row['user_id'] ?? '');
+				if ($uid !== '') {
+					$userIds[] = $uid;
+				}
+			}
+			$result->closeCursor();
+			return $userIds;
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error(
+				'Error listing users with setting ' . $settingKey . ': ' . $e->getMessage(),
+				['exception' => $e]
+			);
+			return [];
+		}
+	}
 }

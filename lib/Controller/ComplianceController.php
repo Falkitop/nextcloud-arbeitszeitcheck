@@ -26,6 +26,7 @@ use OCP\AppFramework\Http\JSONResponse;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\IRequest;
 use OCP\IURLGenerator;
+use OCP\IUserManager;
 use OCP\IUserSession;
 use OCP\IL10N;
 use OCP\Util;
@@ -42,6 +43,7 @@ class ComplianceController extends Controller
 	private AuditLogMapper $auditLogMapper;
 	private PermissionService $permissionService;
 	private IUserSession $userSession;
+	private IUserManager $userManager;
 	private IURLGenerator $urlGenerator;
 	private IL10N $l10n;
 
@@ -53,6 +55,7 @@ class ComplianceController extends Controller
 		AuditLogMapper $auditLogMapper,
 		PermissionService $permissionService,
 		IUserSession $userSession,
+		IUserManager $userManager,
 		IURLGenerator $urlGenerator,
 		CSPService $cspService,
 		IL10N $l10n
@@ -63,6 +66,7 @@ class ComplianceController extends Controller
 		$this->auditLogMapper = $auditLogMapper;
 		$this->permissionService = $permissionService;
 		$this->userSession = $userSession;
+		$this->userManager = $userManager;
 		$this->urlGenerator = $urlGenerator;
 		$this->l10n = $l10n;
 		$this->setCspService($cspService);
@@ -219,11 +223,19 @@ class ComplianceController extends Controller
 		Util::addScript('arbeitszeitcheck', 'compliance-violations');
 
 		try {
-			$userId = $this->getUserId();
+			$currentUserId = $this->getUserId();
+			$filterUserId = trim((string)($this->request->getParam('userId') ?? ''));
+			$targetUserId = $currentUserId;
+			$filterDisplayName = null;
+			if ($filterUserId !== '' && $filterUserId !== $currentUserId) {
+				$this->ensureCanAccessUserCompliance($currentUserId, $filterUserId);
+				$targetUserId = $filterUserId;
+				$user = $this->userManager->get($filterUserId);
+				$filterDisplayName = $user ? $user->getDisplayName() : $filterUserId;
+			}
 
-			// Get all violations for the current user (initial view).
-			// The filters and date range in the UI are handled via the API (getViolations).
-			$violations = $this->violationMapper->findByUser($userId, null);
+			// Initial view; filters and date range are handled via the API (getViolations).
+			$violations = $this->violationMapper->findByUser($targetUserId, null);
 			$violations = array_slice($violations, 0, 50);
 
 			$violationsData = [];
@@ -238,12 +250,14 @@ class ComplianceController extends Controller
 				];
 			}
 
-			$isAdmin = $this->permissionService->isAdmin($userId);
-			$canAccessManagerDashboard = $this->permissionService->canAccessManagerDashboard($userId);
+			$isAdmin = $this->permissionService->isAdmin($currentUserId);
+			$canAccessManagerDashboard = $this->permissionService->canAccessManagerDashboard($currentUserId);
 
 			$response = new TemplateResponse('arbeitszeitcheck', 'compliance-violations', [
 				'violations' => $violationsData,
 				'total' => count($violations),
+				'filterUserId' => $filterUserId !== '' && $filterUserId !== $currentUserId ? $filterUserId : null,
+				'filterDisplayName' => $filterDisplayName,
 				'urlGenerator' => $this->urlGenerator,
 				'l' => $this->l10n,
 				'showSubstitutionLink' => false,

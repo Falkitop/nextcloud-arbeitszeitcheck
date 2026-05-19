@@ -89,6 +89,9 @@ class AdminControllerTest extends TestCase
 	/** @var \OCA\ArbeitszeitCheck\Service\LayeredVacationDefaultsService|\PHPUnit\Framework\MockObject\MockObject */
 	private $layeredVacationDefaultsService;
 
+	/** @var UserOvertimeSettingsService|\PHPUnit\Framework\MockObject\MockObject */
+	private $userOvertimeSettingsService;
+
 	/** @var UserVacationPolicyAssignmentMapper|\PHPUnit\Framework\MockObject\MockObject */
 	private $userVacationPolicyAssignmentMapper;
 
@@ -141,6 +144,7 @@ class AdminControllerTest extends TestCase
 			'trace' => [],
 		]);
 		$this->layeredVacationDefaultsService = $this->createMock(\OCA\ArbeitszeitCheck\Service\LayeredVacationDefaultsService::class);
+		$this->userOvertimeSettingsService = $this->createMock(UserOvertimeSettingsService::class);
 
 		$this->controller = new AdminController(
 			'arbeitszeitcheck',
@@ -171,8 +175,93 @@ class AdminControllerTest extends TestCase
 			$this->userVacationPolicyAssignmentMapper,
 			$this->vacationEntitlementEngine,
 			$this->layeredVacationDefaultsService,
-			$this->createMock(UserOvertimeSettingsService::class)
+			$this->userOvertimeSettingsService
 		);
+	}
+
+	private function makeUserMock(string $uid, string $displayName, ?string $email = null, bool $enabled = true): IUser
+	{
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn($uid);
+		$user->method('getDisplayName')->willReturn($displayName);
+		$user->method('getEMailAddress')->willReturn($email);
+		$user->method('isEnabled')->willReturn($enabled);
+		return $user;
+	}
+
+	public function testGetDashboardEmployeesRejectsUnknownFilter(): void
+	{
+		$response = $this->controller->getDashboardEmployees('bogus');
+		$this->assertInstanceOf(JSONResponse::class, $response);
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
+		$this->assertFalse($response->getData()['success']);
+	}
+
+	public function testGetDashboardEmployeesRejectsUnknownFormat(): void
+	{
+		$response = $this->controller->getDashboardEmployees('all', null, null, null, 'json');
+		$this->assertInstanceOf(JSONResponse::class, $response);
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
+	}
+
+	public function testGetDashboardEmployeesReturnsList(): void
+	{
+		$this->userManager->method('search')->willReturn([
+			$this->makeUserMock('alice', 'Alice'),
+			$this->makeUserMock('bob', 'Bob'),
+		]);
+		$this->timeEntryMapper->method('findDistinctUserIdsByDate')->willReturn(['bob']);
+		$this->userOvertimeSettingsService->method('listUserIdsWithTrackingFrom')->willReturn(['alice']);
+
+		$response = $this->controller->getDashboardEmployees('all');
+		$this->assertInstanceOf(JSONResponse::class, $response);
+		$data = $response->getData();
+		$this->assertTrue($data['success']);
+		$this->assertSame(2, $data['total']);
+		$this->assertSame('all', $data['filter']);
+		$this->assertFalse($data['truncated']);
+		$byId = [];
+		foreach ($data['employees'] as $row) {
+			$byId[$row['userId']] = $row;
+		}
+		$this->assertTrue($byId['alice']['hasOvertimeTrackingFrom']);
+		$this->assertFalse($byId['alice']['hasTimeEntriesToday']);
+		$this->assertTrue($byId['bob']['hasTimeEntriesToday']);
+		$this->assertFalse($byId['bob']['hasOvertimeTrackingFrom']);
+	}
+
+	public function testGetDashboardEmployeesActiveTodayFilter(): void
+	{
+		$this->userManager->method('search')->willReturn([
+			$this->makeUserMock('alice', 'Alice'),
+			$this->makeUserMock('bob', 'Bob'),
+		]);
+		$this->timeEntryMapper->method('findDistinctUserIdsByDate')->willReturn(['bob']);
+		$this->userOvertimeSettingsService->method('listUserIdsWithTrackingFrom')->willReturn([]);
+
+		$response = $this->controller->getDashboardEmployees('active_today');
+		$data = $response->getData();
+		$this->assertTrue($data['success']);
+		$this->assertSame(1, $data['total']);
+		$this->assertSame('bob', $data['employees'][0]['userId']);
+		$this->assertTrue($data['employees'][0]['hasTimeEntriesToday']);
+	}
+
+	public function testGetDashboardEmployeesCsvExportSanitisesFormulaInjection(): void
+	{
+		$this->userManager->method('search')->willReturn([
+			$this->makeUserMock('alice', '=cmd|/c calc', '+attacker@example.com'),
+			$this->makeUserMock('bob', 'Bob'),
+		]);
+		$this->timeEntryMapper->method('findDistinctUserIdsByDate')->willReturn([]);
+		$this->userOvertimeSettingsService->method('listUserIdsWithTrackingFrom')->willReturn([]);
+
+		$response = $this->controller->getDashboardEmployees('all', null, null, null, 'csv');
+		$this->assertInstanceOf(DataDownloadResponse::class, $response);
+		$body = (string)$response->render();
+		$this->assertStringContainsString('"\'=cmd|/c calc"', $body);
+		$this->assertStringContainsString('"\'+attacker@example.com"', $body);
+		$this->assertStringContainsString('"Bob"', $body);
 	}
 
 	/**

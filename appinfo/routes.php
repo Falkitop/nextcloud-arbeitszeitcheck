@@ -170,6 +170,7 @@ return [
 		['name' => 'admin#saveStateHoliday', 'url' => '/api/admin/state-holidays', 'verb' => 'POST'],
 		['name' => 'admin#deleteStateHoliday', 'url' => '/api/admin/state-holidays/{id}', 'verb' => 'DELETE'],
 		['name' => 'admin#getStatistics', 'url' => '/api/admin/statistics', 'verb' => 'GET'],
+		['name' => 'admin#getDashboardEmployees', 'url' => '/api/admin/dashboard-employees', 'verb' => 'GET'],
 		['name' => 'admin#getAuditLogs', 'url' => '/api/admin/audit-logs', 'verb' => 'GET'],
 		['name' => 'admin#getAuditLogStats', 'url' => '/api/admin/audit-logs/stats', 'verb' => 'GET'],
 		['name' => 'admin#exportAuditLogs', 'url' => '/api/admin/audit-logs/export', 'verb' => 'GET'],

@@ -25,25 +25,49 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
                 <p><?php p($l->t('Current key metrics and open working-time compliance issues. Detailed settings are available in the left navigation.')); ?></p>
             </div>
 
+            <?php
+            $overtimeOnboarding = $_['overtime_onboarding'] ?? [];
+            $showOvertimeBanner = !empty($overtimeOnboarding['show_banner']);
+            $usersAdminUrl = $_['urlGenerator']->linkToRoute('arbeitszeitcheck.admin.users');
+            $violationsUrl = $_['urlGenerator']->linkToRoute('arbeitszeitcheck.compliance.violations');
+            ?>
+            <?php if ($showOvertimeBanner): ?>
+            <div id="admin-overtime-onboarding-banner" class="callout callout--warning admin-overtime-onboarding" role="region" aria-labelledby="admin-overtime-onboarding-title">
+                <h2 id="admin-overtime-onboarding-title" class="callout__title"><?php p($l->t('Configure overtime balances')); ?></h2>
+                <p class="callout__text">
+                    <?php p($l->t('%s of %s employees have no overtime tracking start date (Stichtag). Without it, year-to-date balances are calculated from 1 January and may show large undertime until configured.', [
+                        (string)($overtimeOnboarding['without_tracking'] ?? 0),
+                        (string)($overtimeOnboarding['total_users'] ?? 0),
+                    ])); ?>
+                </p>
+                <p class="callout__actions">
+                    <a id="admin-overtime-onboarding-link" class="btn btn--secondary btn--sm" href="<?php p($usersAdminUrl); ?>">
+                        <?php p($l->t('Open user administration')); ?>
+                    </a>
+                </p>
+            </div>
+            <?php endif; ?>
+
             <!-- Statistics Cards -->
             <div class="stats-grid">
-                <a class="stat-card stat-card--link" href="<?php p($_['urlGenerator']->linkToRoute('arbeitszeitcheck.admin.users')); ?>"
-                     title="<?php p($l->t('Total number of employees with access to time tracking')); ?>"
-                     aria-label="<?php p($l->t('Total employees: %s', [$_['statistics']['total_users'] ?? 0])); ?>">
-                    <div class="stat-number"><?php p($_['statistics']['total_users'] ?? 0); ?></div>
-                    <div class="stat-label"><?php p($l->t('Total employees')); ?></div>
-                </a>
-                <a class="stat-card stat-card--link" href="<?php p($_['urlGenerator']->linkToRoute('arbeitszeitcheck.admin.users')); ?>"
-                     title="<?php p($l->t('Number of employees with bookings today')); ?>"
-                     aria-label="<?php p($l->t('Employees active today: %s. Open user administration.', [$_['statistics']['active_users_today'] ?? 0])); ?>">
-                    <div class="stat-number"><?php p($_['statistics']['active_users_today'] ?? 0); ?></div>
-                    <div class="stat-label"><?php p($l->t('Active today')); ?></div>
-                </a>
-                <a class="stat-card stat-card--link" href="<?php p($_['urlGenerator']->linkToRoute('arbeitszeitcheck.compliance.violations')); ?>"
+                <button type="button" class="stat-card stat-card--drilldown" data-stat="total_users" data-drilldown-filter="all"
+                    aria-expanded="false"
+                    aria-label="<?php p($l->t('Total employees: %s. Show employee list.', [$_['statistics']['total_users'] ?? 0])); ?>">
+                    <span class="stat-number"><?php p($_['statistics']['total_users'] ?? 0); ?></span>
+                    <span class="stat-label"><?php p($l->t('Total employees')); ?></span>
+                </button>
+                <button type="button" class="stat-card stat-card--drilldown" data-stat="active_users_today" data-drilldown-filter="active_today"
+                    aria-expanded="false"
+                    aria-label="<?php p($l->t('Employees active today: %s. Show list.', [$_['statistics']['active_users_today'] ?? 0])); ?>">
+                    <span class="stat-number"><?php p($_['statistics']['active_users_today'] ?? 0); ?></span>
+                    <span class="stat-label"><?php p($l->t('Active today')); ?></span>
+                </button>
+                <a class="stat-card stat-card--link" data-stat="unresolved_violations" data-drilldown-filter="violations" data-href="<?php p($violationsUrl); ?>"
+                     href="<?php p($violationsUrl); ?>"
                      title="<?php p($l->t('Number of open working-time compliance violations')); ?>"
                      aria-label="<?php p($l->t('Unresolved violations: %s. Open compliance violations.', [$_['statistics']['unresolved_violations'] ?? 0])); ?>">
-                    <div class="stat-number"><?php p($_['statistics']['unresolved_violations'] ?? 0); ?></div>
-                    <div class="stat-label"><?php p($l->t('Open issues')); ?></div>
+                    <span class="stat-number"><?php p($_['statistics']['unresolved_violations'] ?? 0); ?></span>
+                    <span class="stat-label"><?php p($l->t('Open issues')); ?></span>
                 </a>
             </div>
 
@@ -128,3 +152,31 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
     </div>
 </main>
 </div><!-- /#arbeitszeitcheck-app -->
+
+<?php
+$adminDashboardL10n = [
+	'activeTodayDrilldownTitle' => $l->t('Active today'),
+	'totalEmployeesDrilldownTitle' => $l->t('All employees'),
+	'drilldownHelp' => $l->t('Search by name or user ID. Export downloads the full filtered list.'),
+	'Search employees' => $l->t('Search employees'),
+	'Search employees…' => $l->t('Search employees…'),
+	'Export CSV' => $l->t('Export CSV'),
+	'Loading…' => $l->t('Loading…'),
+	'Name' => $l->t('Name'),
+	'User ID' => $l->t('User ID'),
+	'Active today' => $l->t('Active today'),
+	'Overtime tracking set' => $l->t('Overtime tracking set'),
+	'No employees found.' => $l->t('No employees found.'),
+	'Yes' => $l->t('Yes'),
+	'No' => $l->t('No'),
+	'drilldownCount' => $l->t('{count} employees'),
+	'drilldownLoadError' => $l->t('Could not load employee list.'),
+	'drilldownTruncatedNotice' => $l->t('Showing the first results. Use search to narrow down the list.'),
+	'statisticsRefreshError' => $l->t('Could not refresh statistics.'),
+];
+?>
+<script nonce="<?php p($_['cspNonce'] ?? ''); ?>">
+window.ArbeitszeitCheck = window.ArbeitszeitCheck || {};
+window.ArbeitszeitCheck.l10n = window.ArbeitszeitCheck.l10n || {};
+Object.assign(window.ArbeitszeitCheck.l10n, <?php echo json_encode($adminDashboardL10n, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>);
+</script>

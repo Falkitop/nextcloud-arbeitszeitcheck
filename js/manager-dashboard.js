@@ -547,6 +547,83 @@
         });
     }
 
+    let lastComplianceMembers = [];
+
+    function complianceStatCard(bucket, value, label, extraClass) {
+        const clickable = value > 0 ? ' team-compliance-stat--clickable' : '';
+        const disabled = value > 0 ? '' : ' disabled';
+        return (
+            '<button type="button" class="team-compliance-stat team-compliance-stat--' + bucket + extraClass + clickable + '"'
+            + ' data-compliance-bucket="' + escapeHtml(bucket) + '"' + disabled
+            + ' aria-label="' + escapeHtml(label + ': ' + value) + '">'
+            + '<span class="team-compliance-stat__value">' + escapeHtml(String(value)) + '</span>'
+            + '<span class="team-compliance-stat__label">' + escapeHtml(label) + '</span>'
+            + '</button>'
+        );
+    }
+
+    function bindComplianceStatClicks() {
+        document.querySelectorAll('.team-compliance-stat--clickable').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const bucket = btn.getAttribute('data-compliance-bucket');
+                openComplianceMemberList(bucket);
+            });
+        });
+    }
+
+    function openComplianceMemberList(bucket) {
+        const Components = window.ArbeitszeitCheckComponents;
+        if (!Components || !Components.createModal) {
+            return;
+        }
+        const modalId = 'team-compliance-member-list';
+        const existing = document.getElementById(modalId);
+        if (existing) {
+            existing.remove();
+        }
+        const members = lastComplianceMembers.filter((m) => {
+            if (bucket === 'warning') {
+                return m.bucket === 'warning';
+            }
+            if (bucket === 'error') {
+                return m.bucket === 'critical';
+            }
+            if (bucket === 'ok') {
+                return m.bucket === 'compliant';
+            }
+            if (bucket === 'info') {
+                return (m.violationCount || 0) > 0;
+            }
+            return false;
+        });
+        const titleMap = {
+            warning: t('Team members with warnings', 'Team members with warnings'),
+            error: t('Team members with critical violations', 'Team members with critical violations'),
+            ok: t('Compliant team members', 'Compliant team members'),
+            info: t('Team members with violations', 'Team members with violations'),
+        };
+        let rows = '';
+        if (!members.length) {
+            rows = '<p class="team-compliance-empty">' + escapeHtml(t('No team members in this category.', 'No team members in this category.')) + '</p>';
+        } else {
+            rows = '<ul class="team-compliance-member-list">' + members.map((m) => {
+                const violationsLabel = t('Violations: %s', 'Violations: %s').replace('%s', String(m.violationCount || 0));
+                return '<li class="team-compliance-member-list__item">'
+                    + '<span class="team-compliance-member-list__name">' + escapeHtml(m.displayName || m.userId) + '</span>'
+                    + '<span class="team-compliance-member-list__meta">' + escapeHtml(violationsLabel) + '</span>'
+                    + '<a class="btn btn--sm btn--secondary" href="' + escapeHtml(m.violationsUrl) + '">' + escapeHtml(t('View violations', 'View violations')) + '</a>'
+                    + '</li>';
+            }).join('') + '</ul>';
+        }
+        Components.createModal({
+            id: modalId,
+            title: titleMap[bucket] || t('Team compliance', 'Team compliance'),
+            content: '<p class="form-help">' + escapeHtml(t('Open violations for a team member to review details.', 'Open violations for a team member to review details.')) + '</p>' + rows,
+            size: 'md',
+        });
+        Components.openModal(modalId);
+    }
+
     function renderTeamComplianceSummary(c) {
         const total = c.totalMembers || 0;
         const compliant = c.compliantMembers || 0;
@@ -554,28 +631,23 @@
         const withViolations = c.membersWithViolations || 0;
         const totalViolations = c.totalViolations || 0;
         const hasIssues = withViolations > 0 || withWarnings > 0 || totalViolations > 0;
+        lastComplianceMembers = Array.isArray(c.members) ? c.members : [];
 
-        return (
-            '<div class="team-compliance-grid">' +
-            '  <div class="team-compliance-stat team-compliance-stat--ok">' +
-            '    <span class="team-compliance-stat__value">' + escapeHtml(String(compliant)) + '</span>' +
-            '    <span class="team-compliance-stat__label">' + t('Compliant', 'Compliant') + '</span>' +
-            '  </div>' +
-            '  <div class="team-compliance-stat team-compliance-stat--warning' + (withWarnings > 0 ? ' team-compliance-stat--has-issues' : '') + '">' +
-            '    <span class="team-compliance-stat__value">' + escapeHtml(String(withWarnings)) + '</span>' +
-            '    <span class="team-compliance-stat__label">' + t('Warnings', 'Warnings') + '</span>' +
-            '  </div>' +
-            '  <div class="team-compliance-stat team-compliance-stat--error' + (withViolations > 0 ? ' team-compliance-stat--has-issues' : '') + '">' +
-            '    <span class="team-compliance-stat__value">' + escapeHtml(String(withViolations)) + '</span>' +
-            '    <span class="team-compliance-stat__label">' + t('Critical Violations', 'Critical Violations') + '</span>' +
-            '  </div>' +
-            (totalViolations > 0 ? '<div class="team-compliance-stat team-compliance-stat--info">' +
-            '    <span class="team-compliance-stat__value">' + escapeHtml(String(totalViolations)) + '</span>' +
-            '    <span class="team-compliance-stat__label">' + t('Total Violations', 'Total Violations') + '</span>' +
-            '  </div>' : '') +
-            '</div>' +
-            (hasIssues ? '<p class="team-compliance-note">' + escapeHtml(t('Some team members have compliance issues. Check the Compliance section for details.', 'Some team members have compliance issues. Check the Compliance section for details.')) + '</p>' : (total > 0 ? '<p class="team-compliance-note team-compliance-note--success">' + escapeHtml(t('All team members are compliant.', 'All team members are compliant.')) + '</p>' : '<p class="team-compliance-note">' + escapeHtml(t('No team members.', 'No team members.')) + '</p>'))
+        const html = (
+            '<div class="team-compliance-grid" role="group" aria-label="' + escapeHtml(t('Team compliance summary', 'Team compliance summary')) + '">'
+            + complianceStatCard('ok', compliant, t('Compliant', 'Compliant'), '')
+            + complianceStatCard('warning', withWarnings, t('Warnings', 'Warnings'), withWarnings > 0 ? ' team-compliance-stat--has-issues' : '')
+            + complianceStatCard('error', withViolations, t('Critical Violations', 'Critical Violations'), withViolations > 0 ? ' team-compliance-stat--has-issues' : '')
+            + (totalViolations > 0 ? complianceStatCard('info', totalViolations, t('Total Violations', 'Total Violations'), '') : '')
+            + '</div>'
+            + (hasIssues
+                ? '<p class="team-compliance-note">' + escapeHtml(t('Click a number to see affected team members.', 'Click a number to see affected team members.')) + '</p>'
+                : (total > 0
+                    ? '<p class="team-compliance-note team-compliance-note--success">' + escapeHtml(t('All team members are compliant.', 'All team members are compliant.')) + '</p>'
+                    : '<p class="team-compliance-note">' + escapeHtml(t('No team members.', 'No team members.')) + '</p>'))
         );
+        setTimeout(bindComplianceStatClicks, 0);
+        return html;
     }
 
     // ===== AUTO REFRESH =====

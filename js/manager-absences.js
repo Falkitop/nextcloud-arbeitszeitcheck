@@ -7,6 +7,9 @@
 		limit: 25,
 		offset: 0,
 		total: 0,
+		lastFilters: null,
+		loading: false,
+		countBeforeLoad: '',
 		dateLocale: window.ArbeitszeitCheck?.dateLocale || document.documentElement.lang || undefined,
 	};
 
@@ -143,7 +146,78 @@
 		if (!countEl) {
 			return;
 		}
-		countEl.textContent = t('{count} entries', '{count} entries').replace('{count}', String(state.total));
+		if (state.total <= 0 && !state.lastFilters) {
+			countEl.textContent = '';
+			state.countBeforeLoad = '';
+			return;
+		}
+		const text = t('{count} entries', '{count} entries').replace('{count}', String(state.total));
+		countEl.textContent = text;
+		state.countBeforeLoad = text;
+	}
+
+	function setLoading(isLoading) {
+		state.loading = isLoading;
+		const results = document.querySelector('.manager-time-entries-page__results');
+		if (results) {
+			results.setAttribute('aria-busy', isLoading ? 'true' : 'false');
+		}
+		const submitBtn = document.getElementById('employee-absences-submit');
+		const clearBtn = document.getElementById('employee-absences-clear');
+		const prevBtn = document.getElementById('employee-absences-prev');
+		const nextBtn = document.getElementById('employee-absences-next');
+		if (submitBtn) {
+			submitBtn.disabled = isLoading;
+		}
+		if (clearBtn) {
+			clearBtn.disabled = isLoading;
+		}
+		if (prevBtn) {
+			prevBtn.disabled = isLoading || state.offset <= 0;
+		}
+		if (nextBtn) {
+			nextBtn.disabled = isLoading || state.offset + state.limit >= state.total;
+		}
+		const countEl = document.getElementById('employee-absences-count');
+		if (!countEl) {
+			return;
+		}
+		if (isLoading) {
+			state.countBeforeLoad = countEl.textContent;
+			countEl.textContent = t('Loading...', 'Loading...');
+			return;
+		}
+		countEl.textContent = state.countBeforeLoad;
+	}
+
+	function clearFilterFieldErrors() {
+		const form = document.getElementById('employee-absences-filter-form');
+		if (!form) {
+			return;
+		}
+		form.querySelectorAll('[aria-invalid="true"]').forEach((el) => {
+			el.removeAttribute('aria-invalid');
+		});
+		const errorEl = document.getElementById('employee-absences-filter-error');
+		if (errorEl) {
+			errorEl.textContent = '';
+			errorEl.hidden = true;
+		}
+	}
+
+	function setFilterError(message, focusId) {
+		const errorEl = document.getElementById('employee-absences-filter-error');
+		if (errorEl) {
+			errorEl.textContent = message;
+			errorEl.hidden = !message;
+		}
+		if (message && focusId) {
+			const focusEl = document.getElementById(focusId);
+			if (focusEl) {
+				focusEl.setAttribute('aria-invalid', 'true');
+				focusEl.focus();
+			}
+		}
 	}
 
 	function populateRecordEmployeeSelect(employees) {
@@ -192,14 +266,12 @@
 		}
 	}
 
-	function buildQuery(filters) {
-		const dp = window.ArbeitszeitCheckDatepicker;
-		const toISO = dp && typeof dp.convertEuropeanToISO === 'function'
-			? dp.convertEuropeanToISO
-			: (value) => value;
+	function buildQuery(filters, isoDates) {
+		const startISO = isoDates?.startISO || europeanToYmd(filters.startDate);
+		const endISO = isoDates?.endISO || europeanToYmd(filters.endDate);
 		const params = new URLSearchParams();
-		params.set('startDate', toISO(filters.startDate));
-		params.set('endDate', toISO(filters.endDate));
+		params.set('startDate', startISO);
+		params.set('endDate', endISO);
 		params.set('limit', String(state.limit));
 		params.set('offset', String(state.offset));
 		if (filters.employeeId) {
@@ -228,28 +300,44 @@
 			type: String(formData.get('type') || ''),
 		};
 
-		if (!filters.startDate || !filters.endDate) {
-			setEmpty(t('Please select start and end date.', 'Please select start and end date.'));
+		const validation = validateFilters(filters);
+		if (!validation.valid) {
+			setEmpty(t('Choose a date range to load absences.', 'Choose a date range to load absences.'));
+			updateCount();
 			updatePagination();
 			return;
 		}
 
-		Utils.ajax(`/apps/arbeitszeitcheck/api/manager/employee-absences?${buildQuery(filters)}`, {
+		if (state.loading) {
+			return;
+		}
+
+		state.lastFilters = filters;
+		setLoading(true);
+		Utils.ajax(`/apps/arbeitszeitcheck/api/manager/employee-absences?${buildQuery(filters, validation)}`, {
 			method: 'GET',
 			onSuccess: (data) => {
+				clearFilterFieldErrors();
 				state.total = Number(data.total || 0);
 				const list = Array.isArray(data.employees) ? data.employees : [];
 				populateEmployees(list);
 				populateRecordEmployeeSelect(list);
 				renderEntries(Array.isArray(data.entries) ? data.entries : []);
 				updateCount();
+				state.countBeforeLoad = document.getElementById('employee-absences-count')?.textContent || '';
 				updatePagination();
+				syncRecordDatesFromFilter();
 			},
 			onError: (error) => {
 				const message = error?.error || t('Could not load employee absences.', 'Could not load employee absences.');
+				setFilterError(message);
 				Messaging.showError(message);
 				setEmpty(message);
+				updateCount();
+				updatePagination();
 			},
+		}).finally(() => {
+			setLoading(false);
 		});
 	}
 
@@ -280,13 +368,6 @@
 
 	function prefetchEmployeeDirectory() {
 		const dates = readFilterFormDates();
-		if (!dates.startDate || !dates.endDate) {
-			return;
-		}
-		const savedLimit = state.limit;
-		const savedOffset = state.offset;
-		state.limit = 1;
-		state.offset = 0;
 		const filters = {
 			employeeId: '',
 			startDate: dates.startDate,
@@ -294,7 +375,15 @@
 			status: '',
 			type: '',
 		};
-		Utils.ajax(`/apps/arbeitszeitcheck/api/manager/employee-absences?${buildQuery(filters)}`, {
+		const validation = validateFilters(filters);
+		if (!validation.valid) {
+			return;
+		}
+		const savedLimit = state.limit;
+		const savedOffset = state.offset;
+		state.limit = 1;
+		state.offset = 0;
+		Utils.ajax(`/apps/arbeitszeitcheck/api/manager/employee-absences?${buildQuery(filters, validation)}`, {
 			method: 'GET',
 			onSuccess: (data) => {
 				state.limit = savedLimit;
@@ -338,7 +427,71 @@
 			parseInt(parts[1], 10) - 1,
 			parseInt(parts[0], 10)
 		);
-		return Number.isNaN(date.getTime()) ? null : date;
+		if (
+			Number.isNaN(date.getTime())
+			|| date.getFullYear() !== parseInt(parts[2], 10)
+			|| date.getMonth() !== parseInt(parts[1], 10) - 1
+			|| date.getDate() !== parseInt(parts[0], 10)
+		) {
+			return null;
+		}
+		return date;
+	}
+
+	function validateFilters(filters) {
+		clearFilterFieldErrors();
+		if (!filters.startDate || !filters.endDate) {
+			const message = t('Please select start and end date.', 'Please select start and end date.');
+			setFilterError(
+				message,
+				!filters.startDate ? 'employee-absences-start-date-filter' : 'employee-absences-end-date-filter'
+			);
+			return { valid: false };
+		}
+		const startParsed = parseEuropeanDate(filters.startDate);
+		const endParsed = parseEuropeanDate(filters.endDate);
+		if (!startParsed || !endParsed) {
+			const message = t(
+				'Invalid date format. Please use dd.mm.yyyy (e.g., 15.01.2024).',
+				'Invalid date format. Please use dd.mm.yyyy (e.g., 15.01.2024).'
+			);
+			setFilterError(
+				message,
+				!startParsed ? 'employee-absences-start-date-filter' : 'employee-absences-end-date-filter'
+			);
+			return { valid: false };
+		}
+		if (startParsed > endParsed) {
+			const message = t(
+				'Invalid date range. The start date must be before the end date.',
+				'Invalid date range. The start date must be before the end date.'
+			);
+			setFilterError(message, 'employee-absences-start-date-filter');
+			return { valid: false };
+		}
+		const dp = window.ArbeitszeitCheckDatepicker;
+		const toISO = dp && typeof dp.convertEuropeanToISO === 'function'
+			? dp.convertEuropeanToISO
+			: europeanToYmd;
+		const startISO = toISO(filters.startDate);
+		const endISO = toISO(filters.endDate);
+		if (!/^\d{4}-\d{2}-\d{2}$/.test(startISO) || !/^\d{4}-\d{2}-\d{2}$/.test(endISO)) {
+			const message = t(
+				'Invalid date range. Please use valid dates in YYYY-MM-DD format.',
+				'Invalid date range. Please use valid dates in YYYY-MM-DD format.'
+			);
+			setFilterError(message, 'employee-absences-start-date-filter');
+			return { valid: false };
+		}
+		const maxDays = Number(window.ArbeitszeitCheck?.maxManagerListDateRangeDays) || 365;
+		const spanDays = Math.round((endParsed.getTime() - startParsed.getTime()) / 86400000) + 1;
+		if (spanDays > maxDays) {
+			const message = t('dateRangeTooLong', 'Date range must not exceed %d days. Please narrow the range.')
+				.replace('%d', String(maxDays));
+			setFilterError(message, 'employee-absences-start-date-filter');
+			return { valid: false };
+		}
+		return { valid: true, startISO, endISO };
 	}
 
 	function updateManagerRecordHistoricalHint() {
@@ -510,13 +663,33 @@
 		});
 
 		clearBtn.addEventListener('click', () => {
+			if (state.loading) {
+				return;
+			}
 			form.reset();
+			clearFilterFieldErrors();
 			setDefaultDateRange(true);
 			state.offset = 0;
 			state.total = 0;
+			state.lastFilters = null;
+			state.countBeforeLoad = '';
 			setEmpty(t('Choose a date range to load absences.', 'Choose a date range to load absences.'));
-			updateCount();
+			const countEl = document.getElementById('employee-absences-count');
+			if (countEl) {
+				countEl.textContent = '';
+			}
 			updatePagination();
+			syncRecordDatesFromFilter();
+		});
+
+		['employee-absences-start-date-filter', 'employee-absences-end-date-filter'].forEach((id) => {
+			const input = document.getElementById(id);
+			if (input) {
+				input.addEventListener('change', () => {
+					clearFilterFieldErrors();
+					syncRecordDatesFromFilter();
+				});
+			}
 		});
 	}
 

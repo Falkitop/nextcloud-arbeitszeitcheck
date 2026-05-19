@@ -450,8 +450,14 @@ class ManagerControllerTest extends TestCase
 			->willReturn([
 				'compliant' => true,
 				'critical_violations' => 0,
-				'violation_count' => 0
+				'warning_violations' => 0,
+				'violation_count' => 0,
+				'score' => 100,
 			]);
+		$this->userManager->method('getDisplayName')->with($teamMemberId)->willReturn('Employee One');
+		$this->urlGenerator->method('linkToRoute')
+			->with('arbeitszeitcheck.compliance.violations', ['userId' => $teamMemberId])
+			->willReturn('/apps/arbeitszeitcheck/compliance/violations?userId=employee1');
 
 		$response = $this->controller->getTeamCompliance();
 		$data = $response->getData();
@@ -460,6 +466,11 @@ class ManagerControllerTest extends TestCase
 		$this->assertArrayHasKey('compliance', $data);
 		$this->assertEquals(1, $data['compliance']['totalMembers']);
 		$this->assertEquals(1, $data['compliance']['compliantMembers']);
+		$this->assertArrayHasKey('members', $data['compliance']);
+		$this->assertCount(1, $data['compliance']['members']);
+		$this->assertEquals('employee1', $data['compliance']['members'][0]['userId']);
+		$this->assertEquals('compliant', $data['compliance']['members'][0]['bucket']);
+		$this->assertArrayHasKey('violationsUrl', $data['compliance']['members'][0]);
 	}
 
 	/**

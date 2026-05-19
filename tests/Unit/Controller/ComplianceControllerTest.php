@@ -25,6 +25,7 @@ use OCP\AppFramework\Http\TemplateResponse;
 use OCP\IRequest;
 use OCP\IURLGenerator;
 use OCP\IUser;
+use OCP\IUserManager;
 use OCP\IUserSession;
 use OCP\IL10N;
 use PHPUnit\Framework\TestCase;
@@ -48,6 +49,9 @@ class ComplianceControllerTest extends TestCase
 
 	/** @var IUserSession|\PHPUnit\Framework\MockObject\MockObject */
 	private $userSession;
+
+	/** @var IUserManager|\PHPUnit\Framework\MockObject\MockObject */
+	private $userManager;
 
 	/** @var IRequest|\PHPUnit\Framework\MockObject\MockObject */
 	private $request;
@@ -76,6 +80,7 @@ class ComplianceControllerTest extends TestCase
 		$this->permissionService->method('canViewUserCompliance')->willReturn(true);
 		$this->permissionService->method('canResolveViolation')->willReturn(true);
 		$this->userSession = $this->createMock(IUserSession::class);
+		$this->userManager = $this->createMock(IUserManager::class);
 		$this->cspService = $this->createMock(CSPService::class);
 		$this->urlGenerator = $this->createMock(IURLGenerator::class);
 		$this->urlGenerator->method('linkToRoute')->willReturnCallback(fn ($r, $p = []) => '/compliance');
@@ -91,6 +96,7 @@ class ComplianceControllerTest extends TestCase
 			$this->auditLogMapper,
 			$this->permissionService,
 			$this->userSession,
+			$this->userManager,
 			$this->urlGenerator,
 			$this->cspService,
 			$this->l10n
@@ -327,6 +333,7 @@ class ComplianceControllerTest extends TestCase
 			$this->auditLogMapper,
 			$permissionService,
 			$this->userSession,
+			$this->userManager,
 			$this->urlGenerator,
 			$this->cspService,
 			$this->l10n
@@ -586,6 +593,7 @@ class ComplianceControllerTest extends TestCase
 			$this->auditLogMapper,
 			$permissionService,
 			$this->userSession,
+			$this->userManager,
 			$this->urlGenerator,
 			$this->cspService,
 			$this->l10n

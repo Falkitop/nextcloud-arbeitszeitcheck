@@ -33,6 +33,7 @@ use OCA\ArbeitszeitCheck\Service\AppLocalNaiveDateTimeNormalizer;
 use OCA\ArbeitszeitCheck\Service\TimeZoneService;
 use OCA\ArbeitszeitCheck\Service\TimeEntryCorrectionService;
 use OCA\ArbeitszeitCheck\Constants;
+use OCA\ArbeitszeitCheck\Support\TimeEntryClockPayloadBuilder;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Http;
@@ -304,6 +305,49 @@ class ManagerController extends Controller
 	}
 
 	/**
+	 * Shared template values for manager employee list / filter pages.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function managerEmployeeListTemplateParams(string $page): array
+	{
+		return [
+			'managerEmployeeListPage' => $page,
+			'maxManagerListDateRangeDays' => Constants::MAX_EXPORT_DATE_RANGE_DAYS,
+		];
+	}
+
+	/**
+	 * Reject manager list queries whose span exceeds {@see Constants::MAX_EXPORT_DATE_RANGE_DAYS} (DoS guard).
+	 *
+	 * @param \DateTimeImmutable $endExclusive Day after the last included calendar day
+	 */
+	private function managerListDateRangeLimitResponse(
+		\DateTimeImmutable $start,
+		\DateTimeImmutable $endExclusive
+	): ?JSONResponse {
+		if ($start >= $endExclusive) {
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('Invalid date range. The start date must be before the end date.'),
+			], Http::STATUS_BAD_REQUEST);
+		}
+
+		$days = (int)$start->diff($endExclusive)->days;
+		if ($days > Constants::MAX_EXPORT_DATE_RANGE_DAYS) {
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t(
+					'Date range must not exceed %d days. Please narrow the range.',
+					[Constants::MAX_EXPORT_DATE_RANGE_DAYS]
+				),
+			], Http::STATUS_BAD_REQUEST);
+		}
+
+		return null;
+	}
+
+	/**
 	 * Localized label for an absence type code (same strings as the absences UI / manager-dashboard l10n).
 	 */
 	private function getAbsenceTypeLabel(string $type): string
@@ -487,6 +531,8 @@ class ManagerController extends Controller
 		Util::addScript('arbeitszeitcheck', 'common/messaging');
 		Util::addScript('arbeitszeitcheck', 'common/components');
 		Util::addScript('arbeitszeitcheck', 'common/datepicker');
+		Util::addScript('arbeitszeitcheck', 'common/time-entry-clock-form');
+		Util::addScript('arbeitszeitcheck', 'manager-correction-dialog');
 		Util::addScript('arbeitszeitcheck', 'manager-time-entries');
 
 		try {
@@ -505,15 +551,18 @@ class ManagerController extends Controller
 			}
 
 			$isAdmin = $this->permissionService->isAdmin($actorUserId);
-			$response = new TemplateResponse('arbeitszeitcheck', 'manager-time-entries', [
-				'showManagerLink' => true,
-				'showSubstitutionLink' => $showSubstitutionLink,
-				'showReportsLink' => true,
-				'showAdminNav' => $isAdmin,
-				'monthClosureEnabled' => $this->monthClosureEnabledParam(),
-				'urlGenerator' => $this->urlGenerator,
-				'l' => $this->l10n,
-			]);
+			$response = new TemplateResponse('arbeitszeitcheck', 'manager-time-entries', array_merge(
+				$this->managerEmployeeListTemplateParams('time-entries'),
+				[
+					'showManagerLink' => true,
+					'showSubstitutionLink' => $showSubstitutionLink,
+					'showReportsLink' => true,
+					'showAdminNav' => $isAdmin,
+					'monthClosureEnabled' => $this->monthClosureEnabledParam(),
+					'urlGenerator' => $this->urlGenerator,
+					'l' => $this->l10n,
+				]
+			));
 			return $this->configureCSP($response);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error(
@@ -574,15 +623,18 @@ class ManagerController extends Controller
 			}
 
 			$isAdmin = $this->permissionService->isAdmin($actorUserId);
-			$response = new TemplateResponse('arbeitszeitcheck', 'manager-absences', [
-				'showManagerLink' => true,
-				'showSubstitutionLink' => $showSubstitutionLink,
-				'showReportsLink' => true,
-				'showAdminNav' => $isAdmin,
-				'monthClosureEnabled' => $this->monthClosureEnabledParam(),
-				'urlGenerator' => $this->urlGenerator,
-				'l' => $this->l10n,
-			]);
+			$response = new TemplateResponse('arbeitszeitcheck', 'manager-absences', array_merge(
+				$this->managerEmployeeListTemplateParams('absences'),
+				[
+					'showManagerLink' => true,
+					'showSubstitutionLink' => $showSubstitutionLink,
+					'showReportsLink' => true,
+					'showAdminNav' => $isAdmin,
+					'monthClosureEnabled' => $this->monthClosureEnabledParam(),
+					'urlGenerator' => $this->urlGenerator,
+					'l' => $this->l10n,
+				]
+			));
 			return $this->configureCSP($response);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error(
@@ -1087,11 +1139,9 @@ class ManagerController extends Controller
 				], Http::STATUS_BAD_REQUEST);
 			}
 
-			if ($start >= $endExclusive) {
-				return new JSONResponse([
-					'success' => false,
-					'error' => $this->l10n->t('Invalid date range. The start date must be before the end date.'),
-				], Http::STATUS_BAD_REQUEST);
+			$rangeLimitResponse = $this->managerListDateRangeLimitResponse($start, $endExclusive);
+			if ($rangeLimitResponse !== null) {
+				return $rangeLimitResponse;
 			}
 
 			$entries = $this->timeEntryMapper->findByUsersAndDateRange(
@@ -1253,11 +1303,10 @@ class ManagerController extends Controller
 			], Http::STATUS_BAD_REQUEST);
 		}
 
-		if ($start > $end) {
-				return new JSONResponse([
-					'success' => false,
-					'error' => $this->l10n->t('Invalid date range. The start date must be before the end date.'),
-				], Http::STATUS_BAD_REQUEST);
+			$endExclusive = $end->modify('+1 day');
+			$rangeLimitResponse = $this->managerListDateRangeLimitResponse($start, $endExclusive);
+			if ($rangeLimitResponse !== null) {
+				return $rangeLimitResponse;
 			}
 
 			$absences = $this->absenceMapper->findByUsersAndDateRange(
@@ -1605,7 +1654,8 @@ class ManagerController extends Controller
 						'membersWithViolations' => 0,
 						'totalViolations' => 0,
 						'unresolvedViolations' => 0,
-						'recentViolations' => []
+						'recentViolations' => [],
+						'members' => [],
 					]
 				]);
 			}
@@ -1617,28 +1667,56 @@ class ManagerController extends Controller
 				'membersWithViolations' => 0,
 				'totalViolations' => 0,
 				'unresolvedViolations' => 0,
-				'recentViolations' => []
+				'recentViolations' => [],
+				'members' => [],
 			];
-
-			$thirtyDaysAgo = new \DateTime();
-			$thirtyDaysAgo->modify('-30 days');
 
 			foreach ($teamUserIds as $userId) {
 				$status = $this->complianceService->getComplianceStatus($userId);
-				
-				if ($status['compliant']) {
-					$complianceOverview['compliantMembers']++;
-				} else {
+
+				$bucket = 'compliant';
+				if (!$status['compliant']) {
 					if ($status['critical_violations'] > 0) {
 						$complianceOverview['membersWithViolations']++;
+						$bucket = 'critical';
 					} else {
 						$complianceOverview['membersWithWarnings']++;
+						$bucket = 'warning';
 					}
+				} else {
+					$complianceOverview['compliantMembers']++;
 				}
 
 				$complianceOverview['totalViolations'] += $status['violation_count'];
 				$complianceOverview['unresolvedViolations'] += $status['violation_count'];
+
+				$violationsUrl = $this->urlGenerator->linkToRoute(
+					'arbeitszeitcheck.compliance.violations',
+					['userId' => $userId]
+				);
+
+				$complianceOverview['members'][] = [
+					'userId' => $userId,
+					'displayName' => $this->getDisplayName($userId),
+					'bucket' => $bucket,
+					'compliant' => (bool)$status['compliant'],
+					'violationCount' => (int)$status['violation_count'],
+					'criticalViolations' => (int)$status['critical_violations'],
+					'warningViolations' => (int)$status['warning_violations'],
+					'complianceScore' => (int)$status['score'],
+					'violationsUrl' => $violationsUrl,
+				];
 			}
+
+			usort($complianceOverview['members'], static function (array $a, array $b): int {
+				$order = ['critical' => 0, 'warning' => 1, 'compliant' => 2];
+				$oa = $order[$a['bucket']] ?? 3;
+				$ob = $order[$b['bucket']] ?? 3;
+				if ($oa !== $ob) {
+					return $oa <=> $ob;
+				}
+				return strcasecmp((string)$a['displayName'], (string)$b['displayName']);
+			});
 
 			return new JSONResponse([
 				'success' => true,
@@ -2105,16 +2183,7 @@ class ManagerController extends Controller
 				$reason = mb_substr($reason, 0, 2000);
 			}
 
-			$proposal = [];
-			if (isset($params['startTime'])) {
-				$proposal['startTime'] = $params['startTime'];
-			}
-			if (isset($params['endTime'])) {
-				$proposal['endTime'] = $params['endTime'];
-			}
-			if (isset($params['breaks']) && is_array($params['breaks'])) {
-				$proposal['breaks'] = $params['breaks'];
-			}
+			$proposal = TimeEntryClockPayloadBuilder::mergeIntoProposal($params, []);
 			if (array_key_exists('description', $params)) {
 				$proposal['description'] = $params['description'];
 			}

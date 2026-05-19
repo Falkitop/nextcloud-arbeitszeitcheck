@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.3.6 - 2026-05-19
+
+### Added
+
+- **Manager employee time entries & absences — accessible filter bar** (`templates/manager-time-entries.php`, `manager-absences.php`, `css/manager-time-entries.css`, `js/manager-time-entries.js`, `js/manager-absences.js`): two-row CSS grid with aligned labels/controls, WCAG 2.1 AA patterns (fieldset, `aria-live` errors, visually hidden sublabels), client-side date validation, and a **365-day maximum** range enforced in the browser and on list APIs (`ManagerController`).
+- **Manager direct correction dialog** on employee time entries (`js/manager-correction-dialog.js`, `js/common/time-entry-clock-form.js`, `lib/Support/TimeEntryClockPayloadBuilder.php`, shared correction l10n partial): European date + clock matrix, optional breaks, server-side payload builder with unit tests.
+- **`TemplateL10n` + `templates/common/manager-employee-list-l10n.php`**: safe server-side JS translations (single `json_encode` of plain strings) — fixes Internal Server Error from `json_encode($l->t('…%d…'))` without `vsprintf` arguments on manager list pages.
+
+### Fixed
+
+- **Employee time entries page crash** (`ValueError` in `L10NString` / `vsprintf`) when loading manager list l10n; `%d` strings are now translated with explicit parameters before JSON output.
+- **Compliance violations** filter/export UX and admin dashboard overtime onboarding tweaks included in this release train.
+
+### Changed
+
+- User manual (`docs/User-Manual.en.md`, `docs/User-Manual.de.md`) updated for manager list filters and correction workflow.
+
 ## 1.3.5 - 2026-05-19
 
 ### Added
@@ -54,7 +71,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The finalized month-closure PDF (`MonthClosurePdfDocumentBuilder`) intentionally renders clock and date values in the **storage timezone** (`Constants::CONFIG_APP_TIMEZONE`). This is the authoritative legal record and must not vary per-user; the choice is now documented inline alongside `fmtClock()` / `entryDateShort()`.
 - CSV / XLSX exports (`TimeEntryExportTransformer`) also render in the storage timezone for the same reason. Conversion happens centrally before formatting, never ad-hoc.
-- **Manager direct correction** (`manager-time-entries.js`) still uses `datetime-local` for start/end; labels and messages are translated via `manager-correction-l10n.php`. Aligning that UI with the employee date+time matrix is a follow-up UX task.
+- **Manager direct correction** (`manager-time-entries.js`, `manager-correction-dialog.js`) uses the shared date + HH:mm matrix and optional breaks (same pattern as employee corrections).
+- **Admin dashboard:** clickable employee stat tiles with searchable list and CSV export; overtime onboarding banner when many users lack a tracking start date.
+- **Manager dashboard:** clickable team compliance stats with per-member links to filtered compliance violations.
 
 ### Changed
 

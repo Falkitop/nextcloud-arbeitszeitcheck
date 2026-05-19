@@ -8,6 +8,8 @@
 		offset: 0,
 		total: 0,
 		lastFilters: null,
+		loading: false,
+		countBeforeLoad: '',
 		dateLocale: window.ArbeitszeitCheck?.dateLocale || document.documentElement.lang || undefined,
 	};
 
@@ -79,10 +81,146 @@
 	}
 
 	function setLoading(isLoading) {
-		const countEl = document.getElementById('employee-time-entries-count');
-		if (countEl) {
-			countEl.textContent = isLoading ? t('Loading...', 'Loading...') : countEl.textContent;
+		state.loading = isLoading;
+		const results = document.querySelector('.manager-time-entries-page__results');
+		if (results) {
+			results.setAttribute('aria-busy', isLoading ? 'true' : 'false');
 		}
+		const submitBtn = document.getElementById('employee-time-entries-submit');
+		const clearBtn = document.getElementById('employee-time-entries-clear');
+		const prevBtn = document.getElementById('employee-time-entries-prev');
+		const nextBtn = document.getElementById('employee-time-entries-next');
+		if (submitBtn) {
+			submitBtn.disabled = isLoading;
+			submitBtn.setAttribute('aria-disabled', isLoading ? 'true' : 'false');
+		}
+		if (clearBtn) {
+			clearBtn.disabled = isLoading;
+		}
+		if (prevBtn) {
+			prevBtn.disabled = isLoading || state.offset <= 0;
+		}
+		if (nextBtn) {
+			nextBtn.disabled = isLoading || state.offset + state.limit >= state.total;
+		}
+		const countEl = document.getElementById('employee-time-entries-count');
+		if (!countEl) {
+			return;
+		}
+		if (isLoading) {
+			state.countBeforeLoad = countEl.textContent;
+			countEl.textContent = t('Loading...', 'Loading...');
+			return;
+		}
+		countEl.textContent = state.countBeforeLoad;
+	}
+
+	function clearFilterFieldErrors() {
+		const form = document.getElementById('employee-time-entries-filter-form');
+		if (!form) {
+			return;
+		}
+		form.querySelectorAll('[aria-invalid="true"]').forEach((el) => {
+			el.removeAttribute('aria-invalid');
+		});
+		const errorEl = document.getElementById('employee-time-entries-filter-error');
+		if (errorEl) {
+			errorEl.textContent = '';
+			errorEl.hidden = true;
+		}
+	}
+
+	function setFilterError(message, focusId) {
+		const errorEl = document.getElementById('employee-time-entries-filter-error');
+		if (errorEl) {
+			errorEl.textContent = message;
+			errorEl.hidden = !message;
+		}
+		if (message && focusId) {
+			const focusEl = document.getElementById(focusId);
+			if (focusEl) {
+				focusEl.setAttribute('aria-invalid', 'true');
+				focusEl.focus();
+			}
+		}
+	}
+
+	function europeanToYmd(value) {
+		if (!value || !/^\d{2}\.\d{2}\.\d{4}$/.test(value)) {
+			return '';
+		}
+		const parts = String(value).split('.');
+		return parts[2] + '-' + parts[1] + '-' + parts[0];
+	}
+
+	function parseEuropeanDate(value) {
+		if (!value || !/^\d{2}\.\d{2}\.\d{4}$/.test(value)) {
+			return null;
+		}
+		const parts = String(value).split('.');
+		const date = new Date(
+			parseInt(parts[2], 10),
+			parseInt(parts[1], 10) - 1,
+			parseInt(parts[0], 10)
+		);
+		if (
+			date.getFullYear() !== parseInt(parts[2], 10)
+			|| date.getMonth() !== parseInt(parts[1], 10) - 1
+			|| date.getDate() !== parseInt(parts[0], 10)
+		) {
+			return null;
+		}
+		return date;
+	}
+
+	function validateFilters(filters) {
+		clearFilterFieldErrors();
+		if (!filters.startDate || !filters.endDate) {
+			const message = t('Please select start and end date.', 'Please select start and end date.');
+			setFilterError(message, !filters.startDate ? 'start-date-filter' : 'end-date-filter');
+			return { valid: false };
+		}
+		const startParsed = parseEuropeanDate(filters.startDate);
+		const endParsed = parseEuropeanDate(filters.endDate);
+		if (!startParsed || !endParsed) {
+			const message = t(
+				'Invalid date format. Please use dd.mm.yyyy (e.g., 15.01.2024).',
+				'Invalid date format. Please use dd.mm.yyyy (e.g., 15.01.2024).'
+			);
+			setFilterError(message, !startParsed ? 'start-date-filter' : 'end-date-filter');
+			return { valid: false };
+		}
+		if (startParsed > endParsed) {
+			const message = t(
+				'Invalid date range. The start date must be before the end date.',
+				'Invalid date range. The start date must be before the end date.'
+			);
+			setFilterError(message, 'start-date-filter');
+			return { valid: false };
+		}
+		const dp = window.ArbeitszeitCheckDatepicker;
+		const toISO = dp && typeof dp.convertEuropeanToISO === 'function'
+			? dp.convertEuropeanToISO
+			: europeanToYmd;
+		const startISO = toISO(filters.startDate);
+		const endISO = toISO(filters.endDate);
+		if (!/^\d{4}-\d{2}-\d{2}$/.test(startISO) || !/^\d{4}-\d{2}-\d{2}$/.test(endISO)) {
+			const message = t(
+				'Invalid date range. Please use valid dates in YYYY-MM-DD format.',
+				'Invalid date range. Please use valid dates in YYYY-MM-DD format.'
+			);
+			setFilterError(message, 'start-date-filter');
+			return { valid: false };
+		}
+		const maxDays = Number(window.ArbeitszeitCheck?.maxManagerListDateRangeDays) || 365;
+		const spanDays = Math.round((endParsed.getTime() - startParsed.getTime()) / 86400000) + 1;
+		if (spanDays > maxDays) {
+			const message = t('dateRangeTooLong', 'Date range must not exceed %d days. Please narrow the range.')
+				.replace('%d', String(maxDays));
+			setFilterError(message, 'start-date-filter');
+			return { valid: false };
+		}
+		return { valid: true, startISO, endISO };
 	}
 
 	function setEmpty(message) {
@@ -115,8 +253,13 @@
 
 		body.innerHTML = entries.map((entry) => {
 			const canCorrect = entry.status === 'completed';
+			const summaryJson = escapeHtml(JSON.stringify({
+				startTime: entry.startTime || null,
+				endTime: entry.endTime || null,
+				breaks: entry.breaks || null,
+			}));
 			const actionCell = canCorrect
-				? `<button type="button" class="btn btn--sm btn--secondary btn-manager-correct" data-entry-id="${escapeHtml(String(entry.id))}" data-entry-updated="${escapeHtml(entry.updatedAt || '')}" data-entry-start="${escapeHtml(entry.startTime || '')}" data-entry-end="${escapeHtml(entry.endTime || '')}" aria-label="${escapeHtml(t('Correct time entry', 'Correct time entry'))}">${escapeHtml(t('Correct', 'Correct'))}</button>`
+				? `<button type="button" class="btn btn--sm btn--secondary btn-manager-correct" data-entry-id="${escapeHtml(String(entry.id))}" data-entry-updated="${escapeHtml(entry.updatedAt || '')}" data-entry-summary="${summaryJson}" aria-label="${escapeHtml(t('Correct time entry', 'Correct time entry'))}">${escapeHtml(t('Correct', 'Correct'))}</button>`
 				: '<span class="text-muted">–</span>';
 			return [
 				'<tr>',
@@ -163,7 +306,14 @@
 		if (!countEl) {
 			return;
 		}
-		countEl.textContent = t('{count} entries', '{count} entries').replace('{count}', String(state.total));
+		if (state.total <= 0 && !state.lastFilters) {
+			countEl.textContent = '';
+			state.countBeforeLoad = '';
+			return;
+		}
+		const text = t('{count} entries', '{count} entries').replace('{count}', String(state.total));
+		countEl.textContent = text;
+		state.countBeforeLoad = text;
 	}
 
 	function populateEmployees(employees) {
@@ -172,16 +322,11 @@
 			return;
 		}
 		const current = select.value;
-		const defaultOption = select.querySelector('option[value=""]');
 		select.innerHTML = '';
-		if (defaultOption) {
-			select.appendChild(defaultOption);
-		} else {
-			const option = document.createElement('option');
-			option.value = '';
-			option.textContent = t('All in my scope', 'All in my scope');
-			select.appendChild(option);
-		}
+		const defaultOption = document.createElement('option');
+		defaultOption.value = '';
+		defaultOption.textContent = t('All in my scope', 'All in my scope');
+		select.appendChild(defaultOption);
 
 		employees.forEach((employee) => {
 			const option = document.createElement('option');
@@ -195,13 +340,9 @@
 		}
 	}
 
-	function buildQuery(filters) {
-		const dp = window.ArbeitszeitCheckDatepicker;
-		const toISO = dp && typeof dp.convertEuropeanToISO === 'function'
-			? dp.convertEuropeanToISO
-			: (value) => value;
-		const startISO = toISO(filters.startDate);
-		const endISO = toISO(filters.endDate);
+	function buildQuery(filters, isoDates) {
+		const startISO = isoDates?.startISO || europeanToYmd(filters.startDate);
+		const endISO = isoDates?.endISO || europeanToYmd(filters.endDate);
 		const params = new URLSearchParams();
 		params.set('startDate', startISO);
 		params.set('endDate', endISO);
@@ -229,29 +370,42 @@
 			endDate: String(formData.get('end_date') || ''),
 			status: String(formData.get('status') || ''),
 		};
-		state.lastFilters = filters;
-
-		if (!filters.startDate || !filters.endDate) {
-			setEmpty(t('Please select start and end date.', 'Please select start and end date.'));
+		const validation = validateFilters(filters);
+		if (!validation.valid) {
+			setEmpty(t('Choose a date range to load entries.', 'Choose a date range to load entries.'));
+			updateCount();
 			updatePagination();
 			return;
 		}
 
+		if (state.loading) {
+			return;
+		}
+
+		state.lastFilters = filters;
 		setLoading(true);
-		const query = buildQuery(filters);
+		const query = buildQuery(filters, validation);
 		Utils.ajax(`/apps/arbeitszeitcheck/api/manager/employee-time-entries?${query}`, {
 			method: 'GET',
 			onSuccess: (data) => {
+				clearFilterFieldErrors();
 				state.total = Number(data.total || 0);
 				populateEmployees(Array.isArray(data.employees) ? data.employees : []);
 				renderEntries(Array.isArray(data.entries) ? data.entries : []);
 				updateCount();
+				state.countBeforeLoad = document.getElementById('employee-time-entries-count')?.textContent || '';
 				updatePagination();
 			},
 			onError: (error) => {
-				Messaging.showError(error?.error || t('Could not load employee time entries.', 'Could not load employee time entries.'));
-				setEmpty(t('Could not load employee time entries.', 'Could not load employee time entries.'));
+				const message = error?.error || t('Could not load employee time entries.', 'Could not load employee time entries.');
+				setFilterError(message);
+				Messaging.showError(message);
+				setEmpty(message);
+				updateCount();
+				updatePagination();
 			},
+		}).finally(() => {
+			setLoading(false);
 		});
 	}
 
@@ -287,13 +441,34 @@
 		});
 
 		clearBtn.addEventListener('click', () => {
+			if (state.loading) {
+				return;
+			}
 			form.reset();
+			clearFilterFieldErrors();
 			state.offset = 0;
 			state.total = 0;
+			state.lastFilters = null;
+			state.countBeforeLoad = '';
 			setDefaultDateRange();
 			setEmpty(t('Choose a date range to load entries.', 'Choose a date range to load entries.'));
-			updateCount();
+			const countEl = document.getElementById('employee-time-entries-count');
+			if (countEl) {
+				countEl.textContent = '';
+			}
 			updatePagination();
+			const employeeSelect = document.getElementById('employee-filter');
+			if (employeeSelect && employeeSelect.options.length <= 1) {
+				employeeSelect.innerHTML = '';
+				const option = document.createElement('option');
+				option.value = '';
+				option.textContent = t('All in my scope', 'All in my scope');
+				employeeSelect.appendChild(option);
+			}
+		});
+
+		form.querySelectorAll('#start-date-filter, #end-date-filter').forEach((input) => {
+			input.addEventListener('change', clearFilterFieldErrors);
 		});
 	}
 
@@ -339,137 +514,30 @@
 		endInput.value = toEuropeanDateString(today);
 	}
 
-	function toDatetimeLocalValue(iso) {
-		if (!iso) {
-			return '';
-		}
-		const d = new Date(iso);
-		if (Number.isNaN(d.getTime())) {
-			return '';
-		}
-		const pad = (n) => String(n).padStart(2, '0');
-		return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
-			+ 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
-	}
-
-	function fromDatetimeLocalValue(value) {
-		if (!value) {
-			return null;
-		}
-		const d = new Date(value);
-		return Number.isNaN(d.getTime()) ? null : d.toISOString();
-	}
-
-
-	function showManagerCorrectModal(entryId, updatedAt, startIso, endIso) {
-		const Components = window.ArbeitszeitCheckComponents;
-		if (!Components || !Components.createModal) {
-			Messaging.showError(t('Could not open correction dialog.', 'Could not open correction dialog.'));
-			return;
-		}
-		const modalId = 'manager-correct-entry-' + entryId;
-		if (document.getElementById(modalId)) {
-			document.getElementById(modalId).remove();
-		}
-		const content = [
-			'<p class="form-help">' + escapeHtml(t('Changes are applied immediately and the employee is notified. A reason is required for the audit log.', 'Changes are applied immediately and the employee is notified. A reason is required for the audit log.')) + '</p>',
-			'<div class="form-group"><label for="mgr-correct-start-' + entryId + '">' + escapeHtml(t('Start', 'Start')) + '</label>',
-			'<input type="datetime-local" class="form-input" id="mgr-correct-start-' + entryId + '"></div>',
-			'<div class="form-group"><label for="mgr-correct-end-' + entryId + '">' + escapeHtml(t('End', 'End')) + '</label>',
-			'<input type="datetime-local" class="form-input" id="mgr-correct-end-' + entryId + '"></div>',
-			'<div class="form-group"><label for="mgr-correct-reason-' + entryId + '">' + escapeHtml(t('Reason (min. 10 characters)', 'Reason (min. 10 characters)')) + '</label>',
-			'<textarea class="form-textarea" id="mgr-correct-reason-' + entryId + '" rows="3" minlength="10" required></textarea></div>',
-			'<div class="reject-modal-actions">',
-			'<button type="button" class="btn btn--secondary btn-mgr-correct-cancel">' + escapeHtml(t('Cancel', 'Cancel')) + '</button>',
-			'<button type="button" class="btn btn--primary btn-mgr-correct-save">' + escapeHtml(t('Apply correction', 'Apply correction')) + '</button>',
-			'</div>',
-		].join('');
-		const modal = Components.createModal({
-			id: modalId,
-			title: t('Correct time entry', 'Correct time entry'),
-			content: content,
-			size: 'md',
-		});
-		const startInput = modal.querySelector('#mgr-correct-start-' + entryId);
-		const endInput = modal.querySelector('#mgr-correct-end-' + entryId);
-		if (startInput) {
-			startInput.value = toDatetimeLocalValue(startIso);
-		}
-		if (endInput) {
-			endInput.value = toDatetimeLocalValue(endIso);
-		}
-		const saveBtn = modal.querySelector('.btn-mgr-correct-save');
-		const cancelBtn = modal.querySelector('.btn-mgr-correct-cancel');
-		cancelBtn.addEventListener('click', () => Components.closeModal(modal));
-		saveBtn.addEventListener('click', () => {
-			const reason = (modal.querySelector('#mgr-correct-reason-' + entryId) || {}).value || '';
-			const newStart = fromDatetimeLocalValue((modal.querySelector('#mgr-correct-start-' + entryId) || {}).value);
-			const newEnd = fromDatetimeLocalValue((modal.querySelector('#mgr-correct-end-' + entryId) || {}).value);
-			if (reason.trim().length < 10) {
-				Messaging.showError(t('A reason of at least 10 characters is required.', 'A reason of at least 10 characters is required.'));
-				return;
-			}
-			if (!newStart && !newEnd) {
-				Messaging.showError(t('At least one field to correct is required.', 'At least one field to correct is required.'));
-				return;
-			}
-			const payload = { reason: reason.trim(), expectedUpdatedAt: updatedAt || undefined };
-			if (newStart) {
-				payload.startTime = newStart;
-			}
-			if (newEnd) {
-				payload.endTime = newEnd;
-			}
-			saveBtn.disabled = true;
-			Utils.ajax('/apps/arbeitszeitcheck/api/manager/time-entries/' + entryId + '/correct', {
-				method: 'POST',
-				data: payload,
-				onSuccess: (data) => {
-					if (data.success) {
-						Components.closeModal(modal);
-						Messaging.showSuccess(data.message || t('Time entry corrected successfully.', 'Time entry corrected successfully.'));
-						loadEntries();
-					} else {
-						Messaging.showError(data.error || t('Correction failed.', 'Correction failed.'));
-						saveBtn.disabled = false;
-					}
-				},
-				onError: (err) => {
-					const code = err?.data?.error_code;
-					if (code === 'entry_modified') {
-						Messaging.showError(err.error || t('Entry was modified. Reloading…', 'Entry was modified. Reloading…'));
-						Components.closeModal(modal);
-						loadEntries();
-					} else {
-						Messaging.showError(err?.error || t('Correction failed.', 'Correction failed.'));
-					}
-					saveBtn.disabled = false;
-				},
-			});
-		});
-		Components.openModal(modalId);
-	}
-
 
 	function bindManagerCorrectButtons() {
+		const MgrCorrection = window.ArbeitszeitCheckManagerCorrection;
 		document.querySelectorAll('.btn-manager-correct').forEach((btn) => {
 			btn.addEventListener('click', () => {
 				const id = btn.getAttribute('data-entry-id');
 				const updatedAt = btn.getAttribute('data-entry-updated') || '';
-				const startIso = btn.getAttribute('data-entry-start') || '';
-				const endIso = btn.getAttribute('data-entry-end') || '';
-				if (id) {
-					showManagerCorrectModal(id, updatedAt, startIso, endIso);
+				const summary = MgrCorrection
+					? MgrCorrection.parseEntrySummary(btn.getAttribute('data-entry-summary'))
+					: null;
+				if (id && MgrCorrection) {
+					MgrCorrection.open(id, updatedAt, summary || {});
 				}
 			});
 		});
 	}
+
 
 	function init() {
 		setDefaultDateRange();
 		bindForm();
 		bindPagination();
 		updatePagination();
+		document.addEventListener('arbeitszeitcheck:manager-entry-corrected', loadEntries);
 	}
 
 	if (document.readyState === 'loading') {

@@ -48,6 +48,16 @@ Exact permissions depend on your Nextcloud groups and app configuration.
 
 Only users in Nextcloud's `admin` group are eligible in this picker.
 
+### For administrators: overtime balance (tracking start date + opening balance)
+
+**Important for pilots or migrations:** Until a person has an **overtime tracking start date** configured, the app calculates balances **from 1 January of the current year**. That can show large **undertime** even though the app works correctly—it is simply not configured yet.
+
+1. Open **ArbeitszeitCheck → Administration → Users**.
+2. Per person: set the **tracking start date** and optionally an **opening balance** (hours on that date), then save.
+3. The **admin dashboard** shows a hint when many accounts lack a start date. The **Total employees** and **Active today** tiles open a searchable list (including CSV export).
+
+Without this setup, balances often look “broken”; with start date and opening balance they reflect reality.
+
 ### For administrators: notifications and vacation policy model
 
 - Open **ArbeitszeitCheck → Admin notifications** to configure absence-related mail behavior in one place.

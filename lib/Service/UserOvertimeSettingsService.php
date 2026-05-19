@@ -103,4 +103,31 @@ class UserOvertimeSettingsService
 		}
 		return $yearStart;
 	}
+
+	public function countUsersWithTrackingFrom(): int
+	{
+		return $this->userSettingsMapper->countDistinctUsersWithNonEmptySetting(
+			Constants::SETTING_OVERTIME_TRACKING_FROM
+		);
+	}
+
+	public function hasTrackingFrom(string $userId): bool
+	{
+		return $this->getTrackingFrom($userId) !== null;
+	}
+
+	/**
+	 * User IDs that have an overtime tracking start date configured (non-empty).
+	 *
+	 * Returned as a list; callers wanting O(1) membership tests should flip to an
+	 * `array_fill_keys($ids, true)` lookup.
+	 *
+	 * @return list<string>
+	 */
+	public function listUserIdsWithTrackingFrom(): array
+	{
+		return $this->userSettingsMapper->findUserIdsWithNonEmptySetting(
+			Constants::SETTING_OVERTIME_TRACKING_FROM
+		);
+	}
 }

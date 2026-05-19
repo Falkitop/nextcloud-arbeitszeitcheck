@@ -2048,6 +2048,62 @@ body[data-theme-dark-highcontrast] .form-input.form-select option {
   border-radius: var(--radius-base);
   padding: var(--space-4);
   text-align: center;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+}
+
+.team-compliance-stat--clickable {
+  cursor: pointer;
+}
+
+.team-compliance-stat--clickable:hover,
+.team-compliance-stat--clickable:focus-visible {
+  border-color: var(--arbeitszeitcheck-color-primary, var(--color-primary-element));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.team-compliance-stat--clickable:focus-visible {
+  outline: 3px solid var(--color-primary-element, #0082c9);
+  outline-offset: 2px;
+}
+
+.team-compliance-stat:disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.team-compliance-member-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.team-compliance-member-list__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
+}
+
+.team-compliance-member-list__item:last-child {
+  border-bottom: none;
+}
+
+.team-compliance-member-list__name {
+  flex: 1 1 10rem;
+  font-weight: 600;
+}
+
+.team-compliance-member-list__meta {
+  font-size: var(--arbeitszeitcheck-font-size-sm);
+  color: var(--arbeitszeitcheck-color-text-secondary);
+}
+
+.compliance-violations-filter-banner {
+  margin-bottom: var(--space-4);
 }
 
 .team-compliance-stat__value {

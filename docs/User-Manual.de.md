@@ -48,6 +48,16 @@ Die genauen Rechte hängen von Nextcloud-Gruppen und der App-Konfiguration ab.
 
 Im Auswahldialog erscheinen nur Konten aus der Nextcloud-`admin`-Gruppe.
 
+### Für Administrator:innen: Überstunden-Saldo (Stichtag + Eröffnungssaldo)
+
+**Wichtig bei Pilotstart oder Migration:** Solange für eine Person kein **Stichtag für die Überstundenerfassung** gesetzt ist, berechnet die App den Saldo **ab dem 1. Januar des laufenden Jahres**. Das kann große **Minusstunden** anzeigen, obwohl die App technisch in Ordnung ist – sie ist nur noch nicht betrieblich konfiguriert.
+
+1. Öffnen Sie **ArbeitszeitCheck → Administration → Benutzer** (Benutzerverwaltung).
+2. Pro Person: **Stichtag** (ab wann Überstunden gezählt werden) und optional **Eröffnungssaldo** (Stunden zum Stichtag) eintragen und speichern.
+3. Auf dem **Admin-Dashboard** erscheint ein Hinweis, wenn viele Konten noch ohne Stichtag sind. Die Kacheln **Mitarbeitende gesamt** und **Aktiv heute** öffnen eine durchsuchbare Liste (inkl. CSV-Export).
+
+Ohne diese Einrichtung wirken Salden oft „kaputt“ – mit Stichtag und Eröffnungssaldo entsprechen sie dem realen Stand.
+
 ### Für Administrator:innen: Benachrichtigungen und Urlaubs-Policy-Modell
 
 - Öffnen Sie **ArbeitszeitCheck → Admin-Benachrichtigungen**, um abwesenheitsbezogene Mail-Regeln zentral zu pflegen.

@@ -29,6 +29,19 @@ $total = $_['total'] ?? 0;
                 <p><?php p($l->t('See when working time rules were not followed and what needs to be fixed')); ?></p>
             </div>
 
+            <?php if (!empty($_['filterUserId'])): ?>
+            <div class="callout callout--info compliance-violations-filter-banner" role="status" aria-live="polite">
+                <p class="callout__text">
+                    <?php p($l->t('Showing violations for %s.', [$_['filterDisplayName'] ?? $_['filterUserId']])); ?>
+                </p>
+                <p class="callout__actions">
+                    <a class="btn btn--secondary btn--sm" href="<?php p($_['urlGenerator']->linkToRoute('arbeitszeitcheck.compliance.violations')); ?>">
+                        <?php p($l->t('Show all my visible violations')); ?>
+                    </a>
+                </p>
+            </div>
+            <?php endif; ?>
+
             <!-- Filters -->
             <div class="section-content mb-3 compliance-violations__filters">
                 <div class="compliance-violations__filters-grid" role="group" aria-label="<?php p($l->t('Filter options')); ?>">
@@ -160,4 +173,5 @@ $complianceViolationsL10n = [
 <script nonce="<?php p($_['cspNonce'] ?? ''); ?>">
 window.ArbeitszeitCheck = window.ArbeitszeitCheck || {};
 window.ArbeitszeitCheck.complianceViolationsL10n = <?php echo json_encode($complianceViolationsL10n, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;
+window.ArbeitszeitCheck.complianceFilterUserId = <?php echo json_encode($_['filterUserId'] ?? null, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;
 </script>

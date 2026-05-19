@@ -22,8 +22,17 @@
     /**
      * Initialize violations page
      */
+    function getFilterUserId() {
+        const cfg = window.ArbeitszeitCheck || {};
+        const id = cfg.complianceFilterUserId;
+        return id && String(id).trim() !== '' ? String(id).trim() : '';
+    }
+
     function init() {
         bindEvents();
+        if (getFilterUserId()) {
+            loadViolations();
+        }
     }
 
     /**
@@ -50,6 +59,10 @@
         if (startDate) params.append('start_date', startDate);
         if (endDate) params.append('end_date', endDate);
         if (severity) params.append('severity', severity);
+        const filterUserId = getFilterUserId();
+        if (filterUserId) {
+            params.append('userId', filterUserId);
+        }
 
         const tbody = Utils.$('#violations-tbody');
         if (tbody) {

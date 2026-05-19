@@ -589,6 +589,38 @@ class TimeEntryMapper extends QBMapper
 	}
 
 	/**
+	 * User IDs with at least one time entry on the given calendar day (server-local midnight window).
+	 *
+	 * @return list<string>
+	 */
+	public function findDistinctUserIdsByDate(\DateTime $date): array
+	{
+		$startOfDay = clone $date;
+		$startOfDay->setTime(0, 0, 0);
+		$endOfDay = clone $startOfDay;
+		$endOfDay->modify('+1 day');
+
+		$qb = $this->db->getQueryBuilder();
+		$qb->selectDistinct('user_id')
+			->from($this->getTableName())
+			->where($qb->expr()->gte('start_time', $qb->createNamedParameter($startOfDay->format('Y-m-d H:i:s'), IQueryBuilder::PARAM_STR)))
+			->andWhere($qb->expr()->lt('start_time', $qb->createNamedParameter($endOfDay->format('Y-m-d H:i:s'), IQueryBuilder::PARAM_STR)))
+			->orderBy('user_id', 'ASC');
+
+		$result = $qb->executeQuery();
+		$userIds = [];
+		while (($row = $result->fetch()) !== false) {
+			$uid = (string)($row['user_id'] ?? '');
+			if ($uid !== '') {
+				$userIds[] = $uid;
+			}
+		}
+		$result->closeCursor();
+
+		return $userIds;
+	}
+
+	/**
 	 * Get time entries for manager approval (team members)
 	 *
 	 * @param array $userIds Team member user IDs
