@@ -147,13 +147,41 @@
     const d = parseInstant(value);
     if (!d) return '';
     const opts = options || {};
-    const fmt = safeIntl(pickDisplayTz(opts.timeZone), {
+    const tz = pickDisplayTz(opts.timeZone);
+    const intlOpts = {
       hour: '2-digit',
       minute: '2-digit',
       second: opts.withSeconds ? '2-digit' : undefined,
       hour12: false,
-    });
-    return fmt.format(d);
+    };
+    // Use formatToParts so we always emit ASCII `HH:mm`. `Intl.DateTimeFormat#format`
+    // may insert U+202F NARROW NO-BREAK SPACE between units, which breaks strict
+    // `HH:mm` parsers (e.g. manager time correction pre-fill).
+    try {
+      const fmt = safeIntl(tz, intlOpts);
+      const parts = fmt.formatToParts(d);
+      let hour = '';
+      let minute = '';
+      let second = '';
+      parts.forEach((p) => {
+        if (p.type === 'hour') hour = p.value;
+        else if (p.type === 'minute') minute = p.value;
+        else if (p.type === 'second') second = p.value;
+      });
+      if (hour !== '' && minute !== '') {
+        const hh = String(parseInt(hour, 10)).padStart(2, '0');
+        const mm = String(parseInt(minute, 10)).padStart(2, '0');
+        if (opts.withSeconds && second !== '') {
+          const ss = String(parseInt(second, 10)).padStart(2, '0');
+          return hh + ':' + mm + ':' + ss;
+        }
+        return hh + ':' + mm;
+      }
+    } catch (_) {
+      // fall through
+    }
+    const fmt = safeIntl(tz, intlOpts);
+    return fmt.format(d).replace(/[\u202f\u00a0]/g, '').trim();
   }
 
   /**

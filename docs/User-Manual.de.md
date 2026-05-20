@@ -52,9 +52,10 @@ Im Auswahldialog erscheinen nur Konten aus der Nextcloud-`admin`-Gruppe.
 
 **Wichtig bei Pilotstart oder Migration:** Solange für eine Person kein **Stichtag für die Überstundenerfassung** gesetzt ist, berechnet die App den Saldo **ab dem 1. Januar des laufenden Jahres**. Das kann große **Minusstunden** anzeigen, obwohl die App technisch in Ordnung ist – sie ist nur noch nicht betrieblich konfiguriert.
 
-1. Öffnen Sie **ArbeitszeitCheck → Administration → Benutzer** (Benutzerverwaltung).
+1. Öffnen Sie **ArbeitszeitCheck → Administration → Benutzer** (Benutzerverwaltung) — oder setzen Sie den Stichtag direkt unter **Nextcloud → Konten → Benutzer** beim Dialog **Neues Konto** (nur für ArbeitszeitCheck-Administrator:innen; optional).
 2. Pro Person: **Stichtag** (ab wann Überstunden gezählt werden) und optional **Eröffnungssaldo** (Stunden zum Stichtag) eintragen und speichern.
-3. Auf dem **Admin-Dashboard** erscheint ein Hinweis, wenn viele Konten noch ohne Stichtag sind. Die Kacheln **Mitarbeitende gesamt** und **Aktiv heute** öffnen eine durchsuchbare Liste (inkl. CSV-Export).
+3. Am **Kalendertag des Stichtags** selbst wird kein voller Soll-Tagesanteil in die Überstunden-Saldo-Anzeige eingerechnet (damit neue Konten nicht sofort mit einem „Minus für den ganzen Tag“ starten). Ab dem **Folgetag** gelten die Sollstunden wie gewohnt.
+4. Auf dem **Admin-Dashboard** erscheint ein Hinweis, wenn viele Konten noch ohne Stichtag sind. Die Kacheln **Mitarbeitende gesamt** und **Aktiv heute** öffnen eine durchsuchbare Liste (inkl. CSV-Export).
 
 Ohne diese Einrichtung wirken Salden oft „kaputt“ – mit Stichtag und Eröffnungssaldo entsprechen sie dem realen Stand.
 

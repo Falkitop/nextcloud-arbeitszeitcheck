@@ -2699,6 +2699,13 @@
         "zone": "zone",
         "{count} of 10+ characters — you can submit": "{count} von mindestens 10 Zeichen — absenden möglich",
         "{field} is required. Please fill in this field.": "{field} ist erforderlich. Bitte füllen Sie dieses Feld aus.",
-        "{remaining} more characters needed ({count} of {min})": "Noch {remaining} Zeichen nötig ({count} von {min})"
+        "{remaining} more characters needed ({count} of {min})": "Noch {remaining} Zeichen nötig ({count} von {min})",
+        "Overtime tracking from (optional)": "Überstunden-Stichtag (optional)",
+        "If set, this date is saved as the overtime “Stichtag” when the new account is created. Leave empty to configure later in ArbeitszeitCheck → Administration → Employees.": "Wenn gesetzt, wird dieses Datum beim Anlegen des Kontos als Überstunden-Stichtag gespeichert. Leer lassen und später unter ArbeitszeitCheck → Administration → Mitarbeitende eintragen.",
+        "Overtime tracking start date saved for the new account.": "Überstunden-Stichtag für das neue Konto gespeichert.",
+        "Account created. Overtime start date was not applied (check ArbeitszeitCheck permissions or try again from Employees).": "Konto angelegt. Der Überstunden-Stichtag wurde nicht gespeichert (ArbeitszeitCheck-Rechte prüfen oder unter Mitarbeitende nachpflegen).",
+        "yearFourDigitsHelp": "Bitte ein vierstelliges Jahr eingeben (z. B. 2026).",
+        "openingBalanceYearRange": "Das Jahr für den Eröffnungssaldo muss zwischen 2000 und 2100 liegen.",
+        "Opening balance year must be a four-digit year (e.g. 2026).": "Das Jahr für den Eröffnungssaldo muss aus genau vier Ziffern bestehen (z. B. 2026)."
     }
 }

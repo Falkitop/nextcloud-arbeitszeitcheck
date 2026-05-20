@@ -40,6 +40,7 @@ use OCA\ArbeitszeitCheck\Service\LayeredVacationValidationException;
 use OCA\ArbeitszeitCheck\Service\VacationAllocationService;
 use OCA\ArbeitszeitCheck\Service\VacationEntitlementEngine;
 use OCA\ArbeitszeitCheck\Service\UserOvertimeSettingsService;
+use OCA\ArbeitszeitCheck\Support\OpeningBalanceYearValidator;
 use OCA\ArbeitszeitCheck\Support\StrictYmdDates;
 use OCP\App\IAppManager;
 use OCP\AppFramework\Controller;
@@ -3498,11 +3499,13 @@ class AdminController extends Controller
 
 			$openingBalance = $params['openingBalance'] ?? null;
 			if (is_array($openingBalance) && isset($openingBalance['year'], $openingBalance['hours'])) {
-				$year = (int)$openingBalance['year'];
-				if ($year < 2000 || $year > 2100) {
+				[$year, $yearErr] = OpeningBalanceYearValidator::parse($openingBalance['year']);
+				if ($yearErr !== null) {
 					return new JSONResponse([
 						'success' => false,
-						'error' => $this->l10n->t('Opening balance year must be between 2000 and 2100')
+						'error' => $yearErr === 'range'
+							? $this->l10n->t('Opening balance year must be between 2000 and 2100')
+							: $this->l10n->t('Opening balance year must be a four-digit year (e.g. 2026).'),
 					], Http::STATUS_BAD_REQUEST);
 				}
 				$hours = $this->parseDecimalInput($openingBalance['hours'], 0.0);

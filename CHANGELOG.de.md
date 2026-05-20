@@ -1,3 +1,23 @@
+## 1.3.7 – 2026-05-20
+
+### Neu / Geändert
+
+- **Überstunden-Stichtag**: Am Kalendertag des Stichtags wird kein voller Soll-Tagesanteil mehr angerechnet (Algorithmus-Version 2) — vermeidet irreführende Minusstunden direkt nach Anlage eines Kontos. Öffnungssaldo und Folgetage unverändert.
+- **Konten → Neues Konto** (Nextcloud-Benutzerverwaltung): Optionales Feld „Überstunden-Stichtag“ für ArbeitszeitCheck-Administrator:innen; nach erfolgreicher Kontenerstellung wird die gleiche API wie unter Mitarbeitende genutzt (`LoadUsersSettingsArbeitszeitListener`, `settings-users-overtime.js`).
+- **Manager-Korrektur / Zeiteintrags-Matrix**: `formatTime` liefert stabiles `HH:mm` per `Intl.formatToParts` (kein schmales Leerzeichen mehr) — vorbefüllte Stempelzeiten funktionieren zuverlässig.
+- **Admin Mitarbeitende**: Jahresfelder (Eröffnungssaldo / Resturlaub) als vierstellige Texteingabe mit `maxlength` und Hilfetext.
+
+### Behoben (Audit-Härtung)
+
+- **Neues Konto + Stichtag**: Stichtag wird beim Klick auf „Erstellen“ zuverlässig erfasst (nicht mehr vom falschen Dialog); OCS-Hook nur noch für `POST …/cloud/users` ohne Unterpfad.
+- **Manager-Korrektur**: `data-entry-summary` wie in PHP mit JSON-Hex-Encoding; Anzeige-Zeiten (`displayStartTime`/`displayBreaks`); leere Uhrzeit = `--` statt irreführendem `00:00`.
+- **Überstunden**: Zukünftiger Stichtag erzeugt keinen fiktiven Minus-Saldo im aktuellen Zeitraum.
+- **Eröffnungssaldo-Jahr**: Server prüft exakt vier Ziffern (2000–2100); Client validiert vor dem Speichern.
+
+### Behoben
+
+- **Aktivierung / Migration auf Oracle-kompatiblen Nextcloud-Datenbanken** (30-Zeichen-Grenze für physische Tabellennamen): Die Tabelle für den Überstunden-Eröffnungssaldo heißt nun `at_user_ot_year_bal` (Migration `1025`); Migration `1026` benennt die frühere `at_user_overtime_year_balance` auf bestehenden Instanzen per `RENAME` um (inkl. PostgreSQL-Sequenz-Anpassung). Es werden keine Nutzerdaten kopiert oder gelöscht; eine **leere** Zieltabelle von fehlgeschlagenen Vorversuchen wird wie bei ProjectCheck nur bei Bedarf entfernt.
+
 ## 1.3.6 – 2026-05-19
 
 ### Neu
@@ -30,8 +50,6 @@
   - **3-px-Fokus-Outlines** und `outline-offset: 2px` für sämtliche interaktiven Oberflächen.
   - **`clip-path: inset(50%)`** für `.visually-hidden` (veraltetes `clip: rect(...)` entfernt).
   - **Tests**: 25 neue Vitest-Cases (`js/admin-vacation-layers.test.js`) für Parser, Datumsbereichs-Validator, Combobox-Tastatur, Empty-State-Logik. Alle 40 JS-Tests + 624 PHP-Tests laufen grün.
-
-## [Unreleased]
 
 ## 1.3.4 – 2026-05-19
 
@@ -74,7 +92,7 @@
 - Neu: `testCompletePausedEntryPreservesExistingEndTime`.
 - 577 Unit-Tests grün.
 
-## [Unreleased]
+## 1.3.2 – 2026-05-18
 
 ### Neu
 

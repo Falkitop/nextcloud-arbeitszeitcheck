@@ -481,4 +481,95 @@ class OvertimeServiceTest extends TestCase
 		$this->assertEquals(40.0, $result['total_hours_worked']);
 		$this->assertEquals(40.0, $result['weekly_hours']);
 	}
+
+	/**
+	 * When overtime tracking_from is set, the anchor calendar day must not
+	 * contribute standalone target hours (avoids “−8 h” before first clock-in).
+	 */
+	public function testTrackingFromAnchorDayWaivesDailyTarget(): void
+	{
+		$userId = 'testuser';
+
+		$overtimeSettings = $this->createMock(UserOvertimeSettingsService::class);
+		$overtimeSettings->method('getTrackingFrom')->willReturn(new \DateTimeImmutable('2024-01-02'));
+		$overtimeSettings->method('getOpeningBalanceHours')->willReturn(0.0);
+		$overtimeSettings->method('resolveEffectiveYearStart')->willReturn(new \DateTime('2024-01-02 00:00:00'));
+
+		$holiday = $this->createMock(HolidayService::class);
+		$holiday->method('computeWorkingDaysForUser')->willReturnCallback(static function (string $_uid, \DateTime $s, \DateTime $e): float {
+			$sd = $s->format('Y-m-d');
+			$ed = $e->format('Y-m-d');
+			if ($sd === '2024-01-02' && $ed === '2024-01-02') {
+				return 1.0;
+			}
+			if ($sd === '2024-01-02' && $ed === '2024-01-03') {
+				return 2.0;
+			}
+			return 0.0;
+		});
+
+		$service = new OvertimeService(
+			$this->timeEntryMapper,
+			$this->workingTimeModelMapper,
+			$this->userWorkingTimeModelMapper,
+			$this->l10n,
+			$holiday,
+			$overtimeSettings
+		);
+
+		$this->userWorkingTimeModelMapper->method('findCurrentByUser')->willReturn(null);
+
+		$this->timeEntryMapper->expects($this->atLeastOnce())
+			->method('findByUserAndDateRange')
+			->willReturn([]);
+
+		$onlyAnchor = $service->calculateOvertime($userId, new \DateTime('2024-01-02'), new \DateTime('2024-01-02'));
+		$this->assertSame(0.0, $onlyAnchor['required_hours']);
+		$this->assertSame(0.0, $onlyAnchor['overtime_hours']);
+
+		$anchorPlusNext = $service->calculateOvertime($userId, new \DateTime('2024-01-02'), new \DateTime('2024-01-03'));
+		$this->assertSame(8.0, $anchorPlusNext['required_hours']);
+	}
+
+	/**
+	 * When tracking-from is in the future, the visible window must not invent undertime.
+	 */
+	public function testFutureTrackingFromYieldsZeroRequiredInCurrentWindow(): void
+	{
+		$userId = 'futureuser';
+		$today = new \DateTime('today');
+		$future = (clone $today)->modify('+30 days');
+
+		$overtimeSettings = $this->createMock(UserOvertimeSettingsService::class);
+		$overtimeSettings->method('getTrackingFrom')->willReturn(\DateTimeImmutable::createFromMutable($future));
+		$overtimeSettings->method('getOpeningBalanceHours')->willReturn(0.0);
+		$overtimeSettings->method('resolveEffectiveYearStart')->willReturnCallback(
+			static function (string $_uid, int $year) use ($future): \DateTime {
+				$yearStart = new \DateTime(sprintf('%04d-01-01 00:00:00', $year));
+				return $future > $yearStart ? $future : $yearStart;
+			}
+		);
+
+		$holiday = $this->createMock(HolidayService::class);
+		$holiday->method('computeWorkingDaysForUser')->willReturn(0.0);
+
+		$service = new OvertimeService(
+			$this->timeEntryMapper,
+			$this->workingTimeModelMapper,
+			$this->userWorkingTimeModelMapper,
+			$this->l10n,
+			$holiday,
+			$overtimeSettings
+		);
+
+		$this->userWorkingTimeModelMapper->method('findCurrentByUser')->willReturn(null);
+		$this->timeEntryMapper->expects($this->never())->method('findByUserAndDateRange');
+
+		$windowStart = (clone $today)->modify('-7 days');
+		$result = $service->calculateOvertime($userId, $windowStart, $today);
+
+		$this->assertSame(0.0, $result['required_hours']);
+		$this->assertSame(0.0, $result['overtime_hours']);
+		$this->assertSame(0.0, $result['total_hours_worked']);
+	}
 }

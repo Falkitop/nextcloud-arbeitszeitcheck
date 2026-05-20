@@ -1646,4 +1646,18 @@ class AdminControllerTest extends TestCase
 		$this->assertFalse($data['success']);
 		$this->assertArrayHasKey('scope', $data['errors'] ?? []);
 	}
+
+	public function testUpdateUserOvertimeSettingsRejectsNonFourDigitOpeningYear(): void
+	{
+		$user = $this->makeUserMock('alice', 'Alice');
+		$this->userManager->method('get')->with('alice')->willReturn($user);
+		$this->request->method('getParams')->willReturn([
+			'openingBalance' => ['year' => '20261', 'hours' => '0'],
+		]);
+		$this->userOvertimeSettingsService->expects($this->never())->method('setOpeningBalance');
+
+		$response = $this->controller->updateUserOvertimeSettings('alice');
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
+		$this->assertFalse($response->getData()['success']);
+	}
 }

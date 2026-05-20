@@ -25,8 +25,10 @@ class Version1025Date20260519120000 extends SimpleMigrationStep
 		$schema = $schemaClosure();
 		$changed = false;
 
-		if (!$schema->hasTable('at_user_overtime_year_balance')) {
-			$table = $schema->createTable('at_user_overtime_year_balance');
+		// Logical name MUST keep `strlen(dbtableprefix)+strlen(name) <= 30` for
+		// Oracle / legacy Nextcloud migration checks (default prefix `oc_`).
+		if (!$schema->hasTable('at_user_ot_year_bal')) {
+			$table = $schema->createTable('at_user_ot_year_bal');
 			$table->addColumn('id', Types::BIGINT, [
 				'autoincrement' => true,
 				'notnull' => true,

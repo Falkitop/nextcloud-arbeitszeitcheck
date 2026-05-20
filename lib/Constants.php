@@ -203,7 +203,7 @@ final class Constants
 	public const CONFIG_MANUAL_TIME_ENTRIES_REQUIRE_APPROVAL = 'manual_time_entries_require_approval';
 
 	/** Overtime balance algorithm version for audit replay. */
-	public const OVERTIME_ALGORITHM_VERSION = 1;
+	public const OVERTIME_ALGORITHM_VERSION = 2;
 
 	/**
 	 * Compliance score weights (critical, warning, info).

@@ -2558,6 +2558,13 @@
         "zone": "zone",
         "{count} of 10+ characters — you can submit": "{count} of 10+ characters — you can submit",
         "{field} is required. Please fill in this field.": "{field} is required. Please fill in this field.",
-        "{remaining} more characters needed ({count} of {min})": "{remaining} more characters needed ({count} of {min})"
+        "{remaining} more characters needed ({count} of {min})": "{remaining} more characters needed ({count} of {min})",
+        "Overtime tracking from (optional)": "Overtime tracking from (optional)",
+        "If set, this date is saved as the overtime “Stichtag” when the new account is created. Leave empty to configure later in ArbeitszeitCheck → Administration → Employees.": "If set, this date is saved as the overtime “Stichtag” when the new account is created. Leave empty to configure later in ArbeitszeitCheck → Administration → Employees.",
+        "Overtime tracking start date saved for the new account.": "Overtime tracking start date saved for the new account.",
+        "Account created. Overtime start date was not applied (check ArbeitszeitCheck permissions or try again from Employees).": "Account created. Overtime start date was not applied (check ArbeitszeitCheck permissions or try again from Employees).",
+        "yearFourDigitsHelp": "Enter a four-digit year (e.g. 2026).",
+        "openingBalanceYearRange": "Opening balance year must be between 2000 and 2100.",
+        "Opening balance year must be a four-digit year (e.g. 2026).": "Opening balance year must be a four-digit year (e.g. 2026)."
     }
 }

@@ -520,7 +520,7 @@
                 </div>
                 <div class="form-group">
                     <label for="user-vacation-carryover-year" class="form-label">${carryoverYearLabel}</label>
-                    <input type="number" id="user-vacation-carryover-year" name="vacationCarryoverYear" class="form-input" min="2000" max="2100" step="1" value="${carryYear}" aria-describedby="user-carryover-year-help">
+                    <input type="text" id="user-vacation-carryover-year" name="vacationCarryoverYear" class="form-input" inputmode="numeric" pattern="\\d{4}" maxlength="4" autocomplete="off" value="${carryYear}" aria-describedby="user-carryover-year-help">
                     <p id="user-carryover-year-help" class="form-help">${t('vacationCarryoverYearHelp', 'The calendar year this opening balance applies to (same year as in employees’ vacation statistics—usually the current year). When a new year starts or after migrating from another system, set the Resturlaub opening balance for that year here or use the CSV import command; the app does not roll balances forward automatically.')}</p>
                 </div>
                 </section>
@@ -538,7 +538,8 @@
                 </div>
                 <div class="form-group">
                     <label for="user-overtime-opening-year" class="form-label">${Utils.escapeHtml(t('overtimeOpeningBalanceYear', 'Year for opening balance'))}</label>
-                    <input type="number" id="user-overtime-opening-year" name="overtimeOpeningBalanceYear" class="form-input" min="2000" max="2100" value="${Utils.escapeHtml(overtimeOpeningYear)}">
+                    <input type="text" id="user-overtime-opening-year" name="overtimeOpeningBalanceYear" class="form-input" inputmode="numeric" pattern="\\d{4}" maxlength="4" autocomplete="off" value="${Utils.escapeHtml(overtimeOpeningYear)}" aria-describedby="user-overtime-opening-year-help">
+                    <p id="user-overtime-opening-year-help" class="form-help">${Utils.escapeHtml(t('yearFourDigitsHelp', 'Enter a four-digit year (e.g. 2026).'))}</p>
                 </div>
                 </section>
                 <section class="user-edit-section" aria-labelledby="user-edit-validity-heading">
@@ -801,10 +802,20 @@
                                 Messaging.showError(policyResponse.error || auMsg('failedToUpdateUser', 'Failed to update user'));
                                 return;
                             }
+                            const openingYearRaw = (document.getElementById('user-overtime-opening-year')?.value || String(new Date().getFullYear())).trim();
+                            if (!/^\d{4}$/.test(openingYearRaw)) {
+                                Messaging.showError(t('yearFourDigitsHelp', 'Enter a four-digit year (e.g. 2026).'));
+                                return;
+                            }
+                            const openingYear = parseInt(openingYearRaw, 10);
+                            if (openingYear < 2000 || openingYear > 2100) {
+                                Messaging.showError(t('openingBalanceYearRange', 'Opening balance year must be between 2000 and 2100.'));
+                                return;
+                            }
                             const overtimePayload = {
                                 trackingFrom: document.getElementById('user-overtime-tracking-from')?.value || null,
                                 openingBalance: {
-                                    year: parseInt(document.getElementById('user-overtime-opening-year')?.value || String(new Date().getFullYear()), 10),
+                                    year: openingYear,
                                     hours: document.getElementById('user-overtime-opening')?.value || '0'
                                 }
                             };

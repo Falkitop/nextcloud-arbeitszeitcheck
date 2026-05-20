@@ -17,6 +17,7 @@ use OCA\ArbeitszeitCheck\Repair\BackfillAbsenceDays;
 use OCA\ArbeitszeitCheck\Listener\LoadSidebarScripts;
 use OCA\ArbeitszeitCheck\Listener\CSPListener;
 use OCA\ArbeitszeitCheck\Listener\TimeClientBootstrapListener;
+use OCA\ArbeitszeitCheck\Listener\LoadUsersSettingsArbeitszeitListener;
 use OCA\ArbeitszeitCheck\Listener\UserDeletedListener;
 use OCA\ArbeitszeitCheck\Middleware\AppAdminMiddleware;
 use OCA\ArbeitszeitCheck\Notification\Notifier;
@@ -48,6 +49,7 @@ use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
 use OCP\IDBConnection;
 use OCP\Security\CSP\AddContentSecurityPolicyEvent;
+use OCA\Settings\Events\BeforeTemplateRenderedEvent as SettingsBeforeTemplateRenderedEvent;
 use OCP\User\Events\UserDeletedEvent;
 
 /**
@@ -77,6 +79,7 @@ class Application extends App implements IBootstrap {
 		$context->registerEventListener(LoadSidebar::class, LoadSidebarScripts::class);
 		$context->registerEventListener(AddContentSecurityPolicyEvent::class, CSPListener::class);
 		$context->registerEventListener(UserDeletedEvent::class, UserDeletedListener::class);
+		$context->registerEventListener(SettingsBeforeTemplateRenderedEvent::class, LoadUsersSettingsArbeitszeitListener::class);
 		$context->registerEventListener(
 			\OCP\AppFramework\Http\Events\BeforeTemplateRenderedEvent::class,
 			TimeClientBootstrapListener::class

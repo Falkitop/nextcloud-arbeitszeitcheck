@@ -74,6 +74,44 @@ class OvertimeService
 			$periodStart = clone $effectiveYTDStart;
 		}
 
+		// Future tracking-from (or any clamp that moves period start past the range end):
+		// no target hours and no worked hours in-window; opening balance / carry-in still apply.
+		$periodStartDay = clone $periodStart;
+		$periodStartDay->setTime(0, 0, 0);
+		$periodEndDay = clone $endDate;
+		$periodEndDay->setTime(0, 0, 0);
+		if ($periodStartDay > $periodEndDay) {
+			$carryInDelta = 0.0;
+			if ($calculateCumulative) {
+				try {
+					$carryInDelta = $this->getCumulativeWorkDelta($userId, $effectiveYTDStart, $startDate);
+				} catch (\Throwable $e) {
+					\OCP\Log\logger('arbeitszeitcheck')->error('Error calculating cumulative overtime balance: ' . $e->getMessage());
+				}
+			}
+			$balanceBefore = $opening + $carryInDelta;
+			$impliedDailyHours = $weeklyHours > 0 ? round($weeklyHours / 5, 2) : 0.0;
+
+			return [
+				'period_start' => $periodStart->format('Y-m-d'),
+				'period_end' => $endDate->format('Y-m-d'),
+				'total_hours_worked' => 0.0,
+				'required_hours' => 0.0,
+				'overtime_hours' => 0.0,
+				'cumulative_balance_before' => round($balanceBefore, 2),
+				'cumulative_balance_after' => round($balanceBefore, 2),
+				'cumulative_balance' => round($balanceBefore, 2),
+				'daily_hours' => $dailyHours,
+				'weekly_hours' => $weeklyHours,
+				'implied_daily_hours' => $impliedDailyHours,
+				'required_hours_basis' => 'weekly_contract',
+				'working_days' => 0.0,
+				'effective_tracking_from' => $trackingFrom !== null ? $trackingFrom->format('Y-m-d') : null,
+				'opening_balance_hours' => round($opening, 2),
+				'algorithm_version' => Constants::OVERTIME_ALGORITHM_VERSION,
+			];
+		}
+
 		$timeEntries = $this->timeEntryMapper->findByUserAndDateRange($userId, $periodStart, $endDate);
 
 		$totalHoursWorked = 0.0;
@@ -84,6 +122,26 @@ class OvertimeService
 		}
 
 		$requiredHours = $this->calculateRequiredHours($userId, $periodStart, $endDate, $dailyHours, $weeklyHours);
+		// Overtime tracking "Stichtag": do not apply the full daily/weekly target to the
+		// anchor calendar day itself. Otherwise a new employee sees a full day of
+		// undertime at login before any work is recorded (confusing UX). From the next
+		// calendar day onward, targets apply normally. Opening balance still applies.
+		if ($trackingFrom !== null) {
+			$anchor = \DateTime::createFromImmutable($trackingFrom);
+			$anchor->setTime(0, 0, 0);
+			$periodStartDay = clone $periodStart;
+			$periodStartDay->setTime(0, 0, 0);
+			$periodEndDay = clone $endDate;
+			$periodEndDay->setTime(0, 0, 0);
+			if ($anchor >= $periodStartDay && $anchor <= $periodEndDay) {
+				$anchorEnd = clone $anchor;
+				$anchorEnd->setTime(23, 59, 59);
+				$requiredHours -= $this->calculateRequiredHours($userId, $anchor, $anchorEnd, $dailyHours, $weeklyHours);
+				if ($requiredHours < 0) {
+					$requiredHours = 0.0;
+				}
+			}
+		}
 		$overtimeHours = $totalHoursWorked - $requiredHours;
 
 		$carryInDelta = 0.0;

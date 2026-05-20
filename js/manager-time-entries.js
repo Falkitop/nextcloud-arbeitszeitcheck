@@ -253,11 +253,14 @@
 
 		body.innerHTML = entries.map((entry) => {
 			const canCorrect = entry.status === 'completed';
-			const summaryJson = escapeHtml(JSON.stringify({
-				startTime: entry.startTime || null,
-				endTime: entry.endTime || null,
-				breaks: entry.breaks || null,
-			}));
+			const summaryPayload = {
+				startTime: entry.displayStartTime || entry.startTime || null,
+				endTime: entry.displayEndTime || entry.endTime || null,
+				breaks: entry.displayBreaks || entry.breaks || null,
+			};
+			const summaryJson = Utils.encodeAttributeJson
+				? Utils.encodeAttributeJson(summaryPayload)
+				: escapeHtml(JSON.stringify(summaryPayload));
 			const actionCell = canCorrect
 				? `<button type="button" class="btn btn--sm btn--secondary btn-manager-correct" data-entry-id="${escapeHtml(String(entry.id))}" data-entry-updated="${escapeHtml(entry.updatedAt || '')}" data-entry-summary="${summaryJson}" aria-label="${escapeHtml(t('Correct time entry', 'Correct time entry'))}">${escapeHtml(t('Correct', 'Correct'))}</button>`
 				: '<span class="text-muted">–</span>';

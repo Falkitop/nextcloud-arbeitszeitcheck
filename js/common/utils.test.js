@@ -9,6 +9,14 @@ describe('ArbeitszeitCheckUtils', () => {
     expect(u.escapeHtml('<script>alert("x")</script>')).toBe('&lt;script&gt;alert("x")&lt;/script&gt;')
   })
 
+  it('encodeAttributeJson hex-escapes quotes for HTML attributes', () => {
+    const u = window.ArbeitszeitCheckUtils
+    const encoded = u.encodeAttributeJson({ startTime: '2026-05-20T08:00:00+02:00' })
+    expect(encoded).not.toContain('"')
+    expect(encoded).toContain('\\u0022startTime\\u0022')
+    expect(encoded).toContain('2026-05-20T08:00:00+02:00')
+  })
+
   it('createElement sets className and textContent and avoids implicit html', () => {
     const u = window.ArbeitszeitCheckUtils
     const el = u.createElement('div', { className: 'x', textContent: '<b>hi</b>' })

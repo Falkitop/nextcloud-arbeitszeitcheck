@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.3.7 - 2026-05-20
+
+### Added / Changed
+
+- **Overtime tracking anchor day:** the calendar day of the configured `tracking_from` date no longer carries a standalone full daily target into the overtime balance (algorithm version **2**), avoiding misleading “minus one full day” right after onboarding. Opening balance and subsequent days are unchanged.
+- **Accounts → New account** (Nextcloud user management): optional “Overtime tracking from” field for ArbeitszeitCheck app administrators; after a successful user creation the same API as **Administration → Employees** is called (`LoadUsersSettingsArbeitszeitListener`, `settings-users-overtime.js` + CSS).
+- **Manager correction / clock matrix:** `formatTime` now builds `HH:mm` via `Intl.DateTimeFormat#formatToParts`, avoiding narrow no-break spaces that broke strict `HH:mm` parsing — pre-filled stamp times work reliably.
+- **Admin employees:** year inputs for opening overtime / vacation carryover are four-digit text fields with `maxlength` and help text.
+
+### Fixed
+
+- **App enable / migration on Oracle-compatible Nextcloud installs** where physical table names must stay within the 30-character limit (`dbtableprefix` + logical name). The overtime opening-balance table is now `at_user_ot_year_bal` (migration `1025`), and migration `1026` renames the legacy `at_user_overtime_year_balance` table in place on instances that already created it, including PostgreSQL sequence cleanup. No data is copied or dropped except dropping an **empty** stray target table left by a failed prior attempt (same safety model as ProjectCheck table renames).
+
 ## 1.3.6 - 2026-05-19
 
 ### Added
@@ -42,8 +55,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **3 px focus outlines** with `outline-offset: 2px` on every interactive surface (buttons, summary toggles, simulator result region), replacing the previous 2 px outline which was borderline against the primary-element fill.
   - **`clip-path: inset(50%)`** for the `.visually-hidden` helper (deprecated `clip: rect(...)` removed).
   - **Test coverage**: 25 new vitest cases in `js/admin-vacation-layers.test.js` for the manual-days parser (including comma / scientific-notation / range / boundary cases), the date-range validator, the combobox keyboard interactions (ArrowDown/Up/Enter/Escape, "no matches" empty-state) and the empty-state guard behaviour. All 40 JS unit tests + 624 PHP unit tests pass.
-
-## [Unreleased]
 
 ## 1.3.4 - 2026-05-19
 
@@ -131,8 +142,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New: 5 cases in `TimeTrackingServiceTest` covering the paused-entry recovery path.
 - New: `LayeredVacationEntitlementEngineTest`, `LayeredVacationDefaultsServiceTest`, and `AdminControllerTest` cases for degraded-state flags, impact preview, and 409 lock mapping.
 - All 567 unit tests pass.
-
-## [Unreleased]
 
 ## 1.3.1 - 2026-05-12
 

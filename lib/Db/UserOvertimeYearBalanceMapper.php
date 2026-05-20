@@ -14,7 +14,7 @@ class UserOvertimeYearBalanceMapper extends QBMapper
 {
 	public function __construct(IDBConnection $db)
 	{
-		parent::__construct($db, 'at_user_overtime_year_balance', UserOvertimeYearBalance::class);
+		parent::__construct($db, 'at_user_ot_year_bal', UserOvertimeYearBalance::class);
 	}
 
 	public function findByUserAndYear(string $userId, int $year): UserOvertimeYearBalance

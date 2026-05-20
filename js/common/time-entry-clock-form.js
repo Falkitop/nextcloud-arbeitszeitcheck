@@ -121,11 +121,13 @@
 		if (!hourSelect || !minuteSelect) {
 			return;
 		}
-		if (hm && hm.hour) {
+		const hasHm = hm && hm.hour !== '' && hm.minute !== '';
+		if (hasHm) {
 			hourSelect.value = hm.hour;
-		}
-		if (hm && hm.minute) {
 			minuteSelect.value = hm.minute;
+		} else {
+			hourSelect.value = '';
+			minuteSelect.value = '';
 		}
 		hourSelect.dispatchEvent(new Event('change'));
 	}
@@ -331,8 +333,8 @@
 		const btnToday = root.querySelector('.' + p + '-date-today');
 		const statusEl = root.querySelector('.' + p + '-status');
 
-		addTimeOptions(startHour, startMinute, false);
-		addTimeOptions(endHour, endMinute, false);
+		addTimeOptions(startHour, startMinute, true);
+		addTimeOptions(endHour, endMinute, true);
 		bindTimeInputs(startHour, startMinute, startHidden);
 		bindTimeInputs(endHour, endMinute, endHidden);
 

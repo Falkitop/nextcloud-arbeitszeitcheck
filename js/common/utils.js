@@ -530,6 +530,22 @@ const ArbeitszeitCheckUtils = {
   },
 
   /**
+   * Encode JSON for safe embedding in HTML double-quoted attributes.
+   * Mirrors PHP `json_encode($x, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)`.
+   *
+   * @param {unknown} value
+   * @returns {string}
+   */
+  encodeAttributeJson(value) {
+    return JSON.stringify(value)
+      .replace(/</g, '\\u003C')
+      .replace(/>/g, '\\u003E')
+      .replace(/&/g, '\\u0026')
+      .replace(/'/g, '\\u0027')
+      .replace(/"/g, '\\u0022');
+  },
+
+  /**
    * Truncate string
    */
   truncate(str, length = 50, suffix = '...') {
