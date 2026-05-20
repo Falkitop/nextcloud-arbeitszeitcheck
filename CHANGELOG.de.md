@@ -1,3 +1,12 @@
+## 1.3.8 – 2026-05-20
+
+### Behoben (Audit-Härtung)
+
+- **Neues Konto + Stichtag:** Stichtag wird beim Klick auf „Erstellen“ zuverlässig erfasst; OCS-Hook nur noch für `POST …/cloud/users` ohne Unterpfad.
+- **Manager-Korrektur:** `data-entry-summary` mit JSON-Hex-Encoding; Anzeige-Zeiten; leere Uhrzeit = `--`.
+- **Überstunden:** Zukünftiger Stichtag erzeugt keinen fiktiven Minus-Saldo im aktuellen Zeitraum.
+- **Eröffnungssaldo-Jahr:** Server prüft exakt vier Ziffern (2000–2100); Client validiert vor dem Speichern.
+
 ## 1.3.7 – 2026-05-20
 
 ### Neu / Geändert
@@ -6,13 +15,6 @@
 - **Konten → Neues Konto** (Nextcloud-Benutzerverwaltung): Optionales Feld „Überstunden-Stichtag“ für ArbeitszeitCheck-Administrator:innen; nach erfolgreicher Kontenerstellung wird die gleiche API wie unter Mitarbeitende genutzt (`LoadUsersSettingsArbeitszeitListener`, `settings-users-overtime.js`).
 - **Manager-Korrektur / Zeiteintrags-Matrix**: `formatTime` liefert stabiles `HH:mm` per `Intl.formatToParts` (kein schmales Leerzeichen mehr) — vorbefüllte Stempelzeiten funktionieren zuverlässig.
 - **Admin Mitarbeitende**: Jahresfelder (Eröffnungssaldo / Resturlaub) als vierstellige Texteingabe mit `maxlength` und Hilfetext.
-
-### Behoben (Audit-Härtung)
-
-- **Neues Konto + Stichtag**: Stichtag wird beim Klick auf „Erstellen“ zuverlässig erfasst (nicht mehr vom falschen Dialog); OCS-Hook nur noch für `POST …/cloud/users` ohne Unterpfad.
-- **Manager-Korrektur**: `data-entry-summary` wie in PHP mit JSON-Hex-Encoding; Anzeige-Zeiten (`displayStartTime`/`displayBreaks`); leere Uhrzeit = `--` statt irreführendem `00:00`.
-- **Überstunden**: Zukünftiger Stichtag erzeugt keinen fiktiven Minus-Saldo im aktuellen Zeitraum.
-- **Eröffnungssaldo-Jahr**: Server prüft exakt vier Ziffern (2000–2100); Client validiert vor dem Speichern.
 
 ### Behoben
 
