@@ -109,7 +109,9 @@
     background: var(--color-error-dark, var(--color-error));
 }
 
-.stat-item {
+/* Scoped: do not override sidebar footer .stat-item in navigation.css */
+#app-content-wrapper .stat-item,
+.arbeitszeitcheck-dashboard .stat-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -118,7 +120,8 @@
     border-bottom: 1px solid var(--color-border);
 }
 
-.stat-item:last-child {
+#app-content-wrapper .stat-item:last-child,
+.arbeitszeitcheck-dashboard .stat-item:last-child {
     border-bottom: none;
     margin-bottom: 0;
 }

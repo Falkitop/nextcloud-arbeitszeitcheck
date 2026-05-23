@@ -216,6 +216,29 @@ const ArbeitszeitCheckUtils = {
   },
 
   /**
+   * Strip absolute same-app URLs to a root-relative path so origin checks
+   * and fetch always target the current host (avoids localhost vs 127.0.0.1 mismatches).
+   */
+  toSameOriginPath(url) {
+    if (typeof url !== 'string' || !url) {
+      return url;
+    }
+    try {
+      if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('//')) {
+        const absolute = url.startsWith('//') ? (window.location.protocol + url) : url;
+        const parsed = new URL(absolute);
+        if (typeof window !== 'undefined' && window.location && parsed.origin === window.location.origin) {
+          return parsed.pathname + parsed.search + parsed.hash;
+        }
+        return url;
+      }
+    } catch (e) {
+      return url;
+    }
+    return url;
+  },
+
+  /**
    * Resolve app and API URLs in one place.
    * - Keeps absolute URLs unchanged.
    * - Normalizes /apps/arbeitszeitcheck/... through OC.generateUrl when available.
@@ -227,6 +250,8 @@ const ArbeitszeitCheckUtils = {
     if (typeof url !== 'string') {
       return url;
     }
+
+    url = this.toSameOriginPath(url);
 
     if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('//')) {
       return url;
@@ -290,7 +315,8 @@ const ArbeitszeitCheckUtils = {
       headers = {},
       onSuccess = null,
       onError = null,
-      allowExternal = false
+      allowExternal = false,
+      signal = null
     } = options;
 
     const requestToken = this.getRequestToken();
@@ -309,6 +335,10 @@ const ArbeitszeitCheckUtils = {
       headers: { ...defaultHeaders, ...headers },
       credentials: 'same-origin'
     };
+
+    if (signal) {
+      config.signal = signal;
+    }
 
     if (data && methodUpper !== 'GET' && methodUpper !== 'HEAD') {
       if (config.headers['Content-Type'] === 'application/json') {

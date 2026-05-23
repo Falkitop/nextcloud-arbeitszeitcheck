@@ -15,12 +15,15 @@ use OCP\AppFramework\Http\TemplateResponse;
 use OCA\ArbeitszeitCheck\Service\CSPService;
 
 /**
- * Trait for configuring Content Security Policy
+ * Trait for configuring Content Security Policy.
+ *
+ * PHP 8.4+: never constructor-promote `CSPService $cspService` on classes using
+ * this trait — that duplicates `$cspService` and causes a fatal error on boot.
+ * Inject via an unpromoted parameter and call {@see setCspService()} instead.
  */
 trait CSPTrait
 {
-    /** @var CSPService */
-    private CSPService $cspService;
+    private ?CSPService $cspService = null;
 
     /**
      * Provide CSP service to classes using this trait

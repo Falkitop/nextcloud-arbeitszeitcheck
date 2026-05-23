@@ -169,7 +169,7 @@
         if (!tbody) return;
 
         if (users.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center">' + auMsg('noUsersFound', 'No users found') + '</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center">' + auMsg('noUsersFound', 'No users found') + '</td></tr>';
             return;
         }
 
@@ -185,6 +185,10 @@
             const start = user.workingTimeModelStartDate || null;
             const end = user.workingTimeModelEndDate || null;
             const validity = start ? (formatDate(start) + (end ? ' – ' + formatDate(end) : ' – ' + ongoingLabel)) : '-';
+            const stichtag = user.overtimeTrackingFrom || '';
+            const stichtagCell = stichtag
+                ? `<span class="badge badge--info">${Utils.escapeHtml(formatDate(stichtag))}</span>`
+                : `<span class="badge badge--warning">${Utils.escapeHtml(auMsg('notSet', 'Not set'))}</span>`;
             return `
             <tr data-user-id="${Utils.escapeHtml(user.userId)}">
                 <td>${Utils.escapeHtml(user.displayName)}</td>
@@ -196,6 +200,7 @@
                 </td>
                 <td>${Utils.escapeHtml(vacation)}</td>
                 <td>${Utils.escapeHtml(validity)}</td>
+                <td>${stichtagCell}</td>
                 <td>
                     <span class="badge badge--${user.enabled ? 'success' : 'error'}">
                         ${user.enabled 

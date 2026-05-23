@@ -37,6 +37,7 @@ class ComplianceService
     private IConfig $config;
     private PermissionService $permissionService;
     private TimeZoneService $timeZoneService;
+    private DailyWorkingHoursCalculator $dailyWorkingHoursCalculator;
 
     public function __construct(
         TimeEntryMapper $timeEntryMapper,
@@ -49,7 +50,8 @@ class ComplianceService
         HolidayService $holidayCalendarService,
         IConfig $config,
         PermissionService $permissionService,
-        TimeZoneService $timeZoneService
+        TimeZoneService $timeZoneService,
+        DailyWorkingHoursCalculator $dailyWorkingHoursCalculator,
     ) {
         $this->timeEntryMapper = $timeEntryMapper;
         $this->violationMapper = $violationMapper;
@@ -62,6 +64,7 @@ class ComplianceService
         $this->config = $config;
         $this->permissionService = $permissionService;
         $this->timeZoneService = $timeZoneService;
+        $this->dailyWorkingHoursCalculator = $dailyWorkingHoursCalculator;
     }
 
     /**
@@ -406,39 +409,101 @@ class ComplianceService
     private function checkExcessiveWorkingHoursWithResult(TimeEntry $timeEntry): array
     {
         $violations = [];
-        $maxDaily = $this->getMaxDailyHours();
-        $workingDuration = $timeEntry->getWorkingDurationHours();
-
-        if ($workingDuration !== null && $workingDuration > $maxDaily) {
-            $violation = $this->violationMapper->createViolation(
-                $timeEntry->getUserId(),
-                ComplianceViolation::TYPE_EXCESSIVE_WORKING_HOURS,
-                $this->l10n->t('Working hours exceeded %d hours in a single day', [(int)$maxDaily]),
-                $timeEntry->getEndTime() ?: new \DateTime(),
-                $timeEntry->getId(),
-                ComplianceViolation::SEVERITY_ERROR
-            );
-            
-            $violations[] = [
-                'id' => $violation->getId(),
-                'type' => ComplianceViolation::TYPE_EXCESSIVE_WORKING_HOURS,
-                'severity' => ComplianceViolation::SEVERITY_ERROR,
-                'message' => $this->l10n->t('Working hours exceeded %d hours in a single day', [(int)$maxDaily])
-            ];
-            
-            // Send notification
-            if ($this->notificationService) {
-                $this->notificationService->notifyComplianceViolation($timeEntry->getUserId(), [
-                    'id' => $violation->getId(),
-                    'type' => ComplianceViolation::TYPE_EXCESSIVE_WORKING_HOURS,
-                    'message' => $this->l10n->t('Working hours exceeded %d hours in a single day', [(int)$maxDaily]),
-                    'date' => ($timeEntry->getEndTime() ?: new \DateTime())->format('Y-m-d'),
-                    'severity' => ComplianceViolation::SEVERITY_ERROR
-                ]);
-            }
+        foreach ($this->createExcessiveHoursViolationsForEntry($timeEntry) as $recorded) {
+            $violations[] = $recorded['summary'];
         }
 
         return $violations;
+    }
+
+    /**
+     * ArbZG §3: flag each calendar day (storage TZ) whose total exceeds the daily maximum.
+     *
+     * @return list<array{summary: array<string, mixed>, violation: ComplianceViolation}>
+     */
+    private function createExcessiveHoursViolationsForEntry(TimeEntry $timeEntry): array
+    {
+        if ($timeEntry->getStartTime() === null || $timeEntry->getEndTime() === null) {
+            return [];
+        }
+
+        $userId = $timeEntry->getUserId();
+        $maxDaily = $this->getMaxDailyHours();
+        $exceedingDays = $this->dailyWorkingHoursCalculator->findAllCalendarDaysExceedingMaximum(
+            $userId,
+            $timeEntry,
+            $maxDaily,
+        );
+
+        if ($exceedingDays === []) {
+            return [];
+        }
+
+        $recorded = [];
+        foreach ($exceedingDays as $day) {
+            [$dayStart] = $this->timeZoneService->dayWindowInStorage(
+                new \DateTime($day['date'] . ' 12:00:00', $this->timeZoneService->storageTimeZone())
+            );
+
+            if ($this->excessiveHoursViolationExistsForCalendarDay($userId, $dayStart)) {
+                continue;
+            }
+
+            $message = $this->l10n->t(
+                'Working hours on %1$s exceeded %2$d hours (%.1f h on that calendar day, ArbZG §3)',
+                [
+                    $this->displayDate($dayStart, $userId),
+                    (int)$maxDaily,
+                    $day['hours'],
+                ]
+            );
+
+            $violation = $this->violationMapper->createViolation(
+                $userId,
+                ComplianceViolation::TYPE_EXCESSIVE_WORKING_HOURS,
+                $message,
+                $dayStart,
+                $timeEntry->getId(),
+                ComplianceViolation::SEVERITY_ERROR
+            );
+
+            $summary = [
+                'id' => $violation->getId(),
+                'type' => ComplianceViolation::TYPE_EXCESSIVE_WORKING_HOURS,
+                'severity' => ComplianceViolation::SEVERITY_ERROR,
+                'message' => $message,
+            ];
+
+            if ($this->notificationService) {
+                $this->notificationService->notifyComplianceViolation($userId, [
+                    'id' => $violation->getId(),
+                    'type' => ComplianceViolation::TYPE_EXCESSIVE_WORKING_HOURS,
+                    'message' => $message,
+                    'date' => $day['date'],
+                    'severity' => ComplianceViolation::SEVERITY_ERROR,
+                ]);
+            }
+
+            $recorded[] = ['summary' => $summary, 'violation' => $violation];
+        }
+
+        return $recorded;
+    }
+
+    /**
+     * Avoid duplicate ERROR rows when batch checks touch several entries on the same day.
+     */
+    private function excessiveHoursViolationExistsForCalendarDay(string $userId, \DateTime $dayStart): bool
+    {
+        $dayEnd = (clone $dayStart)->modify('+1 day');
+        foreach ($this->violationMapper->findByDateRange($dayStart, $dayEnd, $userId) as $existing) {
+            if ($existing->getViolationType() === ComplianceViolation::TYPE_EXCESSIVE_WORKING_HOURS
+                && !$existing->isResolved()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -572,15 +637,8 @@ class ComplianceService
      */
     private function checkDailyWorkingHoursLimit(string $userId): bool
     {
-        $today = new \DateTime();
-        $today->setTime(0, 0, 0);
-        $tomorrow = clone $today;
-        $tomorrow->modify('+1 day');
-
-        $todayHours = $this->timeEntryMapper->getTotalHoursByUserAndDateRange($userId, $today, $tomorrow);
-        $maxDaily = $this->getMaxDailyHours();
-
-        return $todayHours < $maxDaily;
+        $todayHours = $this->dailyWorkingHoursCalculator->getWorkingHoursForToday($userId);
+        return $todayHours < $this->getMaxDailyHours();
     }
 
     /**
@@ -767,29 +825,7 @@ class ComplianceService
      */
     private function checkExcessiveWorkingHours(TimeEntry $timeEntry): void
     {
-        $maxDaily = $this->getMaxDailyHours();
-        $workingDuration = $timeEntry->getWorkingDurationHours();
-
-        if ($workingDuration !== null && $workingDuration > $maxDaily) {
-            $violation = $this->violationMapper->createViolation(
-                $timeEntry->getUserId(),
-                ComplianceViolation::TYPE_EXCESSIVE_WORKING_HOURS,
-                $this->l10n->t('Working hours exceeded %d hours in a single day', [(int)$maxDaily]),
-                $timeEntry->getEndTime() ?: new \DateTime(),
-                $timeEntry->getId(),
-                ComplianceViolation::SEVERITY_ERROR
-            );
-            
-            if ($this->notificationService) {
-                $this->notificationService->notifyComplianceViolation($timeEntry->getUserId(), [
-                    'id' => $violation->getId(),
-                    'type' => ComplianceViolation::TYPE_EXCESSIVE_WORKING_HOURS,
-                    'message' => $this->l10n->t('Working hours exceeded %d hours in a single day', [(int)$maxDaily]),
-                    'date' => ($timeEntry->getEndTime() ?: new \DateTime())->format('Y-m-d'),
-                    'severity' => ComplianceViolation::SEVERITY_ERROR
-                ]);
-            }
-        }
+        $this->createExcessiveHoursViolationsForEntry($timeEntry);
     }
 
     /**

@@ -142,12 +142,17 @@ class TimeEntryControllerTest extends TestCase
 		$tzUserSession->method('getUser')->willReturn(null);
 		$timeZoneService = new TimeZoneService($tzConfig, $tzDateTimeZone, $tzUserSession, new NullLogger());
 
+		$overtimeBankService = $this->createMock(\OCA\ArbeitszeitCheck\Service\OvertimeBankService::class);
+		$overtimeBankService->method('isEnabled')->willReturn(false);
+		$overtimeBankService->method('getBankStatus')->willReturn(['enabled' => false]);
+
 		$this->controller = new TimeEntryController(
 			'arbeitszeitcheck',
 			$this->request,
 			$this->timeEntryMapper,
 			$this->userSession,
 			$this->overtimeService,
+			$overtimeBankService,
 			$this->urlGenerator,
 			$this->l10n,
 			$this->auditLogMapper,

@@ -22,12 +22,15 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
   margin: 0 !important;
   /* Use the Nextcloud header-height variable (set on body by NC core).
      Fall back to 50px which is the conventional height on NC 25-32. */
   margin-top: var(--header-height, 50px) !important;
   padding: 0 !important;
   overflow: hidden;
+  text-align: left;
   /* Contain flex children; scrolling happens in #app-content */
 }
 
@@ -35,11 +38,38 @@
 #content.app-arbeitszeitcheck #arbeitszeitcheck-app,
 #content.app-arbeitszeitcheck .arbeitszeitcheck-app {
   width: 100%;
-  max-width: 100%;
+  max-width: none;
   min-width: 0;
   min-height: 0;
-  flex: 1;
+  flex: 1 1 auto;
+  align-self: stretch;
   overflow: hidden;
+  text-align: left;
+}
+
+@media (min-width: 769px) {
+  #content.app-arbeitszeitcheck #arbeitszeitcheck-app,
+  #content.app-arbeitszeitcheck .arbeitszeitcheck-app {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+  }
+
+  #content.app-arbeitszeitcheck #app-navigation {
+    flex: 0 0 280px;
+    width: 280px;
+    min-width: 280px;
+    max-width: 280px;
+    align-self: stretch;
+  }
+
+  #content.app-arbeitszeitcheck #app-content {
+    flex: 1 1 0;
+    min-width: 0;
+    width: auto;
+    max-width: none;
+    text-align: left;
+  }
 }
 
 /* ===== APP-CONTENT & WRAPPER (100% WIDTH, SCROLLABLE) ===== */
@@ -240,6 +270,25 @@
   margin-bottom: var(--space-5);
   padding-bottom: var(--space-4);
   border-bottom: 2px solid var(--arbeitszeitcheck-color-border);
+}
+
+/* Title + intro only (no action row): stack for readable admin/settings pages */
+#app-content-wrapper .section-header--stacked,
+#app-content-wrapper .page-header-section .header-content {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+#app-content-wrapper .section-header--stacked h1,
+#app-content-wrapper .section-header--stacked p,
+#app-content-wrapper .page-header-section .header-text h1,
+#app-content-wrapper .page-header-section .header-text h2,
+#app-content-wrapper .page-header-section .header-text p {
+  width: 100%;
+  max-width: 65ch;
+  text-align: left;
 }
 
 #app-content-wrapper .section-header h1,

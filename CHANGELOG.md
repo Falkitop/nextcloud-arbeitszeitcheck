@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Fixed
+
+- **Night / overnight shifts (Wachdienst):** ArbZG §3 daily maximum and automatic clock-out now use a single `DailyWorkingHoursCalculator` (calendar-day clipping at midnight). All enforcement paths aligned: live sessions, clock-in, compliance checks, manual entries, automatic breaks, break reminders. Fixes false auto clock-out shortly after midnight. Frontend auto clock-out only when `at_daily_maximum` is true (never client extrapolation alone). User stats and manager week/month totals now use `getWorkingHoursForPeriod()` (same calculator). Compliance “excessive working hours” violations now use `findAllCalendarDaysExceedingMaximum()` (no false positives on legal 22:00–08:00 rows). Audit reference: `docs/DAILY-HOURS-AUDIT.md`. E2E: `tests/e2e/overnight-daily-maximum.spec.js`.
+
 ## 1.3.8 - 2026-05-20
 
 ### Fixed

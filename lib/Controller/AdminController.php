@@ -378,6 +378,19 @@ class AdminController extends Controller
 			$withOvertimeTracking = $this->userOvertimeSettingsService->countUsersWithTrackingFrom();
 			$withoutOvertimeTracking = max(0, $totalUsers - $withOvertimeTracking);
 
+			$overtimePolicy = [
+				'traffic_light_enabled' => $this->appConfig->getAppValueString(Constants::CONFIG_OVERTIME_TRAFFIC_LIGHT_ENABLED, '0') === '1',
+				'bank_enabled' => $this->appConfig->getAppValueString(Constants::CONFIG_OVERTIME_BANK_ENABLED, '0') === '1',
+				'bank_max_hours' => (float)$this->appConfig->getAppValueString(Constants::CONFIG_OVERTIME_BANK_MAX_HOURS, '100'),
+				'bank_yellow_percent' => (int)$this->appConfig->getAppValueString(Constants::CONFIG_OVERTIME_BANK_YELLOW_PERCENT, '80'),
+				'bank_red_percent' => (int)$this->appConfig->getAppValueString(Constants::CONFIG_OVERTIME_BANK_RED_PERCENT, '95'),
+				'block_month_closure_pending_payout' => $this->appConfig->getAppValueString(Constants::CONFIG_OVERTIME_BLOCK_MONTH_CLOSURE_PENDING_PAYOUT, '0') === '1',
+				'threshold_yellow_over' => (float)$this->appConfig->getAppValueString(Constants::CONFIG_OVERTIME_THRESHOLD_YELLOW_OVER, '20'),
+				'threshold_red_over' => (float)$this->appConfig->getAppValueString(Constants::CONFIG_OVERTIME_THRESHOLD_RED_OVER, '40'),
+				'threshold_yellow_under' => (float)$this->appConfig->getAppValueString(Constants::CONFIG_OVERTIME_THRESHOLD_YELLOW_UNDER, '-20'),
+				'threshold_red_under' => (float)$this->appConfig->getAppValueString(Constants::CONFIG_OVERTIME_THRESHOLD_RED_UNDER, '-40'),
+			];
+
 			$response = new TemplateResponse('arbeitszeitcheck', 'admin-dashboard', [
 				'statistics' => [
 					'total_users' => $totalUsers,
@@ -390,6 +403,7 @@ class AdminController extends Controller
 					'with_tracking' => $withOvertimeTracking,
 					'total_users' => $totalUsers,
 				],
+				'overtime_policy' => $overtimePolicy,
 				'recent_violations' => $violationsData,
 				'urlGenerator' => $this->urlGenerator,
 				'l' => $this->l10n,
@@ -595,6 +609,25 @@ class AdminController extends Controller
 	public function notifications(): TemplateResponse
 	{
 		Util::addTranslations('arbeitszeitcheck');
+
+		Util::addStyle('arbeitszeitcheck', 'common/colors');
+		Util::addStyle('arbeitszeitcheck', 'common/typography');
+		Util::addStyle('arbeitszeitcheck', 'common/base');
+		Util::addStyle('arbeitszeitcheck', 'common/components');
+		Util::addStyle('arbeitszeitcheck', 'common/layout');
+		Util::addStyle('arbeitszeitcheck', 'common/app-layout');
+		Util::addStyle('arbeitszeitcheck', 'common/utilities');
+		Util::addStyle('arbeitszeitcheck', 'common/responsive');
+		Util::addStyle('arbeitszeitcheck', 'common/accessibility');
+		Util::addStyle('arbeitszeitcheck', 'navigation');
+		Util::addStyle('arbeitszeitcheck', 'arbeitszeitcheck-main');
+		Util::addStyle('arbeitszeitcheck', 'admin-settings');
+		Util::addStyle('arbeitszeitcheck', 'admin-notifications');
+
+		Util::addScript('arbeitszeitcheck', 'common/utils');
+		Util::addScript('arbeitszeitcheck', 'common/time');
+		Util::addScript('arbeitszeitcheck', 'common/messaging');
+		Util::addScript('arbeitszeitcheck', 'admin-notifications');
 
 		$response = new TemplateResponse('arbeitszeitcheck', 'admin-notifications', [
 			'settings' => $this->buildNotificationSettingsPayload(),
@@ -1699,6 +1732,43 @@ class AdminController extends Controller
 			$this->appConfig->setAppValueString(Constants::CONFIG_OVERTIME_THRESHOLD_YELLOW_UNDER, (string)$yellowUnder);
 			$this->appConfig->setAppValueString(Constants::CONFIG_OVERTIME_THRESHOLD_RED_UNDER, (string)$redUnder);
 
+			$bankEnabled = $this->toBool($params['overtimeBankEnabled'] ?? false);
+			$bankMaxRaw = (float)str_replace(',', '.', trim((string)($params['overtimeBankMaxHours'] ?? '100')));
+			$bankMax = is_finite($bankMaxRaw)
+				? max(1.0, min(500.0, round($bankMaxRaw, 2)))
+				: 100.0;
+			$bankYellowPct = max(0, min(100, (int)($params['overtimeBankYellowPercent'] ?? 80)));
+			$bankRedPct = max(0, min(100, (int)($params['overtimeBankRedPercent'] ?? 95)));
+			if ($bankYellowPct > $bankRedPct) {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('Bank fill yellow percent must be less than or equal to red percent.'),
+				], Http::STATUS_BAD_REQUEST);
+			}
+			$this->appConfig->setAppValueString(Constants::CONFIG_OVERTIME_BANK_ENABLED, $bankEnabled ? '1' : '0');
+			$this->appConfig->setAppValueString(Constants::CONFIG_OVERTIME_BANK_MAX_HOURS, (string)$bankMax);
+			$this->appConfig->setAppValueString(Constants::CONFIG_OVERTIME_BANK_YELLOW_PERCENT, (string)$bankYellowPct);
+			$this->appConfig->setAppValueString(Constants::CONFIG_OVERTIME_BANK_RED_PERCENT, (string)$bankRedPct);
+
+			if (isset($params['overtimePayoutNotifyInApp'])) {
+				$this->appConfig->setAppValueString(
+					Constants::CONFIG_OVERTIME_PAYOUT_NOTIFY_IN_APP,
+					$this->toBool($params['overtimePayoutNotifyInApp']) ? '1' : '0'
+				);
+			}
+			if (isset($params['overtimePayoutNotifyEmail'])) {
+				$this->appConfig->setAppValueString(
+					Constants::CONFIG_OVERTIME_PAYOUT_NOTIFY_EMAIL,
+					$this->toBool($params['overtimePayoutNotifyEmail']) ? '1' : '0'
+				);
+			}
+			if (isset($params['overtimeBlockMonthClosurePendingPayout'])) {
+				$this->appConfig->setAppValueString(
+					Constants::CONFIG_OVERTIME_BLOCK_MONTH_CLOSURE_PENDING_PAYOUT,
+					$this->toBool($params['overtimeBlockMonthClosurePendingPayout']) ? '1' : '0'
+				);
+			}
+
 			$allowedKeys = [
 				'missingClockInRemindersEnabled' => 'missing_clock_in_reminders_enabled',
 				'sendIcalApprovedAbsences' => 'send_ical_approved_absences',
@@ -1939,6 +2009,13 @@ class AdminController extends Controller
 			'overtimeRedOver' => (float)$this->appConfig->getAppValueString(Constants::CONFIG_OVERTIME_THRESHOLD_RED_OVER, '15'),
 			'overtimeYellowUnder' => (float)$this->appConfig->getAppValueString(Constants::CONFIG_OVERTIME_THRESHOLD_YELLOW_UNDER, '5'),
 			'overtimeRedUnder' => (float)$this->appConfig->getAppValueString(Constants::CONFIG_OVERTIME_THRESHOLD_RED_UNDER, '15'),
+			'overtimeBankEnabled' => $this->appConfig->getAppValueString(Constants::CONFIG_OVERTIME_BANK_ENABLED, '0') === '1',
+			'overtimeBankMaxHours' => (float)$this->appConfig->getAppValueString(Constants::CONFIG_OVERTIME_BANK_MAX_HOURS, '100'),
+			'overtimeBankYellowPercent' => (int)$this->appConfig->getAppValueString(Constants::CONFIG_OVERTIME_BANK_YELLOW_PERCENT, '80'),
+			'overtimeBankRedPercent' => (int)$this->appConfig->getAppValueString(Constants::CONFIG_OVERTIME_BANK_RED_PERCENT, '95'),
+			'overtimePayoutNotifyInApp' => $this->appConfig->getAppValueString(Constants::CONFIG_OVERTIME_PAYOUT_NOTIFY_IN_APP, '1') === '1',
+			'overtimePayoutNotifyEmail' => $this->appConfig->getAppValueString(Constants::CONFIG_OVERTIME_PAYOUT_NOTIFY_EMAIL, '1') === '1',
+			'overtimeBlockMonthClosurePendingPayout' => $this->appConfig->getAppValueString(Constants::CONFIG_OVERTIME_BLOCK_MONTH_CLOSURE_PENDING_PAYOUT, '0') === '1',
 		];
 	}
 
@@ -2417,6 +2494,7 @@ class AdminController extends Controller
 							'source' => $entitlementPreview['source'],
 							'ruleSetId' => $entitlementPreview['ruleSetId'],
 						],
+						'overtimeTrackingFrom' => $this->userOvertimeSettingsService->getTrackingFrom($userId)?->format('Y-m-d'),
 					];
 				} catch (\Throwable $e) {
 					\OCP\Log\logger('arbeitszeitcheck')->error('Error building admin user payload: ' . $e->getMessage(), [

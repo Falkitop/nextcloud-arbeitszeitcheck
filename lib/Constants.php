@@ -205,6 +205,30 @@ final class Constants
 	/** Overtime balance algorithm version for audit replay. */
 	public const OVERTIME_ALGORITHM_VERSION = 2;
 
+	/** App config: when "1", overtime bank cap and month-end payout (Auszahlung) are active. */
+	public const CONFIG_OVERTIME_BANK_ENABLED = 'overtime_bank_enabled';
+
+	/** App config: maximum banked overtime hours (default 100). Hours above may be paid out. */
+	public const CONFIG_OVERTIME_BANK_MAX_HOURS = 'overtime_bank_max_hours';
+
+	/** App config: bank fill % at which the traffic light turns yellow (0–100). */
+	public const CONFIG_OVERTIME_BANK_YELLOW_PERCENT = 'overtime_bank_yellow_percent';
+
+	/** App config: bank fill % at which the traffic light turns red (0–100). */
+	public const CONFIG_OVERTIME_BANK_RED_PERCENT = 'overtime_bank_red_percent';
+
+	/** App config: when "1", employees receive an in-app notification after overtime payout. */
+	public const CONFIG_OVERTIME_PAYOUT_NOTIFY_IN_APP = 'overtime_payout_notify_in_app';
+
+	/** App config: when "1", employees receive an email after overtime payout (requires valid address). */
+	public const CONFIG_OVERTIME_PAYOUT_NOTIFY_EMAIL = 'overtime_payout_notify_email';
+
+	/**
+	 * When "1", employees cannot finalize a month while overtime above the bank cap
+	 * is still unpaid (payroll must record payout first). Off by default.
+	 */
+	public const CONFIG_OVERTIME_BLOCK_MONTH_CLOSURE_PENDING_PAYOUT = 'overtime_block_month_closure_pending_payout';
+
 	/**
 	 * Compliance score weights (critical, warning, info).
 	 */

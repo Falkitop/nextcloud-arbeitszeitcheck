@@ -27,6 +27,8 @@ Util::addStyle('arbeitszeitcheck', 'common/responsive');
 Util::addStyle('arbeitszeitcheck', 'common/accessibility');
 Util::addStyle('arbeitszeitcheck', 'navigation');
 Util::addStyle('arbeitszeitcheck', 'dashboard');
+Util::addStyle('arbeitszeitcheck', 'dashboard-overtime-bank');
+Util::addStyle('arbeitszeitcheck', 'dashboard-overtime');
 Util::addScript('arbeitszeitcheck', 'common/utils');
 Util::addScript('arbeitszeitcheck', 'common/time');
 Util::addScript('arbeitszeitcheck', 'arbeitszeitcheck-main');
@@ -124,17 +126,24 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
         if ($pendingCorrectionCount > 0):
             $timeEntriesUrl = $urlGenerator->linkToRoute('arbeitszeitcheck.page.timeEntries');
         ?>
-            <div class="section pending-correction-banner" role="region" aria-labelledby="dashboard-pending-correction-title">
-                <div class="alert alert--warning" role="status">
-                    <p id="dashboard-pending-correction-title" class="alert__text">
-                        <strong><?php p($l->n(
-                            '%n of your time entries is waiting for manager approval.',
-                            '%n of your time entries are waiting for manager approval.',
-                            $pendingCorrectionCount
-                        )); ?></strong>
-                        <?php p($l->t('Open your time entries to see proposed times or withdraw the request.')); ?>
-                    </p>
-                    <a href="<?php p($timeEntriesUrl); ?>" class="btn btn--secondary"><?php p($l->t('View time entries')); ?></a>
+            <div class="section inline-notice-section pending-correction-banner" role="region" aria-labelledby="dashboard-pending-correction-title">
+                <div class="inline-notice inline-notice--warning" role="status">
+                    <span class="inline-notice__icon"><?php include __DIR__ . '/common/inline-notice-pending-correction-icon.php'; ?></span>
+                    <div class="inline-notice__content">
+                        <p id="dashboard-pending-correction-title" class="inline-notice__title">
+                            <?php p($l->n(
+                                '%n of your time entries is waiting for manager approval.',
+                                '%n of your time entries are waiting for manager approval.',
+                                $pendingCorrectionCount
+                            )); ?>
+                        </p>
+                        <p class="inline-notice__text">
+                            <?php p($l->t('Open your time entries to see proposed times or withdraw the request.')); ?>
+                        </p>
+                    </div>
+                    <div class="inline-notice__actions">
+                        <a href="<?php p($timeEntriesUrl); ?>" class="btn btn--secondary btn--sm"><?php p($l->t('View time entries')); ?></a>
+                    </div>
                 </div>
             </div>
         <?php endif; ?>
@@ -214,11 +223,16 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
 				default => '⏸',
 			};
                 $startedAt = null;
+                $isOvernightSession = false;
                 if (!empty($status['current_entry']['startTime'])) {
                     try {
                         $startTime = new \DateTime($status['current_entry']['startTime']);
                         $startTime->setTimezone($arbeitszeitCheckUserDisplayTz);
                         $startedAt = $startTime->format('H:i');
+                        $sessionStartDay = $startTime->format('Y-m-d');
+                        $todayInStorage = (new \DateTime('now', $arbeitszeitCheckStorageTimeZone))->format('Y-m-d');
+                        $isOvernightSession = in_array($statusKeySafe, ['active', 'break'], true)
+                            && $sessionStartDay !== $todayInStorage;
                     } catch (\Throwable $e) {
                         $startedAt = null;
                     }
@@ -315,6 +329,15 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                             <?php endif; ?>
                         <?php endif; ?>
 
+                        <?php if ($isOvernightSession): ?>
+                            <div class="dashboard-overnight-hint alert alert--info" role="status">
+                                <p class="alert__text">
+                                    <strong><?php p($l->t('Night shift across midnight')); ?></strong>
+                                    <?php p($l->t('Your session continues from yesterday. “Worked today” counts only the hours since midnight on the current calendar day (German labor law, ArbZG §3). The session timer shows your total working time since clock-in.')); ?>
+                                </p>
+                            </div>
+                        <?php endif; ?>
+
                         <div class="card-actions" role="group" aria-label="<?php p($l->t('Time tracking actions')); ?>">
                             <?php if ($statusKeySafe === 'clocked_out' || $statusKeySafe === 'paused'): ?>
                                 <button id="btn-clock-in"
@@ -370,6 +393,159 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                     </div>
                 </div>
 
+                <?php
+                    $bankEnabled = ($overtimeBank['enabled'] ?? false) === true;
+                    $displayBalance = $bankEnabled
+                        ? (float)($overtimeBank['effective_balance'] ?? 0)
+                        : (float)($overtime['cumulative_balance'] ?? 0);
+                    $lightState = (string)($overtimeTrafficLight['state'] ?? 'green');
+                    $lightBadge = 'success';
+                    $lightText = $l->t('Green — balance in target range');
+                    $semaphoreClass = 'green';
+                    if ($lightState === 'yellow_over') {
+                        $lightBadge = 'warning';
+                        $lightText = $l->t('Yellow — overtime threshold reached');
+                        $semaphoreClass = 'yellow';
+                    } elseif ($lightState === 'red_over') {
+                        $lightBadge = 'error';
+                        $lightText = $l->t('Red — high overtime');
+                        $semaphoreClass = 'red';
+                    } elseif ($lightState === 'yellow_under') {
+                        $lightBadge = 'warning';
+                        $lightText = $l->t('Yellow — undertime threshold reached');
+                        $semaphoreClass = 'yellow';
+                    } elseif ($lightState === 'red_under') {
+                        $lightBadge = 'error';
+                        $lightText = $l->t('Red — high undertime');
+                        $semaphoreClass = 'red';
+                    }
+                    $thresholds = is_array($overtimeTrafficLight['thresholds'] ?? null) ? $overtimeTrafficLight['thresholds'] : [];
+                    $showOvertimeSection = $bankEnabled || (($overtimeTrafficLight['enabled'] ?? false) === true);
+                ?>
+                <?php if ($showOvertimeSection): ?>
+                <section class="dashboard-overtime-section" aria-labelledby="dashboard-overtime-heading">
+                    <h2 id="dashboard-overtime-heading" class="dashboard-overtime-section__title"><?php p($l->t('Your overtime')); ?></h2>
+                    <div class="card dashboard-overtime-card">
+                        <div class="card-body">
+                            <div class="dashboard-overtime-card__balance" role="group" aria-label="<?php p($l->t('Year-to-date overtime balance')); ?>">
+                                <span class="dashboard-overtime-card__balance-label"><?php p($bankEnabled ? $l->t('Balance (after payouts)') : $l->t('Balance (year to date)')); ?></span>
+                                <span class="dashboard-overtime-card__balance-value <?php echo $displayBalance >= 0 ? 'positive' : 'negative'; ?>">
+                                    <?php p(number_format($displayBalance, 2)); ?> <?php p($l->t('h')); ?>
+                                </span>
+                            </div>
+
+                            <?php if (($overtimeTrafficLight['enabled'] ?? false) === true): ?>
+                            <div class="dashboard-overtime-card__traffic" role="status" aria-live="polite" aria-labelledby="dashboard-ot-traffic-label">
+                                <span id="dashboard-ot-traffic-label" class="dashboard-overtime-card__traffic-label"><?php p($l->t('Balance alert')); ?></span>
+                                <div class="ot-semaphore ot-semaphore--<?php p($semaphoreClass); ?>" aria-hidden="true">
+                                    <span class="ot-semaphore__lamp ot-semaphore__lamp--red"></span>
+                                    <span class="ot-semaphore__lamp ot-semaphore__lamp--yellow"></span>
+                                    <span class="ot-semaphore__lamp ot-semaphore__lamp--green"></span>
+                                </div>
+                                <span class="badge badge--<?php p($lightBadge); ?>"><?php p($lightText); ?></span>
+                                <?php if ($thresholds !== []): ?>
+                                <p class="dashboard-overtime-card__thresholds form-help">
+                                    <?php p($l->t('Overtime: yellow from %1$s h, red from %2$s h. Undertime: yellow from %3$s h, red from %4$s h.', [
+                                        number_format((float)($thresholds['yellow_over'] ?? 5), 1),
+                                        number_format((float)($thresholds['red_over'] ?? 15), 1),
+                                        number_format((float)($thresholds['yellow_under'] ?? 5), 1),
+                                        number_format((float)($thresholds['red_under'] ?? 15), 1),
+                                    ])); ?>
+                                </p>
+                                <?php endif; ?>
+                            </div>
+                            <?php endif; ?>
+
+                            <?php if ($bankEnabled): ?>
+                            <?php
+                                $bankMax = (float)($overtimeBank['bank_max_hours'] ?? 100);
+                                $banked = (float)($overtimeBank['banked_hours'] ?? 0);
+                                $bankFill = (float)($overtimeBank['bank_fill_percent'] ?? 0);
+                                $payoutEligible = (float)($overtimeBank['payout_eligible_hours'] ?? 0);
+                                $bankState = (string)($overtimeBank['bank_state'] ?? 'bank_green');
+                                $bankBadge = 'success';
+                                $bankStatusText = $l->t('Room in your overtime bank');
+                                if ($bankState === 'bank_yellow') {
+                                    $bankBadge = 'warning';
+                                    $bankStatusText = $l->t('Overtime bank nearly full');
+                                } elseif ($bankState === 'bank_red' || $bankState === 'payout_eligible') {
+                                    $bankBadge = 'error';
+                                    $bankStatusText = $bankState === 'payout_eligible'
+                                        ? $l->t('Hours above the bank cap — eligible for payout at month end')
+                                        : $l->t('Overtime bank almost at maximum');
+                                } elseif ($bankState === 'undertime') {
+                                    $bankBadge = 'warning';
+                                    $bankStatusText = $l->t('Undertime — bank not in use');
+                                }
+                            ?>
+                            <div class="dashboard-overtime-card__bank" role="region" aria-labelledby="dashboard-overtime-bank-subheading">
+                                <h3 id="dashboard-overtime-bank-subheading" class="dashboard-overtime-card__bank-title"><?php p($l->t('Overtime bank')); ?></h3>
+                                <p class="form-help"><?php p($l->t('Save up to %s hours; payroll can pay out anything above the cap at month end.', [number_format($bankMax, 0)])); ?></p>
+                                <div class="dashboard-overtime-bank-card__meter-wrap">
+                                    <div
+                                        class="dashboard-overtime-bank-card__meter"
+                                        role="progressbar"
+                                        aria-valuemin="0"
+                                        aria-valuemax="100"
+                                        aria-valuenow="<?php p((string)(int)min(100, max(0, round($bankFill)))); ?>"
+                                        aria-valuetext="<?php p($l->t('%1$s of %2$s hours banked', [number_format($banked, 2), number_format($bankMax, 0)])); ?>">
+                                        <div class="dashboard-overtime-bank-card__meter-fill dashboard-overtime-bank-card__meter-fill--<?php p($bankBadge); ?>" style="width: <?php p((string)min(100, max(0, $bankFill))); ?>%;"></div>
+                                    </div>
+                                    <p class="dashboard-overtime-bank-card__meter-value">
+                                        <span><?php p(number_format($banked, 2)); ?></span>
+                                        <span aria-hidden="true">/</span>
+                                        <span><?php p(number_format($bankMax, 0)); ?> <?php p($l->t('h')); ?></span>
+                                    </p>
+                                </div>
+                                <p class="dashboard-overtime-bank-card__status" role="status">
+                                    <span class="badge badge--<?php p($bankBadge); ?>"><?php p($bankStatusText); ?></span>
+                                </p>
+                                <?php if ($payoutEligible >= 0.01): ?>
+                                <p class="dashboard-overtime-card__payout-note" role="note">
+                                    <strong><?php p($l->t('Eligible for payout')); ?>:</strong>
+                                    <?php p(number_format($payoutEligible, 2)); ?> <?php p($l->t('h')); ?>
+                                </p>
+                                <?php endif; ?>
+                                <?php if ((float)($overtimeBank['total_payouts_ytd'] ?? 0) > 0): ?>
+                                <p class="form-help"><?php p($l->t('Already paid out this year: %s h', [number_format((float)$overtimeBank['total_payouts_ytd'], 2)])); ?></p>
+                                <?php endif; ?>
+                                <?php
+                                $payoutHistory = is_array($_['overtimePayoutHistory'] ?? null) ? $_['overtimePayoutHistory'] : [];
+                                $payoutItems = is_array($payoutHistory['items'] ?? null) ? $payoutHistory['items'] : [];
+                                if ($payoutItems !== []):
+                                ?>
+                                <div class="dashboard-overtime-payout-history" role="region" aria-labelledby="dashboard-payout-history-heading">
+                                    <h4 id="dashboard-payout-history-heading" class="dashboard-overtime-card__bank-title"><?php p($l->t('Payout history')); ?></h4>
+                                    <div class="table-responsive">
+                                        <table class="report-table dashboard-overtime-payout-history__table">
+                                            <caption class="visually-hidden"><?php p($l->t('Recorded overtime payouts')); ?></caption>
+                                            <thead>
+                                                <tr>
+                                                    <th scope="col"><?php p($l->t('Month')); ?></th>
+                                                    <th scope="col"><?php p($l->t('Hours paid')); ?></th>
+                                                    <th scope="col"><?php p($l->t('Balance after')); ?></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <?php foreach ($payoutItems as $payoutRow): ?>
+                                                <tr>
+                                                    <td><?php p(sprintf('%04d-%02d', (int)($payoutRow['calendar_year'] ?? 0), (int)($payoutRow['calendar_month'] ?? 0))); ?></td>
+                                                    <td><?php p(number_format((float)($payoutRow['hours_paid'] ?? 0), 2)); ?> <?php p($l->t('h')); ?></td>
+                                                    <td><?php p(number_format((float)($payoutRow['effective_balance_after'] ?? 0), 2)); ?> <?php p($l->t('h')); ?></td>
+                                                </tr>
+                                                <?php endforeach; ?>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                <?php endif; ?>
+                            </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </section>
+                <?php endif; ?>
+
                 <!-- Stats Card -->
                 <div class="card">
                     <div class="card-header">
@@ -380,36 +556,6 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                             <span class="stat-label"><?php p($l->t('Worked Today:')); ?></span>
                             <span class="stat-value"><?php p(round($status['working_today_hours'] ?? 0, 2)); ?> <?php p($l->t('hours')); ?></span>
                         </div>
-                        <div class="stat-item">
-                            <span class="stat-label"><?php p($l->t('Overtime Balance:')); ?></span>
-                            <span class="stat-value <?php echo ($overtime['cumulative_balance'] ?? 0) >= 0 ? 'positive' : 'negative'; ?>">
-                                <?php p(round($overtime['cumulative_balance'] ?? 0, 2)); ?> <?php p($l->t('hours')); ?>
-                            </span>
-                        </div>
-                        <?php if (($overtimeTrafficLight['enabled'] ?? false) === true): ?>
-                        <?php
-                            $lightState = (string)($overtimeTrafficLight['state'] ?? 'green');
-                            $lightBadge = 'success';
-                            $lightText = $l->t('Green - balance in target range');
-                            if ($lightState === 'yellow_over') {
-                                $lightBadge = 'warning';
-                                $lightText = $l->t('Yellow - overtime threshold reached');
-                            } elseif ($lightState === 'red_over') {
-                                $lightBadge = 'error';
-                                $lightText = $l->t('Red - high overtime');
-                            } elseif ($lightState === 'yellow_under') {
-                                $lightBadge = 'warning';
-                                $lightText = $l->t('Yellow - undertime threshold reached');
-                            } elseif ($lightState === 'red_under') {
-                                $lightBadge = 'error';
-                                $lightText = $l->t('Red - high undertime');
-                            }
-                        ?>
-                        <div class="stat-item" role="status" aria-live="polite" aria-label="<?php p($l->t('Overtime traffic light status')); ?>">
-                            <span class="stat-label"><?php p($l->t('Balance traffic light:')); ?></span>
-                            <span class="badge badge--<?php p($lightBadge); ?>"><?php p($lightText); ?></span>
-                        </div>
-                        <?php endif; ?>
                         <div class="stat-item">
                             <span class="stat-label"><?php p($l->t('This Week:')); ?></span>
                             <span class="stat-value"><?php p(round($overtime['total_hours_worked'] ?? 0, 2)); ?> <?php p($l->t('hours')); ?></span>

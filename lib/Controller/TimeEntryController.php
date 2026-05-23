@@ -52,6 +52,7 @@ class TimeEntryController extends Controller
 	private TimeEntryMapper $timeEntryMapper;
 	private IUserSession $userSession;
 	private \OCA\ArbeitszeitCheck\Service\OvertimeService $overtimeService;
+	private \OCA\ArbeitszeitCheck\Service\OvertimeBankService $overtimeBankService;
 	private IURLGenerator $urlGenerator;
 	private IL10N $l10n;
 	private AuditLogMapper $auditLogMapper;
@@ -72,6 +73,7 @@ class TimeEntryController extends Controller
 		TimeEntryMapper $timeEntryMapper,
 		IUserSession $userSession,
 		\OCA\ArbeitszeitCheck\Service\OvertimeService $overtimeService,
+		\OCA\ArbeitszeitCheck\Service\OvertimeBankService $overtimeBankService,
 		IURLGenerator $urlGenerator,
 		IL10N $l10n,
 		AuditLogMapper $auditLogMapper,
@@ -91,6 +93,7 @@ class TimeEntryController extends Controller
 		$this->timeEntryMapper = $timeEntryMapper;
 		$this->userSession = $userSession;
 		$this->overtimeService = $overtimeService;
+		$this->overtimeBankService = $overtimeBankService;
 		$this->urlGenerator = $urlGenerator;
 		$this->l10n = $l10n;
 		$this->auditLogMapper = $auditLogMapper;
@@ -2107,7 +2110,7 @@ class TimeEntryController extends Controller
 			// Exclusive upper bound for DB queries (strict < comparison in findByUserAndDateRange).
 			$endExclusive = (clone $end)->modify('+1 day');
 
-			$totalHours = $this->timeEntryMapper->getTotalHoursByUserAndDateRange($userId, $start, $endExclusive);
+			$totalHours = $this->timeTrackingService->getWorkingHoursForPeriod($userId, $start, $endExclusive);
 			$totalBreakHours = $this->timeEntryMapper->getTotalBreakHoursByUserAndDateRange($userId, $start, $endExclusive);
 			$totalEntries = $this->timeEntryMapper->countByUser($userId);
 
@@ -2446,37 +2449,17 @@ class TimeEntryController extends Controller
 					
 					// If adjustment failed (max already reached), check if we need to reject
 					if (!$adjusted && $timeEntry->getIsManualEntry()) {
-						// Calculate if this would exceed the maximum
-						$startTime = $timeEntry->getStartTime();
-						$endTime = $timeEntry->getEndTime();
-						$entryDate = clone $startTime;
-						$entryDate->setTime(0, 0, 0);
-						$entryDateEnd = clone $entryDate;
-						$entryDateEnd->modify('+1 day');
-						
-						$dayEntries = $this->timeEntryMapper->findByUserAndDateRange($userId, $entryDate, $entryDateEnd);
-						$totalWorkingHoursFromPreviousEntries = 0.0;
-						foreach ($dayEntries as $dayEntry) {
-							if ($dayEntry->getStatus() === TimeEntry::STATUS_COMPLETED && $dayEntry->getEndTime() !== null) {
-								if ($dayEntry->getId() !== $timeEntry->getId()) {
-									$totalWorkingHoursFromPreviousEntries += $dayEntry->getWorkingDurationHours() ?? 0.0;
-								}
-							}
-						}
-						
-						$totalDurationSeconds = $endTime->getTimestamp() - $startTime->getTimestamp();
-						$totalDurationHours = $totalDurationSeconds / 3600;
-						$entryBreakHours = $timeEntry->getBreakDurationHours();
-						$entryWorkingHours = max(0, $totalDurationHours - $entryBreakHours);
-						$totalDailyWorkingHours = $totalWorkingHoursFromPreviousEntries + $entryWorkingHours;
-						
-						if ($totalDailyWorkingHours > 10.0) {
+						$violation = $this->timeTrackingService->findCalendarDayExceedingMaximum($timeEntry);
+						if ($violation !== null) {
 							return new JSONResponse([
 								'success' => false,
-								'error' => $this->l10n->t('This time entry would exceed the maximum daily working hours of 10 hours (ArbZG §3). Total daily hours would be %s hours.', [round($totalDailyWorkingHours, 2)]),
+								'error' => $this->l10n->t(
+									'This time entry would exceed the maximum daily working hours of 10 hours (ArbZG §3) on %1$s (%2$s hours on that calendar day).',
+									[$violation['date'], $violation['hours']]
+								),
 								'errors' => [
-									'endTime' => $this->l10n->t('Maximum daily working hours already reached')
-								]
+									'endTime' => $this->l10n->t('Maximum daily working hours already reached'),
+								],
 							], Http::STATUS_BAD_REQUEST);
 						}
 					}
@@ -2703,16 +2686,39 @@ class TimeEntryController extends Controller
 		try {
 			$userId = $this->getUserId();
 			$balance = $this->overtimeService->getOvertimeBalance($userId);
+			$bank = $this->overtimeBankService->getBankStatus($userId);
 
 			return new JSONResponse([
 				'success' => true,
-				'balance' => $balance
+				'balance' => $balance,
+				'effective_balance' => $bank['effective_balance'],
+				'bank' => $bank,
 			]);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in TimeEntryController: ' . $e->getMessage(), ['exception' => $e]);
 			return new JSONResponse([
 				'success' => false,
 				'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.')
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	#[NoAdminRequired]
+	public function getOvertimeBank(): JSONResponse
+	{
+		try {
+			$userId = $this->getUserId();
+
+			return new JSONResponse([
+				'success' => true,
+				'bank' => $this->overtimeBankService->getBankStatus($userId),
+			]);
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error('Error in TimeEntryController::getOvertimeBank: ' . $e->getMessage(), ['exception' => $e]);
+
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.'),
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}

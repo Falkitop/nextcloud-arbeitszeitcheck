@@ -24,6 +24,7 @@ use OCP\IDBConnection;
 use OCP\IL10N;
 use OCP\Lock\ILockingProvider;
 use OCA\ArbeitszeitCheck\Constants;
+use OCA\ArbeitszeitCheck\Util\AbsenceNotificationPayload;
 use OCP\IUserManager;
 
 /**
@@ -173,15 +174,10 @@ class AbsenceService
 		// dispatched when the data is actually persisted.
 		if ($autoApproved) {
 			if ($this->notificationService) {
-				$startDate = $savedAbsence->getStartDate();
-				$endDate = $savedAbsence->getEndDate();
-				$this->notificationService->notifyAbsenceApproved($savedAbsence->getUserId(), [
-					'id' => $savedAbsence->getId(),
-					'type' => $savedAbsence->getType(),
-					'start_date' => $startDate ? $startDate->format('Y-m-d') : null,
-					'end_date' => $endDate ? $endDate->format('Y-m-d') : null,
-					'days' => $savedAbsence->getDays()
-				]);
+				$this->notificationService->notifyAbsenceApproved(
+					$savedAbsence->getUserId(),
+					$this->buildAbsenceNotificationData($savedAbsence)
+				);
 			}
 			if ($this->absenceIcalMailService) {
 				$this->absenceIcalMailService->sendIcalForApprovedAbsence($savedAbsence);
@@ -297,15 +293,10 @@ class AbsenceService
 			}
 
 			if ($this->notificationService) {
-				$startDate = $savedAbsence->getStartDate();
-				$endDate = $savedAbsence->getEndDate();
-				$this->notificationService->notifyAbsenceApproved($savedAbsence->getUserId(), [
-					'id' => $savedAbsence->getId(),
-					'type' => $savedAbsence->getType(),
-					'start_date' => $startDate ? $startDate->format('Y-m-d') : null,
-					'end_date' => $endDate ? $endDate->format('Y-m-d') : null,
-					'days' => $savedAbsence->getDays()
-				]);
+				$this->notificationService->notifyAbsenceApproved(
+					$savedAbsence->getUserId(),
+					$this->buildAbsenceNotificationData($savedAbsence)
+				);
 			}
 			if ($this->absenceIcalMailService) {
 				$this->absenceIcalMailService->sendIcalForApprovedAbsence($savedAbsence);
@@ -747,15 +738,10 @@ class AbsenceService
 
 		// Side effects after commit
 		if ($this->notificationService) {
-			$startDate = $updatedAbsence->getStartDate();
-			$endDate = $updatedAbsence->getEndDate();
-			$this->notificationService->notifyAbsenceApproved($updatedAbsence->getUserId(), [
-				'id' => $updatedAbsence->getId(),
-				'type' => $updatedAbsence->getType(),
-				'start_date' => $startDate ? $startDate->format('Y-m-d') : null,
-				'end_date' => $endDate ? $endDate->format('Y-m-d') : null,
-				'days' => $updatedAbsence->getDays()
-			]);
+			$this->notificationService->notifyAbsenceApproved(
+				$updatedAbsence->getUserId(),
+				$this->buildAbsenceNotificationData($updatedAbsence)
+			);
 		}
 
 		if ($this->absenceIcalMailService) {
@@ -943,15 +929,10 @@ class AbsenceService
 		// Side effects after commit
 		if ($wasAutoApproved) {
 			if ($this->notificationService) {
-				$startDate = $updatedAbsence->getStartDate();
-				$endDate = $updatedAbsence->getEndDate();
-				$this->notificationService->notifyAbsenceApproved($updatedAbsence->getUserId(), [
-					'id' => $updatedAbsence->getId(),
-					'type' => $updatedAbsence->getType(),
-					'start_date' => $startDate ? $startDate->format('Y-m-d') : null,
-					'end_date' => $endDate ? $endDate->format('Y-m-d') : null,
-					'days' => $updatedAbsence->getDays()
-				]);
+				$this->notificationService->notifyAbsenceApproved(
+					$updatedAbsence->getUserId(),
+					$this->buildAbsenceNotificationData($updatedAbsence)
+				);
 			}
 			if ($this->absenceIcalMailService) {
 				$this->absenceIcalMailService->sendIcalForApprovedAbsence($updatedAbsence);
@@ -1529,15 +1510,10 @@ class AbsenceService
 		}
 
 		if ($this->notificationService) {
-			$startDate = $updatedAbsence->getStartDate();
-			$endDate = $updatedAbsence->getEndDate();
-			$this->notificationService->notifyAbsenceApproved($updatedAbsence->getUserId(), [
-				'id' => $updatedAbsence->getId(),
-				'type' => $updatedAbsence->getType(),
-				'start_date' => $startDate ? $startDate->format('Y-m-d') : null,
-				'end_date' => $endDate ? $endDate->format('Y-m-d') : null,
-				'days' => $updatedAbsence->getDays()
-			]);
+			$this->notificationService->notifyAbsenceApproved(
+				$updatedAbsence->getUserId(),
+				$this->buildAbsenceNotificationData($updatedAbsence)
+			);
 		}
 
 		if ($this->absenceIcalMailService) {
@@ -1647,6 +1623,19 @@ class AbsenceService
 	private function computeWorkingDaysForUser(string $userId, \DateTime $start, \DateTime $end): float
 	{
 		return $this->holidayCalendarService->computeWorkingDaysForUser($userId, $start, $end);
+	}
+
+	/**
+	 * Build notification payload with a reliable working-day count for display.
+	 *
+	 * @return array{id: int|null, absence_id: int|null, type: string, start_date: string|null, end_date: string|null, days: float}
+	 */
+	private function buildAbsenceNotificationData(Absence $absence): array
+	{
+		return AbsenceNotificationPayload::fromAbsence(
+			$absence,
+			$this->getWorkingDaysForDisplay($absence)
+		);
 	}
 
 	/**

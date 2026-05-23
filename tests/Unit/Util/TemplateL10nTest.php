@@ -25,4 +25,23 @@ class TemplateL10nTest extends TestCase {
 	public function testPlaceholderArgumentsForPlainMessage(): void {
 		$this->assertSame([], TemplateL10n::placeholderArguments('Loading...'));
 	}
+
+	public function testPlaceholderArgumentsForPositionalPercentS(): void {
+		$this->assertSame(
+			['%1$s', '%2$s', '%3$s'],
+			TemplateL10n::placeholderArguments('%1$s pending (%2$s h), %3$s already paid.'),
+		);
+	}
+
+	public function testTranslatePreservesPositionalPlaceholdersForClientSideReplacement(): void {
+		$l = $this->createMock(\OCP\IL10N::class);
+		$l->method('t')->willReturnCallback(static function (string $id, array $params): string {
+			return vsprintf($id, $params);
+		});
+
+		$this->assertSame(
+			'%1$s pending (%2$s h), %3$s already paid.',
+			TemplateL10n::translate($l, '%1$s pending (%2$s h), %3$s already paid.'),
+		);
+	}
 }

@@ -44,6 +44,8 @@ class MonthClosureService
 	private IUserManager $userManager;
 	private LoggerInterface $logger;
 	private PermissionService $permissionService;
+	private OvertimeBankService $overtimeBankService;
+	private \OCA\ArbeitszeitCheck\Db\OvertimePayoutMapper $overtimePayoutMapper;
 
 	public function __construct(
 		MonthClosureMapper $closureMapper,
@@ -56,7 +58,9 @@ class MonthClosureService
 		IConfig $config,
 		IUserManager $userManager,
 		LoggerInterface $logger,
-		PermissionService $permissionService
+		PermissionService $permissionService,
+		OvertimeBankService $overtimeBankService,
+		\OCA\ArbeitszeitCheck\Db\OvertimePayoutMapper $overtimePayoutMapper,
 	) {
 		$this->closureMapper = $closureMapper;
 		$this->revisionMapper = $revisionMapper;
@@ -69,6 +73,8 @@ class MonthClosureService
 		$this->userManager = $userManager;
 		$this->logger = $logger;
 		$this->permissionService = $permissionService;
+		$this->overtimeBankService = $overtimeBankService;
+		$this->overtimePayoutMapper = $overtimePayoutMapper;
 	}
 
 	public function getGraceDaysAfterEndOfMonth(): int
@@ -173,12 +179,27 @@ class MonthClosureService
 	}
 
 	/**
-	 * Pending time entry corrections (manager approval) or open absence workflow in this month block sealing.
+	 * @return null|'pending_workflow'|'pending_overtime_payout'
+	 */
+	public function getMonthFinalizeBlockReason(string $targetUserId, int $year, int $month): ?string
+	{
+		if ($this->monthHasPendingTimeEntryApproval($targetUserId, $year, $month)
+			|| $this->monthHasOpenAbsenceWorkflow($targetUserId, $year, $month)) {
+			return 'pending_workflow';
+		}
+		if ($this->monthHasPendingOvertimePayout($targetUserId, $year, $month)) {
+			return 'pending_overtime_payout';
+		}
+
+		return null;
+	}
+
+	/**
+	 * Pending time entry corrections, open absence workflow, or unpaid overtime payout block sealing.
 	 */
 	public function monthBlocksFinalization(string $targetUserId, int $year, int $month): bool
 	{
-		return $this->monthHasPendingTimeEntryApproval($targetUserId, $year, $month)
-			|| $this->monthHasOpenAbsenceWorkflow($targetUserId, $year, $month);
+		return $this->getMonthFinalizeBlockReason($targetUserId, $year, $month) !== null;
 	}
 
 	/**
@@ -255,6 +276,25 @@ class MonthClosureService
 		}
 		$this->persistFinalizedMonth(self::AUTO_FINALIZE_ACTOR_ID, $targetUserId, $year, $month, $existing, 'month_closure_auto_finalized');
 		return 'finalized';
+	}
+
+	private function monthHasPendingOvertimePayout(string $targetUserId, int $year, int $month): bool
+	{
+		if ($this->config->getAppValue('arbeitszeitcheck', Constants::CONFIG_OVERTIME_BLOCK_MONTH_CLOSURE_PENDING_PAYOUT, '0') !== '1') {
+			return false;
+		}
+		if (!$this->overtimeBankService->isEnabled()) {
+			return false;
+		}
+		if (!$this->isCalendarMonthFullyEnded($year, $month)) {
+			return false;
+		}
+		if ($this->overtimePayoutMapper->findByUserAndMonth($targetUserId, $year, $month) !== null) {
+			return false;
+		}
+		$snapshot = $this->overtimeBankService->getMonthEndSnapshot($targetUserId, $year, $month);
+
+		return (float)($snapshot['payout_eligible_hours'] ?? 0) >= 0.01;
 	}
 
 	private function monthHasPendingTimeEntryApproval(string $targetUserId, int $year, int $month): bool
@@ -436,7 +476,7 @@ class MonthClosureService
 			];
 		}, $absences);
 
-		return [
+		$payload = [
 			'schema' => MonthClosureCanonical::SCHEMA_V1,
 			'user_id' => $userId,
 			'year' => $year,
@@ -449,6 +489,14 @@ class MonthClosureService
 			'time_entries' => $entryRows,
 			'absences' => $absenceRows,
 		];
+
+		$payoutRow = $this->overtimePayoutMapper->findByUserAndMonth($userId, $year, $month);
+		$bankBlock = $this->overtimeBankService->buildClosureAuditBlock($userId, $year, $month, $payoutRow);
+		if ($bankBlock !== null) {
+			$payload['overtime_bank'] = $bankBlock;
+		}
+
+		return $payload;
 	}
 
 	public function getSnapshotReportArray(string $userId, int $year, int $month): ?array
@@ -510,8 +558,9 @@ class MonthClosureService
 			throw new \RuntimeException('no_time_entries');
 		}
 
-		if ($this->monthBlocksFinalization($targetUserId, $year, $month)) {
-			throw new \RuntimeException('pending_correction');
+		$blockReason = $this->getMonthFinalizeBlockReason($targetUserId, $year, $month);
+		if ($blockReason !== null) {
+			throw new \RuntimeException($blockReason);
 		}
 
 		return $this->persistFinalizedMonth($actorUserId, $targetUserId, $year, $month, $existing, 'month_closure_finalized');
@@ -653,6 +702,8 @@ class MonthClosureService
 			throw new \RuntimeException('not_finalized');
 		}
 
+		$snap = $this->enrichSnapshotForPdfPayout($snap, $userId, $year, $month);
+
 		$finalizedByDisplay = '';
 		$fb = $row->getFinalizedBy();
 		if ($fb !== null && $fb !== '') {
@@ -665,5 +716,33 @@ class MonthClosureService
 		}
 
 		return MonthClosurePdfDocumentBuilder::build($snap, $row, $displayName, $userId, $l, $finalizedByDisplay);
+	}
+
+	/**
+	 * If payout was recorded after month closure, attach supplementary audit data for the PDF only.
+	 * Does not alter the sealed canonical payload / hash.
+	 *
+	 * @param array<string, mixed> $snap
+	 * @return array<string, mixed>
+	 */
+	private function enrichSnapshotForPdfPayout(array $snap, string $userId, int $year, int $month): array
+	{
+		$bank = $snap['overtime_bank'] ?? null;
+		if (!is_array($bank) || !($bank['enabled'] ?? false)) {
+			return $snap;
+		}
+		if (($bank['payout_record'] ?? null) !== null) {
+			return $snap;
+		}
+
+		$live = $this->overtimePayoutMapper->findByUserAndMonth($userId, $year, $month);
+		if ($live === null) {
+			return $snap;
+		}
+
+		$bank['supplementary_payout'] = $this->overtimeBankService->payoutEntityToAuditArray($live);
+		$snap['overtime_bank'] = $bank;
+
+		return $snap;
 	}
 }

@@ -9,14 +9,20 @@ declare(strict_types=1);
 
 namespace OCA\ArbeitszeitCheck\Dashboard;
 
+use OCA\ArbeitszeitCheck\AppInfo\Application;
 use OCA\ArbeitszeitCheck\Support\TimeClientBootstrap;
+use OCP\Util;
 
 /**
  * Dashboard widgets render outside app templates; they must register the
- * timezone client stack in {@see load()} themselves.
+ * timezone client stack and desklet styles in {@see load()} themselves.
  */
 trait RegistersTimeClientTrait {
 	private function registerTimeClientForWidget(TimeClientBootstrap $timeClientBootstrap): void {
 		$timeClientBootstrap->register();
+	}
+
+	private function registerDeskletStylesForWidget(): void {
+		Util::addStyle(Application::APP_ID, 'desklet-nextcloud');
 	}
 }

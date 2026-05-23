@@ -26,6 +26,8 @@ use OCA\ArbeitszeitCheck\Db\UserSettingsMapper;
 use OCA\ArbeitszeitCheck\Db\UserWorkingTimeModelMapper;
 use OCA\ArbeitszeitCheck\Db\VacationYearBalanceMapper;
 use OCA\ArbeitszeitCheck\Db\VacationRolloverLogMapper;
+use OCA\ArbeitszeitCheck\Db\UserOvertimeYearBalanceMapper;
+use OCA\ArbeitszeitCheck\Db\OvertimePayoutMapper;
 use OCA\ArbeitszeitCheck\Db\UserVacationPolicyAssignmentMapper;
 use OCA\ArbeitszeitCheck\Db\EntitlementComputationSnapshotMapper;
 use OCA\ArbeitszeitCheck\Db\TeamMemberMapper;
@@ -52,6 +54,8 @@ class UserDeletedListener implements IEventListener
 		private readonly TeamManagerMapper $teamManagerMapper,
 		private readonly VacationYearBalanceMapper $vacationYearBalanceMapper,
 		private readonly VacationRolloverLogMapper $vacationRolloverLogMapper,
+		private readonly UserOvertimeYearBalanceMapper $userOvertimeYearBalanceMapper,
+		private readonly OvertimePayoutMapper $overtimePayoutMapper,
 		private readonly UserVacationPolicyAssignmentMapper $userVacationPolicyAssignmentMapper,
 		private readonly EntitlementComputationSnapshotMapper $entitlementComputationSnapshotMapper,
 		private readonly NotificationService $notificationService,
@@ -78,6 +82,8 @@ class UserDeletedListener implements IEventListener
 			$this->deleteUserWorkingTimeModels($userId);
 			$this->vacationYearBalanceMapper->deleteByUserId($userId);
 			$this->vacationRolloverLogMapper->deleteByUserId($userId);
+			$this->userOvertimeYearBalanceMapper->deleteByUserId($userId);
+			$this->overtimePayoutMapper->deleteByUserId($userId);
 			$this->userVacationPolicyAssignmentMapper->deleteByUser($userId);
 			$this->entitlementComputationSnapshotMapper->deleteByUser($userId);
 			$this->teamMemberMapper->deleteByUserId($userId);

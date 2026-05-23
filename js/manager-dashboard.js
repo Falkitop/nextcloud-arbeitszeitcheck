@@ -115,6 +115,7 @@
         loadPendingApprovals();
         loadPendingTimeEntryCorrections();
         loadTeamCompliance();
+        loadTeamOvertimeAlerts();
         setupAutoRefresh();
     }
 
@@ -514,6 +515,87 @@
         if (card) card.remove();
     }
 
+    // ===== TEAM OVERTIME ALERTS =====
+    function trafficLightLabel(state) {
+        const map = {
+            green: t('Green — balance in target range', 'Green — balance in target range'),
+            yellow_over: t('Yellow — overtime threshold', 'Yellow — overtime threshold'),
+            red_over: t('Red — high overtime', 'Red — high overtime'),
+            yellow_under: t('Yellow — undertime threshold', 'Yellow — undertime threshold'),
+            red_under: t('Red — high undertime', 'Red — high undertime'),
+        };
+        return map[state] || state;
+    }
+
+    function loadTeamOvertimeAlerts() {
+        const loadingEl = document.getElementById('team-overtime-loading');
+        const summaryEl = document.getElementById('team-overtime-summary');
+        if (!loadingEl || !summaryEl) {
+            return;
+        }
+
+        loadingEl.setAttribute('aria-hidden', 'false');
+        summaryEl.classList.add('visually-hidden');
+        summaryEl.setAttribute('aria-hidden', 'true');
+
+        Utils.ajax('/apps/arbeitszeitcheck/api/manager/team-overtime-alerts', {
+            method: 'GET',
+            onSuccess: function (data) {
+                loadingEl.setAttribute('aria-hidden', 'true');
+                summaryEl.classList.remove('visually-hidden');
+                summaryEl.setAttribute('aria-hidden', 'false');
+
+                if (!data || !data.success) {
+                    summaryEl.innerHTML = '<p class="team-overtime-empty">' + escapeHtml(t('Unable to load overtime alerts.', 'Unable to load overtime alerts.')) + '</p>';
+                    return;
+                }
+
+                const members = data.members || [];
+                if (members.length === 0) {
+                    const features = data.features || {};
+                    if (!features.traffic_light_enabled && !features.bank_enabled) {
+                        summaryEl.innerHTML = '<p class="team-overtime-empty">' + escapeHtml(t('Overtime alerts are disabled by the administrator.', 'Overtime alerts are disabled by the administrator.')) + '</p>';
+                    } else {
+                        summaryEl.innerHTML = '<p class="team-overtime-empty team-overtime-empty--ok">' + escapeHtml(t('No team members need overtime attention right now.', 'No team members need overtime attention right now.')) + '</p>';
+                    }
+                    return;
+                }
+
+                const rows = members.map(function (m) {
+                    const parts = [];
+                    if (m.traffic_light_enabled && m.traffic_light_needs_attention) {
+                        parts.push(escapeHtml(trafficLightLabel(m.traffic_light_state)));
+                    }
+                    if (m.bank_enabled && m.payout_eligible_hours >= 0.01) {
+                        parts.push(escapeHtml(t('Payout eligible: %s h', 'Payout eligible: %s h').replace('%s', String(m.payout_eligible_hours)));
+                    } else if (m.bank_enabled && m.bank_state === 'bank_yellow') {
+                        parts.push(escapeHtml(t('Bank nearly full', 'Bank nearly full')));
+                    } else if (m.bank_enabled && (m.bank_state === 'bank_red' || m.bank_state === 'payout_eligible')) {
+                        parts.push(escapeHtml(t('Bank at cap', 'Bank at cap')));
+                    }
+                    const balance = typeof m.balance === 'number' ? m.balance.toFixed(2) : '0';
+                    return '<li class="team-overtime-list__item">'
+                        + '<span class="team-overtime-list__name">' + escapeHtml(m.displayName || m.userId) + '</span>'
+                        + '<span class="team-overtime-list__meta">' + escapeHtml(balance) + ' h · ' + parts.join(' · ') + '</span>'
+                        + '</li>';
+                }).join('');
+
+                const countMsg = members.length === 1
+                    ? t('1 employee needs attention', '1 employee needs attention')
+                    : t('%n employees need attention', '%n employees need attention').replace('%n', String(members.length));
+                summaryEl.innerHTML = '<p class="team-overtime-count" role="status">'
+                    + escapeHtml(countMsg)
+                    + '</p><ul class="team-overtime-list">' + rows + '</ul>';
+            },
+            onError: function () {
+                loadingEl.setAttribute('aria-hidden', 'true');
+                summaryEl.classList.remove('visually-hidden');
+                summaryEl.setAttribute('aria-hidden', 'false');
+                summaryEl.innerHTML = '<p class="team-overtime-empty">' + escapeHtml(t('Error loading overtime alerts.', 'Error loading overtime alerts.')) + '</p>';
+            },
+        });
+    }
+
     // ===== TEAM COMPLIANCE =====
     function loadTeamCompliance() {
         const loadingEl = document.getElementById('team-compliance-loading');
@@ -657,6 +739,7 @@
             loadPendingApprovals();
             loadPendingTimeEntryCorrections();
             loadTeamCompliance();
+            loadTeamOvertimeAlerts();
         }, 5 * 60 * 1000);
     }
 

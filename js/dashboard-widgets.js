@@ -242,6 +242,7 @@
 
 		if (statusIconEl) {
 			statusIconEl.textContent = statusIcon(status);
+			statusIconEl.setAttribute('aria-hidden', 'true');
 		}
 
 		if (workedTodayEl) {

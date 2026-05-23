@@ -25,6 +25,7 @@ use OCA\ArbeitszeitCheck\Service\TimeTrackingService;
 use OCA\ArbeitszeitCheck\Service\AbsenceService;
 use OCA\ArbeitszeitCheck\Service\HolidayService;
 use OCA\ArbeitszeitCheck\Service\ComplianceService;
+use OCA\ArbeitszeitCheck\Service\DailyWorkingHoursCalculator;
 use OCA\ArbeitszeitCheck\Service\ProjectCheckIntegrationService;
 use OCA\ArbeitszeitCheck\Service\NotificationService;
 use OCA\ArbeitszeitCheck\Service\VacationAllocationService;
@@ -39,6 +40,7 @@ use OCA\ArbeitszeitCheck\Service\TeamResolverService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCA\ArbeitszeitCheck\Service\OvertimeTrafficLightService;
 use OCA\ArbeitszeitCheck\Service\OvertimeNotificationMailService;
+use OCA\ArbeitszeitCheck\Service\OvertimePayoutMailService;
 use OCA\ArbeitszeitCheck\Dashboard\EmployeeStatusWidget;
 use OCA\ArbeitszeitCheck\Dashboard\ManagerTeamStatusWidget;
 use OCA\ArbeitszeitCheck\Dashboard\AdminGlobalStatusWidget;
@@ -243,7 +245,9 @@ class Application extends App implements IBootstrap {
 				$c->query(\OCP\IConfig::class),
 				$c->query(\OCP\IUserManager::class),
 				$c->query(\Psr\Log\LoggerInterface::class),
-				$c->query(PermissionService::class)
+				$c->query(PermissionService::class),
+				$c->query(\OCA\ArbeitszeitCheck\Service\OvertimeBankService::class),
+				$c->query(\OCA\ArbeitszeitCheck\Db\OvertimePayoutMapper::class),
 			);
 		});
 
@@ -277,6 +281,13 @@ class Application extends App implements IBootstrap {
 			);
 		});
 
+		$context->registerService(DailyWorkingHoursCalculator::class, function ($c) {
+			return new DailyWorkingHoursCalculator(
+				$c->query(\OCA\ArbeitszeitCheck\Db\TimeEntryMapper::class),
+				$c->query(\OCA\ArbeitszeitCheck\Service\TimeZoneService::class),
+			);
+		});
+
 		// Register services
 		$context->registerService(TimeTrackingService::class, function($c) {
 			return new TimeTrackingService(
@@ -293,7 +304,8 @@ class Application extends App implements IBootstrap {
 				$c->query(\OCA\ArbeitszeitCheck\Service\MonthClosureGuard::class),
 				$c->query(\OCP\IDBConnection::class),
 				$c->query(\OCP\Lock\ILockingProvider::class),
-				$c->query(\OCA\ArbeitszeitCheck\Service\TimeZoneService::class)
+				$c->query(\OCA\ArbeitszeitCheck\Service\TimeZoneService::class),
+				$c->query(DailyWorkingHoursCalculator::class),
 			);
 		});
 
@@ -354,7 +366,8 @@ class Application extends App implements IBootstrap {
 				$c->query(HolidayService::class),
 				$c->query(\OCP\IConfig::class),
 				$c->query(PermissionService::class),
-				$c->query(\OCA\ArbeitszeitCheck\Service\TimeZoneService::class)
+				$c->query(\OCA\ArbeitszeitCheck\Service\TimeZoneService::class),
+				$c->query(DailyWorkingHoursCalculator::class),
 			);
 		});
 
@@ -440,7 +453,8 @@ class Application extends App implements IBootstrap {
 				$c->query(\OCP\IL10N::class),
 				$c->query(\OCA\ArbeitszeitCheck\Db\UserSettingsMapper::class),
 				$c->query(\OCP\IUserManager::class),
-				$c->query(\OCP\IConfig::class)
+				$c->query(\OCP\IConfig::class),
+				$c->query(\OCA\ArbeitszeitCheck\Util\AbsenceWorkingDaysResolver::class)
 			);
 		});
 
@@ -449,6 +463,7 @@ class Application extends App implements IBootstrap {
 				$c->query(\OCP\Mail\IMailer::class),
 				$c->query(\OCP\IConfig::class),
 				$c->query(\OCP\IL10N::class),
+				$c->query(\OCP\IUserManager::class),
 				$c->query(\Psr\Log\LoggerInterface::class)
 			);
 		});
@@ -483,6 +498,63 @@ class Application extends App implements IBootstrap {
 			);
 		});
 
+		$context->registerService(\OCA\ArbeitszeitCheck\Db\OvertimePayoutMapper::class, function($c) {
+			return new \OCA\ArbeitszeitCheck\Db\OvertimePayoutMapper(
+				$c->query(IDBConnection::class)
+			);
+		});
+
+		$context->registerService(\OCA\ArbeitszeitCheck\Service\OvertimeBankService::class, function($c) {
+			return new \OCA\ArbeitszeitCheck\Service\OvertimeBankService(
+				$c->query(\OCP\IConfig::class),
+				$c->query(OvertimeService::class),
+				$c->query(\OCA\ArbeitszeitCheck\Db\OvertimePayoutMapper::class),
+			);
+		});
+
+		$context->registerService(\OCA\ArbeitszeitCheck\Service\OvertimeDisplayService::class, function($c) {
+			return new \OCA\ArbeitszeitCheck\Service\OvertimeDisplayService(
+				$c->query(OvertimeService::class),
+				$c->query(\OCA\ArbeitszeitCheck\Service\OvertimeBankService::class),
+				$c->query(OvertimeTrafficLightService::class),
+			);
+		});
+
+		$context->registerService(OvertimePayoutMailService::class, function($c) {
+			return new OvertimePayoutMailService(
+				$c->query(\OCP\Mail\IMailer::class),
+				$c->query(\OCP\IConfig::class),
+				$c->query(\OCP\IL10N::class),
+				$c->query(\Psr\Log\LoggerInterface::class),
+			);
+		});
+
+		$context->registerService(\OCA\ArbeitszeitCheck\Service\OvertimePayoutService::class, function($c) {
+			return new \OCA\ArbeitszeitCheck\Service\OvertimePayoutService(
+				$c->query(\OCA\ArbeitszeitCheck\Service\OvertimeBankService::class),
+				$c->query(\OCA\ArbeitszeitCheck\Db\OvertimePayoutMapper::class),
+				$c->query(\OCA\ArbeitszeitCheck\Db\AuditLogMapper::class),
+				$c->query(\OCP\IUserManager::class),
+				$c->query(\OCA\ArbeitszeitCheck\Service\UserOvertimeSettingsService::class),
+				$c->query(PermissionService::class),
+				$c->query(NotificationService::class),
+				$c->query(OvertimePayoutMailService::class),
+				$c->query(\OCP\IConfig::class),
+			);
+		});
+
+		$context->registerService(\OCA\ArbeitszeitCheck\Service\OvertimePayoutAuditService::class, function($c) {
+			return new \OCA\ArbeitszeitCheck\Service\OvertimePayoutAuditService(
+				$c->query(\OCA\ArbeitszeitCheck\Db\OvertimePayoutMapper::class),
+				$c->query(\OCA\ArbeitszeitCheck\Service\OvertimePayoutService::class),
+				$c->query(\OCA\ArbeitszeitCheck\Service\OvertimeBankService::class),
+				$c->query(\OCA\ArbeitszeitCheck\Service\MonthClosureService::class),
+				$c->query(\OCA\ArbeitszeitCheck\Db\AuditLogMapper::class),
+				$c->query(\OCP\IUserManager::class),
+				$c->query(\OCP\IURLGenerator::class),
+			);
+		});
+
 		$context->registerService(DatevExportService::class, function($c) {
 			return new DatevExportService(
 				$c->query(\OCA\ArbeitszeitCheck\Db\TimeEntryMapper::class),
@@ -503,6 +575,7 @@ class Application extends App implements IBootstrap {
 				$c->query(\OCA\ArbeitszeitCheck\Db\AbsenceMapper::class),
 				$c->query(\OCA\ArbeitszeitCheck\Db\ComplianceViolationMapper::class),
 				$c->query(OvertimeService::class),
+				$c->query(\OCA\ArbeitszeitCheck\Service\OvertimeBankService::class),
 				$c->query(\OCP\IUserManager::class),
 				$c->query(\OCP\IL10N::class),
 				$c->query(HolidayService::class),

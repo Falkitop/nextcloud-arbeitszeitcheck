@@ -120,6 +120,51 @@
   padding: var(--space-7, 1.75rem);
 }
 
+.admin-overtime-policy {
+  margin-bottom: var(--space-6, 1.5rem);
+}
+
+.admin-overtime-policy__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-5, 1.25rem);
+}
+
+.admin-overtime-policy__grid dl {
+  margin: 0;
+}
+
+.admin-overtime-policy__grid dt {
+  font-weight: 600;
+  margin-top: 0.5rem;
+}
+
+.admin-overtime-policy__grid dt:first-child {
+  margin-top: 0;
+}
+
+.admin-overtime-policy__grid dd {
+  margin: 0.15rem 0 0;
+  color: var(--color-text-maxcontrast);
+}
+
+.admin-overtime-policy__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+@media (forced-colors: active) {
+  .admin-overtime-onboarding,
+  .admin-overtime-policy {
+    border-color: CanvasText;
+  }
+
+  .admin-overtime-policy__grid dd {
+    color: CanvasText;
+  }
+}
+
 @media (max-width: 768px) {
   .admin-dashboard .stat-card .stat-number {
     font-size: 1.6rem;

@@ -140,6 +140,11 @@ final class MonthClosurePdfDocumentBuilder
 		}
 		$this->keyValues($rows);
 
+		$bank = $snap['overtime_bank'] ?? null;
+		if (is_array($bank) && !empty($bank['enabled'])) {
+			$this->renderOvertimeBankSection($bank);
+		}
+
 		$entries = $snap['time_entries'] ?? [];
 		if (!is_array($entries)) {
 			$entries = [];
@@ -257,6 +262,42 @@ final class MonthClosurePdfDocumentBuilder
 			'business_trip' => $this->l->t('Business trip'),
 			default => $type,
 		};
+	}
+
+	/**
+	 * @param array<string, mixed> $bank
+	 */
+	private function renderOvertimeBankSection(array $bank): void
+	{
+		$this->ensureSpace(120);
+		$this->section($this->l->t('month_closure_pdf_section_overtime_bank'));
+
+		$h = $this->l->t('month_closure_pdf_hours_suffix');
+		$rows = [
+			[$this->l->t('month_closure_pdf_label_ot_bank_max'), $this->fmtNum($bank['bank_max_hours'] ?? null) . ' ' . $h],
+			[$this->l->t('month_closure_pdf_label_ot_raw_eom'), $this->fmtNum($bank['raw_balance_eom'] ?? null) . ' ' . $h],
+			[$this->l->t('month_closure_pdf_label_ot_effective_eom'), $this->fmtNum($bank['effective_balance_eom'] ?? null) . ' ' . $h],
+			[$this->l->t('month_closure_pdf_label_ot_banked_eom'), $this->fmtNum($bank['banked_hours_eom'] ?? null) . ' ' . $h],
+			[$this->l->t('month_closure_pdf_label_ot_payout_eligible_eom'), $this->fmtNum($bank['payout_eligible_eom'] ?? null) . ' ' . $h],
+		];
+
+		$payout = $bank['payout_record'] ?? null;
+		$supplementary = $bank['supplementary_payout'] ?? null;
+		if (is_array($payout)) {
+			$rows[] = [$this->l->t('month_closure_pdf_label_ot_payout_status'), $this->l->t('month_closure_pdf_ot_payout_recorded_at_closure')];
+			$rows[] = [$this->l->t('month_closure_pdf_label_ot_hours_paid'), $this->fmtNum($payout['hours_paid'] ?? null) . ' ' . $h];
+			$rows[] = [$this->l->t('month_closure_pdf_label_ot_payout_id'), (string)($payout['id'] ?? '-')];
+			$rows[] = [$this->l->t('month_closure_pdf_label_ot_processed_by'), (string)($payout['processed_by'] ?? '-')];
+		} elseif (is_array($supplementary)) {
+			$rows[] = [$this->l->t('month_closure_pdf_label_ot_payout_status'), $this->l->t('month_closure_pdf_ot_payout_recorded_after_closure')];
+			$rows[] = [$this->l->t('month_closure_pdf_label_ot_hours_paid'), $this->fmtNum($supplementary['hours_paid'] ?? null) . ' ' . $h];
+			$rows[] = [$this->l->t('month_closure_pdf_label_ot_payout_id'), (string)($supplementary['id'] ?? '-')];
+			$rows[] = [$this->l->t('month_closure_pdf_label_ot_payout_at'), (string)($supplementary['created_at'] ?? '-')];
+		} else {
+			$rows[] = [$this->l->t('month_closure_pdf_label_ot_payout_status'), $this->l->t('month_closure_pdf_ot_payout_none')];
+		}
+
+		$this->keyValues($rows);
 	}
 
 	private function labelAbsenceStatus(string $status): string

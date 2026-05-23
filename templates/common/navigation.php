@@ -58,6 +58,8 @@ $isAdminVacationLayers = strpos($currentPage, '/admin/vacation-layers') !== fals
 $isAdminAuditLog = strpos($currentPage, '/admin/audit-log') !== false;
 $isAdminSettingsPage = strpos($currentPage, '/admin/settings') !== false;
 $isAdminNotificationsPage = strpos($currentPage, '/admin/notifications') !== false;
+$isAdminOvertimePayoutsPage = strpos($currentPage, '/admin/overtime-payouts') !== false;
+$isAdminOvertimePayoutAuditPage = strpos($currentPage, '/admin/overtime-payout-audit') !== false;
 // Dashboard is active if URL contains /dashboard OR if it's the base app URL without any specific section
 $isDashboard = strpos($currentPage, '/dashboard') !== false ||
     (!$isTimeEntries && !$isAbsences && !$isReports && !$isCompliance && !$isCalendar && !$isTimeline && !$isSettings &&
@@ -198,6 +200,20 @@ $monthClosureEnabledNav = array_key_exists('monthClosureEnabled', $_)
                                 title="<?php p($l->t('Configure notification rules for absences and HR mailbox')); ?>"
                                 aria-label="<?php p($l->t('Open notification settings')); ?>">
                                 <span><?php p($l->t('Notifications')); ?></span>
+                            </a>
+                        </li>
+                        <li class="<?php p($isAdminOvertimePayoutsPage ? 'active' : ''); ?>" <?php p($isAdminOvertimePayoutsPage ? 'aria-current="page"' : ''); ?>>
+                            <a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.overtime_payout.index')); ?>"
+                                title="<?php p($l->t('Month-end payout of overtime above the bank cap')); ?>"
+                                aria-label="<?php p($l->t('Open overtime payouts')); ?>">
+                                <span><?php p($l->t('Overtime payouts')); ?></span>
+                            </a>
+                        </li>
+                        <li class="<?php p($isAdminOvertimePayoutAuditPage ? 'active' : ''); ?>" <?php p($isAdminOvertimePayoutAuditPage ? 'aria-current="page"' : ''); ?>>
+                            <a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.overtime_payout.auditIndex')); ?>"
+                                title="<?php p($l->t('Audit registry of recorded overtime payouts')); ?>"
+                                aria-label="<?php p($l->t('Open overtime payout audit')); ?>">
+                                <span><?php p($l->t('Payout audit')); ?></span>
                             </a>
                         </li>
                         <li class="<?php p($isAdminUsers ? 'active' : ''); ?>" <?php p($isAdminUsers ? 'aria-current="page"' : ''); ?>>

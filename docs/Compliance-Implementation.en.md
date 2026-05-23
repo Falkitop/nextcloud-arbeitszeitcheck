@@ -117,7 +117,10 @@
    - ≥6 hours: At least 30 minutes break?
    - ≥9 hours: At least 45 minutes break?
 2. **Maximum working time (ArbZG §3):**
-   - Maximum 10 hours per day?
+   - Maximum 10 hours per **calendar day** (storage timezone), with overnight shifts clipped at midnight
+   - **Single source of truth:** `DailyWorkingHoursCalculator` (see `docs/DAILY-HOURS-AUDIT.md`)
+   - Enforcement: clock-in guard, live auto-complete, manual entry adjustment, `at_daily_maximum` in status API, background job
+   - Violation recording after clock-out / batch: `findAllCalendarDaysExceedingMaximum()` (same midnight clip; no false positive on 22:00–08:00 rows)
 3. **Rest period (ArbZG §5):**
    - At least 11 hours between shifts?
 4. **Sunday work (ArbZG §9):**

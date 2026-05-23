@@ -21,7 +21,9 @@ use OCA\ArbeitszeitCheck\Service\AbsenceService;
 use OCA\ArbeitszeitCheck\Service\CSPService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCA\ArbeitszeitCheck\Service\TeamResolverService;
-use OCA\ArbeitszeitCheck\Service\OvertimeTrafficLightService;
+use OCA\ArbeitszeitCheck\Service\OvertimeDisplayService;
+use OCA\ArbeitszeitCheck\Service\OvertimeBankService;
+use OCA\ArbeitszeitCheck\Service\OvertimePayoutService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\RedirectResponse;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
@@ -54,7 +56,9 @@ class PageController extends Controller
 	private IURLGenerator $urlGenerator;
 	private IConfig $config;
 	private PermissionService $permissionService;
-	private OvertimeTrafficLightService $overtimeTrafficLightService;
+	private OvertimeDisplayService $overtimeDisplayService;
+	private OvertimeBankService $overtimeBankService;
+	private OvertimePayoutService $overtimePayoutService;
 	private IL10N $l10n;
 
 	/**
@@ -86,7 +90,9 @@ class PageController extends Controller
 		IURLGenerator $urlGenerator,
 		IConfig $config,
 		PermissionService $permissionService,
-		OvertimeTrafficLightService $overtimeTrafficLightService,
+		OvertimeDisplayService $overtimeDisplayService,
+		OvertimeBankService $overtimeBankService,
+		OvertimePayoutService $overtimePayoutService,
 		CSPService $cspService,
 		IL10N $l10n
 	) {
@@ -103,7 +109,9 @@ class PageController extends Controller
 		$this->urlGenerator = $urlGenerator;
 		$this->config = $config;
 		$this->permissionService = $permissionService;
-		$this->overtimeTrafficLightService = $overtimeTrafficLightService;
+		$this->overtimeDisplayService = $overtimeDisplayService;
+		$this->overtimeBankService = $overtimeBankService;
+		$this->overtimePayoutService = $overtimePayoutService;
 		$this->l10n = $l10n;
 		$this->setCspService($cspService);
 	}
@@ -136,6 +144,80 @@ class PageController extends Controller
 			return $this->l10n->t('User not authenticated');
 		}
 		return $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.');
+	}
+
+	/**
+	 * Safe defaults when overtime bank / payout queries fail (e.g. pending DB migration).
+	 *
+	 * @return array{
+	 *   overtimeBank: array<string, mixed>,
+	 *   overtimeTrafficLight: array<string, mixed>,
+	 *   overtimePayoutHistory: array{items: list<mixed>, total: int},
+	 *   error: string
+	 * }
+	 */
+	private function loadDashboardOvertimeExtras(string $userId): array
+	{
+		$defaults = [
+			'overtimeBank' => [
+				'enabled' => false,
+				'bank_max_hours' => 100.0,
+				'raw_balance' => 0.0,
+				'total_payouts_ytd' => 0.0,
+				'effective_balance' => 0.0,
+				'banked_hours' => 0.0,
+				'bank_room_hours' => 100.0,
+				'payout_eligible_hours' => 0.0,
+				'bank_fill_percent' => 0.0,
+				'bank_state' => 'disabled',
+				'as_of_date' => (new \DateTime())->format('Y-m-d'),
+				'last_payout' => null,
+			],
+			'overtimeTrafficLight' => [
+				'enabled' => false,
+				'state' => 'green',
+				'direction' => null,
+				'level' => null,
+				'balance' => 0.0,
+				'thresholds' => [
+					'yellow_over' => 5.0,
+					'red_over' => 15.0,
+					'yellow_under' => 5.0,
+					'red_under' => 15.0,
+				],
+				'bank_enabled' => false,
+				'bank_state' => null,
+				'needs_attention' => false,
+			],
+			'overtimePayoutHistory' => ['items' => [], 'total' => 0],
+			'error' => '',
+		];
+
+		try {
+			$overtimeBank = $this->overtimeBankService->getBankStatus($userId);
+			$trafficLight = $this->overtimeDisplayService->buildTrafficLightViewModel($userId);
+			$overtimePayoutHistory = $overtimeBank['enabled']
+				? $this->overtimePayoutService->listPayoutHistoryForUser($userId, 24, 0)
+				: ['items' => [], 'total' => 0];
+
+			return [
+				'overtimeBank' => $overtimeBank,
+				'overtimeTrafficLight' => $trafficLight,
+				'overtimePayoutHistory' => $overtimePayoutHistory,
+				'error' => '',
+			];
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error(
+				'Dashboard overtime extras failed: ' . $e->getMessage(),
+				['exception' => $e, 'userId' => $userId]
+			);
+
+			return $defaults + [
+				'error' => $this->l10n->t(
+					'Overtime bank and payout data could not be loaded. Your administrator may need to run database updates for ArbeitszeitCheck (occ upgrade).'
+				),
+			];
+		}
 	}
 
 	/**
@@ -211,10 +293,7 @@ class PageController extends Controller
 			$start = (new \DateTime())->modify('-30 days');
 			$end = new \DateTime();
 			$overtimeData = $this->overtimeService->calculateOvertime($userId, $start, $end);
-			$thresholds = $this->overtimeTrafficLightService->getThresholds();
-			$trafficLight = $this->overtimeTrafficLightService->classify((float)($overtimeData['cumulative_balance'] ?? 0.0), $thresholds);
-			$trafficLight['enabled'] = $this->overtimeTrafficLightService->isEnabled();
-			$trafficLight['balance'] = (float)($overtimeData['cumulative_balance'] ?? 0.0);
+			$overtimeExtras = $this->loadDashboardOvertimeExtras($userId);
 
 			// Get stats for sidebar
 			$timeEntryCount = $this->timeEntryMapper->countByUser($userId);
@@ -243,7 +322,10 @@ class PageController extends Controller
 			$params = [
 				'status' => $status,
 				'overtime' => $overtimeData,
-				'overtimeTrafficLight' => $trafficLight,
+				'overtimeBank' => $overtimeExtras['overtimeBank'],
+				'overtimeTrafficLight' => $overtimeExtras['overtimeTrafficLight'],
+				'overtimePayoutHistory' => $overtimeExtras['overtimePayoutHistory'],
+				'error' => $overtimeExtras['error'],
 				'recentEntries' => $recentEntries,
 				'isFirstTimeUser' => $isFirstTimeUser,
 				'stats' => [
@@ -274,7 +356,9 @@ class PageController extends Controller
 			$response = new TemplateResponse('arbeitszeitcheck', 'dashboard', [
 				'status' => [],
 				'overtime' => [],
+				'overtimeBank' => ['enabled' => false, 'bank_max_hours' => 100.0, 'banked_hours' => 0.0, 'bank_fill_percent' => 0.0, 'payout_eligible_hours' => 0.0, 'effective_balance' => 0.0, 'bank_state' => 'disabled'],
 				'overtimeTrafficLight' => ['enabled' => false, 'state' => 'green', 'direction' => null, 'level' => null, 'balance' => 0.0],
+				'overtimePayoutHistory' => ['items' => [], 'total' => 0],
 				'recentEntries' => [],
 				'isFirstTimeUser' => true,
 				'stats' => [

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\ArbeitszeitCheck\Tests\Unit\Dashboard;
 
 use OCA\ArbeitszeitCheck\Dashboard\EmployeeStatusWidget;
+use OCA\ArbeitszeitCheck\Dashboard\WidgetIconHelper;
 use OCA\ArbeitszeitCheck\Service\DashboardWidgetDataService;
 use OCA\ArbeitszeitCheck\Service\TimeZoneService;
 use OCA\ArbeitszeitCheck\Support\TimeClientBootstrap;
@@ -62,11 +63,14 @@ class EmployeeStatusWidgetTest extends TestCase {
 	}
 
 	private function createWidget(?IL10N $l10n = null): EmployeeStatusWidget {
+		$iconHelper = new WidgetIconHelper($this->urlGenerator);
+
 		return new EmployeeStatusWidget(
 			$l10n ?? $this->l10n,
 			$this->urlGenerator,
 			$this->dataService,
-			$this->timeClientBootstrap
+			$this->timeClientBootstrap,
+			$iconHelper,
 		);
 	}
 

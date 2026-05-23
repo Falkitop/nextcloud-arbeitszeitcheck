@@ -18,6 +18,7 @@ use OCA\ArbeitszeitCheck\Db\Absence;
 use OCA\ArbeitszeitCheck\Db\ComplianceViolationMapper;
 use OCA\ArbeitszeitCheck\Db\ComplianceViolation;
 use OCA\ArbeitszeitCheck\Service\HolidayService;
+use OCA\ArbeitszeitCheck\Service\OvertimeBankService;
 use OCA\ArbeitszeitCheck\Service\ReportingService;
 use OCA\ArbeitszeitCheck\Service\OvertimeService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
@@ -73,11 +74,16 @@ class ReportingServiceTest extends TestCase
 		$this->holidayCalendarService->method('isHolidayForUser')->willReturn(false);
 		$this->holidayCalendarService->method('computeWorkingDaysForUser')->willReturn(0.0);
 
+		$overtimeBankService = $this->createMock(OvertimeBankService::class);
+		$overtimeBankService->method('isEnabled')->willReturn(false);
+		$overtimeBankService->method('getBankStatus')->willReturn(['enabled' => false]);
+
 		$this->service = new ReportingService(
 			$this->timeEntryMapper,
 			$this->absenceMapper,
 			$this->violationMapper,
 			$this->overtimeService,
+			$overtimeBankService,
 			$this->userManager,
 			$this->l10n,
 			$this->holidayCalendarService,

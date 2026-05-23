@@ -66,6 +66,14 @@ describe('ArbeitszeitCheckUtils', () => {
     window.OC.generateUrl = originalGenerateUrl
   })
 
+  it('toSameOriginPath strips same-origin absolute URLs to root-relative paths', () => {
+    const u = window.ArbeitszeitCheckUtils
+    const origin = window.location.origin
+    expect(u.toSameOriginPath(origin + '/index.php/apps/arbeitszeitcheck/api/x')).toBe('/index.php/apps/arbeitszeitcheck/api/x')
+    expect(u.toSameOriginPath('/apps/arbeitszeitcheck/api/x')).toBe('/apps/arbeitszeitcheck/api/x')
+    expect(u.toSameOriginPath('https://example.org/ping')).toBe('https://example.org/ping')
+  })
+
   it('resolveUrl preserves already normalized /index.php app paths', () => {
     const u = window.ArbeitszeitCheckUtils
     expect(u.resolveUrl('/index.php/apps/arbeitszeitcheck/api/admin/teams')).toBe('/index.php/apps/arbeitszeitcheck/api/admin/teams')

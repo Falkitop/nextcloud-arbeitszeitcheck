@@ -48,6 +48,55 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
             </div>
             <?php endif; ?>
 
+            <?php
+            $overtimePolicy = $_['overtime_policy'] ?? [];
+            $notificationsUrl = $_['urlGenerator']->linkToRoute('arbeitszeitcheck.admin.notifications');
+            $payoutsUrl = $_['urlGenerator']->linkToRoute('arbeitszeitcheck.overtime_payout.index');
+            ?>
+            <?php if (!empty($overtimePolicy['bank_enabled']) || !empty($overtimePolicy['traffic_light_enabled'])): ?>
+            <section class="admin-overtime-policy card" aria-labelledby="admin-overtime-policy-title">
+                <div class="card-header">
+                    <h2 id="admin-overtime-policy-title" class="card-title"><?php p($l->t('Overtime policy (active)')); ?></h2>
+                    <p class="form-help"><?php p($l->t('Summary of current overtime settings. Change values under Notifications & overtime.')); ?></p>
+                </div>
+                <div class="card-body admin-overtime-policy__grid">
+                    <dl>
+                        <dt><?php p($l->t('Balance alerts')); ?></dt>
+                        <dd><?php p(!empty($overtimePolicy['traffic_light_enabled']) ? $l->t('On') : $l->t('Off')); ?></dd>
+                        <?php if (!empty($overtimePolicy['traffic_light_enabled'])): ?>
+                        <dt><?php p($l->t('Alert thresholds (h)')); ?></dt>
+                        <dd><?php p($l->t('Over: yellow %s / red %s · Under: yellow %s / red %s', [
+                            (string)($overtimePolicy['threshold_yellow_over'] ?? ''),
+                            (string)($overtimePolicy['threshold_red_over'] ?? ''),
+                            (string)($overtimePolicy['threshold_yellow_under'] ?? ''),
+                            (string)($overtimePolicy['threshold_red_under'] ?? ''),
+                        ])); ?></dd>
+                        <?php endif; ?>
+                    </dl>
+                    <dl>
+                        <dt><?php p($l->t('Overtime bank')); ?></dt>
+                        <dd><?php p(!empty($overtimePolicy['bank_enabled']) ? $l->t('On') : $l->t('Off')); ?></dd>
+                        <?php if (!empty($overtimePolicy['bank_enabled'])): ?>
+                        <dt><?php p($l->t('Bank cap')); ?></dt>
+                        <dd><?php p($l->t('%s h (yellow %s%% · red %s%%)', [
+                            number_format((float)($overtimePolicy['bank_max_hours'] ?? 100), 0),
+                            (string)($overtimePolicy['bank_yellow_percent'] ?? 80),
+                            (string)($overtimePolicy['bank_red_percent'] ?? 95),
+                        ])); ?></dd>
+                        <dt><?php p($l->t('Block month closure until payout')); ?></dt>
+                        <dd><?php p(!empty($overtimePolicy['block_month_closure_pending_payout']) ? $l->t('Yes') : $l->t('No')); ?></dd>
+                        <?php endif; ?>
+                    </dl>
+                </div>
+                <div class="card-footer admin-overtime-policy__actions">
+                    <a class="btn btn--secondary btn--small" href="<?php p($notificationsUrl); ?>"><?php p($l->t('Notification settings')); ?></a>
+                    <?php if (!empty($overtimePolicy['bank_enabled'])): ?>
+                    <a class="btn btn--secondary btn--small" href="<?php p($payoutsUrl); ?>"><?php p($l->t('Overtime payouts')); ?></a>
+                    <?php endif; ?>
+                </div>
+            </section>
+            <?php endif; ?>
+
             <!-- Statistics Cards -->
             <div class="stats-grid">
                 <button type="button" class="stat-card stat-card--drilldown" data-stat="total_users" data-drilldown-filter="all"

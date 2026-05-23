@@ -361,7 +361,10 @@ class TimeEntryMapper extends QBMapper
 	}
 
 	/**
-	 * Get total hours for a user in a date range
+	 * Get total hours for a user in a date range (entries whose **start_time** falls in the window).
+	 *
+	 * @deprecated For ArbZG §3 daily limits use {@see \OCA\ArbeitszeitCheck\Service\DailyWorkingHoursCalculator}.
+	 *             This method does not clip overnight spans at midnight and must not drive auto clock-out.
 	 *
 	 * @param string $userId
 	 * @param \DateTime $startDate

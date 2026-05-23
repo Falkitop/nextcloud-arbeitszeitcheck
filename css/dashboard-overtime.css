@@ -1,0 +1,220 @@
+/**
+ * Employee dashboard — unified overtime section (WCAG 2.1 AA, responsive)
+ *
+ * @license AGPL-3.0-or-later
+ */
+
+.dashboard-overtime-section {
+	margin-block: 1.5rem 1rem;
+}
+
+.dashboard-overtime-section__title {
+	margin: 0 0 0.75rem;
+	font-size: 1.125rem;
+	font-weight: 600;
+}
+
+.dashboard-overtime-card .card-body {
+	display: flex;
+	flex-direction: column;
+	gap: 1.25rem;
+}
+
+.dashboard-overtime-card__balance {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 0.5rem 1rem;
+	padding-bottom: 0.75rem;
+	border-bottom: 1px solid var(--color-border);
+}
+
+.dashboard-overtime-card__balance-label {
+	font-size: 0.95rem;
+	color: var(--color-text-maxcontrast);
+}
+
+.dashboard-overtime-card__balance-value {
+	font-size: 1.75rem;
+	font-weight: 700;
+	line-height: 1.2;
+}
+
+.dashboard-overtime-card__balance-value.positive {
+	color: var(--arbeitszeitcheck-color-success, var(--color-success));
+}
+
+.dashboard-overtime-card__balance-value.negative {
+	color: var(--arbeitszeitcheck-color-error, var(--color-error));
+}
+
+.dashboard-overtime-card__traffic {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.75rem 1rem;
+}
+
+.dashboard-overtime-card__traffic-label {
+	font-weight: 600;
+	width: 100%;
+}
+
+.dashboard-overtime-card__thresholds {
+	margin: 0;
+	width: 100%;
+}
+
+/* Visual semaphore — decorative; text badge is primary for WCAG (not color-only) */
+.ot-semaphore {
+	display: inline-flex;
+	flex-direction: column;
+	gap: 0.2rem;
+	padding: 0.35rem 0.45rem;
+	border-radius: var(--border-radius, 0.35rem);
+	background: var(--arbeitszeitcheck-color-background-secondary, var(--color-background-dark));
+	border: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
+}
+
+.ot-semaphore__lamp {
+	display: block;
+	width: 1.1rem;
+	height: 1.1rem;
+	border-radius: 50%;
+	opacity: 0.35;
+	background: color-mix(
+		in srgb,
+		var(--color-text-maxcontrast, #6b6b6b) 50%,
+		var(--color-background-dark, transparent)
+	);
+	border: 1px solid transparent;
+}
+
+.ot-semaphore__lamp--red {
+	background: color-mix(
+		in srgb,
+		var(--arbeitszeitcheck-color-error, var(--color-error)) 55%,
+		var(--color-background-dark, transparent)
+	);
+}
+
+.ot-semaphore__lamp--yellow {
+	background: color-mix(
+		in srgb,
+		var(--arbeitszeitcheck-color-warning, var(--color-warning)) 55%,
+		var(--color-background-dark, transparent)
+	);
+}
+
+.ot-semaphore__lamp--green {
+	background: color-mix(
+		in srgb,
+		var(--arbeitszeitcheck-color-success, var(--color-success)) 55%,
+		var(--color-background-dark, transparent)
+	);
+}
+
+.ot-semaphore--red .ot-semaphore__lamp--red,
+.ot-semaphore--yellow .ot-semaphore__lamp--yellow,
+.ot-semaphore--green .ot-semaphore__lamp--green {
+	opacity: 1;
+	background: var(--arbeitszeitcheck-color-error, var(--color-error));
+	border-color: color-mix(in srgb, var(--color-main-text) 25%, transparent);
+	box-shadow: 0 0 0 2px var(--color-main-background);
+}
+
+.ot-semaphore--yellow .ot-semaphore__lamp--yellow {
+	background: var(--arbeitszeitcheck-color-warning, var(--color-warning));
+}
+
+.ot-semaphore--green .ot-semaphore__lamp--green {
+	background: var(--arbeitszeitcheck-color-success, var(--color-success));
+}
+
+.dashboard-overtime-card__bank {
+	padding-top: 0.5rem;
+	border-top: 1px dashed var(--color-border);
+}
+
+.dashboard-overtime-card__bank-title {
+	margin: 0 0 0.35rem;
+	font-size: 1rem;
+	font-weight: 600;
+}
+
+.dashboard-overtime-card__payout-note {
+	margin: 0.5rem 0 0;
+	padding: 0.65rem 0.85rem;
+	border-radius: var(--border-radius);
+	background: var(--color-background-hover);
+}
+
+.dashboard-overtime-payout-history {
+	margin-top: 1rem;
+	padding-top: 0.75rem;
+	border-top: 1px solid var(--color-border);
+}
+
+.dashboard-overtime-payout-history__table {
+	width: 100%;
+	font-size: 0.9rem;
+}
+
+@media (max-width: 480px) {
+	.dashboard-overtime-card__balance-value {
+		font-size: 1.5rem;
+	}
+
+	.dashboard-overtime-card__traffic {
+		flex-direction: column;
+		align-items: flex-start;
+	}
+}
+
+/* Windows High Contrast / forced-colors — borders + text carry meaning, not lamp hue alone */
+@media (forced-colors: active) {
+	.dashboard-overtime-card,
+	.dashboard-overtime-card__bank,
+	.dashboard-overtime-payout-history,
+	.ot-semaphore,
+	.dashboard-overtime-bank-card__meter,
+	.dashboard-overtime-card__payout-note,
+	.dashboard-overtime-bank-card__payout {
+		border-color: CanvasText;
+	}
+
+	.dashboard-overtime-card__balance-value.positive,
+	.dashboard-overtime-card__balance-value.negative {
+		color: CanvasText;
+	}
+
+	.ot-semaphore {
+		background: Canvas;
+	}
+
+	.ot-semaphore__lamp {
+		opacity: 1;
+		background: Canvas;
+		border: 1px solid CanvasText;
+	}
+
+	.ot-semaphore--red .ot-semaphore__lamp--red,
+	.ot-semaphore--yellow .ot-semaphore__lamp--yellow,
+	.ot-semaphore--green .ot-semaphore__lamp--green {
+		background: Highlight;
+		border-color: Highlight;
+		box-shadow: none;
+	}
+
+	.dashboard-overtime-card .badge {
+		border: 1px solid CanvasText;
+	}
+
+	.dashboard-overtime-bank-card__meter-fill,
+	.dashboard-overtime-bank-card__meter-fill--success,
+	.dashboard-overtime-bank-card__meter-fill--warning,
+	.dashboard-overtime-bank-card__meter-fill--error {
+		background: CanvasText;
+	}
+}

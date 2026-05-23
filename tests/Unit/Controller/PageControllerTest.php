@@ -22,7 +22,9 @@ use OCA\ArbeitszeitCheck\Service\OvertimeService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCA\ArbeitszeitCheck\Service\TeamResolverService;
 use OCA\ArbeitszeitCheck\Service\TimeTrackingService;
-use OCA\ArbeitszeitCheck\Service\OvertimeTrafficLightService;
+use OCA\ArbeitszeitCheck\Service\OvertimeBankService;
+use OCA\ArbeitszeitCheck\Service\OvertimeDisplayService;
+use OCA\ArbeitszeitCheck\Service\OvertimePayoutService;
 use OCP\AppFramework\Http\RedirectResponse;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\IConfig;
@@ -66,19 +68,24 @@ class PageControllerTest extends TestCase
 		$permissionService = $this->createMock(PermissionService::class);
 		$permissionService->method('canAccessManagerDashboard')->willReturn(false);
 		$permissionService->method('isAdmin')->willReturn(false);
-		$overtimeTrafficLightService = $this->createMock(OvertimeTrafficLightService::class);
-		$overtimeTrafficLightService->method('isEnabled')->willReturn(false);
-		$overtimeTrafficLightService->method('getThresholds')->willReturn([
-			'yellow_over' => 5.0,
-			'red_over' => 15.0,
-			'yellow_under' => 5.0,
-			'red_under' => 15.0,
-		]);
-		$overtimeTrafficLightService->method('classify')->willReturn([
+		$overtimeDisplayService = $this->createMock(OvertimeDisplayService::class);
+		$overtimeDisplayService->method('buildTrafficLightViewModel')->willReturn([
+			'enabled' => false,
 			'state' => 'green',
-			'direction' => null,
-			'level' => null,
+			'balance' => 0.0,
+			'thresholds' => [
+				'yellow_over' => 5.0,
+				'red_over' => 15.0,
+				'yellow_under' => 5.0,
+				'red_under' => 15.0,
+			],
+			'bank_enabled' => false,
+			'bank_state' => null,
+			'needs_attention' => false,
 		]);
+		$overtimeBankService = $this->createMock(OvertimeBankService::class);
+		$overtimeBankService->method('getBankStatus')->willReturn(['enabled' => false]);
+		$overtimePayoutService = $this->createMock(OvertimePayoutService::class);
 		$cspService = $this->createMock(CSPService::class);
 		$cspService->method('applyPolicyWithNonce')->willReturnCallback(fn ($r) => $r);
 		$l10n = $this->createMock(IL10N::class);
@@ -98,7 +105,9 @@ class PageControllerTest extends TestCase
 			$urlGenerator,
 			$config,
 			$permissionService,
-			$overtimeTrafficLightService,
+			$overtimeDisplayService,
+			$overtimeBankService,
+			$overtimePayoutService,
 			$cspService,
 			$l10n
 		);

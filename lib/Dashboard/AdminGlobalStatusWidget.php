@@ -25,6 +25,7 @@ class AdminGlobalStatusWidget implements IAPIWidgetV2, IButtonWidget, IIconWidge
 		private readonly IURLGenerator $urlGenerator,
 		private readonly DashboardWidgetDataService $widgetDataService,
 		private readonly TimeClientBootstrap $timeClientBootstrap,
+		private readonly WidgetIconHelper $widgetIconHelper,
 	) {
 	}
 
@@ -45,7 +46,7 @@ class AdminGlobalStatusWidget implements IAPIWidgetV2, IButtonWidget, IIconWidge
 	}
 
 	public function getIconUrl(): string {
-		return $this->urlGenerator->getAbsoluteURL($this->urlGenerator->imagePath(Application::APP_ID, 'app-dark.svg'));
+		return $this->widgetIconHelper->getAbsoluteIconUrl();
 	}
 
 	public function getUrl(): ?string {
@@ -54,6 +55,7 @@ class AdminGlobalStatusWidget implements IAPIWidgetV2, IButtonWidget, IIconWidge
 
 	public function load(): void {
 		$this->registerTimeClientForWidget($this->timeClientBootstrap);
+		$this->registerDeskletStylesForWidget();
 	}
 
 	public function getItemsV2(string $userId, ?string $since = null, int $limit = 7): WidgetItems {

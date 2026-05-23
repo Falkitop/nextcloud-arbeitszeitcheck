@@ -27,6 +27,7 @@ class ReportingService
 	private AbsenceMapper $absenceMapper;
 	private ComplianceViolationMapper $violationMapper;
 	private OvertimeService $overtimeService;
+	private OvertimeBankService $overtimeBankService;
 	private IUserManager $userManager;
 	private IL10N $l10n;
 	private HolidayService $holidayCalendarService;
@@ -37,6 +38,7 @@ class ReportingService
 		AbsenceMapper $absenceMapper,
 		ComplianceViolationMapper $violationMapper,
 		OvertimeService $overtimeService,
+		OvertimeBankService $overtimeBankService,
 		IUserManager $userManager,
 		IL10N $l10n,
 		HolidayService $holidayCalendarService,
@@ -46,6 +48,7 @@ class ReportingService
 		$this->absenceMapper = $absenceMapper;
 		$this->violationMapper = $violationMapper;
 		$this->overtimeService = $overtimeService;
+		$this->overtimeBankService = $overtimeBankService;
 		$this->userManager = $userManager;
 		$this->l10n = $l10n;
 		$this->holidayCalendarService = $holidayCalendarService;
@@ -411,6 +414,7 @@ class ReportingService
 				'start' => $startDate->format('Y-m-d'),
 				'end' => $endDate->format('Y-m-d')
 			],
+			'bank_enabled' => $this->overtimeBankService->isEnabled(),
 			'total_users' => 0,
 			'users_with_overtime' => 0,
 			'users_with_undertime' => 0,
@@ -425,23 +429,17 @@ class ReportingService
 			if ($user) {
 				$overtimeData = $this->overtimeService->calculateOvertime($userId, $startDate, $endDate);
 				$report['total_users'] = 1;
-				$report['users'][] = [
-					'user_id' => $userId,
-					'display_name' => $this->getDisplayName($userId),
-					'total_hours_worked' => $overtimeData['total_hours_worked'],
-					'required_hours' => $overtimeData['required_hours'],
-					'overtime_hours' => $overtimeData['overtime_hours'],
-					'cumulative_balance' => $overtimeData['cumulative_balance_after']
-				];
+				$userRow = $this->buildOvertimeReportUserRow($userId, $overtimeData);
+				$report['users'][] = $userRow;
 
-				if ($overtimeData['overtime_hours'] > 0) {
+				if ($userRow['period_overtime_hours'] > 0) {
 					$report['users_with_overtime'] = 1;
-					$report['total_overtime'] = $overtimeData['overtime_hours'];
-				} elseif ($overtimeData['overtime_hours'] < 0) {
+					$report['total_overtime'] = $userRow['period_overtime_hours'];
+				} elseif ($userRow['period_undertime_hours'] > 0) {
 					$report['users_with_undertime'] = 1;
-					$report['total_undertime'] = abs($overtimeData['overtime_hours']);
+					$report['total_undertime'] = $userRow['period_undertime_hours'];
 				}
-				$report['average_overtime'] = $overtimeData['overtime_hours'];
+				$report['average_overtime'] = $userRow['overtime_hours'];
 			}
 		} else {
 			$userIds = [];
@@ -462,24 +460,16 @@ class ReportingService
 
 			foreach ($userIds as $uid) {
 				$overtimeData = $this->overtimeService->calculateOvertime($uid, $startDate, $endDate);
-				$overtimeHours = $overtimeData['overtime_hours'];
+				$userRow = $this->buildOvertimeReportUserRow($uid, $overtimeData);
+				$report['users'][] = $userRow;
 
-				$report['users'][] = [
-					'user_id' => $uid,
-					'display_name' => $this->getDisplayName($uid),
-					'total_hours_worked' => $overtimeData['total_hours_worked'],
-					'required_hours' => $overtimeData['required_hours'],
-					'overtime_hours' => $overtimeHours,
-					'cumulative_balance' => $overtimeData['cumulative_balance_after']
-				];
-
-				if ($overtimeHours > 0) {
+				if ($userRow['period_overtime_hours'] > 0) {
 					$report['users_with_overtime']++;
-					$overtimeSum += $overtimeHours;
+					$overtimeSum += $userRow['period_overtime_hours'];
 					$overtimeCount++;
-				} elseif ($overtimeHours < 0) {
+				} elseif ($userRow['period_undertime_hours'] > 0) {
 					$report['users_with_undertime']++;
-					$undertimeSum += abs($overtimeHours);
+					$undertimeSum += $userRow['period_undertime_hours'];
 					$undertimeCount++;
 				}
 			}
@@ -770,6 +760,36 @@ class ReportingService
 		return [
 			'holiday_days' => $holidayDays,
 			'holiday_work_hours' => $holidayWorkHours,
+		];
+	}
+
+	/**
+	 * @param array<string, mixed> $overtimeData
+	 * @return array<string, mixed>
+	 */
+	private function buildOvertimeReportUserRow(string $userId, array $overtimeData): array
+	{
+		$periodHours = (float)($overtimeData['overtime_hours'] ?? 0.0);
+		$bank = $this->overtimeBankService->getBankStatus($userId);
+
+		return [
+			'user_id' => $userId,
+			'display_name' => $this->getDisplayName($userId),
+			'total_hours_worked' => round((float)($overtimeData['total_hours_worked'] ?? 0), 2),
+			'required_hours' => round((float)($overtimeData['required_hours'] ?? 0), 2),
+			'overtime_hours' => round($periodHours, 2),
+			'period_overtime_hours' => round(max(0.0, $periodHours), 2),
+			'period_undertime_hours' => round(max(0.0, -$periodHours), 2),
+			'cumulative_balance' => round((float)($overtimeData['cumulative_balance_after'] ?? 0), 2),
+			'bank_enabled' => (bool)($bank['enabled'] ?? false),
+			'effective_balance' => round(
+				$bank['enabled']
+					? (float)($bank['effective_balance'] ?? 0)
+					: (float)($overtimeData['cumulative_balance_after'] ?? 0),
+				2
+			),
+			'banked_hours' => $bank['enabled'] ? round((float)($bank['banked_hours'] ?? 0), 2) : null,
+			'payout_eligible_hours' => $bank['enabled'] ? round((float)($bank['payout_eligible_hours'] ?? 0), 2) : null,
 		];
 	}
 

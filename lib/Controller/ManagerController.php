@@ -23,7 +23,10 @@ use OCA\ArbeitszeitCheck\Db\TeamManagerMapper;
 use OCA\ArbeitszeitCheck\Db\AuditLogMapper;
 use OCA\ArbeitszeitCheck\Db\TimeEntryMapper;
 use OCA\ArbeitszeitCheck\Db\TimeEntry;
+use OCA\ArbeitszeitCheck\Service\OvertimeDisplayService;
 use OCA\ArbeitszeitCheck\Service\OvertimeService;
+use OCA\ArbeitszeitCheck\Service\OvertimeBankService;
+use OCA\ArbeitszeitCheck\Service\OvertimeTrafficLightService;
 use OCA\ArbeitszeitCheck\Service\NotificationService;
 use OCA\ArbeitszeitCheck\Service\MonthClosureFeature;
 use OCA\ArbeitszeitCheck\Service\MonthClosureGuard;
@@ -39,6 +42,7 @@ use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
+use OCP\AppFramework\Http\DataDownloadResponse;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\IRequest;
@@ -68,6 +72,9 @@ class ManagerController extends Controller
 	private IL10N $l10n;
 	private TeamManagerMapper $teamManagerMapper;
 	private OvertimeService $overtimeService;
+	private OvertimeDisplayService $overtimeDisplayService;
+	private OvertimeBankService $overtimeBankService;
+	private OvertimeTrafficLightService $overtimeTrafficLightService;
 	private AuditLogMapper $auditLogMapper;
 	private NotificationService $notificationService;
 	private TimeEntryMapper $timeEntryMapper;
@@ -94,6 +101,9 @@ class ManagerController extends Controller
 		IL10N $l10n,
 		TeamManagerMapper $teamManagerMapper,
 		OvertimeService $overtimeService,
+		OvertimeDisplayService $overtimeDisplayService,
+		OvertimeBankService $overtimeBankService,
+		OvertimeTrafficLightService $overtimeTrafficLightService,
 		AuditLogMapper $auditLogMapper,
 		NotificationService $notificationService,
 		TimeEntryMapper $timeEntryMapper,
@@ -117,6 +127,9 @@ class ManagerController extends Controller
 		$this->l10n = $l10n;
 		$this->teamManagerMapper = $teamManagerMapper;
 		$this->overtimeService = $overtimeService;
+		$this->overtimeDisplayService = $overtimeDisplayService;
+		$this->overtimeBankService = $overtimeBankService;
+		$this->overtimeTrafficLightService = $overtimeTrafficLightService;
 		$this->auditLogMapper = $auditLogMapper;
 		$this->notificationService = $notificationService;
 		$this->timeEntryMapper = $timeEntryMapper;
@@ -1632,6 +1645,106 @@ class ManagerController extends Controller
 	 * @return JSONResponse
 	 */
 	#[NoAdminRequired]
+	public function getTeamOvertimeAlerts(): JSONResponse
+	{
+		try {
+			$managerId = $this->getUserId();
+			$accessResponse = $this->ensureManagerReadAccess($managerId, 'view_team_overtime_alerts');
+			if ($accessResponse !== null) {
+				return $accessResponse;
+			}
+
+			$teamUserIds = $this->getTeamMemberIds($managerId);
+			$members = [];
+			foreach ($teamUserIds as $userId) {
+				$snapshot = $this->overtimeDisplayService->buildManagerMemberSnapshot($userId);
+				if (!$snapshot['needs_attention']) {
+					continue;
+				}
+				$members[] = array_merge([
+					'userId' => $userId,
+					'displayName' => $this->getDisplayName($userId),
+				], $snapshot);
+			}
+
+			return new JSONResponse([
+				'success' => true,
+				'features' => [
+					'traffic_light_enabled' => $this->overtimeTrafficLightService->isEnabled(),
+					'bank_enabled' => $this->overtimeBankService->isEnabled(),
+				],
+				'members' => $members,
+				'total_team' => count($teamUserIds),
+				'alert_count' => count($members),
+			]);
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error(
+				'Error in ManagerController::getTeamOvertimeAlerts',
+				['exception' => $e]
+			);
+
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('An internal error occurred. Please contact your administrator.'),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	public function exportTeamOvertimeCsv(): DataDownloadResponse|JSONResponse
+	{
+		try {
+			$managerId = $this->getUserId();
+			$accessResponse = $this->ensureManagerReadAccess($managerId, 'export_team_overtime');
+			if ($accessResponse !== null) {
+				return $accessResponse;
+			}
+
+			$teamUserIds = $this->getTeamMemberIds($managerId);
+			$lines = ["user_id;display_name;balance_h;balance_type;traffic_light;bank_state;bank_fill_pct;payout_eligible_h;needs_attention\n"];
+			foreach ($teamUserIds as $userId) {
+				$snapshot = $this->overtimeDisplayService->buildManagerMemberSnapshot($userId);
+				$lines[] = implode(';', [
+					$this->csvEscape($userId),
+					$this->csvEscape($this->getDisplayName($userId)),
+					number_format((float)$snapshot['balance'], 2, '.', ''),
+					$this->csvEscape((string)($snapshot['balance_label'] ?? '')),
+					$this->csvEscape((string)($snapshot['traffic_light_state'] ?? '')),
+					$this->csvEscape((string)($snapshot['bank_state'] ?? '')),
+					$snapshot['bank_fill_percent'] !== null ? number_format((float)$snapshot['bank_fill_percent'], 1, '.', '') : '',
+					$snapshot['payout_eligible_hours'] !== null ? number_format((float)$snapshot['payout_eligible_hours'], 2, '.', '') : '',
+					$snapshot['needs_attention'] ? 'yes' : 'no',
+				]) . "\n";
+			}
+
+			$csv = "\xEF\xBB\xBF" . implode('', $lines);
+			$filename = 'team-overtime-' . date('Y-m-d') . '.csv';
+
+			return new DataDownloadResponse($csv, $filename, 'text/csv; charset=UTF-8');
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error(
+				'Error in ManagerController::exportTeamOvertimeCsv',
+				['exception' => $e]
+			);
+
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('An internal error occurred. Please contact your administrator.'),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	private function csvEscape(string $value): string
+	{
+		if (str_contains($value, ';') || str_contains($value, '"') || str_contains($value, "\n")) {
+			return '"' . str_replace('"', '""', $value) . '"';
+		}
+
+		return $value;
+	}
+
+	#[NoAdminRequired]
 	public function getTeamCompliance(): JSONResponse
 	{
 		try {
@@ -1778,24 +1891,21 @@ class ManagerController extends Controller
 				$period = 'today';
 			}
 
-			$today = new \DateTime();
-			$today->setTime(0, 0, 0);
+			$now = $this->timeZoneService->nowInStorage();
+			[$todayStart, $todayEnd] = $this->timeZoneService->todayWindowInStorage();
 
 			if ($period === 'today') {
-				$start = clone $today;
-				$end = clone $today;
-				$end->modify('+1 day');
+				$start = $todayStart;
+				$end = $todayEnd;
 			} elseif ($period === 'week') {
-				$dayOfWeek = (int)$today->format('w');
-				$start = clone $today;
+				$start = clone $todayStart;
+				$dayOfWeek = (int)$now->format('w');
 				$start->modify('-' . $dayOfWeek . ' days');
-				$start->setTime(0, 0, 0);
-				$end = clone $start;
-				$end->modify('+7 days');
+				$end = (clone $start)->modify('+7 days');
 			} else {
-				$start = new \DateTime($today->format('Y-m-01'));
-				$end = clone $start;
-				$end->modify('first day of next month');
+				$year = (int)$now->format('Y');
+				$month = (int)$now->format('n');
+				[$start, $end] = $this->timeZoneService->monthWindowInStorage($year, $month);
 			}
 
 			foreach ($teamUserIds as $userId) {
@@ -1803,7 +1913,7 @@ class ManagerController extends Controller
 					$hours = $this->timeTrackingService->getTodayHours($userId);
 					$overtimeData = $this->overtimeService->getDailyOvertime($userId);
 				} else {
-					$hours = $this->timeEntryMapper->getTotalHoursByUserAndDateRange($userId, $start, $end);
+					$hours = $this->timeTrackingService->getWorkingHoursForPeriod($userId, $start, $end);
 					$overtimeData = $this->overtimeService->calculateOvertime($userId, $start, $end, false);
 				}
 				$overtime = $overtimeData['overtime_hours'];

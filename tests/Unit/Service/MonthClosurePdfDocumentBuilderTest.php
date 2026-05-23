@@ -73,4 +73,52 @@ class MonthClosurePdfDocumentBuilderTest extends TestCase
 		$this->assertStringNotContainsString('"schema"', $pdf);
 		$this->assertMatchesRegularExpression('/P1\/\d+/', $pdf);
 	}
+
+	public function testPdfIncludesOvertimeBankSectionWhenPresent(): void
+	{
+		$l = $this->createMock(IL10N::class);
+		$l->method('getLanguageCode')->willReturn('en');
+		$l->method('t')->willReturnCallback(static function (string $text) {
+			if ($text === 'month_closure_pdf_section_overtime_bank') {
+				return 'OT BANK SECTION';
+			}
+			if ($text === 'month_closure_pdf_title') {
+				return 'TITLE';
+			}
+			if ($text === 'month_closure_pdf_footer') {
+				return 'FOOTER';
+			}
+			if ($text === 'month_closure_pdf_integrity_note') {
+				return 'INTEGRITY';
+			}
+
+			return 'X';
+		});
+
+		$snap = [
+			'schema' => 'arbeitszeitcheck.month_closure.v1',
+			'year' => 2026,
+			'month' => 3,
+			'period' => ['start' => '2026-03-01', 'end' => '2026-03-31'],
+			'report' => ['total_hours' => 1.0, 'violations_count' => 0],
+			'overtime_bank' => [
+				'enabled' => true,
+				'bank_max_hours' => 100.0,
+				'raw_balance_eom' => 110.0,
+				'effective_balance_eom' => 110.0,
+				'payout_eligible_eom' => 10.0,
+				'banked_hours_eom' => 100.0,
+				'payout_record' => null,
+			],
+			'time_entries' => [],
+			'absences' => [],
+		];
+		$row = new MonthClosure();
+		$row->setSnapshotHash(str_repeat('a', 64));
+		$row->setVersion(1);
+
+		$pdf = MonthClosurePdfDocumentBuilder::build($snap, $row, 'User', 'u1', $l, '');
+
+		$this->assertStringContainsString('OT BANK SECTION', $pdf);
+	}
 }

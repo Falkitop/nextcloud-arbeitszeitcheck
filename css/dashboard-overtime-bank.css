@@ -1,0 +1,125 @@
+/**
+ * Dashboard overtime bank card (WCAG 2.1 AA — not color-only; progress + text labels).
+ *
+ * @license AGPL-3.0-or-later
+ */
+
+.dashboard-overtime-bank-card .card-body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+}
+
+.dashboard-overtime-bank-card__intro {
+	margin: 0;
+	line-height: 1.5;
+}
+
+.dashboard-overtime-bank-card__meter-wrap {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.dashboard-overtime-bank-card__meter-label {
+	font-weight: var(--arbeitszeitcheck-font-weight-semibold, 600);
+	font-size: var(--arbeitszeitcheck-font-size-base);
+	color: var(--arbeitszeitcheck-color-text);
+}
+
+.dashboard-overtime-bank-card__meter {
+	height: 1rem;
+	border-radius: var(--radius-full, 9999px);
+	background: var(--arbeitszeitcheck-color-border, var(--color-border));
+	overflow: hidden;
+	border: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
+}
+
+.dashboard-overtime-bank-card__meter-fill {
+	height: 100%;
+	min-width: 0;
+	transition: width 0.25s ease;
+	border-radius: inherit;
+}
+
+.dashboard-overtime-bank-card__meter-fill--success {
+	background: var(--arbeitszeitcheck-color-success, var(--color-success));
+}
+
+.dashboard-overtime-bank-card__meter-fill--warning {
+	background: var(--arbeitszeitcheck-color-warning, var(--color-warning));
+}
+
+.dashboard-overtime-bank-card__meter-fill--error {
+	background: var(--arbeitszeitcheck-color-error, var(--color-error));
+}
+
+.dashboard-overtime-bank-card__meter-value {
+	display: flex;
+	align-items: baseline;
+	gap: var(--space-2);
+	margin: 0;
+	font-size: var(--arbeitszeitcheck-font-size-xl);
+	font-weight: var(--arbeitszeitcheck-font-weight-bold);
+}
+
+.dashboard-overtime-bank-card__sep {
+	color: var(--arbeitszeitcheck-color-text-secondary);
+	font-weight: normal;
+}
+
+.dashboard-overtime-bank-card__max {
+	font-size: var(--arbeitszeitcheck-font-size-lg);
+	color: var(--arbeitszeitcheck-color-text-secondary);
+	font-weight: var(--arbeitszeitcheck-font-weight-normal);
+}
+
+.dashboard-overtime-bank-card__status {
+	margin: 0;
+}
+
+.dashboard-overtime-bank-card__payout {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: space-between;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-4);
+	border-radius: var(--radius-lg);
+	border: 2px solid var(--arbeitszeitcheck-color-warning, var(--color-warning));
+	background: var(--arbeitszeitcheck-color-background-elevated);
+}
+
+.dashboard-overtime-bank-card__payout-label {
+	font-weight: 600;
+}
+
+.dashboard-overtime-bank-card__payout-value {
+	font-size: var(--arbeitszeitcheck-font-size-xl);
+	font-weight: var(--arbeitszeitcheck-font-weight-bold);
+}
+
+.dashboard-overtime-bank-card__hint {
+	margin: 0;
+}
+
+@media (max-width: 480px) {
+	.dashboard-overtime-bank-card__payout {
+		flex-direction: column;
+		align-items: flex-start;
+	}
+}
+
+@media (forced-colors: active) {
+	.dashboard-overtime-bank-card__meter,
+	.dashboard-overtime-bank-card__payout {
+		border-color: CanvasText;
+	}
+
+	.dashboard-overtime-bank-card__meter-fill,
+	.dashboard-overtime-bank-card__meter-fill--success,
+	.dashboard-overtime-bank-card__meter-fill--warning,
+	.dashboard-overtime-bank-card__meter-fill--error {
+		background: CanvasText;
+	}
+}

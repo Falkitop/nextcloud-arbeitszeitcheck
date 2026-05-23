@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace OCA\ArbeitszeitCheck\Tests\Unit\Service;
 
+use OCA\ArbeitszeitCheck\Db\Absence;
 use OCA\ArbeitszeitCheck\Db\AbsenceMapper;
 use OCA\ArbeitszeitCheck\Service\AbsenceService;
 use OCA\ArbeitszeitCheck\Service\DashboardWidgetDataService;
+use OCA\ArbeitszeitCheck\Service\OvertimeBankService;
+use OCA\ArbeitszeitCheck\Service\OvertimeDisplayService;
 use OCA\ArbeitszeitCheck\Service\OvertimeService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCA\ArbeitszeitCheck\Service\TeamResolverService;
@@ -41,9 +44,18 @@ class DashboardWidgetDataServiceTest extends TestCase {
 		IUserManager $userManager,
 		?TeamResolverService $teamResolverService = null
 	): DashboardWidgetDataService {
+		$display = $this->createMock(OvertimeDisplayService::class);
+		$display->method('getYearToDateBalanceForTrafficLight')->willReturn(0.0);
+		$display->method('buildTrafficLightViewModel')->willReturn(['state' => 'green']);
+
+		$bank = $this->createMock(OvertimeBankService::class);
+		$bank->method('isEnabled')->willReturn(false);
+
 		return new DashboardWidgetDataService(
 			$timeTrackingService,
 			$this->createMock(OvertimeService::class),
+			$display,
+			$bank,
 			$this->createMock(AbsenceService::class),
 			$this->createMock(AbsenceMapper::class),
 			$teamResolverService ?? $this->createMock(TeamResolverService::class),
@@ -51,6 +63,47 @@ class DashboardWidgetDataServiceTest extends TestCase {
 			$userManager,
 			$this->createTimeZoneService()
 		);
+	}
+
+	public function testEmployeeWidgetDataFormatsIsoSessionStartInUserDisplayTz(): void {
+		$timeTrackingService = $this->createMock(TimeTrackingService::class);
+		$timeTrackingService->method('getStatus')->with('u1')->willReturn([
+			'status' => 'active',
+			'working_today_hours' => 1.0,
+			'current_session_duration' => 60,
+			'current_entry' => [
+				'startTime' => '2026-01-15T08:30:00+01:00',
+			],
+		]);
+		$timeTrackingService->method('getBreakStatus')->willReturn([]);
+
+		$overtime = $this->createMock(OvertimeService::class);
+		$overtime->method('getWeeklyOvertime')->willReturn([]);
+
+		$absence = $this->createMock(AbsenceService::class);
+		$absence->method('getVacationStats')->willReturn(['year' => 2026]);
+
+		$display = $this->createMock(OvertimeDisplayService::class);
+		$display->method('getYearToDateBalanceForTrafficLight')->willReturn(2.5);
+		$display->method('buildTrafficLightViewModel')->willReturn(['state' => 'green']);
+		$bank = $this->createMock(OvertimeBankService::class);
+		$bank->method('isEnabled')->willReturn(false);
+
+		$service = new DashboardWidgetDataService(
+			$timeTrackingService,
+			$overtime,
+			$display,
+			$bank,
+			$absence,
+			$this->createMock(AbsenceMapper::class),
+			$this->createMock(TeamResolverService::class),
+			$this->createMock(PermissionService::class),
+			$this->createMock(IUserManager::class),
+			$this->createTimeZoneService()
+		);
+
+		$data = $service->getEmployeeWidgetData('u1');
+		$this->assertSame('08:30', $data['sessionStartFormatted']);
 	}
 
 	public function testEmployeeWidgetDataUsesTimeTrackingStatus(): void {
@@ -146,6 +199,56 @@ class DashboardWidgetDataServiceTest extends TestCase {
 		$this->assertCount(50, $data['users']);
 		// Summary counts all 60 users
 		$this->assertSame(60, $data['summary']['total']);
+	}
+
+	public function testManagerAbsenceSummaryUsesStorageCalendarToday(): void {
+		$permission = $this->createMock(PermissionService::class);
+		$permission->method('canAccessManagerDashboard')->willReturn(true);
+
+		$team = $this->createMock(TeamResolverService::class);
+		$team->method('getTeamMemberIds')->willReturn(['member1']);
+
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn('member1');
+		$user->method('getDisplayName')->willReturn('Member');
+		$userManager = $this->createMock(IUserManager::class);
+		$userManager->method('get')->with('member1')->willReturn($user);
+
+		$timeTrackingService = $this->createMock(TimeTrackingService::class);
+		$timeTrackingService->method('getStatus')->willReturn([
+			'status' => 'clocked_out',
+			'working_today_hours' => 0.0,
+		]);
+
+		$absenceMapper = $this->createMock(AbsenceMapper::class);
+		$absenceMapper->expects($this->once())
+			->method('findByUsersAndDateRange')
+			->with(
+				['member1'],
+				$this->callback(static function (\DateTimeInterface $start): bool {
+					return $start->getTimezone()->getName() === 'Europe/Berlin'
+						&& $start->format('H:i:s') === '00:00:00';
+				}),
+				$this->isInstanceOf(\DateTimeInterface::class),
+				Absence::STATUS_APPROVED
+			)
+			->willReturn([]);
+
+		$display = $this->createMock(OvertimeDisplayService::class);
+		$bank = $this->createMock(OvertimeBankService::class);
+		$service = new DashboardWidgetDataService(
+			$timeTrackingService,
+			$this->createMock(OvertimeService::class),
+			$display,
+			$bank,
+			$this->createMock(AbsenceService::class),
+			$absenceMapper,
+			$team,
+			$permission,
+			$userManager,
+			$this->createTimeZoneService()
+		);
+		$service->getManagerWidgetData('mgr1');
 	}
 
 	public function testAdminWidgetDataLimitsSearchWindow(): void {

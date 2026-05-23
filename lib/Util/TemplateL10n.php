@@ -44,6 +44,16 @@ final class TemplateL10n {
 	 * @return list<int|string>
 	 */
 	public static function placeholderArguments(string $id): array {
+		if (preg_match_all('/%(\d+)\$s/', $id, $matches) !== false && $matches[1] !== []) {
+			$max = max(array_map('intval', $matches[1]));
+			$args = [];
+			for ($i = 1; $i <= $max; $i++) {
+				$args[] = '%' . $i . '$s';
+			}
+
+			return $args;
+		}
+
 		if (preg_match_all('/%(?:\d+\$)?[dif]/', $id, $matches) !== false && $matches[0] !== []) {
 			$args = [];
 			foreach ($matches[0] as $spec) {

@@ -12,6 +12,7 @@ declare(strict_types=1);
 namespace OCA\ArbeitszeitCheck\Service;
 
 use OCA\ArbeitszeitCheck\Db\UserSettingsMapper;
+use OCA\ArbeitszeitCheck\Util\AbsenceWorkingDaysResolver;
 use OCP\IConfig;
 use OCP\IL10N;
 use OCP\IUserManager;
@@ -31,19 +32,22 @@ class NotificationService
 	private UserSettingsMapper $userSettingsMapper;
 	private IUserManager $userManager;
 	private IConfig $config;
+	private AbsenceWorkingDaysResolver $workingDaysResolver;
 
 	public function __construct(
 		INotificationManager $notificationManager,
 		IL10N $l10n,
 		UserSettingsMapper $userSettingsMapper,
 		IUserManager $userManager,
-		IConfig $config
+		IConfig $config,
+		AbsenceWorkingDaysResolver $workingDaysResolver,
 	) {
 		$this->notificationManager = $notificationManager;
 		$this->l10n = $l10n;
 		$this->userSettingsMapper = $userSettingsMapper;
 		$this->userManager = $userManager;
 		$this->config = $config;
+		$this->workingDaysResolver = $workingDaysResolver;
 	}
 
 	/**
@@ -193,19 +197,27 @@ class NotificationService
 	 */
 	public function notifyAbsenceApproved(string $userId, array $absenceData): void
 	{
+		$days = $this->workingDaysResolver->resolveFromNotificationParameters($absenceData);
+		$type = (string)($absenceData['type'] ?? 'vacation');
+		$absenceId = $absenceData['id'] ?? $absenceData['absence_id'] ?? null;
+		$startDate = $absenceData['start_date'] ?? null;
+		$endDate = $absenceData['end_date'] ?? null;
+
 		$notification = $this->notificationManager->createNotification();
 		$notification->setApp('arbeitszeitcheck')
 			->setUser($userId)
 			->setDateTime(new \DateTime())
-			->setObject('absence', (string)($absenceData['id'] ?? ''))
+			->setObject('absence', (string)($absenceId ?? ''))
 			->setSubject('absence_approved', [
-				'absence_id' => $absenceData['id'] ?? null,
-				'start_date' => $absenceData['start_date'] ?? null,
-				'end_date' => $absenceData['end_date'] ?? null
+				'absence_id' => $absenceId,
+				'type' => $type,
+				'start_date' => $startDate,
+				'end_date' => $endDate,
+				'days' => $days,
 			])
 			->setMessage('absence_approved', [
-				'type' => $absenceData['type'] ?? 'vacation',
-				'days' => $absenceData['days'] ?? 0
+				'type' => $type,
+				'days' => $days,
 			]);
 
 		$this->notificationManager->notify($notification);
@@ -394,6 +406,38 @@ class NotificationService
 			->setMessage('overtime_traffic_light', [
 				'state' => $trafficData['state'] ?? 'green',
 				'balance' => (float)($trafficData['balance'] ?? 0.0),
+			]);
+
+		$this->notificationManager->notify($notification);
+	}
+
+	/**
+	 * Notify employee that overtime above the bank cap was paid out (Auszahlung).
+	 *
+	 * @param array<string, mixed> $payout hours_paid, calendar_year, calendar_month, effective_balance_after, id
+	 */
+	public function notifyOvertimePayout(string $userId, array $payout): void
+	{
+		$year = (int)($payout['calendar_year'] ?? 0);
+		$month = (int)($payout['calendar_month'] ?? 0);
+		$objectId = sprintf('%04d-%02d', $year, $month);
+
+		$notification = $this->notificationManager->createNotification();
+		$notification->setApp('arbeitszeitcheck')
+			->setUser($userId)
+			->setDateTime(new \DateTime())
+			->setObject('overtime_payout', $objectId)
+			->setSubject('overtime_payout', [
+				'year' => $year,
+				'month' => $month,
+				'hours_paid' => (float)($payout['hours_paid'] ?? 0),
+			])
+			->setMessage('overtime_payout', [
+				'hours_paid' => (float)($payout['hours_paid'] ?? 0),
+				'year' => $year,
+				'month' => $month,
+				'effective_balance_after' => (float)($payout['effective_balance_after'] ?? 0),
+				'payout_id' => (int)($payout['id'] ?? 0),
 			]);
 
 		$this->notificationManager->notify($notification);

@@ -1,6 +1,90 @@
+/**
+ * Admin notifications & overtime policy page
+ * Extends admin-settings.css (section cards, jump nav, form patterns).
+ *
+ * @license AGPL-3.0-or-later
+ */
+
+.admin-notifications-page #app-content-wrapper {
+	padding-bottom: var(--space-12);
+}
+
+.admin-notifications-page .section {
+	width: 100%;
+}
+
+.admin-notifications-form {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.admin-notifications-page .admin-settings-section {
+	margin-bottom: var(--space-8);
+}
+
+.admin-notifications-page .admin-settings-section:last-of-type {
+	margin-bottom: var(--space-6);
+}
+
+.admin-notifications-page .admin-settings-form__footer {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-3);
+	margin-top: var(--space-8);
+	padding-top: var(--space-6);
+	border-top: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
+}
+
+.admin-notifications-page .admin-settings-form__footer .btn {
+	min-height: 2.75rem;
+}
+
+.admin-notifications-live {
+	margin-top: var(--space-3);
+	min-height: 1.25rem;
+}
+
+.admin-notifications-live:not(:empty) {
+	padding: var(--space-3) var(--space-4);
+	border-radius: var(--radius-base);
+	border: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
+	background: var(--arbeitszeitcheck-color-background-secondary, var(--color-background-hover));
+	font-weight: 500;
+}
+
+.admin-notifications-live--error {
+	border-color: var(--arbeitszeitcheck-color-error, var(--color-error));
+	color: var(--arbeitszeitcheck-color-error, var(--color-error));
+}
+
+.admin-notifications-live--success {
+	border-color: var(--arbeitszeitcheck-color-success, var(--color-success));
+}
+
+.admin-overtime-quicklinks {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2) var(--space-3);
+	margin: var(--space-4) 0 var(--space-2);
+	padding: var(--space-4);
+	border-radius: var(--radius-base);
+	border: 1px dashed var(--arbeitszeitcheck-color-border, var(--color-border));
+	background: var(--arbeitszeitcheck-color-main-background, var(--color-main-background));
+}
+
+.admin-overtime-quicklinks__label {
+	flex: 1 1 100%;
+	margin: 0 0 var(--space-1);
+	font-size: var(--arbeitszeitcheck-font-size-sm);
+	font-weight: 600;
+	color: var(--arbeitszeitcheck-color-text-secondary, var(--color-text-maxcontrast));
+}
+
 .admin-notifications-form .admin-notifications-matrix th,
 .admin-notifications-form .admin-notifications-matrix td {
 	vertical-align: middle;
+	text-align: left;
 }
 
 .admin-notifications-form .table-responsive {
@@ -9,29 +93,61 @@
 	overflow-x: auto;
 	overflow-y: visible;
 	-webkit-overflow-scrolling: touch;
+	border-radius: var(--radius-base);
+	border: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
+	margin-top: var(--space-3);
 }
 
 .admin-notifications-form .admin-notifications-matrix {
 	inline-size: max-content;
 	min-inline-size: 100%;
+	margin: 0;
 }
 
 .admin-notifications-form .admin-notifications-matrix th {
 	white-space: nowrap;
+	font-size: var(--arbeitszeitcheck-font-size-sm);
+}
+
+.admin-notifications-form .admin-notifications-matrix tbody th {
+	font-weight: 600;
+	background: var(--arbeitszeitcheck-color-background-hover, var(--color-background-hover));
 }
 
 .admin-notifications-form .form-checkbox--center {
 	display: flex;
 	justify-content: center;
+	align-items: center;
+	min-height: 2.75rem;
 }
 
 .admin-notifications-form .admin-notifications-matrix input[type='checkbox'] {
 	inline-size: 1.125rem;
 	block-size: 1.125rem;
+	cursor: pointer;
 }
 
-.admin-notifications-form textarea.form-input {
-	min-block-size: 5rem;
+.admin-notifications-form .form-row--inline {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-4);
+	align-items: flex-end;
+}
+
+.admin-notifications-form .form-row--inline .form-group {
+	flex: 1 1 10rem;
+	max-width: 14rem;
+}
+
+/* Visually dim dependent fields when parent toggle is off (JS sets data-disabled) */
+.admin-notifications-form [data-settings-disabled='true'] {
+	opacity: 0.55;
+	pointer-events: none;
+}
+
+.admin-notifications-form [data-settings-disabled='true'] .form-input,
+.admin-notifications-form [data-settings-disabled='true'] textarea {
+	background: var(--color-background-dark, var(--color-background-hover));
 }
 
 @media (max-width: 768px) {
@@ -41,6 +157,33 @@
 
 	.admin-notifications-form .admin-notifications-matrix th,
 	.admin-notifications-form .admin-notifications-matrix td {
-		padding: 0.5rem;
+		padding: var(--space-2);
+	}
+
+	.admin-notifications-page .admin-settings-form__footer {
+		flex-direction: column;
+	}
+
+	.admin-notifications-page .admin-settings-form__footer .btn {
+		width: 100%;
+		justify-content: center;
+	}
+}
+
+@media (forced-colors: active) {
+	.admin-overtime-quicklinks {
+		border-color: CanvasText;
+	}
+
+	.admin-overtime-quicklinks .btn {
+		border-color: CanvasText;
+	}
+
+	.admin-overtime-quicklinks .btn:focus-visible {
+		outline-color: Highlight;
+	}
+
+	.admin-notifications-form [data-settings-disabled='true'] {
+		opacity: 1;
 	}
 }

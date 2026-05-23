@@ -6,8 +6,8 @@ namespace OCA\ArbeitszeitCheck\BackgroundJob;
 
 use OCA\ArbeitszeitCheck\Constants;
 use OCA\ArbeitszeitCheck\Service\NotificationService;
+use OCA\ArbeitszeitCheck\Service\OvertimeDisplayService;
 use OCA\ArbeitszeitCheck\Service\OvertimeNotificationMailService;
-use OCA\ArbeitszeitCheck\Service\OvertimeService;
 use OCA\ArbeitszeitCheck\Service\OvertimeTrafficLightService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCP\AppFramework\Utility\ITimeFactory;
@@ -22,7 +22,7 @@ class OvertimeTrafficLightJob extends TimedJob
 
 	public function __construct(
 		ITimeFactory $timeFactory,
-		private OvertimeService $overtimeService,
+		private OvertimeDisplayService $overtimeDisplayService,
 		private OvertimeTrafficLightService $trafficLightService,
 		private NotificationService $notificationService,
 		private OvertimeNotificationMailService $mailService,
@@ -44,18 +44,13 @@ class OvertimeTrafficLightJob extends TimedJob
 		$thresholds = $this->trafficLightService->getThresholds();
 		$matrix = $this->readMatrix();
 		$recipients = $this->readRecipients();
-		$yearStart = new \DateTime(date('Y-01-01 00:00:00'));
-		$now = new \DateTime();
-		$now->setTime(23, 59, 59);
-
-		$this->userManager->callForAllUsers(function ($user) use ($thresholds, $matrix, $recipients, $yearStart, $now): void {
+		$this->userManager->callForAllUsers(function ($user) use ($thresholds, $matrix, $recipients): void {
 			$userId = $user->getUID();
 			if (!$user->isEnabled() || !$this->permissionService->isUserAllowedByAccessGroups($userId)) {
 				return;
 			}
 			try {
-				$data = $this->overtimeService->calculateOvertime($userId, clone $yearStart, clone $now);
-				$balance = (float)($data['cumulative_balance'] ?? 0.0);
+				$balance = $this->overtimeDisplayService->getYearToDateBalanceForTrafficLight($userId);
 				$classification = $this->trafficLightService->classify($balance, $thresholds);
 				$currentState = (string)$classification['state'];
 				$lastState = $this->config->getUserValue($userId, 'arbeitszeitcheck', self::USER_VALUE_LAST_STATE, 'green');

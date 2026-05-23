@@ -1252,8 +1252,9 @@ class AbsenceController extends Controller
 	 * IDs and HR descriptions to prevent the explainer from leaking other
 	 * employees' / teams' policy metadata (REQ-SEC-05).
 	 */
-	#[NoAdminRequired]
-	public function entitlementTrace(): JSONResponse
+  #[NoAdminRequired]
+  #[NoCSRFRequired]
+  public function entitlementTrace(): JSONResponse
 	{
 		try {
 			$user = $this->userSession->getUser();

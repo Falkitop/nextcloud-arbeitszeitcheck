@@ -139,33 +139,8 @@ class BreakReminderJob extends TimedJob
 					return;
 				}
 
-				// Calculate hours worked today (including current active entry)
-				$today = new \DateTime();
-				$today->setTime(0, 0, 0);
-				$tomorrow = clone $today;
-				$tomorrow->modify('+1 day');
-
-				$totalHoursToday = $this->timeEntryMapper->getTotalHoursByUserAndDateRange(
-					$userId,
-					$today,
-					$tomorrow
-				);
-
-				// Add current active entry hours
-				$startTime = $activeEntry->getStartTime();
-				$now = new \DateTime();
-				$currentSessionHours = ($now->getTimestamp() - $startTime->getTimestamp()) / 3600;
-				
-				// Subtract break time if on break
-				if ($activeEntry->getBreakStartTime() !== null && $activeEntry->getBreakEndTime() === null) {
-					$breakHours = ($now->getTimestamp() - $activeEntry->getBreakStartTime()->getTimestamp()) / 3600;
-					$currentSessionHours -= $breakHours;
-				} elseif ($activeEntry->getBreakStartTime() !== null && $activeEntry->getBreakEndTime() !== null) {
-					$breakHours = ($activeEntry->getBreakEndTime()->getTimestamp() - $activeEntry->getBreakStartTime()->getTimestamp()) / 3600;
-					$currentSessionHours -= $breakHours;
-				}
-
-				$totalHoursWorked = $totalHoursToday + $currentSessionHours;
+				// Calendar-day hours (midnight-clipped), same rules as TimeTrackingService::getTodayHours().
+				$totalHoursWorked = $this->timeTrackingService->getTodayHours($userId);
 
 				// Check if break is required (ArbZG §4: 9h check must precede 6h check)
 				$breakDuration = $activeEntry->getBreakDurationHours();

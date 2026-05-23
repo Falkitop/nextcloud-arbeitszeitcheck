@@ -200,21 +200,34 @@
                         let isOnBreak = (currentStatus === 'break');
                         let isClockedIn = (currentStatus === 'active' || currentStatus === 'break');
                         let lastStatusCheck = nowMillis();
-                        // Initialize working today hours from initial status (includes completed entries + current session)
+                        // Calendar-day total from server (midnight-clipped; ArbZG §3).
                         let workingTodayHours = 0.0;
                         if (status.working_today_hours !== null && status.working_today_hours !== undefined) {
                             workingTodayHours = parseFloat(status.working_today_hours) || 0.0;
                         }
-                        /* Anchor session duration from the same moment workingTodayHours last came from the API.
-                           Lets us extrapolate total daily hours between polls (otherwise workingTodayHours can be
-                           stale for up to STATUS_CHECK_INTERVAL while the counter keeps ticking past time that
-                           will be clipped at the legal maximum — confusing UX). */
-                        let lastWtSyncSessionSeconds = null;
-                        if (workingTodayHours > 0) {
-                            lastWtSyncSessionSeconds = (status.current_session_duration !== null
-                                    && status.current_session_duration !== undefined)
-                                ? Math.floor(status.current_session_duration)
-                                : baseWorkingSeconds;
+                        let serverAtDailyMaximum = status.at_daily_maximum === true;
+                        /* Portion of the live session that falls on today's calendar day only
+                           (overnight shifts must not use full session length for daily totals). */
+                        let sessionHoursOnCalendarToday = 0.0;
+                        if (status.session_hours_on_calendar_today !== null
+                                && status.session_hours_on_calendar_today !== undefined) {
+                            sessionHoursOnCalendarToday = parseFloat(status.session_hours_on_calendar_today) || 0.0;
+                        }
+                        let lastWtSyncSessionSecondsOnToday = null;
+                        if (status.current_session_duration !== null && status.current_session_duration !== undefined) {
+                            const liveSessionSeconds = Math.floor(status.current_session_duration);
+                            if (liveSessionSeconds > 0 && sessionHoursOnCalendarToday > 0) {
+                                lastWtSyncSessionSecondsOnToday = Math.floor(
+                                    sessionHoursOnCalendarToday * 3600
+                                );
+                            } else if (liveSessionSeconds > 0) {
+                                const startIso = sessionTimerEl.dataset.startTime || '';
+                                const startDay = startIso ? startIso.slice(0, 10) : '';
+                                const todayKey = todayYmdLocal();
+                                if (startDay === todayKey) {
+                                    lastWtSyncSessionSecondsOnToday = liveSessionSeconds;
+                                }
+                            }
                         }
                         const STATUS_CHECK_INTERVAL = 5000; // Check status every 5 seconds
                         const configuredMaxDailyHours = (() => {
@@ -257,11 +270,23 @@
                                                     && response.status.working_today_hours !== undefined) {
                                                 workingTodayHours = parseFloat(response.status.working_today_hours) || 0.0;
                                             }
+                                            serverAtDailyMaximum = response.status.at_daily_maximum === true;
+                                            if (response.status.session_hours_on_calendar_today !== null
+                                                    && response.status.session_hours_on_calendar_today !== undefined) {
+                                                sessionHoursOnCalendarToday = parseFloat(response.status.session_hours_on_calendar_today) || 0.0;
+                                            }
                                             if (response.status.current_session_duration !== null
                                                     && response.status.current_session_duration !== undefined) {
                                                 baseWorkingSeconds = Math.floor(response.status.current_session_duration);
-                                                if (workingTodayHours > 0) {
-                                                    lastWtSyncSessionSeconds = baseWorkingSeconds;
+                                                const liveSessionSeconds = baseWorkingSeconds;
+                                                if (sessionHoursOnCalendarToday > 0) {
+                                                    lastWtSyncSessionSecondsOnToday = Math.floor(sessionHoursOnCalendarToday * 3600);
+                                                } else if (liveSessionSeconds > 0) {
+                                                    const startIso = sessionTimerEl.dataset.startTime || '';
+                                                    const startDay = startIso ? startIso.slice(0, 10) : '';
+                                                    lastWtSyncSessionSecondsOnToday = (startDay === todayYmdLocal())
+                                                        ? liveSessionSeconds
+                                                        : null;
                                                 }
                                             }
                                             lastUpdateTime = nowMillis();
@@ -304,10 +329,25 @@
                                             if (response.status.working_today_hours !== null && response.status.working_today_hours !== undefined) {
                                                 workingTodayHours = parseFloat(response.status.working_today_hours) || 0.0;
                                             }
+                                            serverAtDailyMaximum = response.status.at_daily_maximum === true;
+                                            if (response.status.session_hours_on_calendar_today !== null
+                                                    && response.status.session_hours_on_calendar_today !== undefined) {
+                                                sessionHoursOnCalendarToday = parseFloat(response.status.session_hours_on_calendar_today) || 0.0;
+                                            }
                                             if (response.status.current_session_duration !== null
-                                                    && response.status.current_session_duration !== undefined
-                                                    && workingTodayHours > 0) {
-                                                lastWtSyncSessionSeconds = Math.floor(response.status.current_session_duration);
+                                                    && response.status.current_session_duration !== undefined) {
+                                                const liveSessionSeconds = Math.floor(response.status.current_session_duration);
+                                                if (sessionHoursOnCalendarToday > 0) {
+                                                    lastWtSyncSessionSecondsOnToday = Math.floor(sessionHoursOnCalendarToday * 3600);
+                                                } else if (liveSessionSeconds > 0) {
+                                                    const startIso = sessionTimerEl.dataset.startTime || '';
+                                                    const startDay = startIso ? startIso.slice(0, 10) : '';
+                                                    if (startDay === todayYmdLocal()) {
+                                                        lastWtSyncSessionSecondsOnToday = liveSessionSeconds;
+                                                    } else {
+                                                        lastWtSyncSessionSecondsOnToday = null;
+                                                    }
+                                                }
                                             }
 
                                             // CRITICAL: Stop timer if user clocked out or paused
@@ -335,9 +375,6 @@
                                                 // Update baseWorkingSeconds from backend if available
                                                 if (response.status.current_session_duration !== null && response.status.current_session_duration !== undefined) {
                                                     baseWorkingSeconds = Math.floor(response.status.current_session_duration);
-                                                    if (workingTodayHours > 0) {
-                                                        lastWtSyncSessionSeconds = baseWorkingSeconds;
-                                                    }
                                                 }
                                             }
                                         }
@@ -377,10 +414,10 @@
 
                             const maxWorkingHours = configuredMaxDailyHours;
 
-                            /* Stop counting once the legal daily maximum is reached: session time beyond what fits in
-                               the remaining allowance would only be clipped by auto-completion anyway. */
-                            if (workingTodayHours > 0 && lastWtSyncSessionSeconds !== null) {
-                                const maxSessionSecondsAllowed = lastWtSyncSessionSeconds
+                            /* Cap the session timer display when today's calendar-day allowance is exhausted
+                               (overnight: only today's clipped portion counts toward ArbZG §3). */
+                            if (workingTodayHours > 0 && lastWtSyncSessionSecondsOnToday !== null) {
+                                const maxSessionSecondsAllowed = lastWtSyncSessionSecondsOnToday
                                     + Math.max(0, (maxWorkingHours - workingTodayHours) * 3600);
                                 if (workingSeconds > maxSessionSecondsAllowed) {
                                     workingSeconds = Math.floor(maxSessionSecondsAllowed);
@@ -404,15 +441,15 @@
                             // not just the current session hours
                             const currentSessionHours = workingSeconds / 3600;
 
-                            // Calculate total daily working hours (extrapolate between polls when API values are anchored)
-                            let totalDailyHours;
-                            if (workingTodayHours > 0 && lastWtSyncSessionSeconds !== null) {
+                            // Total hours on today's calendar day (never the full overnight session length).
+                            let totalDailyHours = workingTodayHours;
+                            if (lastWtSyncSessionSecondsOnToday !== null) {
+                                const sessionSecondsOnToday = Math.min(
+                                    workingSeconds,
+                                    Math.max(lastWtSyncSessionSecondsOnToday, Math.floor(sessionHoursOnCalendarToday * 3600))
+                                );
                                 totalDailyHours = workingTodayHours
-                                    + (workingSeconds - lastWtSyncSessionSeconds) / 3600;
-                            } else if (workingTodayHours > 0) {
-                                totalDailyHours = workingTodayHours;
-                            } else {
-                                totalDailyHours = currentSessionHours;
+                                    + (sessionSecondsOnToday - lastWtSyncSessionSecondsOnToday) / 3600;
                             }
                             
                             // Remove previous warning classes
@@ -425,14 +462,12 @@
                                     sessionTimerEl.classList.add('timer-exceeded');
                                 }
 
-                                // AUTOMATIC CLOCK-OUT: stop timer and let the BACKEND complete the
-                                // entry (ArbZG §3 – max 10h/day). Multi-layer guard so we can never
-                                // get into a reload loop, regardless of network or backend state:
-                                //   1. dataset flag → blocks repeats within this page-load
-                                //   2. sessionStorage day-key → blocks re-fire across reloads
-                                //   3. attempt counter → at most 1 successful attempt + bounded retries
-                                //   4. on permanent failure: stop, show error, never reload
-                                if (!timerEl.dataset.autoClockOutTriggered) {
+                                // AUTOMATIC CLOCK-OUT: only when the server already reports the
+                                // calendar-day maximum (prevents false positives on overnight shifts
+                                // where the client extrapolation used to count the whole session).
+                                // Auto clock-out only when the server explicitly reports the
+                                // calendar-day maximum (never client extrapolation alone).
+                                if (serverAtDailyMaximum === true && !timerEl.dataset.autoClockOutTriggered) {
                                     timerEl.dataset.autoClockOutTriggered = 'true';
 
                                     // Stop the live timer immediately to prevent any further

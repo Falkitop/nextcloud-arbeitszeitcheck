@@ -1,5 +1,6 @@
 /**
  * Optional overtime fields on Nextcloud core “New account” dialog.
+ * Uses Nextcloud theme variables only (dialog runs outside app body tokens).
  *
  * @copyright Copyright (c) 2026 Alexander Mäule <info@software-by-design.de>
  * @license AGPL-3.0-or-later
@@ -8,16 +9,16 @@
 .azc-nc-newuser-overtime {
 	margin-top: var(--default-grid-baseline, 4px);
 	padding: calc(var(--default-grid-baseline, 4px) * 3);
-	border: 1px solid var(--color-border, #dadada);
-	border-radius: var(--border-radius-element, 8px);
-	background: var(--color-background-hover, #f8f8f8);
+	border: 1px solid var(--color-border);
+	border-radius: var(--border-radius-element, var(--border-radius, 8px));
+	background: var(--color-background-hover);
 }
 
 .azc-nc-newuser-overtime__legend {
 	font-weight: 600;
 	font-size: 1rem;
 	margin-bottom: calc(var(--default-grid-baseline, 4px) * 2);
-	color: var(--color-main-text, #222);
+	color: var(--color-main-text);
 }
 
 .azc-nc-newuser-overtime__row {
@@ -44,21 +45,21 @@
 
 .azc-nc-newuser-overtime__label {
 	font-size: 0.95rem;
-	color: var(--color-main-text, #222);
+	color: var(--color-main-text);
 }
 
 .azc-nc-newuser-overtime__input {
 	max-width: 100%;
 	padding: 8px 10px;
-	border: 1px solid var(--color-border-dark, #ccc);
-	border-radius: var(--border-radius-element, 6px);
+	border: 1px solid var(--color-border-dark, var(--color-border));
+	border-radius: var(--border-radius-element, var(--border-radius, 6px));
 	font: inherit;
-	background: var(--color-main-background, #fff);
-	color: var(--color-main-text, #222);
+	background: var(--color-main-background);
+	color: var(--color-main-text);
 }
 
 .azc-nc-newuser-overtime__input:focus-visible {
-	outline: 2px solid var(--color-primary-element, #006aa3);
+	outline: 2px solid var(--color-primary-element);
 	outline-offset: 2px;
 }
 
@@ -66,7 +67,7 @@
 	margin: calc(var(--default-grid-baseline, 4px) * 2) 0 0;
 	font-size: 0.875rem;
 	line-height: 1.45;
-	color: var(--color-text-maxcontrast, #555);
+	color: var(--color-text-maxcontrast);
 }
 
 .azc-nc-newuser-overtime__status {
@@ -76,5 +77,23 @@
 }
 
 .azc-nc-newuser-overtime__status--error {
-	color: var(--color-error, #db0606);
+	color: var(--color-error);
+	font-weight: 600;
+}
+
+@media (forced-colors: active) {
+	.azc-nc-newuser-overtime,
+	.azc-nc-newuser-overtime__input {
+		border-color: CanvasText;
+		background: Canvas;
+		color: CanvasText;
+	}
+
+	.azc-nc-newuser-overtime__input:focus-visible {
+		outline-color: Highlight;
+	}
+
+	.azc-nc-newuser-overtime__status--error {
+		color: CanvasText;
+	}
 }

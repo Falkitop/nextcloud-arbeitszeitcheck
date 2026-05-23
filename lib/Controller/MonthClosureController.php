@@ -189,9 +189,13 @@ class MonthClosureController extends Controller
 				$finalizeBlockedReason = 'month_not_ended';
 			} elseif (!$this->monthClosureService->hasTimeEntryInCalendarMonth($userId, $year, $month)) {
 				$finalizeBlockedReason = 'no_time_entries';
-			} elseif ($this->monthClosureService->monthBlocksFinalization($userId, $year, $month)) {
-				$finalizeBlockedReason = 'pending_workflow';
 			} else {
+				$blockReason = $this->monthClosureService->getMonthFinalizeBlockReason($userId, $year, $month);
+				if ($blockReason !== null) {
+					$finalizeBlockedReason = $blockReason;
+				}
+			}
+			if ($finalizeBlockedReason === null && !$isFinalized) {
 				$canFinalize = true;
 			}
 
@@ -203,6 +207,7 @@ class MonthClosureController extends Controller
 					'month_not_ended' => $this->l10n->t('You can finalize only after that calendar month has ended.'),
 					'no_time_entries' => $this->l10n->t('There are no time entries in this calendar month.'),
 					'pending_workflow' => $this->l10n->t('Resolve pending time entry or absence approvals in this month before finalizing.'),
+					'pending_overtime_payout' => $this->l10n->t('Payroll must record the overtime payout for this month before you can finalize.'),
 					default => null,
 				};
 			}
@@ -259,6 +264,8 @@ class MonthClosureController extends Controller
 				'month_not_ended' => [Http::STATUS_BAD_REQUEST, $this->l10n->t('You can finalize only after that calendar month has ended.')],
 				'no_time_entries' => [Http::STATUS_BAD_REQUEST, $this->l10n->t('There are no time entries in this calendar month.')],
 				'pending_correction' => [Http::STATUS_CONFLICT, $this->l10n->t('Resolve pending time entry or absence approvals in this month before finalizing.')],
+				'pending_workflow' => [Http::STATUS_CONFLICT, $this->l10n->t('Resolve pending time entry or absence approvals in this month before finalizing.')],
+				'pending_overtime_payout' => [Http::STATUS_CONFLICT, $this->l10n->t('Payroll must record the overtime payout for this month before you can finalize.')],
 			];
 			if (isset($map[$code])) {
 				return new JSONResponse(['success' => false, 'error' => $map[$code][1]], $map[$code][0]);

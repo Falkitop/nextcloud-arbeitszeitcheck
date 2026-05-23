@@ -160,6 +160,52 @@
 }
 
 /* -------------------------------------------------------------------------
+   Team overtime alerts
+   ------------------------------------------------------------------------- */
+.team-overtime-loading,
+.team-overtime-empty {
+	margin: 0;
+	padding: 1rem;
+	color: var(--color-text-maxcontrast);
+}
+
+.team-overtime-empty--ok {
+	color: var(--arbeitszeitcheck-color-success, var(--color-success));
+}
+
+.team-overtime-count {
+	margin: 0 0 0.75rem;
+	font-weight: 600;
+}
+
+.team-overtime-list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.team-overtime-list__item {
+	padding: 0.75rem 0;
+	border-bottom: 1px solid var(--color-border);
+}
+
+.team-overtime-list__item:last-child {
+	border-bottom: none;
+}
+
+.team-overtime-list__name {
+	display: block;
+	font-weight: 600;
+}
+
+.team-overtime-list__meta {
+	display: block;
+	margin-top: 0.25rem;
+	font-size: 0.9rem;
+	color: var(--color-text-maxcontrast);
+}
+
+/* -------------------------------------------------------------------------
    Team compliance & table
    ------------------------------------------------------------------------- */
 .team-compliance-loading {
@@ -235,6 +281,28 @@
   .pending-approval-card {
     padding: 0.875rem;
   }
+}
+
+.section-header--actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+@media (forced-colors: active) {
+  .team-overtime-list__item {
+    border-bottom-color: CanvasText;
+  }
+
+  .team-overtime-empty--ok {
+    color: CanvasText;
+  }
+}
+
+.section-header--actions .section__desc {
+  margin-bottom: 0;
 }
 
 @media (max-width: 576px) {

@@ -10,6 +10,14 @@
 	const Utils = window.ArbeitszeitCheckUtils || {};
 	const Messaging = window.ArbeitszeitCheckMessaging || {};
 
+	function $(selector, context) {
+		if (Utils.$) {
+			return Utils.$(selector, context);
+		}
+		const root = context || document;
+		return root.querySelector(selector);
+	}
+
 	function normalizeRecipients(raw) {
 		const parts = String(raw || '')
 			.split(',')
@@ -47,25 +55,65 @@
 		return matrix;
 	}
 
+	function setLiveMessage(liveRegion, message, type) {
+		if (!liveRegion) {
+			return;
+		}
+		liveRegion.textContent = message || '';
+		liveRegion.classList.remove('admin-notifications-live--error', 'admin-notifications-live--success');
+		if (type === 'error') {
+			liveRegion.classList.add('admin-notifications-live--error');
+		} else if (type === 'success') {
+			liveRegion.classList.add('admin-notifications-live--success');
+		}
+	}
+
+	function bindDependentBlock(toggle, blockId) {
+		const block = document.getElementById(blockId);
+		if (!toggle || !block) {
+			return;
+		}
+		const sync = function () {
+			const on = !!toggle.checked;
+			block.setAttribute('data-settings-disabled', on ? 'false' : 'true');
+			block.querySelectorAll('input, textarea, select, button').forEach((el) => {
+				if (el === toggle) {
+					return;
+				}
+				el.disabled = !on;
+				if (el.type === 'checkbox' || el.type === 'radio') {
+					el.setAttribute('aria-disabled', on ? 'false' : 'true');
+				}
+			});
+		};
+		toggle.addEventListener('change', sync);
+		sync();
+	}
+
 	function init() {
-		const form = Utils.$('#admin-notifications-form');
-		const saveButton = Utils.$('#admin-notifications-save');
-		const recipientsField = Utils.$('#hrRecipients');
-		const overtimeRecipientsField = Utils.$('#overtimeRecipients');
-		const liveRegion = Utils.$('#admin-notifications-live');
+		const form = $('#admin-notifications-form');
+		const saveButton = $('#admin-notifications-save');
+		const recipientsField = $('#hrRecipients');
+		const overtimeRecipientsField = $('#overtimeRecipients');
+		const liveRegion = $('#admin-notifications-live');
 		const apiUrl = window.ArbeitszeitCheck && window.ArbeitszeitCheck.adminNotificationsApiUrl;
 		const l10n = (window.ArbeitszeitCheck && window.ArbeitszeitCheck.l10n) || {};
 		const matrixMeta = (window.ArbeitszeitCheck && window.ArbeitszeitCheck.notificationMatrixMeta) || { absenceTypes: [], eventTypes: [] };
 
-		if (!form || !apiUrl || !recipientsField || !overtimeRecipientsField) {
+		if (!form || !apiUrl) {
 			return;
 		}
+
+		bindDependentBlock($('#hrNotificationsEnabled'), 'hr-notification-settings');
+		bindDependentBlock($('#overtimeTrafficLightEnabled'), 'overtime-trafficlight-settings');
+		bindDependentBlock($('#overtimeBankEnabled'), 'overtime-bank-settings');
+
 		form.addEventListener('submit', function (event) {
 			event.preventDefault();
-			const enabledField = Utils.$('#hrNotificationsEnabled');
+			const enabledField = $('#hrNotificationsEnabled');
 			const enabled = !!(enabledField && enabledField.checked);
-			const recipients = normalizeRecipients(recipientsField.value);
-			const overtimeRecipients = normalizeRecipients(overtimeRecipientsField.value);
+			const recipients = normalizeRecipients(recipientsField ? recipientsField.value : '');
+			const overtimeRecipients = normalizeRecipients(overtimeRecipientsField ? overtimeRecipientsField.value : '');
 			const matrix = collectMatrix(form, matrixMeta);
 			const overtimeMatrix = {
 				over: {
@@ -81,7 +129,7 @@
 				return value === 'on' || value === '1' || value === 1 || value === true;
 			};
 			const formData = new FormData(form);
-			const vacationCarryoverMaxDays = String(formData.get('vacationCarryoverMaxDays') || '').trim();
+			const vacationCarryoverMaxDaysVal = String(formData.get('vacationCarryoverMaxDays') || '').trim();
 			const overtimeTrafficLightEnabled = isChecked(formData.get('overtimeTrafficLightEnabled'));
 			const overtimeYellowOver = Number(String(formData.get('overtimeYellowOver') || '5').replace(',', '.'));
 			const overtimeRedOver = Number(String(formData.get('overtimeRedOver') || '15').replace(',', '.'));
@@ -89,46 +137,53 @@
 			const overtimeRedUnder = Number(String(formData.get('overtimeRedUnder') || '15').replace(',', '.'));
 
 			if (enabled && recipients.length === 0) {
-				Messaging.showError(l10n.invalidRecipients || 'Please enter at least one valid recipient email address.');
-				if (liveRegion) {
-					liveRegion.textContent = l10n.invalidRecipients || 'Please enter at least one valid recipient email address.';
+				const msg = l10n.invalidRecipients || 'Please enter at least one valid recipient email address.';
+				Messaging.showError(msg);
+				setLiveMessage(liveRegion, msg, 'error');
+				if (recipientsField) {
+					recipientsField.focus();
 				}
-				recipientsField.focus();
 				return;
 			}
 			if (overtimeTrafficLightEnabled && overtimeRecipients.length === 0) {
-				const errorMessage = l10n.invalidBalanceTrafficLightRecipients || 'Please enter at least one valid balance traffic light recipient email address (overtime/undertime).';
-				Messaging.showError(errorMessage);
-				if (liveRegion) {
-					liveRegion.textContent = errorMessage;
+				const msg = l10n.invalidBalanceTrafficLightRecipients || 'Please enter at least one valid balance traffic light recipient email address (overtime/undertime).';
+				Messaging.showError(msg);
+				setLiveMessage(liveRegion, msg, 'error');
+				if (overtimeRecipientsField) {
+					overtimeRecipientsField.focus();
 				}
-				overtimeRecipientsField.focus();
 				return;
 			}
 			if (!Number.isFinite(overtimeYellowOver) || !Number.isFinite(overtimeRedOver) || !Number.isFinite(overtimeYellowUnder) || !Number.isFinite(overtimeRedUnder)) {
-				const errorMessage = l10n.invalidThresholdValues || 'Threshold values must be valid numbers.';
-				Messaging.showError(errorMessage);
-				if (liveRegion) {
-					liveRegion.textContent = errorMessage;
-				}
+				const msg = l10n.invalidThresholdValues || 'Threshold values must be valid numbers.';
+				Messaging.showError(msg);
+				setLiveMessage(liveRegion, msg, 'error');
 				return;
 			}
 			if (overtimeYellowOver > overtimeRedOver || overtimeYellowUnder > overtimeRedUnder) {
-				const errorMessage = l10n.invalidThresholdOrder || 'Yellow thresholds must be less than or equal to red thresholds.';
-				Messaging.showError(errorMessage);
-				if (liveRegion) {
-					liveRegion.textContent = errorMessage;
+				const msg = l10n.invalidThresholdOrder || 'Yellow thresholds must be less than or equal to red thresholds.';
+				Messaging.showError(msg);
+				setLiveMessage(liveRegion, msg, 'error');
+				return;
+			}
+			const bankYellowPct = parseInt(String(formData.get('overtimeBankYellowPercent') || '80'), 10);
+			const bankRedPct = parseInt(String(formData.get('overtimeBankRedPercent') || '95'), 10);
+			if (bankYellowPct > bankRedPct) {
+				const msg = l10n.invalidBankFillOrder || 'Bank fill yellow percent must be less than or equal to red percent.';
+				Messaging.showError(msg);
+				setLiveMessage(liveRegion, msg, 'error');
+				const yellowEl = form.querySelector('#overtimeBankYellowPercent');
+				if (yellowEl) {
+					yellowEl.focus();
 				}
 				return;
 			}
-			if (vacationCarryoverMaxDays !== '') {
-				const parsedMax = Number(vacationCarryoverMaxDays.replace(',', '.'));
+			if (vacationCarryoverMaxDaysVal !== '') {
+				const parsedMax = Number(vacationCarryoverMaxDaysVal.replace(',', '.'));
 				if (!Number.isFinite(parsedMax) || parsedMax < 0 || parsedMax > 366) {
-					const errorMessage = l10n.invalidCarryoverMaxDays || 'Maximum carryover days must be empty (unlimited) or between 0 and 366';
-					Messaging.showError(errorMessage);
-					if (liveRegion) {
-						liveRegion.textContent = errorMessage;
-					}
+					const msg = l10n.invalidCarryoverMaxDays || 'Maximum carryover days must be empty (unlimited) or between 0 and 366';
+					Messaging.showError(msg);
+					setLiveMessage(liveRegion, msg, 'error');
 					return;
 				}
 			}
@@ -136,9 +191,7 @@
 			if (saveButton) {
 				saveButton.disabled = true;
 			}
-			if (liveRegion) {
-				liveRegion.textContent = '';
-			}
+			setLiveMessage(liveRegion, '', null);
 
 			Utils.ajax(apiUrl, {
 				method: 'POST',
@@ -153,10 +206,17 @@
 					overtimeRedOver: overtimeRedOver,
 					overtimeYellowUnder: overtimeYellowUnder,
 					overtimeRedUnder: overtimeRedUnder,
+					overtimeBankEnabled: isChecked(formData.get('overtimeBankEnabled')),
+					overtimeBankMaxHours: Number(String(formData.get('overtimeBankMaxHours') || '100').replace(',', '.')),
+					overtimeBankYellowPercent: parseInt(String(formData.get('overtimeBankYellowPercent') || '80'), 10),
+					overtimeBankRedPercent: parseInt(String(formData.get('overtimeBankRedPercent') || '95'), 10),
+					overtimePayoutNotifyInApp: isChecked(formData.get('overtimePayoutNotifyInApp')),
+					overtimePayoutNotifyEmail: isChecked(formData.get('overtimePayoutNotifyEmail')),
+					overtimeBlockMonthClosurePendingPayout: isChecked(formData.get('overtimeBlockMonthClosurePendingPayout')),
 					missingClockInRemindersEnabled: isChecked(formData.get('missingClockInRemindersEnabled')),
 					vacationCarryoverExpiryMonth: parseInt(String(formData.get('vacationCarryoverExpiryMonth') || ''), 10),
 					vacationCarryoverExpiryDay: parseInt(String(formData.get('vacationCarryoverExpiryDay') || ''), 10),
-					vacationCarryoverMaxDays: vacationCarryoverMaxDays,
+					vacationCarryoverMaxDays: vacationCarryoverMaxDaysVal,
 					vacationRolloverEnabled: isChecked(formData.get('vacationRolloverEnabled')),
 					vacationRolloverIncludeUnusedAnnual: isChecked(formData.get('vacationRolloverIncludeUnusedAnnual')),
 					sendIcalApprovedAbsences: isChecked(formData.get('sendIcalApprovedAbsences')),
@@ -171,19 +231,20 @@
 						saveButton.disabled = false;
 					}
 					if (response && response.success) {
-						Messaging.showSuccess(response.message || l10n.notificationsSaved || 'Notification settings updated successfully');
-						recipientsField.value = recipients.join(', ');
-						overtimeRecipientsField.value = overtimeRecipients.join(', ');
-						if (liveRegion) {
-							liveRegion.textContent = response.message || l10n.notificationsSaved || 'Notification settings updated successfully';
+						const msg = response.message || l10n.notificationsSaved || 'Notification settings updated successfully';
+						Messaging.showSuccess(msg);
+						if (recipientsField) {
+							recipientsField.value = recipients.join(', ');
 						}
+						if (overtimeRecipientsField) {
+							overtimeRecipientsField.value = overtimeRecipients.join(', ');
+						}
+						setLiveMessage(liveRegion, msg, 'success');
 						return;
 					}
 					const errorMessage = (response && response.error) || l10n.failedToSaveNotifications || 'Failed to save notification settings';
 					Messaging.showError(errorMessage);
-					if (liveRegion) {
-						liveRegion.textContent = errorMessage;
-					}
+					setLiveMessage(liveRegion, errorMessage, 'error');
 				},
 				onError: function (error) {
 					if (saveButton) {
@@ -191,9 +252,7 @@
 					}
 					const errorMessage = (error && error.error) || l10n.failedToSaveNotifications || 'Failed to save notification settings';
 					Messaging.showError(errorMessage);
-					if (liveRegion) {
-						liveRegion.textContent = errorMessage;
-					}
+					setLiveMessage(liveRegion, errorMessage, 'error');
 				},
 			});
 		});

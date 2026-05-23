@@ -116,6 +116,26 @@ $teamMembers = $_['teamMembers'] ?? [];
                 </div>
             </section>
 
+            <!-- Team overtime alerts (traffic light + bank) -->
+            <section class="manager-dashboard__overtime section" id="team-overtime-section" aria-labelledby="team-overtime-title">
+                <div class="section-header section-header--actions">
+                    <div>
+                        <h2 id="team-overtime-title"><?php p($l->t('Team overtime alerts')); ?></h2>
+                        <p class="section__desc"><?php p($l->t('Employees who reached overtime or undertime thresholds, or whose overtime bank needs attention.')); ?></p>
+                    </div>
+                    <a id="team-overtime-export" class="btn btn--secondary btn--small"
+                       href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.manager.exportTeamOvertimeCsv')); ?>"
+                       download
+                       aria-label="<?php p($l->t('Download team overtime overview as CSV')); ?>">
+                        <?php p($l->t('Export CSV')); ?>
+                    </a>
+                </div>
+                <div id="team-overtime-content" class="team-overtime-content" role="region" aria-live="polite">
+                    <p class="team-overtime-loading" id="team-overtime-loading"><?php p($l->t('Loading…')); ?></p>
+                    <div id="team-overtime-summary" class="team-overtime-summary visually-hidden" aria-hidden="true"></div>
+                </div>
+            </section>
+
             <!-- Team Compliance Overview -->
             <section class="manager-dashboard__compliance section" id="team-compliance-section" aria-labelledby="team-compliance-title">
                 <div class="section-header">

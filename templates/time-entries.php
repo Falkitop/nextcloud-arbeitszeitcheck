@@ -706,16 +706,21 @@ require __DIR__ . '/common/user-display-timezone.php';
                 $pendingCorrectionCount = (int)($_['pendingCorrectionCount'] ?? 0);
                 if ($pendingCorrectionCount > 0):
                 ?>
-                    <div class="pending-correction-banner" role="region" aria-labelledby="pending-correction-banner-title">
-                        <div class="alert alert--warning" role="status">
-                            <p id="pending-correction-banner-title" class="alert__text">
-                                <strong><?php p($l->n(
-                                    '%n time entry is waiting for your manager\'s approval.',
-                                    '%n time entries are waiting for your manager\'s approval.',
-                                    $pendingCorrectionCount
-                                )); ?></strong>
-                                <?php p($l->t('The table below shows your proposed times until a decision is made. You can withdraw a request using the Withdraw button.')); ?>
-                            </p>
+                    <div class="inline-notice-section pending-correction-banner" role="region" aria-labelledby="pending-correction-banner-title">
+                        <div class="inline-notice inline-notice--warning" role="status">
+                            <span class="inline-notice__icon"><?php include __DIR__ . '/common/inline-notice-pending-correction-icon.php'; ?></span>
+                            <div class="inline-notice__content">
+                                <p id="pending-correction-banner-title" class="inline-notice__title">
+                                    <?php p($l->n(
+                                        '%n time entry is waiting for your manager\'s approval.',
+                                        '%n time entries are waiting for your manager\'s approval.',
+                                        $pendingCorrectionCount
+                                    )); ?>
+                                </p>
+                                <p class="inline-notice__text">
+                                    <?php p($l->t('The table below shows your proposed times until a decision is made. You can withdraw a request using the Withdraw button.')); ?>
+                                </p>
+                            </div>
                         </div>
                     </div>
                 <?php endif; ?>

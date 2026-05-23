@@ -18,6 +18,7 @@ use OCA\ArbeitszeitCheck\Db\UserSettingsMapper;
 use OCA\ArbeitszeitCheck\Db\UserWorkingTimeModelMapper;
 use OCA\ArbeitszeitCheck\Db\WorkingTimeModelMapper;
 use OCA\ArbeitszeitCheck\Service\ComplianceService;
+use OCA\ArbeitszeitCheck\Service\DailyWorkingHoursCalculator;
 use OCA\ArbeitszeitCheck\Service\TimeTrackingService;
 use OCA\ArbeitszeitCheck\Service\TimeZoneService;
 use OCA\ArbeitszeitCheck\Service\ProjectCheckIntegrationService;
@@ -90,6 +91,7 @@ class TimeTrackingServiceTest extends TestCase {
 		$userSession = $this->createMock(IUserSession::class);
 		$userSession->method('getUser')->willReturn(null);
 		$timeZoneService = new TimeZoneService($config, $dateTimeZone, $userSession, new NullLogger());
+		$dailyHoursCalculator = new DailyWorkingHoursCalculator($this->timeEntryMapper, $timeZoneService);
 
 		$this->service = new TimeTrackingService(
 			$this->timeEntryMapper,
@@ -105,7 +107,8 @@ class TimeTrackingServiceTest extends TestCase {
 			$monthClosureGuard,
 			$db,
 			$lockingProvider,
-			$timeZoneService
+			$timeZoneService,
+			$dailyHoursCalculator,
 		);
 
 		$this->timeEntryMapper->method('findStalePausedAutomaticEntries')->willReturn([]);
@@ -241,8 +244,8 @@ class TimeTrackingServiceTest extends TestCase {
 			->willReturn($mockEntry);
 
 		$this->timeEntryMapper->expects($this->atLeastOnce())
-			->method('findByUserAndDateRange')
-			->willReturn([]);
+			->method('findOverlapping')
+			->willReturn([$mockEntry]);
 
 		$result = $this->service->getStatus($userId);
 
@@ -269,7 +272,7 @@ class TimeTrackingServiceTest extends TestCase {
 			->willReturn(null);
 
 		$this->timeEntryMapper->expects($this->atLeastOnce())
-			->method('findByUserAndDateRange')
+			->method('findOverlapping')
 			->willReturn([]);
 
 		$result = $this->service->getStatus($userId);
@@ -321,14 +324,7 @@ class TimeTrackingServiceTest extends TestCase {
 			)
 			->willReturn($pausedEntry);
 
-		$this->timeEntryMapper->expects($this->once())
-			->method('getTotalHoursByUserAndDateRange')
-			->with(
-				$userId,
-				$this->isInstanceOf(\DateTime::class),
-				$this->isInstanceOf(\DateTime::class)
-			)
-			->willReturn(0.0);
+		$this->timeEntryMapper->method('findOverlapping')->willReturn([]);
 
 		$this->timeEntryMapper->expects($this->once())
 			->method('update')
@@ -407,8 +403,15 @@ class TimeTrackingServiceTest extends TestCase {
 		$pausedEntry->setIsManualEntry(false);
 		$pausedEntry->setCreatedAt(new \DateTime());
 
-		// already worked max hours in completed entries today
-		$this->timeEntryMapper->method('getTotalHoursByUserAndDateRange')->willReturn(10.0);
+		$tz = new \DateTimeZone('Europe/Berlin');
+		$heavy = new TimeEntry();
+		$heavy->setId(1);
+		$heavy->setUserId($userId);
+		$heavy->setStatus(TimeEntry::STATUS_COMPLETED);
+		$heavy->setStartTime(new \DateTime('today 07:00', $tz));
+		$heavy->setEndTime(new \DateTime('today 17:30', $tz));
+		$heavy->setBreaks(json_encode([]));
+		$this->timeEntryMapper->method('findOverlapping')->willReturn([$heavy]);
 
 		$this->l10n->method('t')->willReturnCallback(static fn ($s) => $s);
 
@@ -443,8 +446,8 @@ class TimeTrackingServiceTest extends TestCase {
 		$entry->setCreatedAt(new \DateTime());
 		$entry->setUpdatedAt(new \DateTime());
 
-		// No previously-completed entries today
-		$this->timeEntryMapper->method('findByUserAndDateRange')->willReturn([]);
+		// No other overlapping entries on today's calendar day
+		$this->timeEntryMapper->method('findOverlapping')->willReturn([$entry]);
 
 		$capturedEntry = null;
 		$this->timeEntryMapper->expects($this->once())
@@ -477,13 +480,8 @@ class TimeTrackingServiceTest extends TestCase {
 		$endTime = $capturedEntry->getEndTime();
 		$this->assertInstanceOf(\DateTime::class, $endTime, 'End time must be set.');
 
-		// Working duration must not exceed the configured daily maximum (10h)
-		// allowing for a small floating-point tolerance from break recalculation.
-		$workingSeconds = $endTime->getTimestamp() - $start->getTimestamp();
-		$workingHoursIncludingBreak = $workingSeconds / 3600;
-		$breakHours = $capturedEntry->getBreakDurationHours();
-		$netWorkingHours = $workingHoursIncludingBreak - $breakHours;
-		$this->assertLessThanOrEqual(10.001, $netWorkingHours);
+		$netWorkingHours = $capturedEntry->getWorkingDurationHours() ?? 0.0;
+		$this->assertLessThanOrEqual(10.001, $netWorkingHours, 'Net working time must respect ArbZG §3 daily cap.');
 	}
 
 	/**
@@ -507,7 +505,7 @@ class TimeTrackingServiceTest extends TestCase {
 		$entry->setCreatedAt(new \DateTime());
 		$entry->setUpdatedAt(new \DateTime());
 
-		$this->timeEntryMapper->method('findByUserAndDateRange')->willReturn([]);
+		$this->timeEntryMapper->method('findOverlapping')->willReturn([$entry]);
 
 		// Must not write to the database under the threshold.
 		$this->timeEntryMapper->expects($this->never())->method('update');

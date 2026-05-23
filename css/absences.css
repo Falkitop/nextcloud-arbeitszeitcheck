@@ -382,92 +382,242 @@
 	}
 }
 
-/* Entitlement explainer dialog — viewport-centered (same pattern as admin layer-dialog) */
+/* Entitlement explainer dialog — native <dialog> + fallback backdrop (WCAG 2.1 AA) */
+html.entitlement-explain-page-locked #content,
+html.entitlement-explain-page-locked #header,
+html.entitlement-explain-page-locked #arbeitszeitcheck-app {
+	pointer-events: none;
+	user-select: none;
+}
+html.entitlement-explain-page-locked .entitlement-explain-dialog,
+html.entitlement-explain-page-locked .entitlement-explain-dialog__fallback-backdrop {
+	pointer-events: auto;
+}
 .entitlement-explain-dialog {
-	border: 1px solid var(--color-border);
-	border-radius: var(--border-radius-large, 8px);
+	border: none;
+	border-radius: var(--border-radius-large, 12px);
 	padding: 0;
+	margin: auto;
 	background: var(--color-main-background);
 	color: var(--color-main-text);
-	box-shadow: var(--arbeitszeitcheck-shadow-xl, 0 10px 30px rgba(0,0,0,.15));
+	box-shadow: var(--arbeitszeitcheck-shadow-xl, 0 10px 30px rgba(0, 0, 0, 0.18));
 	box-sizing: border-box;
-	position: fixed;
-	top: 50%;
-	left: 50%;
-	transform: translate(-50%, -50%);
-	margin: 0;
-	width: min(560px, calc(100vw - 2rem));
+	width: min(36rem, calc(100vw - 2rem));
 	max-width: calc(100vw - 2rem);
 	max-height: min(90dvh, calc(100vh - 2rem));
 	overflow: auto;
-	z-index: 10000;
+	position: relative;
 }
 .entitlement-explain-dialog::backdrop {
-	background: color-mix(in srgb, var(--color-main-text) 50%, transparent);
+	background: color-mix(in srgb, var(--color-main-text) 55%, transparent);
 }
-.entitlement-explain-dialog__form {
+.entitlement-explain-dialog__fallback-backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 100000;
+	background: color-mix(in srgb, var(--color-main-text) 55%, transparent);
+}
+.entitlement-explain-dialog[open] {
+	z-index: 100001;
+}
+.entitlement-explain-dialog__panel {
 	display: flex;
 	flex-direction: column;
-	gap: 0.75rem;
+	gap: 1rem;
 	padding: 1.25rem 1.5rem 1.5rem;
-	align-items: stretch;
+}
+.entitlement-explain-dialog__header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 0.75rem;
 }
 .entitlement-explain-dialog__title {
 	margin: 0;
-	font-size: 1.125rem;
-	font-weight: 600;
+	flex: 1 1 auto;
+	font-size: 1.25rem;
+	font-weight: 700;
 	color: var(--color-main-text);
-	text-align: center;
+	text-align: start;
 	text-wrap: balance;
-	max-width: 100%;
+	line-height: 1.3;
+}
+.entitlement-explain-dialog__dismiss {
+	flex: 0 0 auto;
+	min-width: 2.75rem;
+	min-height: 2.75rem;
+	padding: 0.35rem;
+	border-radius: var(--border-radius-large, 10px);
+	line-height: 1;
+}
+.entitlement-explain-dialog__dismiss-icon {
+	display: inline-block;
+	font-size: 1.5rem;
+	line-height: 1;
 }
 .entitlement-explain-dialog__intro {
-	margin: 0 auto;
-	color: var(--color-text-maxcontrast);
-	line-height: 1.5;
-	text-align: center;
+	margin: 0;
+	color: var(--color-main-text);
+	line-height: 1.55;
+	text-align: start;
 	text-wrap: pretty;
-	max-width: 42rem;
+	font-size: 0.9375rem;
 }
 .entitlement-explain-dialog__body {
-	padding-top: 0.25rem;
 	width: 100%;
 	text-align: start;
+	min-height: 4.5rem;
 }
-.entitlement-explain-dialog__lead {
-	margin: 0.35rem 0 0.5rem;
-	text-align: center;
-	line-height: 1.45;
-}
-.entitlement-explain-dialog__lead-text {
-	display: inline;
-}
-.entitlement-explain-dialog__lead-layer {
-	display: inline;
-	font-weight: 700;
-}
-.entitlement-explain-dialog__steps {
-	margin: 0.5rem 0 0.75rem;
-	padding-left: 1.25rem;
+.entitlement-explain-dialog__loading {
 	display: flex;
 	flex-direction: column;
-	gap: 0.35rem;
+	align-items: center;
+	justify-content: center;
+	gap: 0.75rem;
+	padding: 1rem 0;
+	text-align: center;
 }
-.entitlement-explain-dialog__placeholder {
+.entitlement-explain-dialog__spinner {
+	display: inline-block;
+	width: 2rem;
+	height: 2rem;
+	border: 3px solid var(--color-border);
+	border-top-color: var(--color-primary-element);
+	border-radius: 50%;
+	animation: entitlement-explain-spin 0.8s linear infinite;
+}
+@keyframes entitlement-explain-spin {
+	to { transform: rotate(360deg); }
+}
+.entitlement-explain-dialog__loading-text {
 	margin: 0;
 	color: var(--color-text-maxcontrast);
-	font-style: italic;
+	font-size: 0.9375rem;
+}
+.entitlement-explain-dialog__error {
+	margin: 0;
+	padding: 0.85rem 1rem;
+	border-radius: var(--border-radius, 6px);
+	border: 1px solid color-mix(in srgb, var(--color-error) 40%, var(--color-border));
+	background: color-mix(in srgb, var(--color-error) 10%, var(--color-background-hover));
+	color: var(--color-main-text);
+	line-height: 1.45;
+}
+.entitlement-explain-dialog__summary {
+	margin: 0;
+	padding: 1rem 1.1rem;
+	border-radius: var(--border-radius-large, 10px);
+	border: 1px solid var(--color-border);
+	background: var(--color-background-hover);
+	text-align: center;
+}
+.entitlement-explain-dialog__summary-title,
+.entitlement-explain-dialog__chain-title {
+	margin: 0 0 0.5rem;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--color-text-maxcontrast);
+}
+.entitlement-explain-dialog__summary-days {
+	margin: 0.25rem 0 0.5rem;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	justify-content: center;
+	gap: 0.35rem 0.5rem;
+}
+.entitlement-explain-dialog__summary-value {
+	font-size: 2.25rem;
+	font-weight: 800;
+	line-height: 1.1;
+	color: var(--color-primary-element);
+}
+.entitlement-explain-dialog__summary-unit {
+	font-size: 1rem;
+	font-weight: 600;
+	color: var(--color-main-text);
+}
+.entitlement-explain-dialog__as-of {
+	margin: 0 0 0.35rem;
+	font-size: 0.875rem;
+	color: var(--color-text-maxcontrast);
+}
+.entitlement-explain-dialog__lead {
+	margin: 0;
+	line-height: 1.45;
+	font-size: 0.9375rem;
+}
+.entitlement-explain-dialog__lead-layer {
+	font-weight: 700;
+	color: var(--color-main-text);
+}
+.entitlement-explain-dialog__chain {
+	margin: 0;
+}
+.entitlement-explain-dialog__steps {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+}
+.entitlement-explain-dialog__step {
+	margin: 0;
+	padding: 0.65rem 0.75rem;
+	border-radius: var(--border-radius, 6px);
+	border: 1px solid var(--color-border);
+	background: var(--color-main-background);
+}
+.entitlement-explain-dialog__step-head {
+	display: grid;
+	grid-template-columns: auto 1fr auto;
+	align-items: center;
+	gap: 0.5rem 0.65rem;
+}
+.entitlement-explain-dialog__step-badge {
+	width: 0.65rem;
+	height: 0.65rem;
+	border-radius: 50%;
+	background: var(--color-text-maxcontrast);
+}
+.entitlement-explain-dialog__step--applied {
+	border-color: color-mix(in srgb, var(--color-primary-element) 35%, var(--color-border));
+	background: color-mix(in srgb, var(--color-primary-element) 8%, var(--color-main-background));
+}
+.entitlement-explain-dialog__step--applied .entitlement-explain-dialog__step-badge {
+	background: var(--color-primary-element);
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-element) 25%, transparent);
+}
+.entitlement-explain-dialog__step--applied .entitlement-explain-dialog__step-outcome {
+	color: var(--color-primary-element);
+	font-weight: 700;
+}
+.entitlement-explain-dialog__step-title {
+	font-weight: 600;
+	font-size: 0.9375rem;
+}
+.entitlement-explain-dialog__step-outcome {
+	font-size: 0.8125rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+	color: var(--color-text-maxcontrast);
+}
+.entitlement-explain-dialog__step-note {
+	margin: 0.35rem 0 0 1.3rem;
+	font-size: 0.8125rem;
+	color: var(--color-text-maxcontrast);
+	line-height: 1.4;
 }
 .entitlement-explain-dialog__hint {
 	margin: 0;
 	font-size: 0.875rem;
 	color: var(--color-text-maxcontrast);
-}
-.entitlement-explain-dialog__hint-inline {
-	margin-left: 0.25rem;
-	font-style: italic;
-	color: var(--color-text-maxcontrast);
-	font-size: 0.875rem;
+	line-height: 1.45;
+	text-align: center;
 }
 .entitlement-explain-dialog__banner {
 	margin: 0 0 0.65rem 0;
@@ -476,7 +626,7 @@
 	border: 1px solid var(--color-border);
 	background: var(--color-background-hover);
 	font-size: 0.9375rem;
-	line-height: 1.4;
+	line-height: 1.45;
 }
 .entitlement-explain-dialog__banner--warn {
 	border-color: color-mix(in srgb, var(--color-warning) 35%, var(--color-border));
@@ -488,9 +638,23 @@
 }
 .entitlement-explain-dialog__actions {
 	display: flex;
+	flex-wrap: wrap;
 	justify-content: center;
+	align-items: center;
+	gap: 0.5rem 0.75rem;
 	border-top: 1px solid var(--color-border);
-	padding-top: 0.5rem;
+	padding-top: 0.85rem;
+	margin-top: 0.25rem;
+}
+.entitlement-explain-dialog__close-form {
+	margin: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+	.entitlement-explain-dialog__spinner {
+		animation: none;
+		border-top-color: var(--color-primary-element);
+		opacity: 0.85;
+	}
 }
 
 /* Stats Grid */

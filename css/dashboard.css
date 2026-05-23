@@ -58,7 +58,8 @@
     line-height: var(--arbeitszeitcheck-line-height-relaxed);
 }
 
-.dashboard-error-section {
+.dashboard-error-section,
+.section.inline-notice-section {
     padding: 0;
     background: transparent;
     border: 0;
@@ -240,6 +241,21 @@
     height: 3px;
     background: linear-gradient(90deg, var(--status-accent), transparent);
     opacity: 0.9;
+}
+
+.dashboard-overnight-hint {
+    margin-top: var(--space-4, 1rem);
+    margin-bottom: 0;
+}
+
+.dashboard-overnight-hint .alert__text {
+    margin: 0;
+    line-height: 1.5;
+}
+
+.dashboard-overnight-hint strong {
+    display: block;
+    margin-bottom: 0.35rem;
 }
 
 .dashboard-status-card__header {

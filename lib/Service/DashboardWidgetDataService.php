@@ -16,6 +16,8 @@ class DashboardWidgetDataService {
 	public function __construct(
 		private readonly TimeTrackingService $timeTrackingService,
 		private readonly OvertimeService $overtimeService,
+		private readonly OvertimeDisplayService $overtimeDisplayService,
+		private readonly OvertimeBankService $overtimeBankService,
 		private readonly AbsenceService $absenceService,
 		private readonly AbsenceMapper $absenceMapper,
 		private readonly TeamResolverService $teamResolverService,
@@ -42,9 +44,11 @@ class DashboardWidgetDataService {
 			$breakStatus = [];
 		}
 
-		// Vacation entitlement and remaining balances for current year
+		$vacationYear = $this->currentYearInStorage();
+
+		// Vacation entitlement and remaining balances for current year (storage TZ)
 		try {
-			$vacationStats = $this->absenceService->getVacationStats($userId, (int)date('Y'));
+			$vacationStats = $this->absenceService->getVacationStats($userId, $vacationYear);
 		} catch (\Throwable $e) {
 			$vacationStats = [];
 		}
@@ -70,10 +74,13 @@ class DashboardWidgetDataService {
 			'weekHoursRequired'      => (float)($weekly['required_hours'] ?? 0.0),
 			'weeklyContractHours'    => (float)($weekly['weekly_hours'] ?? 40.0),
 			'cumulativeBalance'      => (float)($weekly['cumulative_balance'] ?? 0.0),
+			'displayBalance'         => $this->overtimeDisplayService->getYearToDateBalanceForTrafficLight($userId),
+			'overtimeBankEnabled'    => $this->overtimeBankService->isEnabled(),
+			'trafficLightState'      => $this->overtimeDisplayService->buildTrafficLightViewModel($userId)['state'] ?? 'green',
 			'breakRequired'          => (bool)($breakStatus['break_required'] ?? false),
 			'remainingBreakMinutes'  => (int)round((float)($breakStatus['remaining_break_minutes'] ?? 0)),
 			'breakWarningLevel'      => (string)($breakStatus['warning_level'] ?? 'none'),
-			'vacationYear'           => (int)($vacationStats['year'] ?? (int)date('Y')),
+			'vacationYear'           => (int)($vacationStats['year'] ?? $vacationYear),
 			'vacationRemaining'      => (float)($vacationStats['remaining'] ?? 0.0),
 			'vacationEntitlement'    => (float)($vacationStats['entitlement'] ?? 0.0),
 			'vacationUsed'           => (float)($vacationStats['used'] ?? 0.0),
@@ -195,14 +202,29 @@ class DashboardWidgetDataService {
 			return '';
 		}
 		try {
-			return $this->timeZoneService->formatForDisplay(
-				new \DateTimeImmutable($raw),
-				'H:i',
-				$userId
-			);
+			$instant = $this->parseWidgetInstant($raw);
+			return $this->timeZoneService->formatForDisplay($instant, 'H:i', $userId);
 		} catch (\Throwable $e) {
 			return '';
 		}
+	}
+
+	/**
+	 * Parse a clock instant from widget status data (ISO-8601 from API or naive SQL).
+	 */
+	private function parseWidgetInstant(string $raw): \DateTimeInterface {
+		$trimmed = trim($raw);
+		if ($trimmed === '') {
+			throw new \InvalidArgumentException('Empty instant');
+		}
+		if (preg_match('/[TZ]|(?:[+-]\d{2}:?\d{2})$/', $trimmed) === 1) {
+			return $this->timeZoneService->fromIso($trimmed);
+		}
+		return $this->timeZoneService->hydrateNaiveAny(new \DateTimeImmutable($trimmed));
+	}
+
+	private function currentYearInStorage(): int {
+		return (int)$this->timeZoneService->nowImmutableInStorage()->format('Y');
 	}
 
 	private function incrementStatus(array &$summary, string $status): void {
@@ -223,13 +245,13 @@ class DashboardWidgetDataService {
 			];
 		}
 
-		$today = new \DateTimeImmutable('today');
+		[$todayStart] = $this->timeZoneService->todayWindowInStorage();
 
 		try {
 			$activeAbsences = $this->absenceMapper->findByUsersAndDateRange(
 				$memberIds,
-				$today,
-				$today,
+				$todayStart,
+				$todayStart,
 				Absence::STATUS_APPROVED
 			);
 		} catch (\Throwable $e) {

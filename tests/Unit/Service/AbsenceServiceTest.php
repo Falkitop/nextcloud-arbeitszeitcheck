@@ -1431,7 +1431,15 @@ class AbsenceServiceTest extends TestCase
 		$this->db->method('commit');
 		$this->db->method('rollBack');
 
-		$this->notificationService->expects($this->once())->method('notifyAbsenceApproved');
+		$this->notificationService->expects($this->once())
+			->method('notifyAbsenceApproved')
+			->with(
+				$userId,
+				$this->callback(static function (array $payload): bool {
+					return ($payload['days'] ?? null) === 3.0
+						&& ($payload['type'] ?? '') === Absence::TYPE_SICK_LEAVE;
+				})
+			);
 
 		$result = $this->service->createAbsence($data, $userId);
 		$this->assertSame(Absence::STATUS_APPROVED, $result->getStatus());

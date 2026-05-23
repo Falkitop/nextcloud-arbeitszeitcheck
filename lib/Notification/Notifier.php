@@ -11,6 +11,9 @@ declare(strict_types=1);
 
 namespace OCA\ArbeitszeitCheck\Notification;
 
+use OCA\ArbeitszeitCheck\Util\AbsenceTypeLabel;
+use OCA\ArbeitszeitCheck\Util\AbsenceWorkingDaysResolver;
+use OCP\IURLGenerator;
 use OCP\Notification\INotification;
 use OCP\Notification\INotifier;
 use OCP\Notification\UnknownNotificationException;
@@ -19,6 +22,12 @@ use OCP\Notification\UnknownNotificationException;
  * Notifier
  */
 class Notifier implements INotifier {
+
+	public function __construct(
+		private IURLGenerator $urlGenerator,
+		private AbsenceWorkingDaysResolver $workingDaysResolver,
+	) {
+	}
 
 	/**
 	 * @inheritDoc
@@ -44,10 +53,12 @@ class Notifier implements INotifier {
 
 		$l = \OCP\Util::getL10N('arbeitszeitcheck', $languageCode);
 
-		$subject = $notification->getSubject();
-		$parameters = $notification->getSubjectParameters();
+		$subjectKey = $notification->getSubject();
+		$subjectParameters = $notification->getSubjectParameters();
+		$messageParameters = $notification->getMessageParameters();
+		$parameters = array_merge($subjectParameters, $messageParameters);
 
-		switch ($subject) {
+		switch ($subjectKey) {
 			case 'compliance_violation':
 				$violationType = $parameters['violation_type'] ?? 'unknown';
 				$notification->setParsedSubject(
@@ -61,16 +72,18 @@ class Notifier implements INotifier {
 				$employeeName = $parameters['employee_display_name'] ?? 'unknown';
 				$startDate = $parameters['start_date'] ?? null;
 				$endDate = $parameters['end_date'] ?? null;
-				$days = $parameters['days'] ?? 0;
-				$message = $l->t('%s has asked you to be their substitute from %s to %s (%d day(s)). Please approve or decline.', [
+				$days = $this->workingDaysResolver->resolveFromNotificationParameters($parameters);
+				$daysLabel = AbsenceTypeLabel::formatWorkingDays($l, $days);
+				$message = $l->t('%1$s has asked you to be their substitute from %2$s to %3$s (%4$s). Please approve or decline.', [
 					$employeeName,
 					$startDate ?? '?',
 					$endDate ?? '?',
-					(int)$days
+					$daysLabel,
 				]);
 				$notification->setParsedSubject(
 					$l->t('Substitution request')
-				)->setParsedMessage($message);
+				)->setParsedMessage($message)
+					->setLink($this->urlGenerator->linkToRouteAbsolute('arbeitszeitcheck.substitute.index'));
 				break;
 
 			case 'substitute_approved':
@@ -83,9 +96,9 @@ class Notifier implements INotifier {
 					$l->t('%s has approved your substitution request (%s – %s). It is now awaiting manager approval.', [
 						$substituteName,
 						$startDate ?? '?',
-						$endDate ?? '?'
+						$endDate ?? '?',
 					])
-				);
+				)->setLink($this->urlGenerator->linkToRouteAbsolute('arbeitszeitcheck.page.absences'));
 				break;
 
 			case 'substitute_declined':
@@ -97,17 +110,30 @@ class Notifier implements INotifier {
 				}
 				$notification->setParsedSubject(
 					$l->t('Substitute declined')
-				)->setParsedMessage($message);
+				)->setParsedMessage($message)
+					->setLink($this->urlGenerator->linkToRouteAbsolute('arbeitszeitcheck.page.absences'));
 				break;
 
 			case 'absence_approved':
-				$absenceType = $parameters['type'] ?? 'vacation';
-				$days = $parameters['days'] ?? 0;
+				$typeCode = (string)($parameters['type'] ?? 'vacation');
+				$typeLabel = AbsenceTypeLabel::get($l, $typeCode);
+				$days = $this->workingDaysResolver->resolveFromNotificationParameters($parameters);
+				$daysLabel = AbsenceTypeLabel::formatWorkingDays($l, $days);
+				$startDate = $parameters['start_date'] ?? null;
+				$endDate = $parameters['end_date'] ?? null;
+				$period = ($startDate && $endDate)
+					? $l->t('%1$s – %2$s', [$startDate, $endDate])
+					: ($startDate ?? $endDate ?? '?');
+
 				$notification->setParsedSubject(
 					$l->t('Absence approved')
 				)->setParsedMessage(
-					$l->t('Your %s request for %d day(s) has been approved.', [$absenceType, $days])
-				);
+					$l->t('Your %1$s request for %2$s (%3$s) has been approved.', [
+						$typeLabel,
+						$daysLabel,
+						$period,
+					])
+				)->setLink($this->urlGenerator->linkToRouteAbsolute('arbeitszeitcheck.page.absences'));
 				break;
 
 			case 'absence_rejected':
@@ -118,7 +144,8 @@ class Notifier implements INotifier {
 				}
 				$notification->setParsedSubject(
 					$l->t('Absence rejected')
-				)->setParsedMessage($message);
+				)->setParsedMessage($message)
+					->setLink($this->urlGenerator->linkToRouteAbsolute('arbeitszeitcheck.page.absences'));
 				break;
 
 			case 'reminder_clock_out':
@@ -126,7 +153,7 @@ class Notifier implements INotifier {
 				$notification->setParsedSubject(
 					$l->t('Don\'t forget to clock out')
 				)->setParsedMessage(
-					$l->t('You are still clocked in. You have worked %s hours today.', [number_format($hoursWorked, 2)])
+					$l->t('You are still clocked in. You have worked %s hours today.', [number_format((float)$hoursWorked, 2)])
 				);
 				break;
 
@@ -136,7 +163,7 @@ class Notifier implements INotifier {
 				$notification->setParsedSubject(
 					$l->t('Break reminder')
 				)->setParsedMessage(
-					$l->t('You have worked %s hours. A %d minute break is required.', [number_format($hoursWorked, 2), $requiredBreak])
+					$l->t('You have worked %s hours. A %d minute break is required.', [number_format((float)$hoursWorked, 2), (int)$requiredBreak])
 				);
 				break;
 
@@ -155,7 +182,7 @@ class Notifier implements INotifier {
 				$notification->setParsedSubject(
 					$l->t('Overtime warning')
 				)->setParsedMessage(
-					$l->t('You have accumulated %s hours of overtime (limit: %s hours).', [number_format($overtimeHours, 2), number_format($limit, 2)])
+					$l->t('You have accumulated %s hours of overtime (limit: %s hours).', [number_format((float)$overtimeHours, 2), number_format((float)$limit, 2)])
 				);
 				break;
 
@@ -174,6 +201,23 @@ class Notifier implements INotifier {
 					$message = $l->t('Your undertime balance reached red level (%s hours).', [number_format($balance, 2)]);
 				}
 				$notification->setParsedSubject($title)->setParsedMessage($message);
+				break;
+
+			case 'overtime_payout':
+				$hoursPaid = (float)($parameters['hours_paid'] ?? 0);
+				$year = (int)($parameters['year'] ?? 0);
+				$month = (int)($parameters['month'] ?? 0);
+				$period = sprintf('%04d-%02d', $year, $month);
+				$after = (float)($parameters['effective_balance_after'] ?? 0);
+				$notification->setParsedSubject(
+					$l->t('Overtime payout for %s', [$period])
+				)->setParsedMessage(
+					$l->t('%1$s hours were paid out for %2$s. Your overtime bank balance is now %3$s hours.', [
+						number_format($hoursPaid, 2),
+						$period,
+						number_format($after, 2),
+					])
+				);
 				break;
 
 			case 'time_entry_correction_approved':

@@ -433,6 +433,8 @@
 			if (report.total_violations != null) html += `<p class="report-meta"><strong>${L.violations || 'Violations'}:</strong> ${esc(report.total_violations)}</p>`;
 			if (report.violations_count != null) html += `<p class="report-meta"><strong>${L.violations || 'Violations'}:</strong> ${esc(report.violations_count)}</p>`;
 			if (report.total_overtime != null) html += `<p class="report-meta"><strong>${L.overtime || 'Overtime'}:</strong> ${esc(report.total_overtime)} h</p>`;
+			if (report.total_undertime != null) html += `<p class="report-meta"><strong>${L.undertime || 'Undertime'}:</strong> ${esc(report.total_undertime)} h</p>`;
+			if (report.bank_enabled) html += `<p class="report-meta"><strong>${L.overtimeBank || 'Overtime bank'}:</strong> ${esc(L.enabled || 'Enabled')}</p>`;
 			if (report.entries && report.entries.length) {
 				html += `<table class="report-table"><thead><tr><th>${L.date || 'Date'}</th><th>${L.hours || 'Hours'}</th></tr></thead><tbody>`;
 				report.entries.forEach((entry) => {
@@ -519,6 +521,30 @@
 					});
 					html += '</tbody></table>';
 				}
+			} else if (report.type === 'overtime' && report.users && report.users.length) {
+				const bankOn = report.bank_enabled === true;
+				html += `<h4 class="report-subhead">${esc(L.users || 'Users')}</h4>`;
+				html += `<table class="report-table"><thead><tr>`
+					+ `<th>${esc(L.name || 'Name')}</th>`
+					+ `<th>${esc(L.workedHours || L.hours || 'Worked')}</th>`
+					+ `<th>${esc(L.requiredHours || 'Required')}</th>`
+					+ `<th>${esc(L.periodOvertime || 'Period +')}</th>`
+					+ `<th>${esc(L.periodUndertime || 'Period −')}</th>`
+					+ `<th>${esc(bankOn ? (L.effectiveBalance || 'Effective balance') : (L.balance || 'Balance'))}</th>`
+					+ (bankOn ? `<th>${esc(L.payoutEligible || 'Payout eligible')}</th>` : '')
+					+ `</tr></thead><tbody>`;
+				report.users.forEach((u) => {
+					html += `<tr>`
+						+ `<td>${esc(u.display_name || u.user_id || '-')}</td>`
+						+ `<td>${esc(u.total_hours_worked != null ? u.total_hours_worked : '-')}</td>`
+						+ `<td>${esc(u.required_hours != null ? u.required_hours : '-')}</td>`
+						+ `<td>${esc(u.period_overtime_hours != null ? u.period_overtime_hours : (u.overtime_hours > 0 ? u.overtime_hours : '0'))}</td>`
+						+ `<td>${esc(u.period_undertime_hours != null ? u.period_undertime_hours : '-')}</td>`
+						+ `<td>${esc(u.effective_balance != null ? u.effective_balance : (u.cumulative_balance != null ? u.cumulative_balance : '-'))}</td>`
+						+ (bankOn ? `<td>${esc(u.payout_eligible_hours != null ? u.payout_eligible_hours : '0')}</td>` : '')
+						+ `</tr>`;
+				});
+				html += '</tbody></table>';
 			} else if (report.members && report.members.length) {
 				// Team report (aggregated members)
 				html += `<h4 class="report-subhead">${L.users || 'Users'}</h4><table class="report-table"><thead><tr><th>${L.name || 'Name'}</th><th>${L.hours || 'Hours'}</th><th>${L.overtime || 'Overtime'}</th></tr></thead><tbody>`;
@@ -871,6 +897,62 @@
 				});
 		}
 
+		function downloadBlob(content, mime, filename) {
+			const blob = new Blob([content], { type: mime });
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = filename;
+			a.style.display = 'none';
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+			URL.revokeObjectURL(url);
+		}
+
+		function downloadOvertimeExport(previewPayload, startIso, endIso, format) {
+			const report = previewPayload && previewPayload.report ? previewPayload.report : null;
+			if (!report || !Array.isArray(report.users)) {
+				return;
+			}
+			const L = A.l10n || {};
+			const bankOn = report.bank_enabled === true;
+			if (format === 'json') {
+				downloadBlob(JSON.stringify(report, null, 2), 'application/json', 'overtime-report-' + startIso + '_' + endIso + '.json');
+				return;
+			}
+			const headers = [
+				'user_id',
+				'display_name',
+				'worked_h',
+				'required_h',
+				'period_overtime_h',
+				'period_undertime_h',
+				'effective_balance_h',
+			];
+			if (bankOn) {
+				headers.push('banked_h', 'payout_eligible_h');
+			}
+			const rows = [headers.join(';')];
+			report.users.forEach((u) => {
+				const cols = [
+					u.user_id || '',
+					(u.display_name || '').replace(/;/g, ','),
+					u.total_hours_worked != null ? u.total_hours_worked : '',
+					u.required_hours != null ? u.required_hours : '',
+					u.period_overtime_hours != null ? u.period_overtime_hours : '',
+					u.period_undertime_hours != null ? u.period_undertime_hours : '',
+					u.effective_balance != null ? u.effective_balance : '',
+				];
+				if (bankOn) {
+					cols.push(u.banked_hours != null ? u.banked_hours : '', u.payout_eligible_hours != null ? u.payout_eligible_hours : '');
+				}
+				rows.push(cols.join(';'));
+			});
+			const csv = '\uFEFF' + rows.join('\n');
+			downloadBlob(csv, 'text/csv;charset=utf-8', 'overtime-report-' + startIso + '_' + endIso + '.csv');
+		}
+
 		// Trigger a real file download using the export endpoints
 		function downloadReport(previewPayload) {
 			const reportType = reportTypeInput ? reportTypeInput.value : '';
@@ -1012,6 +1094,11 @@
 				} catch (e) {
 					// If URL construction fails, silently skip download to avoid breaking preview
 				}
+				return;
+			}
+
+			if (reportType === 'overtime') {
+				downloadOvertimeExport(previewPayload, startIso, endIso, format);
 				return;
 			}
 

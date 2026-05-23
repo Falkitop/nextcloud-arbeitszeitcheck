@@ -7,8 +7,15 @@
  */
 
 /* ===== PAGE LAYOUT ===== */
-#admin-settings-form {
-  max-width: 52rem;
+#admin-settings-form,
+#admin-notifications-form {
+  display: block;
+  max-width: none;
+  width: 100%;
+}
+
+.admin-settings-layout {
+  width: 100%;
 }
 
 .admin-settings-form .section-header {
@@ -51,6 +58,19 @@
   gap: var(--space-1, 0.25rem);
 }
 
+@media (min-width: 640px) {
+  .settings-jump-nav__list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--space-6, 1.5rem);
+  }
+}
+
+@media (min-width: 1024px) {
+  .settings-jump-nav__list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 .settings-jump-nav__list a {
   color: var(--arbeitszeitcheck-color-primary, var(--color-primary));
   text-decoration: none;
@@ -85,16 +105,35 @@
   border-bottom: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
 }
 
+.admin-settings-subsection__title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: var(--space-6, 1.5rem) 0 var(--space-3, 0.75rem);
+  color: var(--arbeitszeitcheck-color-main-text, var(--color-main-text));
+}
+
+.admin-settings-subsection__title:first-child {
+  margin-top: 0;
+}
+
+.admin-settings-subsection__intro {
+  margin: 0 0 var(--space-4, 1rem);
+  max-width: 70ch;
+}
+
 /* ===== FORM GROUPS ===== */
-#admin-settings-form .form-group {
+#admin-settings-form .form-group,
+#admin-notifications-form .form-group{
   margin-bottom: var(--space-5, 1.25rem);
 }
 
-#admin-settings-form .form-group:last-child {
+#admin-settings-form .form-group:last-child,
+#admin-notifications-form .form-group:last-child{
   margin-bottom: 0;
 }
 
-#admin-settings-form .form-help {
+#admin-settings-form .form-help,
+#admin-notifications-form .form-help{
   margin-top: var(--space-1, 0.25rem);
   margin-left: 0;
   font-size: 0.875rem;
@@ -104,7 +143,9 @@
 
 /* ===== CHECKBOXES — WCAG 2.1 AA: min 44×44px touch target ===== */
 #admin-settings-form .form-checkbox,
-#admin-settings-form .checkbox {
+#admin-notifications-form .form-checkbox,
+#admin-settings-form .checkbox,
+#admin-notifications-form .checkbox{
   display: flex;
   align-items: center;
   gap: var(--space-3, 0.75rem);
@@ -113,7 +154,9 @@
 }
 
 #admin-settings-form .form-checkbox input[type="checkbox"],
-#admin-settings-form .checkbox input[type="checkbox"] {
+#admin-notifications-form .form-checkbox input[type="checkbox"],
+#admin-settings-form .checkbox input[type="checkbox"],
+#admin-notifications-form .checkbox input[type="checkbox"]{
   flex-shrink: 0;
   margin: 0;
   width: 1.25rem;
@@ -122,9 +165,13 @@
 }
 
 #admin-settings-form .form-checkbox .form-label,
+#admin-notifications-form .form-checkbox .form-label,
 #admin-settings-form .checkbox .form-label,
+#admin-notifications-form .checkbox .form-label,
 #admin-settings-form .form-checkbox label,
-#admin-settings-form .checkbox label {
+#admin-notifications-form .form-checkbox label,
+#admin-settings-form .checkbox label,
+#admin-notifications-form .checkbox label{
   margin: 0;
   flex: 1;
   cursor: pointer;
@@ -134,7 +181,8 @@
 }
 
 /* ===== FIELDSETS ===== */
-#admin-settings-form .form-fieldset {
+#admin-settings-form .form-fieldset,
+#admin-notifications-form .form-fieldset{
   margin: var(--space-5, 1.25rem) 0;
   padding: var(--space-4, 1rem);
   border: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
@@ -142,46 +190,77 @@
   background: var(--arbeitszeitcheck-color-main-background, var(--color-main-background));
 }
 
-#admin-settings-form .form-legend {
+#admin-settings-form .form-legend,
+#admin-notifications-form .form-legend{
   font-size: 1rem;
   font-weight: 600;
   padding: 0 var(--space-2, 0.5rem);
   color: var(--arbeitszeitcheck-color-main-text, var(--color-main-text));
 }
 
-#admin-settings-form .form-help--block {
+#admin-settings-form .form-help--block,
+#admin-notifications-form .form-help--block{
   margin-bottom: var(--space-4, 1rem);
 }
 
 /* Require substitute types: grid for compact layout ===== */
-#admin-settings-form .form-fieldset[aria-labelledby="require-substitute-legend"] {
+#admin-settings-form .form-fieldset[aria-labelledby="require-substitute-legend"],
+#admin-notifications-form .form-fieldset[aria-labelledby="require-substitute-legend"]{
   display: flex;
   flex-direction: column;
   gap: var(--space-3, 0.75rem);
 }
 
-#admin-settings-form .form-fieldset[aria-labelledby="require-substitute-legend"] .form-group--inline {
+#admin-settings-form .form-fieldset[aria-labelledby="require-substitute-legend"] .form-group--inline,
+#admin-notifications-form .form-fieldset[aria-labelledby="require-substitute-legend"] .form-group--inline{
   display: flex;
   flex: 0 0 auto;
 }
 
-#admin-settings-form .form-fieldset[aria-labelledby="require-substitute-legend"] .form-group--inline .form-checkbox {
+#admin-settings-form .form-fieldset[aria-labelledby="require-substitute-legend"] .form-group--inline .form-checkbox,
+#admin-notifications-form .form-fieldset[aria-labelledby="require-substitute-legend"] .form-group--inline .form-checkbox{
   width: 100%;
 }
 
 /* ===== INPUTS ===== */
 #admin-settings-form .form-input,
-#admin-settings-form .form-select {
+#admin-notifications-form .form-input,
+#admin-settings-form .form-select,
+#admin-notifications-form .form-select {
   min-width: 0;
   max-width: 12rem;
 }
 
-/* Access control: searchable checkbox picker */
-#admin-settings-form #accessAllowedGroupsSearch {
+#admin-notifications-form textarea.form-input {
+  max-width: min(42rem, 100%);
+  width: 100%;
+}
+
+#admin-notifications-form .form-row--thresholds {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--space-4, 1rem);
+  align-items: end;
+  margin-bottom: var(--space-4, 1rem);
+}
+
+#admin-notifications-form .form-row--thresholds .form-group {
+  margin-bottom: 0;
+  max-width: none;
+}
+
+#admin-notifications-form .form-row--thresholds .form-input {
   max-width: 100%;
 }
 
-#admin-settings-form .access-groups-list {
+/* Access control: searchable checkbox picker */
+#admin-settings-form #accessAllowedGroupsSearch,
+#admin-notifications-form #accessAllowedGroupsSearch{
+  max-width: 100%;
+}
+
+#admin-settings-form .access-groups-list,
+#admin-notifications-form .access-groups-list{
   margin-top: var(--space-2, 0.5rem);
   max-height: 16rem;
   overflow-y: auto;
@@ -190,7 +269,8 @@
   background: var(--arbeitszeitcheck-color-main-background, var(--color-main-background));
 }
 
-#admin-settings-form .access-groups-item {
+#admin-settings-form .access-groups-item,
+#admin-notifications-form .access-groups-item{
   display: grid;
   grid-template-columns: auto 1fr;
   grid-template-areas:
@@ -204,27 +284,32 @@
   cursor: pointer;
 }
 
-#admin-settings-form .access-groups-item:last-child {
+#admin-settings-form .access-groups-item:last-child,
+#admin-notifications-form .access-groups-item:last-child{
   border-bottom: none;
 }
 
-#admin-settings-form .access-groups-item:hover {
+#admin-settings-form .access-groups-item:hover,
+#admin-notifications-form .access-groups-item:hover{
   background: var(--arbeitszeitcheck-color-background-hover, var(--color-background-hover));
 }
 
-#admin-settings-form .access-groups-item input[type="checkbox"] {
+#admin-settings-form .access-groups-item input[type="checkbox"],
+#admin-notifications-form .access-groups-item input[type="checkbox"]{
   grid-area: checkbox;
   margin-top: 0.15rem;
 }
 
-#admin-settings-form .access-groups-item__label {
+#admin-settings-form .access-groups-item__label,
+#admin-notifications-form .access-groups-item__label{
   grid-area: label;
   font-weight: 600;
   color: var(--arbeitszeitcheck-color-main-text, var(--color-main-text));
   line-height: 1.35;
 }
 
-#admin-settings-form .access-groups-item__meta {
+#admin-settings-form .access-groups-item__meta,
+#admin-notifications-form .access-groups-item__meta{
   grid-area: meta;
   font-size: 0.8125rem;
   color: var(--arbeitszeitcheck-color-text-lighter, var(--color-text-lighter));
@@ -233,16 +318,20 @@
 
 /* Month reopen: full-width user search + suggestion list */
 #admin-settings-form .month-reopen-user-picker .form-input,
-#admin-settings-form .month-reopen-user-picker .user-picker__search {
+#admin-notifications-form .month-reopen-user-picker .form-input,
+#admin-settings-form .month-reopen-user-picker .user-picker__search,
+#admin-notifications-form .month-reopen-user-picker .user-picker__search{
   max-width: 100%;
 }
 
-#admin-settings-form .user-picker {
+#admin-settings-form .user-picker,
+#admin-notifications-form .user-picker{
   position: relative;
   max-width: 100%;
 }
 
-#admin-settings-form .user-picker__list {
+#admin-settings-form .user-picker__list,
+#admin-notifications-form .user-picker__list{
   position: absolute;
   z-index: 50;
   left: 0;
@@ -258,36 +347,43 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
-#admin-settings-form .user-picker__item {
+#admin-settings-form .user-picker__item,
+#admin-notifications-form .user-picker__item{
   padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
   cursor: pointer;
   line-height: 1.35;
 }
 
 #admin-settings-form .user-picker__item:hover,
-#admin-settings-form .user-picker__item:focus {
+#admin-notifications-form .user-picker__item:hover,
+#admin-settings-form .user-picker__item:focus,
+#admin-notifications-form .user-picker__item:focus{
   background: var(--arbeitszeitcheck-color-background-hover, var(--color-background-hover));
   outline: none;
 }
 
-#admin-settings-form .user-picker__item:focus-visible {
+#admin-settings-form .user-picker__item:focus-visible,
+#admin-notifications-form .user-picker__item:focus-visible{
   outline: 2px solid var(--arbeitszeitcheck-color-primary, var(--color-primary));
   outline-offset: -2px;
 }
 
-#admin-settings-form .user-picker__item--muted {
+#admin-settings-form .user-picker__item--muted,
+#admin-notifications-form .user-picker__item--muted{
   cursor: default;
   color: var(--arbeitszeitcheck-color-text-lighter, var(--color-text-lighter));
   font-size: 0.875rem;
 }
 
-#admin-settings-form .user-picker__name {
+#admin-settings-form .user-picker__name,
+#admin-notifications-form .user-picker__name{
   display: block;
   font-weight: 500;
   color: var(--arbeitszeitcheck-color-main-text, var(--color-main-text));
 }
 
-#admin-settings-form .user-picker__meta {
+#admin-settings-form .user-picker__meta,
+#admin-notifications-form .user-picker__meta{
   display: block;
   font-size: 0.8125rem;
   color: var(--arbeitszeitcheck-color-text-lighter, var(--color-text-lighter));
@@ -311,7 +407,8 @@
 }
 
 /* Month reopen: single action inside fieldset — no extra top rule */
-#admin-settings-form .form-fieldset .card-actions--inline {
+#admin-settings-form .form-fieldset .card-actions--inline,
+#admin-notifications-form .form-fieldset .card-actions--inline{
   margin-top: var(--space-4, 1rem);
   padding-top: 0;
   border-top: none;
@@ -324,7 +421,9 @@
   }
 
   #admin-settings-form .form-input,
-  #admin-settings-form .form-select {
+#admin-notifications-form .form-input,
+  #admin-settings-form .form-select,
+#admin-notifications-form .form-select{
     max-width: 100%;
   }
 

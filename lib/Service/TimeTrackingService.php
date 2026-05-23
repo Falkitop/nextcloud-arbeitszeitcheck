@@ -46,6 +46,7 @@ class TimeTrackingService
 	private IDBConnection $db;
 	private ILockingProvider $lockingProvider;
 	private TimeZoneService $timeZoneService;
+	private DailyWorkingHoursCalculator $dailyWorkingHoursCalculator;
 
 	public function __construct(
 		TimeEntryMapper $timeEntryMapper,
@@ -61,7 +62,8 @@ class TimeTrackingService
 		MonthClosureGuard $monthClosureGuard,
 		IDBConnection $db,
 		ILockingProvider $lockingProvider,
-		TimeZoneService $timeZoneService
+		TimeZoneService $timeZoneService,
+		DailyWorkingHoursCalculator $dailyWorkingHoursCalculator,
 	) {
 		$this->timeEntryMapper = $timeEntryMapper;
 		$this->violationMapper = $violationMapper;
@@ -77,6 +79,24 @@ class TimeTrackingService
 		$this->db = $db;
 		$this->lockingProvider = $lockingProvider;
 		$this->timeZoneService = $timeZoneService;
+		$this->dailyWorkingHoursCalculator = $dailyWorkingHoursCalculator;
+	}
+
+	/**
+	 * @return array{date: string, hours: float}|null First calendar day that would exceed ArbZG §3.
+	 */
+	public function findCalendarDayExceedingMaximum(TimeEntry $entry, ?int $excludeEntryId = null): ?array
+	{
+		if ($entry->getStartTime() === null || $entry->getEndTime() === null) {
+			return null;
+		}
+
+		return $this->dailyWorkingHoursCalculator->findCalendarDayExceedingMaximum(
+			$entry->getUserId(),
+			$entry,
+			$this->getMaxDailyHours(),
+			$excludeEntryId ?? $entry->getId(),
+		);
 	}
 
 	private function getMaxDailyHours(): float
@@ -294,7 +314,7 @@ class TimeTrackingService
 				}
 
 				$this->checkComplianceBeforeClockIn($userId);
-				$todayHours = $this->timeEntryMapper->getTotalHoursByUserAndDateRange($userId, $today, $tomorrow);
+				$todayHours = $this->getTodayHours($userId);
 				$maxDailyHours = $this->getMaxDailyHours();
 				if ($todayHours >= $maxDailyHours) {
 					throw new BusinessRuleException($this->l10n->t(
@@ -449,7 +469,7 @@ class TimeTrackingService
 
 		// Respect the daily maximum – the paused entry's own hours already count.
 		[$today, $tomorrow] = $this->getAppLocalTodayWindow();
-		$todayHours   = $this->timeEntryMapper->getTotalHoursByUserAndDateRange($userId, $today, $tomorrow);
+		$todayHours   = $this->getTodayHours($userId);
 		$maxDailyHours = $this->getMaxDailyHours();
 		if ($todayHours >= $maxDailyHours) {
 			throw new BusinessRuleException($this->l10n->t(
@@ -693,10 +713,21 @@ class TimeTrackingService
 				];
 			}
 
+			[$todayStart, $todayEnd] = $this->getAppLocalTodayWindow();
+			$sessionHoursOnCalendarToday = $this->dailyWorkingHoursCalculator
+				->getEntryWorkingHoursOnCalendarDay(
+					$currentEntry,
+					$todayStart,
+					$todayEnd,
+					$this->nowForAtEntries(),
+				);
+
 			return $this->appendAutoClockoutNotice($this->withServerClock([
 				'status' => $currentEntry->getStatus(),
 				'current_entry' => $entrySummary,
 				'working_today_hours' => $this->getTodayHours($userId),
+				'session_hours_on_calendar_today' => round($sessionHoursOnCalendarToday, 4),
+				'at_daily_maximum' => $this->isAtOrAboveDailyMaximum($userId),
 				'current_session_duration' => $sessionDuration
 			], $nowImmutable), $userId);
 		} catch (\Throwable $e) {
@@ -815,60 +846,31 @@ class TimeTrackingService
 	public function getTodayHours(string $userId): float
 	{
 		try {
-			[$today, $tomorrow] = $this->getAppLocalTodayWindow();
-			$todayKey = $today->format('Y-m-d');
-
-			// Get all entries for today (completed and active/paused)
-			$allEntries = [];
-			
-			// Get completed entries
-			$dayEntries = $this->timeEntryMapper->findByUserAndDateRange($userId, $today, $tomorrow);
-			foreach ($dayEntries as $entry) {
-				if (in_array($entry->getStatus(), [TimeEntry::STATUS_COMPLETED, TimeEntry::STATUS_PENDING_APPROVAL]) 
-					&& $entry->getEndTime() !== null) {
-					$allEntries[] = $entry;
-				}
-			}
-			
-			// Get active/paused entry and add it with current end time
-			$activeEntry = $this->timeEntryMapper->findActiveByUser($userId);
-			$breakEntry = $this->timeEntryMapper->findOnBreakByUser($userId);
-			$pausedEntry = $this->timeEntryMapper->findPausedOrUnfinishedTodayByUser($userId, $today, $tomorrow);
-			$currentEntry = $activeEntry ?: $breakEntry ?: $pausedEntry;
-			
-			if ($currentEntry && $currentEntry->getStartTime()) {
-				$entryStart = $currentEntry->getStartTime();
-
-				// Only count if the session started on the same local calendar day (app timezone)
-				if ($entryStart->format('Y-m-d') === $todayKey) {
-					// Determine end time for calculation
-					$calcEndTime = null;
-					if ($currentEntry->getEndTime()) {
-						$calcEndTime = $currentEntry->getEndTime();
-					} elseif ($currentEntry->getStatus() === TimeEntry::STATUS_PAUSED && $currentEntry->getUpdatedAt()) {
-						$calcEndTime = $currentEntry->getUpdatedAt();
-					} else {
-						$calcEndTime = $this->nowForAtEntries();
-					}
-					
-					// Add entry data directly to calculation array (without cloning the entity)
-					$allEntries[] = [
-						'start' => $entryStart->getTimestamp(),
-						'end' => $calcEndTime->getTimestamp(),
-						'breakHours' => $currentEntry->getBreakDurationHours() ?? 0.0
-					];
-				}
-			}
-
-			$totalHours = $this->calculateNonOverlappingHours($allEntries);
-			$maxDaily = $this->getMaxDailyHours();
-
-			return min($totalHours, $maxDaily);
-			
+			$now = $this->nowForAtEntries();
+			$totalHours = $this->dailyWorkingHoursCalculator->getWorkingHoursForToday($userId, $now);
+			return min($totalHours, $this->getMaxDailyHours());
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error getting today hours for user ' . $userId . ': ' . $e->getMessage(), ["exception" => $e]);
 			return 0.0;
 		}
+	}
+
+	/**
+	 * Working hours summed per calendar day (storage TZ) across a half-open interval.
+	 *
+	 * @param \DateTime $rangeStart Inclusive lower bound
+	 * @param \DateTime $rangeEndExclusive Exclusive upper bound
+	 */
+	public function getWorkingHoursForPeriod(
+		string $userId,
+		\DateTime $rangeStart,
+		\DateTime $rangeEndExclusive,
+	): float {
+		return $this->dailyWorkingHoursCalculator->sumWorkingHoursForCalendarDaysInRange(
+			$userId,
+			$rangeStart,
+			$rangeEndExclusive,
+		);
 	}
 
 	/**
@@ -974,33 +976,15 @@ class TimeTrackingService
 		// not just the duration of this single entry.
 		// This is because ArbZG §4 requires breaks based on total working hours per day.
 		
-		// Get total working hours for the day (including this entry and any other completed entries)
 		$userId = $timeEntry->getUserId();
-		$entryDate = clone $startTime;
-		$entryDate->setTime(0, 0, 0);
-		$entryDateEnd = clone $entryDate;
-		$entryDateEnd->modify('+1 day');
-		
-		// Get all completed entries for this day
-		$dayEntries = $this->timeEntryMapper->findByUserAndDateRange($userId, $entryDate, $entryDateEnd);
-		$totalWorkingHoursForDay = 0.0;
-		foreach ($dayEntries as $dayEntry) {
-			if ($dayEntry->getStatus() === TimeEntry::STATUS_COMPLETED && $dayEntry->getEndTime() !== null) {
-				// Exclude this entry (we'll add it separately)
-				if ($dayEntry->getId() !== $timeEntry->getId()) {
-					$totalWorkingHoursForDay += $dayEntry->getWorkingDurationHours() ?? 0.0;
-				}
-			}
-		}
-		
-		// Add working hours from this entry (excluding breaks)
-		// For entries that were paused and resumed, we need to calculate working time correctly
-		// Working time = total duration - break time
-		$entryBreakHours = $timeEntry->getBreakDurationHours();
-		$entryWorkingHours = max(0, $totalDurationHours - $entryBreakHours);
-		$totalWorkingHoursForDay += $entryWorkingHours;
+		$totalWorkingHoursForDay = $this->dailyWorkingHoursCalculator->getPeakWorkingHoursForEntrySpan(
+			$userId,
+			$timeEntry,
+			$endTime,
+			$timeEntry->getId(),
+		);
 
-		// Calculate required break based on TOTAL working hours of the day (ArbZG §4)
+		// Calculate required break based on peak calendar-day working hours (ArbZG §4)
 		$requiredBreakMinutes = $this->calculateRequiredBreakMinutes($totalWorkingHoursForDay);
 
 		// If no break is required, nothing to do
@@ -1071,85 +1055,51 @@ class TimeTrackingService
 		$userId = $timeEntry->getUserId();
 		$startTime = $timeEntry->getStartTime();
 		$now = $this->nowForAtEntries();
-		
-		// For paused entries (that somehow got here), use updatedAt instead of now
-		if ($timeEntry->getStatus() === TimeEntry::STATUS_PAUSED && $timeEntry->getUpdatedAt()) {
-			$endTime = $timeEntry->getUpdatedAt();
-		} else {
-			$endTime = $now;
-		}
-		
-		$entryDate = clone $startTime;
-		$entryDate->setTime(0, 0, 0);
-		$entryDateEnd = clone $entryDate;
-		$entryDateEnd->modify('+1 day');
-		
-		// Get all completed entries for this day (excluding this entry)
-		$dayEntries = $this->timeEntryMapper->findByUserAndDateRange($userId, $entryDate, $entryDateEnd);
-		$totalWorkingHoursFromPreviousEntries = 0.0;
-		foreach ($dayEntries as $dayEntry) {
-			if ($dayEntry->getStatus() === TimeEntry::STATUS_COMPLETED && $dayEntry->getEndTime() !== null) {
-				// Exclude this entry (we'll calculate it separately)
-				if ($dayEntry->getId() !== $timeEntry->getId()) {
-					$totalWorkingHoursFromPreviousEntries += $dayEntry->getWorkingDurationHours() ?? 0.0;
-				}
-			}
-		}
-		
-		// Calculate working hours from this entry (excluding breaks)
-		$totalDurationSeconds = $endTime->getTimestamp() - $startTime->getTimestamp();
-		$totalDurationHours = $totalDurationSeconds / 3600;
+
+		// ArbZG §3: evaluate the calendar day that contains "now", clipping overnight
+		// sessions at midnight (never the clock-in date bucket alone).
+		[$todayStart, $todayEnd] = $this->timeZoneService->dayWindowInStorage($now);
+		$calculator = $this->dailyWorkingHoursCalculator;
+
+		$totalDailyWorkingHours = $calculator->getWorkingHoursForCalendarDay(
+			$userId,
+			$todayStart,
+			$todayEnd,
+			$timeEntry,
+			$now,
+		);
+		$totalWorkingHoursFromPreviousEntries = $calculator->getWorkingHoursForCalendarDay(
+			$userId,
+			$todayStart,
+			$todayEnd,
+			null,
+			$now,
+			$timeEntry->getId(),
+		);
+
+		$entryStartOnDayTs = max($startTime->getTimestamp(), $todayStart->getTimestamp());
+		$entryWorkingHours = max(0, $totalDailyWorkingHours - $totalWorkingHoursFromPreviousEntries);
 		$entryBreakHours = $timeEntry->getBreakDurationHours();
-		$entryWorkingHours = max(0, $totalDurationHours - $entryBreakHours);
-		
-		// Calculate total daily working hours
-		$totalDailyWorkingHours = $totalWorkingHoursFromPreviousEntries + $entryWorkingHours;
 		$maxWorkingHours = $this->getMaxDailyHours();
 
 		if ($totalDailyWorkingHours >= $maxWorkingHours) {
 			$oldValues = $timeEntry->getSummary();
 			$oldValues['_reason'] = 'ArbZG §3: Auto-completing due to daily maximum (' . (int)$maxWorkingHours . 'h)';
 
-			// Calculate maximum allowed working hours for this entry
+			// Maximum working hours this session may still add on today's calendar day.
 			$maxAllowedWorkingHoursForEntry = max(0, $maxWorkingHours - $totalWorkingHoursFromPreviousEntries);
 			
-			// Calculate new end time
-			$newEndTime = null;
-			if ($maxAllowedWorkingHoursForEntry <= 0) {
-				// If previous entries already exceed the maximum, set this entry to 0 working hours
-				$newEndTime = clone $startTime;
-			} else {
-				// Calculate new total duration (working hours + break hours)
-				$maxTotalHours = $maxAllowedWorkingHoursForEntry + $entryBreakHours;
-				
-				// Calculate new end time
-				$newEndTime = clone $startTime;
-				$newEndTime->modify('+' . round($maxTotalHours * 3600) . ' seconds');
-			}
-			
-			// CRITICAL: First calculate required break based on TOTAL daily working hours (ArbZG §4)
-			// This must happen BEFORE we set the endTime, so we can account for the break in the duration
+			// End instant on today's calendar day (not from original clock-in if that was yesterday).
 			$totalDailyWorkingHoursWithThisEntry = $totalWorkingHoursFromPreviousEntries + $maxAllowedWorkingHoursForEntry;
 			$requiredBreakMinutes = $this->calculateRequiredBreakMinutes($totalDailyWorkingHoursWithThisEntry);
-			$requiredBreakHours = $requiredBreakMinutes / 60.0;
-			
-			// If break is required and not yet entered, we need to account for it
-			$finalBreakHours = $entryBreakHours;
-			if ($requiredBreakMinutes > 0 && $entryBreakHours < $requiredBreakHours) {
-				// Break will be added - use the required break time for calculation
-				$finalBreakHours = $requiredBreakHours;
-			}
-			
-			// Recalculate end time with correct break duration
+
 			if ($maxAllowedWorkingHoursForEntry <= 0) {
-				$newEndTime = clone $startTime;
+				$newEndTime = (new \DateTime())->setTimestamp($entryStartOnDayTs);
 			} else {
-				// Total duration = working hours + break hours
-				$maxTotalHours = $maxAllowedWorkingHoursForEntry + $finalBreakHours;
-				$newEndTime = clone $startTime;
-				$newEndTime->modify('+' . round($maxTotalHours * 3600) . ' seconds');
+				$newEndTime = (new \DateTime())->setTimestamp($entryStartOnDayTs);
+				$newEndTime->modify('+' . round($maxAllowedWorkingHoursForEntry * 3600) . ' seconds');
 			}
-			
+
 			// Archive any open break interval before completing, so working-time math stays correct.
 			if ($timeEntry->getStatus() === TimeEntry::STATUS_BREAK
 				&& $timeEntry->getBreakStartTime() !== null
@@ -1161,11 +1111,17 @@ class TimeTrackingService
 				$timeEntry->setBreakEndTime(null);
 			}
 
-			// Set end time so calculateAndSetAutomaticBreak can work with it
 			$timeEntry->setEndTime($newEndTime);
-
-			// Calculate and set automatic break if needed (needs endTime to be set)
 			$this->calculateAndSetAutomaticBreak($timeEntry);
+
+			// Extend wall-clock span so an automatic ArbZG §4 break inside the interval
+			// is not counted as working time (getDurationHours subtracts breaks).
+			$breakHoursAfterAuto = $timeEntry->getBreakDurationHours();
+			if ($breakHoursAfterAuto > 0 && $timeEntry->getEndTime() !== null) {
+				$extendedEnd = clone $timeEntry->getEndTime();
+				$extendedEnd->modify('+' . round($breakHoursAfterAuto * 3600) . ' seconds');
+				$timeEntry->setEndTime($extendedEnd);
+			}
 
 			// Mark entry as completed and capture reason for the audit trail (ArbZG §3).
 			$timeEntry->setStatus(TimeEntry::STATUS_COMPLETED);
@@ -1177,7 +1133,7 @@ class TimeTrackingService
 			$this->timeEntryMapper->update($timeEntry);
 			
 			// Get final break hours after automatic break calculation
-			$finalBreakHoursAfterCalculation = $timeEntry->getBreakDurationHours();
+			$finalBreakHoursAfterCalculation = $breakHoursAfterAuto;
 			
 			// Log the automatic completion
 			\OCP\Log\logger('arbeitszeitcheck')->info('Time entry automatically completed - daily maximum working hours reached', [
@@ -1221,83 +1177,69 @@ class TimeTrackingService
 	 */
 	public function adjustEndTimeForDailyMaximum(TimeEntry $timeEntry): bool
 	{
-		// Only process entries with start and end time
 		if (!$timeEntry->getStartTime() || !$timeEntry->getEndTime()) {
 			return false;
 		}
 
-		// Get total working hours for the day (including previous completed entries)
 		$userId = $timeEntry->getUserId();
 		$startTime = $timeEntry->getStartTime();
 		$endTime = $timeEntry->getEndTime();
-		
-		$entryDate = clone $startTime;
-		$entryDate->setTime(0, 0, 0);
-		$entryDateEnd = clone $entryDate;
-		$entryDateEnd->modify('+1 day');
-		
-		// Get all completed entries for this day (excluding this entry)
-		$dayEntries = $this->timeEntryMapper->findByUserAndDateRange($userId, $entryDate, $entryDateEnd);
-		$totalWorkingHoursFromPreviousEntries = 0.0;
-		foreach ($dayEntries as $dayEntry) {
-			if ($dayEntry->getStatus() === TimeEntry::STATUS_COMPLETED && $dayEntry->getEndTime() !== null) {
-				// Exclude this entry (we'll calculate it separately)
-				if ($dayEntry->getId() !== $timeEntry->getId()) {
-					$totalWorkingHoursFromPreviousEntries += $dayEntry->getWorkingDurationHours() ?? 0.0;
-				}
-			}
-		}
-		
-		// Calculate working hours from this entry (excluding breaks)
-		$totalDurationSeconds = $endTime->getTimestamp() - $startTime->getTimestamp();
-		$totalDurationHours = $totalDurationSeconds / 3600;
-		$entryBreakHours = $timeEntry->getBreakDurationHours();
-		$entryWorkingHours = max(0, $totalDurationHours - $entryBreakHours);
-		
-		// Calculate total daily working hours
-		$totalDailyWorkingHours = $totalWorkingHoursFromPreviousEntries + $entryWorkingHours;
-		
 		$maxWorkingHours = $this->getMaxDailyHours();
+		$calculator = $this->dailyWorkingHoursCalculator;
 
-		if ($totalDailyWorkingHours > $maxWorkingHours) {
-			// Calculate maximum allowed working hours for this entry
-			$maxAllowedWorkingHoursForEntry = max(0, $maxWorkingHours - $totalWorkingHoursFromPreviousEntries);
-			
-			// If previous entries already exceed the maximum, don't allow this entry
-			// For manual entries, we should reject them rather than set to 0 hours
-			if ($maxAllowedWorkingHoursForEntry <= 0) {
-				// Don't adjust - let the validation handle it or reject the entry
-				// This prevents setting entries to 0 hours when max is already reached
-				return false;
+		// Walk each calendar day the entry touches; cap end time on the first violating day.
+		$dayCursor = $this->timeZoneService->dayWindowInStorage($startTime)[0];
+		$lastDay = $this->timeZoneService->dayWindowInStorage($endTime)[0];
+
+		while ($dayCursor <= $lastDay) {
+			[$dayStart, $dayEnd] = $this->timeZoneService->dayWindowInStorage($dayCursor);
+			$otherHours = $calculator->getWorkingHoursForCalendarDay(
+				$userId,
+				$dayStart,
+				$dayEnd,
+				null,
+				$endTime,
+				$timeEntry->getId(),
+			);
+			$entryHoursOnDay = $calculator->getEntryWorkingHoursOnCalendarDay($timeEntry, $dayStart, $dayEnd, $endTime);
+			$totalOnDay = $otherHours + $entryHoursOnDay;
+
+			if ($totalOnDay > $maxWorkingHours) {
+				$maxAllowedForEntryOnDay = max(0, $maxWorkingHours - $otherHours);
+				if ($maxAllowedForEntryOnDay <= 0) {
+					return false;
+				}
+
+				$entryBreakHours = $timeEntry->getBreakDurationHours();
+				$entryStartOnDayTs = max($startTime->getTimestamp(), $dayStart->getTimestamp());
+				$adjustedEndTime = (new \DateTime())->setTimestamp($entryStartOnDayTs);
+				$adjustedEndTime->modify('+' . round(($maxAllowedForEntryOnDay + $entryBreakHours) * 3600) . ' seconds');
+
+				if ($adjustedEndTime > $endTime) {
+					return false;
+				}
+
+				$timeEntry->setEndTime($adjustedEndTime);
+
+				\OCP\Log\logger('arbeitszeitcheck')->info('Time entry end time adjusted to comply with daily maximum working hours', [
+					'time_entry_id' => $timeEntry->getId(),
+					'user_id' => $userId,
+					'calendar_day' => $dayStart->format('Y-m-d'),
+					'previous_entries_hours' => round($otherHours, 2),
+					'original_entry_hours_on_day' => round($entryHoursOnDay, 2),
+					'original_total_daily_hours' => round($totalOnDay, 2),
+					'adjusted_entry_hours_on_day' => round($maxAllowedForEntryOnDay, 2),
+					'original_end_time' => $endTime->format('c'),
+					'adjusted_end_time' => $adjustedEndTime->format('c'),
+					'break_duration_hours' => round($entryBreakHours, 2),
+				]);
+
+				return true;
 			}
-			
-			// Calculate new total duration (working hours + break hours)
-			$maxTotalHours = $maxAllowedWorkingHoursForEntry + $entryBreakHours;
-			
-			// Calculate new end time
-			$adjustedEndTime = clone $startTime;
-			$adjustedEndTime->modify('+' . round($maxTotalHours * 3600) . ' seconds');
-			
-			// Set adjusted end time
-			$timeEntry->setEndTime($adjustedEndTime);
-			
-			// Log the automatic adjustment
-			\OCP\Log\logger('arbeitszeitcheck')->info('Time entry end time adjusted to comply with daily maximum working hours', [
-				'time_entry_id' => $timeEntry->getId(),
-				'user_id' => $userId,
-				'previous_entries_hours' => round($totalWorkingHoursFromPreviousEntries, 2),
-				'original_entry_hours' => round($entryWorkingHours, 2),
-				'original_total_daily_hours' => round($totalDailyWorkingHours, 2),
-				'adjusted_entry_hours' => round($maxAllowedWorkingHoursForEntry, 2),
-				'adjusted_total_daily_hours' => $maxWorkingHours,
-				'original_end_time' => $endTime->format('c'),
-				'adjusted_end_time' => $adjustedEndTime->format('c'),
-				'break_duration_hours' => round($entryBreakHours, 2)
-			]);
-			
-			return true;
+
+			$dayCursor = (clone $dayCursor)->modify('+1 day');
 		}
-		
+
 		return false;
 	}
 
@@ -1312,17 +1254,12 @@ class TimeTrackingService
 		try {
 			[$today, $tomorrow] = $this->getAppLocalTodayWindow();
 
-			$entries = $this->timeEntryMapper->findByUserAndDateRange($userId, $today, $tomorrow);
-			
-			$totalBreakMinutes = 0.0;
-			foreach ($entries as $entry) {
-				$breakDuration = $entry->getBreakDurationHours();
-				if ($breakDuration > 0) {
-					$totalBreakMinutes += $breakDuration * 60; // Convert hours to minutes
-				}
-			}
-
-			return round($totalBreakMinutes, 1);
+			return $this->dailyWorkingHoursCalculator->getBreakMinutesForCalendarDay(
+				$userId,
+				$today,
+				$tomorrow,
+				$this->nowForAtEntries(),
+			);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error calculating taken break minutes for user ' . $userId . ': ' . $e->getMessage(), ["exception" => $e]);
 			return 0.0;

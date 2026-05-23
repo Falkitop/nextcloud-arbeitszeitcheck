@@ -13,6 +13,7 @@ namespace OCA\ArbeitszeitCheck\Tests\Unit\Service;
 
 use OCA\ArbeitszeitCheck\Db\UserSettingsMapper;
 use OCA\ArbeitszeitCheck\Service\NotificationService;
+use OCA\ArbeitszeitCheck\Util\AbsenceWorkingDaysResolver;
 use OCP\IConfig;
 use OCP\IL10N;
 use OCP\IUser;
@@ -39,6 +40,9 @@ class NotificationServiceTest extends TestCase
 	/** @var IConfig|MockObject */
 	private $config;
 
+	/** @var AbsenceWorkingDaysResolver|MockObject */
+	private $workingDaysResolver;
+
 	/** @var NotificationService */
 	private $service;
 
@@ -52,6 +56,14 @@ class NotificationServiceTest extends TestCase
 		$this->userManager = $this->createMock(IUserManager::class);
 		$this->config = $this->createMock(IConfig::class);
 		$this->config->method('getAppValue')->willReturnCallback(static fn ($app, $key, $default = '') => $default);
+		$this->workingDaysResolver = $this->createMock(AbsenceWorkingDaysResolver::class);
+		$this->workingDaysResolver->method('resolveFromNotificationParameters')
+			->willReturnCallback(static function (array $parameters): float {
+				if (isset($parameters['days']) && is_numeric($parameters['days'])) {
+					return (float)$parameters['days'];
+				}
+				return 0.0;
+			});
 
 		// Simple translation passthrough
 		$this->l10n->method('t')
@@ -67,7 +79,8 @@ class NotificationServiceTest extends TestCase
 			$this->l10n,
 			$this->userSettingsMapper,
 			$this->userManager,
-			$this->config
+			$this->config,
+			$this->workingDaysResolver
 		);
 	}
 
@@ -242,6 +255,51 @@ class NotificationServiceTest extends TestCase
 			->method('getAppValue');
 
 		$this->assertFalse($this->service->shouldSendMissingClockInReminder('user1'));
+	}
+
+	public function testNotifyAbsenceApprovedPassesWorkingDaysInSubjectAndMessage(): void
+	{
+		$notification = $this->createMock(INotification::class);
+		$notification->method('setApp')->willReturnSelf();
+		$notification->method('setUser')->willReturnSelf();
+		$notification->method('setDateTime')->willReturnSelf();
+		$notification->method('setObject')->willReturnSelf();
+
+		$notification->expects($this->once())
+			->method('setSubject')
+			->with(
+				'absence_approved',
+				$this->callback(static function (array $params): bool {
+					return ($params['days'] ?? null) === 5.0
+						&& ($params['type'] ?? '') === 'vacation'
+						&& ($params['start_date'] ?? '') === '2026-06-02'
+						&& ($params['end_date'] ?? '') === '2026-06-06'
+						&& ($params['absence_id'] ?? null) === 99;
+				})
+			)
+			->willReturnSelf();
+
+		$notification->expects($this->once())
+			->method('setMessage')
+			->with(
+				'absence_approved',
+				$this->callback(static function (array $params): bool {
+					return ($params['days'] ?? null) === 5.0
+						&& ($params['type'] ?? '') === 'vacation';
+				})
+			)
+			->willReturnSelf();
+
+		$this->notificationManager->method('createNotification')->willReturn($notification);
+		$this->notificationManager->expects($this->once())->method('notify')->with($notification);
+
+		$this->service->notifyAbsenceApproved('user1', [
+			'id' => 99,
+			'type' => 'vacation',
+			'start_date' => '2026-06-02',
+			'end_date' => '2026-06-06',
+			'days' => 5.0,
+		]);
 	}
 }
 

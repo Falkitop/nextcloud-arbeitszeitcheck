@@ -49,6 +49,7 @@ $total = $_['total'] ?? 0;
                                 <th scope="col"><?php p($l->t('Working Time Model')); ?></th>
                                 <th scope="col"><?php p($l->t('Vacation days')); ?></th>
                                 <th scope="col"><?php p($l->t('Valid from / to')); ?></th>
+                                <th scope="col"><?php p($l->t('Overtime Stichtag')); ?></th>
                                 <th scope="col"><?php p($l->t('Status')); ?></th>
                                 <th scope="col"><?php p($l->t('Actions')); ?></th>
                             </tr>
@@ -56,7 +57,7 @@ $total = $_['total'] ?? 0;
                         <tbody id="users-tbody">
                             <?php if (empty($users)): ?>
                                 <tr>
-                                    <td colspan="7" class="text-center">
+                                    <td colspan="8" class="text-center">
                                         <?php p($l->t('No users found')); ?>
                                     </td>
                                 </tr>
@@ -74,6 +75,7 @@ $total = $_['total'] ?? 0;
                                     $start = $user['workingTimeModelStartDate'] ?? null;
                                     $end = $user['workingTimeModelEndDate'] ?? null;
                                     $validity = $start ? ($formatDate($start) . ($end ? ' – ' . $formatDate($end) : ' – ' . $l->t('ongoing'))) : '-';
+                                    $stichtag = $user['overtimeTrackingFrom'] ?? null;
                                     ?>
                                     <tr data-user-id="<?php p($user['userId']); ?>">
                                         <td><?php p($user['displayName']); ?></td>
@@ -87,6 +89,13 @@ $total = $_['total'] ?? 0;
                                         </td>
                                         <td><?php p($vacation !== null ? (string)$vacation : '-'); ?></td>
                                         <td><?php p($validity); ?></td>
+                                        <td>
+                                            <?php if ($stichtag): ?>
+                                                <span class="badge badge--info"><?php p($formatDate($stichtag)); ?></span>
+                                            <?php else: ?>
+                                                <span class="badge badge--warning" title="<?php p($l->t('Year-to-date balance uses 1 January until configured')); ?>"><?php p($l->t('Not set')); ?></span>
+                                            <?php endif; ?>
+                                        </td>
                                         <td>
                                             <?php if ($user['enabled']): ?>
                                                 <span class="badge badge--success"><?php p($l->t('Enabled')); ?></span>

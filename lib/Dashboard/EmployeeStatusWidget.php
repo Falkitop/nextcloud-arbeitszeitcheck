@@ -31,6 +31,7 @@ class EmployeeStatusWidget implements IAPIWidgetV2, IButtonWidget, IIconWidget, 
 		private readonly IURLGenerator $urlGenerator,
 		private readonly DashboardWidgetDataService $widgetDataService,
 		private readonly TimeClientBootstrap $timeClientBootstrap,
+		private readonly WidgetIconHelper $widgetIconHelper,
 	) {
 	}
 
@@ -51,7 +52,7 @@ class EmployeeStatusWidget implements IAPIWidgetV2, IButtonWidget, IIconWidget, 
 	}
 
 	public function getIconUrl(): string {
-		return $this->urlGenerator->getAbsoluteURL($this->urlGenerator->imagePath(Application::APP_ID, 'app-dark.svg'));
+		return $this->widgetIconHelper->getAbsoluteIconUrl();
 	}
 
 	public function getUrl(): ?string {
@@ -60,6 +61,7 @@ class EmployeeStatusWidget implements IAPIWidgetV2, IButtonWidget, IIconWidget, 
 
 	public function load(): void {
 		$this->registerTimeClientForWidget($this->timeClientBootstrap);
+		$this->registerDeskletStylesForWidget();
 		Util::addScript(Application::APP_ID, 'dashboard-widgets');
 		Util::addStyle(Application::APP_ID, 'dashboard-widgets');
 	}
@@ -110,7 +112,9 @@ class EmployeeStatusWidget implements IAPIWidgetV2, IButtonWidget, IIconWidget, 
 		);
 
 		// ── Item 4: cumulative overtime balance ─────────────────────────────────
-		$balance     = (float)$data['cumulativeBalance'];
+		$balance     = isset($data['displayBalance'])
+			? (float)$data['displayBalance']
+			: (float)$data['cumulativeBalance'];
 		$balanceStr  = ($balance >= 0 ? '+' : '') . number_format($balance, 2);
 		$items[] = new WidgetItem(
 			$this->l10n->t('Overtime balance'),
@@ -238,7 +242,7 @@ class EmployeeStatusWidget implements IAPIWidgetV2, IButtonWidget, IIconWidget, 
 	 * @return array<string, mixed>
 	 */
 	private function fallbackEmployeeWidgetData(): array {
-		$y = (int)date('Y');
+		$y = (int)(new \DateTimeImmutable('now', $this->timeClientBootstrap->storageTimeZone()))->format('Y');
 		return [
 			'userId' => '',
 			'status' => 'clocked_out',

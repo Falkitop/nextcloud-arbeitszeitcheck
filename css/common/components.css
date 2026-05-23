@@ -275,6 +275,17 @@ textarea:focus-visible {
 }
 
 /* Form Group */
+/* Combobox listbox — not a document list (avoid global ul bullets) */
+#app-content-wrapper .user-picker__list {
+	list-style: none;
+	padding-left: 0;
+	margin-bottom: 0;
+}
+
+#app-content-wrapper .user-picker__list .user-picker__item {
+	margin-bottom: 0;
+}
+
 .form-group {
   display: flex;
   flex-direction: column;
@@ -1171,6 +1182,19 @@ body[data-theme-dark-highcontrast] .form-input.form-select option {
   color: var(--color-main-text);
 }
 
+.alert__link {
+	display: inline-block;
+	margin-top: var(--space-2);
+	font-weight: var(--arbeitszeitcheck-font-weight-semibold, 600);
+	text-decoration: underline;
+	text-underline-offset: 0.15em;
+}
+
+.alert__link:focus-visible {
+	outline: 2px solid var(--arbeitszeitcheck-color-primary, var(--color-primary-element));
+	outline-offset: 2px;
+}
+
 .alert--warning {
   background-color: var(--arbeitszeitcheck-color-notification-warning-background);
   border-color: var(--arbeitszeitcheck-color-notification-warning);
@@ -1228,6 +1252,113 @@ body[data-theme-dark-highcontrast] .form-input.form-select option {
 
 .alert-close:hover {
   opacity: 1;
+}
+
+/* ===== INLINE NOTICE (compact banner with optional action) ===== */
+
+.inline-notice-section {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  margin-bottom: var(--space-6);
+}
+
+.inline-notice {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  border-left-width: 4px;
+  background: var(--color-main-background);
+}
+
+.inline-notice--warning {
+  border-left-color: var(--arbeitszeitcheck-color-notification-warning, var(--color-warning));
+  background: var(--arbeitszeitcheck-color-notification-warning-background);
+  border-color: color-mix(in srgb, var(--arbeitszeitcheck-color-notification-warning, var(--color-warning)) 35%, var(--color-border));
+}
+
+.inline-notice--info {
+  border-left-color: var(--arbeitszeitcheck-color-notification-info, var(--color-primary-element));
+  background: var(--arbeitszeitcheck-color-notification-info-background);
+  border-color: color-mix(in srgb, var(--arbeitszeitcheck-color-notification-info, var(--color-primary-element)) 28%, var(--color-border));
+}
+
+.inline-notice__icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--radius-full, 999px);
+  color: var(--color-main-text);
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.inline-notice--warning .inline-notice__icon {
+  color: var(--arbeitszeitcheck-color-notification-warning, var(--color-warning));
+  background: color-mix(in srgb, var(--arbeitszeitcheck-color-notification-warning, var(--color-warning)) 18%, transparent);
+}
+
+.inline-notice--info .inline-notice__icon {
+  color: var(--arbeitszeitcheck-color-primary, var(--color-primary-element));
+  background: color-mix(in srgb, var(--arbeitszeitcheck-color-primary, var(--color-primary-element)) 14%, transparent);
+}
+
+.inline-notice__icon svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  display: block;
+}
+
+.inline-notice__content {
+  min-width: 0;
+}
+
+.inline-notice__title {
+  margin: 0 0 var(--space-1);
+  font-size: var(--arbeitszeitcheck-font-size-base);
+  font-weight: var(--arbeitszeitcheck-font-weight-semibold);
+  line-height: var(--arbeitszeitcheck-line-height-snug, 1.35);
+  color: var(--color-main-text);
+}
+
+.inline-notice__text {
+  margin: 0;
+  font-size: var(--arbeitszeitcheck-font-size-sm);
+  line-height: var(--arbeitszeitcheck-line-height-relaxed);
+  color: var(--arbeitszeitcheck-color-text-secondary, var(--color-text-maxcontrast));
+}
+
+.inline-notice__actions {
+  flex-shrink: 0;
+}
+
+.inline-notice__actions .btn {
+  white-space: nowrap;
+}
+
+@media (max-width: 42rem) {
+  .inline-notice {
+    grid-template-columns: auto 1fr;
+    align-items: start;
+  }
+
+  .inline-notice__actions {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+  }
+
+  .inline-notice__actions .btn {
+    width: 100%;
+    justify-content: center;
+    min-height: 44px;
+  }
 }
 
 /* ===== TOAST COMPONENTS ===== */

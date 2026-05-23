@@ -6,6 +6,7 @@ namespace OCA\ArbeitszeitCheck\Service;
 
 use OCP\IConfig;
 use OCP\IL10N;
+use OCP\IUserManager;
 use OCP\Mail\IMailer;
 use OCP\Mail\IMessage;
 use Psr\Log\LoggerInterface;
@@ -18,6 +19,7 @@ class OvertimeNotificationMailService
 		private IMailer $mailer,
 		private IConfig $config,
 		private IL10N $l10n,
+		private IUserManager $userManager,
 		private ?LoggerInterface $logger = null,
 	) {
 	}
@@ -44,11 +46,15 @@ class OvertimeNotificationMailService
 			return;
 		}
 
+		$userId = (string)($data['user_id'] ?? 'unknown');
+		$user = $this->userManager->get($userId);
+		$displayName = $user !== null ? $user->getDisplayName() : $userId;
+
 		$subject = $this->l10n->t('Balance traffic light: %1$s (%2$s)', [
-			(string)($data['user_id'] ?? 'unknown'),
+			$displayName,
 			(string)($data['state'] ?? 'green'),
 		]);
-		$body = $this->l10n->t('User: %1$s', [(string)($data['user_id'] ?? 'unknown')]) . "\n"
+		$body = $this->l10n->t('Employee: %1$s (%2$s)', [$displayName, $userId]) . "\n"
 			. $this->l10n->t('State: %1$s', [(string)($data['state'] ?? 'green')]) . "\n"
 			. $this->l10n->t('Direction: %1$s', [(string)($data['direction'] ?? '-')]) . "\n"
 			. $this->l10n->t('Level: %1$s', [(string)($data['level'] ?? '-')]) . "\n"

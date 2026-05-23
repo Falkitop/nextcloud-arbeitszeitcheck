@@ -105,6 +105,10 @@ class ComplianceServiceTest extends TestCase
 			});
 
 		$this->timeZoneService = $this->buildTimeZoneService($this->config);
+		$dailyHoursCalculator = new \OCA\ArbeitszeitCheck\Service\DailyWorkingHoursCalculator(
+			$this->timeEntryMapper,
+			$this->timeZoneService,
+		);
 
 		$this->service = new ComplianceService(
 			$this->timeEntryMapper,
@@ -117,7 +121,8 @@ class ComplianceServiceTest extends TestCase
 			$this->holidayCalendarService,
 			$this->config,
 			$this->permissionService,
-			$this->timeZoneService
+			$this->timeZoneService,
+			$dailyHoursCalculator,
 		);
 	}
 
@@ -135,10 +140,10 @@ class ComplianceServiceTest extends TestCase
 		$this->timeEntryMapper->method('findLastPausedWithinHours')
 			->willReturn(null);
 
-		// Mock today's hours (under 10 hours) - called twice (once for daily, once for weekly check)
-		$this->timeEntryMapper->expects($this->exactly(2))
+		$this->timeEntryMapper->method('findOverlapping')->willReturn([]);
+		$this->timeEntryMapper->expects($this->once())
 			->method('getTotalHoursByUserAndDateRange')
-			->willReturnOnConsecutiveCalls(7.5, 240.0); // 7.5 hours today, 240 hours over 6 months
+			->willReturn(240.0);
 
 		$issues = $this->service->checkComplianceBeforeClockIn($userId);
 
@@ -171,10 +176,10 @@ class ComplianceServiceTest extends TestCase
 			->with($userId)
 			->willReturn($lastEntry);
 
-		// Mock today's hours (under 10 hours) - called twice (once for daily, once for weekly check)
-		$this->timeEntryMapper->expects($this->exactly(2))
+		$this->timeEntryMapper->method('findOverlapping')->willReturn([]);
+		$this->timeEntryMapper->expects($this->once())
 			->method('getTotalHoursByUserAndDateRange')
-			->willReturnOnConsecutiveCalls(7.5, 240.0);
+			->willReturn(240.0);
 
 		$issues = $this->service->checkComplianceBeforeClockIn($userId);
 
@@ -198,10 +203,19 @@ class ComplianceServiceTest extends TestCase
 		$this->timeEntryMapper->method('findLastPausedWithinHours')
 			->willReturn(null);
 
-		// Mock today's hours (10 hours already worked) - called twice (once for daily, once for weekly check)
-		$this->timeEntryMapper->expects($this->exactly(2))
+		$tz = new \DateTimeZone('Europe/Berlin');
+		$heavy = new TimeEntry();
+		$heavy->setId(99);
+		$heavy->setUserId($userId);
+		$heavy->setStatus(TimeEntry::STATUS_COMPLETED);
+		$heavy->setStartTime(new \DateTime('today 07:00', $tz));
+		$heavy->setEndTime(new \DateTime('today 17:30', $tz));
+		$heavy->setBreaks(json_encode([]));
+
+		$this->timeEntryMapper->method('findOverlapping')->willReturn([$heavy]);
+		$this->timeEntryMapper->expects($this->once())
 			->method('getTotalHoursByUserAndDateRange')
-			->willReturnOnConsecutiveCalls(10.0, 240.0);
+			->willReturn(240.0);
 
 		$issues = $this->service->checkComplianceBeforeClockIn($userId);
 
@@ -317,6 +331,9 @@ class ComplianceServiceTest extends TestCase
 		$timeEntry->setCreatedAt(new \DateTime());
 		$timeEntry->setUpdatedAt(new \DateTime());
 
+		$this->timeEntryMapper->method('findOverlapping')->willReturn([$timeEntry]);
+		$this->violationMapper->method('findByDateRange')->willReturn([]);
+
 		// Mock violation creation (excessive hours + night work info)
 		$violation = new ComplianceViolation();
 		$violation->setId(456);
@@ -326,7 +343,7 @@ class ComplianceServiceTest extends TestCase
 				[
 					$userId,
 					ComplianceViolation::TYPE_EXCESSIVE_WORKING_HOURS,
-					$this->stringContains('Working hours exceeded'),
+					$this->stringContains('Working hours on'),
 					$this->isInstanceOf(\DateTime::class),
 					123,
 					ComplianceViolation::SEVERITY_ERROR
@@ -348,6 +365,44 @@ class ComplianceServiceTest extends TestCase
 			->with($userId, $this->isType('array'));
 
 		$this->service->checkComplianceAfterClockOut($timeEntry);
+	}
+
+	/**
+	 * Wachdienst: a single 22:00–08:00 row must not trigger "excessive hours" when each calendar day is legal.
+	 */
+	public function testCheckComplianceAfterClockOutNoExcessiveHoursForOvernightShift(): void
+	{
+		$userId = 'guard';
+		$tz = new \DateTimeZone('Europe/Berlin');
+		$timeEntry = new TimeEntry();
+		$timeEntry->setId(200);
+		$timeEntry->setUserId($userId);
+		$timeEntry->setStartTime(new \DateTime('2026-05-19 22:00:00', $tz));
+		$timeEntry->setEndTime(new \DateTime('2026-05-20 08:00:00', $tz));
+		$timeEntry->setBreaks(json_encode([]));
+		$timeEntry->setStatus(TimeEntry::STATUS_COMPLETED);
+		$timeEntry->setIsManualEntry(false);
+		$timeEntry->setCreatedAt(new \DateTime());
+		$timeEntry->setUpdatedAt(new \DateTime());
+
+		$this->timeEntryMapper->method('findOverlapping')->willReturn([$timeEntry]);
+		$this->violationMapper->method('findByDateRange')->willReturn([]);
+
+		$calls = [];
+		$this->violationMapper->method('createViolation')->willReturnCallback(function (...$args) use (&$calls): ComplianceViolation {
+			$calls[] = $args;
+			$v = new ComplianceViolation();
+			$v->setId(count($calls));
+			return $v;
+		});
+
+		$this->service->checkComplianceAfterClockOut($timeEntry);
+
+		$excessive = array_values(array_filter(
+			$calls,
+			static fn (array $a): bool => $a[1] === ComplianceViolation::TYPE_EXCESSIVE_WORKING_HOURS
+		));
+		$this->assertSame([], $excessive, 'Legal overnight shift must not create excessive-hours violations.');
 	}
 
 	/**
@@ -635,6 +690,7 @@ class ComplianceServiceTest extends TestCase
 			});
 
 		// Rebuild the service so it picks up our instrumented IL10N.
+		$tz = $this->buildTimeZoneService($this->config);
 		$service = new ComplianceService(
 			$this->timeEntryMapper,
 			$this->violationMapper,
@@ -646,7 +702,8 @@ class ComplianceServiceTest extends TestCase
 			$this->holidayCalendarService,
 			$this->config,
 			$this->permissionService,
-			$this->buildTimeZoneService($this->config)
+			$tz,
+			new \OCA\ArbeitszeitCheck\Service\DailyWorkingHoursCalculator($this->timeEntryMapper, $tz),
 		);
 
 		$violation = new ComplianceViolation();

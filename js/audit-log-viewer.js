@@ -22,8 +22,39 @@
     /**
      * Initialize audit log viewer
      */
+    function applyUrlParams() {
+        const params = new URLSearchParams(window.location.search);
+        const userId = params.get('user_id') || params.get('userId') || '';
+        const action = params.get('action') || '';
+        const userEl = Utils.$('#user-filter');
+        const actionEl = Utils.$('#action-filter');
+        if (userId && userEl) {
+            userEl.value = userId;
+        }
+        if (action && actionEl) {
+            let found = false;
+            for (let i = 0; i < actionEl.options.length; i++) {
+                if (actionEl.options[i].value === action) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                const opt = document.createElement('option');
+                opt.value = action;
+                opt.textContent = action;
+                actionEl.appendChild(opt);
+            }
+            actionEl.value = action;
+        }
+        if (userId || action) {
+            loadAuditLogs();
+        }
+    }
+
     function init() {
         bindEvents();
+        applyUrlParams();
     }
 
     /**

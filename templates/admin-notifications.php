@@ -13,24 +13,7 @@ use OCP\Util;
 /** @var array $_ */
 /** @var \OCP\IL10N $l */
 
-Util::addTranslations('arbeitszeitcheck');
-Util::addStyle('arbeitszeitcheck', 'common/colors');
-Util::addStyle('arbeitszeitcheck', 'common/typography');
-Util::addStyle('arbeitszeitcheck', 'common/base');
-Util::addStyle('arbeitszeitcheck', 'common/components');
-Util::addStyle('arbeitszeitcheck', 'common/layout');
-Util::addStyle('arbeitszeitcheck', 'common/app-layout');
-Util::addStyle('arbeitszeitcheck', 'common/utilities');
-Util::addStyle('arbeitszeitcheck', 'common/responsive');
-Util::addStyle('arbeitszeitcheck', 'common/accessibility');
-Util::addStyle('arbeitszeitcheck', 'navigation');
-Util::addStyle('arbeitszeitcheck', 'admin-settings');
-Util::addStyle('arbeitszeitcheck', 'admin-notifications');
-Util::addScript('arbeitszeitcheck', 'common/utils');
-Util::addScript('arbeitszeitcheck', 'common/time');
-Util::addScript('arbeitszeitcheck', 'common/messaging');
-Util::addScript('arbeitszeitcheck', 'admin-notifications');
-
+/** Styles/scripts are registered in AdminController::notifications(). */
 $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class);
 $settings = is_array($_['settings'] ?? null) ? $_['settings'] : [];
 $absenceTypes = is_array($_['absenceTypes'] ?? null) ? $_['absenceTypes'] : [];
@@ -39,23 +22,25 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 
 <?php include __DIR__ . '/common/navigation.php'; ?>
 
-<main id="app-content" role="main" aria-label="<?php p($l->t('Notification settings')); ?>">
+<main id="app-content" class="admin-notifications-page" role="main" aria-label="<?php p($l->t('Notification settings')); ?>">
 	<div id="app-content-wrapper">
 		<div class="section">
-			<div class="section-header">
+			<div class="section-header section-header--stacked">
 				<h1><?php p($l->t('Notification settings')); ?></h1>
-				<p><?php p($l->t('Configure HR office email notifications by absence type and workflow event.')); ?></p>
+				<p><?php p($l->t('Configure HR emails, overtime alerts, vacation carryover rules, and the overtime bank for payroll.')); ?></p>
 			</div>
 
-			<form id="admin-notifications-form" class="form admin-notifications-form" novalidate>
+			<form id="admin-notifications-form" class="form admin-settings-form admin-notifications-form" novalidate>
 				<input type="hidden" name="requesttoken" value="<?php p($_['requesttoken'] ?? ''); ?>">
+
 				<nav class="settings-jump-nav" aria-label="<?php p($l->t('Jump to notification sections')); ?>">
 					<p class="settings-jump-nav__title"><?php p($l->t('Quick navigation')); ?></p>
 					<ul class="settings-jump-nav__list">
-						<li><a href="#section-absences-heading"><?php p($l->t('Absences and notifications')); ?></a></li>
+						<li><a href="#section-absences-heading"><?php p($l->t('Absences and carryover')); ?></a></li>
+						<li><a href="#section-absence-workflow-heading"><?php p($l->t('Calendar and workflow emails')); ?></a></li>
 						<li><a href="#overtime-trafficlight-heading"><?php p($l->t('Overtime and undertime traffic light')); ?></a></li>
+						<li><a href="#overtime-bank-heading"><?php p($l->t('Overtime bank and payouts')); ?></a></li>
 						<li><a href="#hr-notifications-heading"><?php p($l->t('HR office notifications')); ?></a></li>
-						<li><a href="#notification-matrix-heading"><?php p($l->t('Rules by absence type and event')); ?></a></li>
 					</ul>
 				</nav>
 
@@ -64,7 +49,7 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 					<p class="form-help form-help--block">
 						<?php p($l->t('Configure reminder behavior, vacation carryover rules, and substitution-related communication for absence workflows.')); ?>
 					</p>
-					<h4 id="block-clock-reminders-heading" class="admin-settings-section__title"><?php p($l->t('Clock-in reminders')); ?></h4>
+					<h4 id="block-clock-reminders-heading" class="admin-settings-subsection__title"><?php p($l->t('Clock-in reminders')); ?></h4>
 					<div class="form-group">
 						<div class="form-checkbox">
 							<input type="checkbox" id="missingClockInRemindersEnabled" name="missingClockInRemindersEnabled"
@@ -138,7 +123,13 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 							</p>
 						</div>
 					</fieldset>
-					<h4 id="block-calendar-workflow-heading" class="admin-settings-section__title"><?php p($l->t('Calendar invites and workflow emails')); ?></h4>
+				</section>
+
+				<section class="admin-settings-section" aria-labelledby="section-absence-workflow-heading">
+					<h3 id="section-absence-workflow-heading" class="admin-settings-section__title"><?php p($l->t('Calendar invites and workflow emails')); ?></h3>
+					<p class="form-help form-help--block">
+						<?php p($l->t('Control iCal attachments and substitution emails when absences are approved.')); ?>
+					</p>
 					<fieldset class="form-fieldset" aria-labelledby="send-ical-legend">
 						<legend id="send-ical-legend" class="form-legend"><?php p($l->t('Absences: Send iCal via email')); ?></legend>
 						<p class="form-help form-help--block">
@@ -218,7 +209,6 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 							</div>
 						</div>
 					</fieldset>
-
 				</section>
 
 				<section class="admin-settings-section" aria-labelledby="overtime-trafficlight-heading">
@@ -226,14 +216,15 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 					<p class="form-help form-help--block">
 						<?php p($l->t('Configure thresholds and recipients for bidirectional balance alerts (overtime and undertime).')); ?>
 					</p>
-					<h4 id="block-trafficlight-recipients-heading" class="admin-settings-section__title"><?php p($l->t('Activation and recipients')); ?></h4>
+					<h4 id="block-trafficlight-recipients-heading" class="admin-settings-subsection__title"><?php p($l->t('Activation and recipients')); ?></h4>
 					<div class="form-group">
 						<div class="form-checkbox">
 							<input type="checkbox"
 								id="overtimeTrafficLightEnabled"
 								name="overtimeTrafficLightEnabled"
 								<?php echo ($settings['overtimeTrafficLightEnabled'] ?? false) ? 'checked' : ''; ?>
-								aria-describedby="overtimeTrafficLightEnabled-help">
+								aria-describedby="overtimeTrafficLightEnabled-help"
+								aria-controls="overtime-trafficlight-settings">
 							<label for="overtimeTrafficLightEnabled" class="form-label">
 								<?php p($l->t('Enable overtime traffic light notifications')); ?>
 							</label>
@@ -243,12 +234,9 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 						</p>
 					</div>
 
-					<div class="form-row form-row--inline">
-						<div class="form-group">
-							<p class="form-help form-help--note"><?php p($l->t('Define when overtime changes from green to yellow and yellow to red.')); ?></p>
-						</div>
-					</div>
-					<div class="form-row form-row--inline">
+					<div id="overtime-trafficlight-settings" class="admin-notifications-dependent-block">
+					<p class="admin-settings-subsection__intro form-help form-help--note"><?php p($l->t('Define when overtime changes from green to yellow and yellow to red (hours).')); ?></p>
+					<div class="form-row form-row--thresholds" role="group" aria-labelledby="block-trafficlight-recipients-heading">
 						<div class="form-group">
 							<label for="overtimeYellowOver" class="form-label"><?php p($l->t('Overtime yellow threshold (hours)')); ?></label>
 							<input type="number" class="form-input" id="overtimeYellowOver" name="overtimeYellowOver" min="0" max="500" step="0.25" value="<?php p((string)($settings['overtimeYellowOver'] ?? 5)); ?>">
@@ -259,12 +247,8 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 						</div>
 					</div>
 
-					<div class="form-row form-row--inline">
-						<div class="form-group">
-							<p class="form-help form-help--note"><?php p($l->t('Define equivalent thresholds for undertime (negative balance).')); ?></p>
-						</div>
-					</div>
-					<div class="form-row form-row--inline">
+					<p class="admin-settings-subsection__intro form-help form-help--note"><?php p($l->t('Define equivalent thresholds for undertime (negative balance).')); ?></p>
+					<div class="form-row form-row--thresholds" role="group" aria-label="<?php p($l->t('Undertime thresholds')); ?>">
 						<div class="form-group">
 							<label for="overtimeYellowUnder" class="form-label"><?php p($l->t('Undertime yellow threshold (hours)')); ?></label>
 							<input type="number" class="form-input" id="overtimeYellowUnder" name="overtimeYellowUnder" min="0" max="500" step="0.25" value="<?php p((string)($settings['overtimeYellowUnder'] ?? 5)); ?>">
@@ -289,7 +273,7 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 						</p>
 					</div>
 
-					<h4 id="block-trafficlight-matrix-heading" class="admin-settings-section__title"><?php p($l->t('Notification matrix')); ?></h4>
+					<h4 id="block-trafficlight-matrix-heading" class="admin-settings-subsection__title"><?php p($l->t('Notification matrix')); ?></h4>
 					<p class="form-help form-help--block">
 						<?php p($l->t('Choose which severity levels should trigger notifications for overtime and undertime.')); ?>
 					</p>
@@ -333,6 +317,90 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 							</tbody>
 						</table>
 					</div>
+					</div>
+				</section>
+
+				<section class="admin-settings-section" aria-labelledby="overtime-bank-heading">
+					<h3 id="overtime-bank-heading" class="admin-settings-section__title"><?php p($l->t('Overtime bank and payouts')); ?></h3>
+					<p class="form-help form-help--block">
+						<?php p($l->t('Employees can accumulate overtime up to a maximum (bank). Hours above the cap can be paid out at month end via Admin → Overtime payouts.')); ?>
+					</p>
+					<div class="form-group">
+						<div class="form-checkbox">
+							<input type="checkbox"
+								id="overtimeBankEnabled"
+								name="overtimeBankEnabled"
+								<?php echo ($settings['overtimeBankEnabled'] ?? false) ? 'checked' : ''; ?>
+								aria-describedby="overtimeBankEnabled-help"
+								aria-controls="overtime-bank-settings">
+							<label for="overtimeBankEnabled" class="form-label">
+								<?php p($l->t('Enable overtime bank (cap + month-end payout)')); ?>
+							</label>
+						</div>
+						<p id="overtimeBankEnabled-help" class="form-help">
+							<?php p($l->t('When enabled, the dashboard shows banked hours and payroll can record payouts above the cap.')); ?>
+						</p>
+					</div>
+					<div id="overtime-bank-settings" class="admin-notifications-dependent-block">
+					<div class="form-row form-row--thresholds">
+						<div class="form-group">
+							<label for="overtimeBankMaxHours" class="form-label"><?php p($l->t('Maximum banked overtime (hours)')); ?></label>
+							<input type="number" class="form-input" id="overtimeBankMaxHours" name="overtimeBankMaxHours" min="1" max="500" step="0.25" value="<?php p((string)($settings['overtimeBankMaxHours'] ?? 100)); ?>">
+						</div>
+						<div class="form-group">
+							<label for="overtimeBankYellowPercent" class="form-label"><?php p($l->t('Bank fill yellow from (%)')); ?></label>
+							<input type="number" class="form-input" id="overtimeBankYellowPercent" name="overtimeBankYellowPercent" min="0" max="100" step="1" value="<?php p((string)($settings['overtimeBankYellowPercent'] ?? 80)); ?>">
+						</div>
+						<div class="form-group">
+							<label for="overtimeBankRedPercent" class="form-label"><?php p($l->t('Bank fill red from (%)')); ?></label>
+							<input type="number" class="form-input" id="overtimeBankRedPercent" name="overtimeBankRedPercent" min="0" max="100" step="1" value="<?php p((string)($settings['overtimeBankRedPercent'] ?? 95)); ?>">
+						</div>
+					</div>
+					<h4 class="admin-settings-subsection__title"><?php p($l->t('After payout')); ?></h4>
+					<div class="form-group">
+						<div class="form-checkbox">
+							<input type="checkbox" id="overtimePayoutNotifyInApp" name="overtimePayoutNotifyInApp" value="1"
+								<?php echo ($settings['overtimePayoutNotifyInApp'] ?? true) ? 'checked' : ''; ?>>
+							<label for="overtimePayoutNotifyInApp" class="form-label">
+								<?php p($l->t('Notify employee in the app when payout is recorded')); ?>
+							</label>
+						</div>
+					</div>
+					<div class="form-group">
+						<div class="form-checkbox">
+							<input type="checkbox" id="overtimePayoutNotifyEmail" name="overtimePayoutNotifyEmail" value="1"
+								<?php echo ($settings['overtimePayoutNotifyEmail'] ?? true) ? 'checked' : ''; ?>>
+							<label for="overtimePayoutNotifyEmail" class="form-label">
+								<?php p($l->t('Email employee when payout is recorded (requires valid email address)')); ?>
+							</label>
+						</div>
+					</div>
+					<nav class="admin-overtime-quicklinks" aria-label="<?php p($l->t('Overtime payroll shortcuts')); ?>">
+						<p class="admin-overtime-quicklinks__label"><?php p($l->t('Payroll actions')); ?></p>
+						<a class="btn btn--secondary btn--small" href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.overtime_payout.index')); ?>">
+							<?php p($l->t('Process payouts')); ?>
+						</a>
+						<a class="btn btn--secondary btn--small" href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.overtime_payout.auditIndex')); ?>">
+							<?php p($l->t('Payout audit')); ?>
+						</a>
+					</nav>
+					<div class="form-group">
+						<div class="form-checkbox">
+							<input type="checkbox"
+								id="overtimeBlockMonthClosurePendingPayout"
+								name="overtimeBlockMonthClosurePendingPayout"
+								value="1"
+								<?php echo ($settings['overtimeBlockMonthClosurePendingPayout'] ?? false) ? 'checked' : ''; ?>
+								aria-describedby="overtimeBlockMonthClosurePendingPayout-help">
+							<label for="overtimeBlockMonthClosurePendingPayout" class="form-label">
+								<?php p($l->t('Block month finalization until overtime payout is recorded')); ?>
+							</label>
+						</div>
+						<p id="overtimeBlockMonthClosurePendingPayout-help" class="form-help">
+							<?php p($l->t('When enabled, employees cannot seal a month while hours above the bank cap are still unpaid for that month.')); ?>
+						</p>
+					</div>
+					</div>
 				</section>
 
 				<section class="admin-settings-section" aria-labelledby="hr-notifications-heading">
@@ -340,14 +408,15 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 					<p class="form-help form-help--block">
 						<?php p($l->t('These settings define if and when HR receives email updates for absence workflows.')); ?>
 					</p>
-					<h4 id="block-hr-setup-heading" class="admin-settings-section__title"><?php p($l->t('General HR notification setup')); ?></h4>
+					<h4 id="block-hr-setup-heading" class="admin-settings-subsection__title"><?php p($l->t('General HR notification setup')); ?></h4>
 					<div class="form-group">
 						<div class="form-checkbox">
 							<input type="checkbox"
 								id="hrNotificationsEnabled"
 								name="hrNotificationsEnabled"
 								<?php echo ($settings['enabled'] ?? false) ? 'checked' : ''; ?>
-								aria-describedby="hrNotificationsEnabled-help">
+								aria-describedby="hrNotificationsEnabled-help"
+								aria-controls="hr-notification-settings">
 							<label for="hrNotificationsEnabled" class="form-label">
 								<?php p($l->t('Enable HR office email notifications')); ?>
 							</label>
@@ -357,6 +426,7 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 						</p>
 					</div>
 
+					<div id="hr-notification-settings" class="admin-notifications-dependent-block">
 					<div class="form-group">
 						<label for="hrRecipients" class="form-label"><?php p($l->t('HR office recipients (comma separated emails)')); ?></label>
 						<textarea
@@ -371,7 +441,7 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 						</p>
 					</div>
 
-					<h4 id="notification-matrix-heading" class="admin-settings-section__title"><?php p($l->t('Rules by absence type and event')); ?></h4>
+					<h4 id="notification-matrix-heading" class="admin-settings-subsection__title"><?php p($l->t('Rules by absence type and event')); ?></h4>
 					<p class="form-help form-help--block">
 						<?php p($l->t('Activate exactly which event should trigger an HR email for each absence type. Disabled cells mean no email is sent for that combination.')); ?>
 					</p>
@@ -412,17 +482,18 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 							</tbody>
 						</table>
 					</div>
+					</div>
 				</section>
 
-				<div class="card-actions">
+				<footer class="admin-settings-form__footer card-actions">
 					<button type="submit" class="btn btn--primary" id="admin-notifications-save">
 						<?php p($l->t('Save notification settings')); ?>
 					</button>
 					<a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.admin.settings')); ?>" class="btn btn--secondary">
 						<?php p($l->t('Back to global settings')); ?>
 					</a>
-				</div>
-				<div id="admin-notifications-live" class="form-help" role="status" aria-live="polite" aria-atomic="true"></div>
+				</footer>
+				<div id="admin-notifications-live" class="admin-notifications-live form-help" role="status" aria-live="polite" aria-atomic="true"></div>
 			</form>
 		</div>
 	</div>
@@ -443,6 +514,7 @@ window.ArbeitszeitCheck.l10n.invalidRecipients = <?php echo json_encode($l->t('P
 window.ArbeitszeitCheck.l10n.invalidBalanceTrafficLightRecipients = <?php echo json_encode($l->t('Please enter at least one valid balance traffic light recipient email address (overtime/undertime).'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 window.ArbeitszeitCheck.l10n.invalidThresholdValues = <?php echo json_encode($l->t('Threshold values must be valid numbers.'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 window.ArbeitszeitCheck.l10n.invalidThresholdOrder = <?php echo json_encode($l->t('Yellow thresholds must be less than or equal to red thresholds.'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+window.ArbeitszeitCheck.l10n.invalidBankFillOrder = <?php echo json_encode($l->t('Bank fill yellow percent must be less than or equal to red percent.'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 window.ArbeitszeitCheck.l10n.invalidCarryoverMaxDays = <?php echo json_encode($l->t('Maximum carryover days must be empty (unlimited) or between 0 and 366'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 window.ArbeitszeitCheck.l10n.failedToSaveNotifications = <?php echo json_encode($l->t('Failed to save notification settings'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 </script>
