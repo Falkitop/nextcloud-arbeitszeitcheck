@@ -1,3 +1,57 @@
+## 1.3.9 – 2026-05-25
+
+### Neu
+
+- **Einheitliches Layout-System**: `css/common/page-patterns.css` mit `.azc-page-stack`, `.azc-shell--wide` / `--minimal`, gemeinsame Filter-Grid- und Empty-/Loading-Muster; `shellWidth` auf der Seiten-Shell (auto-breit für Dashboards, Admin-Tabellen, Manager-Listen).
+- **Gemeinsames Filter-Panel** (`templates/common/azc-filter-panel.php`) sowie Admin **App-Teams**-Callouts, wenn `use_app_teams` deaktiviert ist.
+- **Dialog-API**: `ArbeitszeitCheckComponents.openDialog()`; Modale setzen `inert` auf Navigation/Hauptinhalt statt `aria-hidden` auf `#app-content` (Live-Regionen bleiben verfügbar).
+- **`AzcApi.isApiSuccess()`** für konsistente JSON-Erfolgsprüfungen.
+- **E2E**: `layout-smoke.spec.js`, `a11y-smoke.spec.js` (`@axe-core/playwright`, WCAG 2.1 AA).
+- **Vitest**: `js/common/components.test.js` (Focus-Trap / aria-hidden / Typed-Confirm-Label) und Abdeckung für `isConfirmAccepted` in `utils.test.js`.
+
+### Geändert
+
+- **Alle Routen-Seiten** sind in `.azc-page-stack` gewrapped; Legacy-`.section`-Chrome wird in der App-Shell zurückgesetzt; `.btn` ist Alias auf `.azc-btn`-Styling unter `#app-content.azc-app`.
+- **Admin-Teams**-Seite nutzt die volle Seiten-Shell (`buildAdminShellParams`); die Navigation bietet einen einzigen Skip-Link in die App-Nav.
+- **Persönliche Einstellungen** und `SettingsController` laden Assets nur noch über `FrontEndAssetService::registerCore()`.
+- **`tests/WORKFLOW_ROLE_MATRIX.md`**: Manager-Rolle erfordert App-Teams; `/reports` ist Manager/Admin only.
+
+### Behoben
+
+- **ArbZG §3 Höchstarbeitszeit & Auto-Clock-Out (Nacht-/Schichtarbeit)**: Live-Sessions, Clock-In, Compliance-Prüfungen, manuelle Einträge, automatische Pausen und Pausen-Erinnerungen nutzen einheitlich `DailyWorkingHoursCalculator` (Kalendertag-Clipping bei Mitternacht). Behebt falsche automatische Ausstempelung kurz nach Mitternacht. Frontend stempelt nur noch automatisch aus, wenn `at_daily_maximum=true` (keine reine Client-Extrapolation). Nutzer-Stats sowie Manager-Wochen/Monatssummen verwenden `getWorkingHoursForPeriod()` (gleicher Rechner). Compliance „Überschreitung der Tageshöchstarbeitszeit“ verwendet `findAllCalendarDaysExceedingMaximum()` (keine Fehl-Verstöße für legale 22:00–08:00-Zeilen). E2E: `overnight-daily-maximum.spec.js`.
+- **API-Compliance-Gate**: `blockingIssuesForCompletedEntry()` + Vor-Speichern-Prüfung in `apiStore` / `update` / `store` — ArbZG-§4-Pausenregeln blocken ungültige manuelle Einträge serverseitig (Strict-Modus mit zusätzlichen Prüfungen ohne vorzeitige Verstoßschreibung).
+- **Clock-Status-API (ArbZG Kalendertag)**: `at_daily_maximum` und `session_hours_on_calendar_today` werden immer zurückgegeben (auch nach Ausstempeln), damit Clients Clock-In ohne aktive Session blocken können; Overnight-E2E prüft den Vertrag.
+- **Admin-Mitarbeitende-Seite**: Pagination-Label nutzt `{shown}` / `{total}`-Platzhalter und `TemplateL10n` für den JS-Export — behebt Internal Server Error.
+- **Mitarbeiter-Abwesenheitsantragsformular**: `azc-card`-Layout, sichtbarer Seitentitel, Workflow-Callouts (Auto-Approve vs. Manager-/Vertretungspfad), Fieldsets für Antragsdaten und Vertretung, parallele Datumsfelder, klarere optional/pflicht-Labels, `azc-btn`-Aktionen.
+- **Zeiteintrag erstellen/bearbeiten**: Page-Shell + Assets via `TimeEntryController`; Zeitzonen- und Genehmigungs-Callouts; `azc-card` mit Fieldsets (Datum/Uhrzeit, Pausen, Notiz); ausgerichtete Pausen-Matrix-Labels; dynamische Pausen synchron zur PHP-Barrierefreiheit; responsives Fieldset-Layout (WCAG 2.1 AA).
+- **Abwesenheits-Routen** (erstellen/bearbeiten/anzeigen): `AbsenceController` nutzt `PageShellTrait` + Form-Assets; Fehler werden in der Listen-Seite mit sichtbarem Callout gerendert.
+- **Navigation-Flags**: zentralisiert in `NavigationFlagsService` + `NavigationFlagsTrait` (alle Page-Controller inkl. Manager, Vertretung, Compliance); Compliance-Seiten nutzen `forComplianceUser()` (Vertretungs-Nav verborgen).
+- **Kalender Abwesenheitsanzeigen**: Monats/Wochen-Zellen zeigen lesbare Chips (Typ + Status + getöntes Icon), Wochenansicht zeigt Abwesenheiten, Tagespanel listet Status, Legende, `forced-colors` und Themen-sicherer Kontrast.
+- **Manager Monatsabschluss-PDF**: refaktoriert zu `azc-card`-Schritt-Wizard mit nummerierten Schritten und Standardbreite.
+- **Manager-Abwesenheiten & Zeiteinträge / Manager-Dashboard / Admin-Feiertage / Admin-Urlaubslayer / Mitarbeiter-Zeiteinträge-Liste**: durchgängig auf `azc-page-stack` + `azc-card` + gemeinsames Filter-Grid + zentriertes Standardbreite-Shell migriert.
+- **Dashboard Überstundensaldo**: negative und positive Salden auf getönten Pills mit Haupttext (statt direkter `--color-error` / `--color-success`), damit Werte in allen Nextcloud-Themes lesbar bleiben (WCAG-Kontrast).
+- **Einheitliche Datentabellen**: `page-patterns.css` definiert ein einziges Tabellen-System unter `#app-content.azc-app` (`.table-container` + `.table.table--hover`, Aktions-Spalten, Empty-/Loading-Zellen); `TableConventionTest` sichert die Konvention.
+- **Audit-Pass (Workflows / a11y / Sicherheit)**: l10n für App-Teams-Callouts (en/de); Admin-Teams volle Shell; **Arbeitszeitmodell löschen** fail-closed mit getipptem `DELETE`; Kalender-Tagespanel mit `inert` + Focus-Trap + Escape; Admin-Einstellungen mit `azc-callout`-Fehlern; Manager-Dashboard-Fehlerpfad inkl. Team-Modus-URLs.
+- **Breadcrumb-Trail**: vereinfachtes Shell-Markup und scoped Styles — Pfad liest sich als eine Zeile (Primärlink, gedämpfte Sektion, fette aktuelle Seite) mit CSS-`/`-Trennern.
+- **Compliance-Dashboard-Karten**: Status- und Verstoßblöcke auf `azc-card` Header/Body migriert (Titel + Hilfe links, Aktionen rechts).
+- **Admin-Dashboard-Layout**: Styles greifen jetzt korrekt auf `azc-app--admin-dashboard`; zusätzliches `.section`-Padding entfernt; `azc-callout`-Warnbanner, Stat-Karten-Grid, Issue-Block in `azc-card`.
+- **Confirm-Dialog Typed Phrase (Client)**: enthält das übersetzte Label nach `t()` noch `%s` (Test-Stubs / fehlende Substitution), wird die angeforderte Phrase (`DELETE`, `REMOVE`, …) angewandt — destruktive Prompts ohne rohen Platzhalter.
+- **GDPR-Löschen-UX**: ohne `confirmDialog` gibt es eine assertive Fehlermeldung statt stillem Scheitern; gemeinsame `isConfirmAccepted` / `confirmDialogReason`-Helfer.
+- **Fail-closed destruktive Bestätigungen**: `Utils.confirmDestructiveAction()` blockt Monatsabschluss/Wieder­öffnen, Korrekturen-Rückzug und Überstundenauszahlung (Einzel/Bulk), wenn die Dialog-API fehlt oder der Nutzer abbricht — kein stilles Durchwinken (audit-kritisch). Alle Admin-Löschpfade (Feiertage, Teams, Urlaubslayer, Tarif retire) nutzen den gleichen Helfer.
+- **Monatsabschluss-Lock-Hinweis (W7)**: gemeinsames `templates/common/month-closure-lock.php` mit Schloss-Icon auf Zeiteinträgen, wenn der gewählte Monat finalisiert ist.
+- **Einstellungen-UX**: Sektionen mit `azc-card`-Abständen und `azc-btn`-Controls.
+- **Vertretungsanträge-Seite**: doppelter `<h1>` und Waisenkind-`</div>` entfernt; Styles auf `.azc-app--substitution-requests` umgestellt; Empty-State mit `azc-empty-state`.
+- **Dashboard Clock Double-Submit (W11)**: `setLoadingState()` setzt `aria-busy="true"` auf Clock-/Pause-Buttons während API-Calls (mit Disabled-Zustand und Loading-Label).
+- **Reports DATEV-Auffindbarkeit (W23)**: Admins sehen unter dem Dateiformat einen Hinweis auf Globale Einstellungen → Exporte und Berichtswesen (CSV/JSON bleiben auf dieser Seite).
+- **Admin-Benachrichtigungen (W13)**: sticky Save-Footer, `beforeunload` bei ungespeicherten Änderungen und `aria-busy` während des Speicherns.
+- **GDPR-Datenlöschung speichert nun den vom Nutzer angegebenen Grund**: `GdprController::delete()` liest den `reason`-Parameter aus dem destruktiven Confirm-Dialog (`js/settings.js` schickt ihn bereits), trimmt/clampt auf 500 Zeichen und schreibt ihn in den `gdpr_data_deletion_request`-Audit-Log-Eintrag neben IP/User-Agent. Aufbewahrungsfristen unverändert.
+- **Tarif-Regelsätze schreiben jetzt eine vollständige Audit-Spur**: `AdminController::createTariffRuleSet/updateTariffRuleSet/activateTariffRuleSet/retireTariffRuleSet/deleteTariffRuleSet` schreiben strukturierte `tariff_rule_set_*`-Einträge mit alten/neuen Snapshots (Code, Version, Jurisdiktion, Status, Aktivierungsmodus, Gültigkeitsfenster, Modulliste).
+- **Admin-Autorisierung antwortet API/AJAX-Aufrufern jetzt mit JSON**: `AppAdminMiddleware` liefert keine HTML-403 mehr für `fetch`/XHR oder `/api/...`-Pfade. AJAX-Consumer erhalten `{ ok: false, error: { code: 'admin_required' } }` mit HTTP 403; Browser-Page-Loads weiterhin das Standard-`core/403`-Template.
+- **Einzige Quelle für Frontend-Assets**: doppelte CSS/JS-Liste aus `Application::boot()` entfernt — jeder Seiten-Entry läuft über `FrontEndAssetService::register{Core,Page}()` (inkl. `app-vanilla.css`, das nun von `css/app.css` importiert wird). Beendet Ladereihenfolge-Überraschungen.
+- **E2E-Urlaubs-Seed (`ensure-e2e-vacation`)**: `UserVacationPolicyAssignment` initialisiert `vacation_mode` nicht mehr vor, damit `INSERT` die Spalte immer persistiert (behebt SQL 1364 auf strikter MariaDB).
+- **E2E-Clock-Seed (`ensure-e2e-clock`)**: Dev/CI-only OCC-Command für `e2e_*`-Nutzer leert aktive Sessions und backdatet den letzten abgeschlossenen Eintrag, wenn ArbZG-§5-Ruhezeit Playwright-Clock-In blockieren würde; in `run-e2e-docker.sh` verdrahtet.
+- **Audit-Härtungs-Folgepass**: Manager-Dashboard (unbalancierte Klammer bei „Payout eligible: %s h“ behoben), Admin-Mitarbeitende (`auMsg()` statt undefinierter `t()`), Icon-Katalog (doppelter `calendar-off`-Eintrag entfernt), Stylesheets (`clip-path: inset(50%)` statt `clip: rect(...)`, korrekte `border-color`-Reihenfolge auf `.inline-notice--warning/--info`, leere Block-Kommentare entfernt).
+
 ## 1.3.8 – 2026-05-20
 
 ### Behoben (Audit-Härtung)
