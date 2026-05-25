@@ -25,6 +25,7 @@ $payoutsUrl = $urlGenerator->linkToRoute('arbeitszeitcheck.overtime_payout.index
 
 <?php include __DIR__ . '/common/page-start.php'; ?>
 
+        <div class="azc-page-stack">
         <div class="admin-dashboard__stack">
             <?php if ($showOvertimeBanner): ?>
             <aside id="admin-overtime-onboarding-banner"
@@ -148,8 +149,8 @@ $payoutsUrl = $urlGenerator->linkToRoute('arbeitszeitcheck.overtime_payout.index
                             <p class="azc-empty-state__lead"><?php p($l->t('Great! All employees are following the working time rules correctly.')); ?></p>
                         </div>
                     <?php else: ?>
-                        <div class="table-responsive" role="region" aria-label="<?php p($l->t('Recent compliance violations')); ?>">
-                            <table class="table" aria-label="<?php p($l->t('Recent compliance violations')); ?>">
+                        <div class="table-container" role="region" aria-label="<?php p($l->t('Recent compliance violations')); ?>">
+                            <table class="table table--hover" aria-label="<?php p($l->t('Recent compliance violations')); ?>">
                                 <thead>
                                     <tr>
                                         <th scope="col"><?php p($l->t('Employee')); ?></th>
@@ -240,4 +241,5 @@ window.ArbeitszeitCheck.l10n = window.ArbeitszeitCheck.l10n || {};
 Object.assign(window.ArbeitszeitCheck.l10n, <?php echo json_encode($adminDashboardL10n, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>);
 </script>
 
+</div><!-- /.azc-page-stack -->
 <?php include __DIR__ . '/common/page-end.php'; ?>

@@ -63,7 +63,7 @@
 	border-color: var(--color-warning, #bf7c00);
 }
 
-#app-content.azc-app--admin-overtime-payouts .admin-ot-payouts__table .table-responsive {
+#app-content.azc-app--admin-overtime-payouts .admin-ot-payouts__table .table-container {
 	inline-size: 100%;
 	max-inline-size: 100%;
 	overflow-x: auto;
@@ -139,7 +139,7 @@
 }
 
 @media (forced-colors: active) {
-	#app-content.azc-app--admin-overtime-payouts .admin-ot-payouts__table .table-responsive,
+	#app-content.azc-app--admin-overtime-payouts .admin-ot-payouts__table .table-container,
 	#app-content.azc-app--admin-overtime-payouts .admin-ot-payouts__live:not(:empty) {
 		border-color: CanvasText;
 	}

@@ -215,7 +215,7 @@
 
 /* ----- Results table ----- */
 
-#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit__table .table-responsive {
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit__table .table-container {
 	inline-size: 100%;
 	max-inline-size: 100%;
 	overflow-x: auto;
@@ -329,7 +329,7 @@
 
 @media (forced-colors: active) {
 	#app-content.azc-app--admin-overtime-payout-audit .user-picker__list,
-	#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit__table .table-responsive,
+	#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit__table .table-container,
 	#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit-gaps__item {
 		border-color: CanvasText;
 	}

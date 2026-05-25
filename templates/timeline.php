@@ -18,6 +18,7 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
 
 <?php include __DIR__ . '/common/page-start.php'; ?>
 
+        <div class="azc-page-stack">
         <div class="header-actions">
             <button id="btn-refresh-timeline" class="btn btn--secondary" type="button" aria-label="<?php p($l->t('Refresh timeline data')); ?>">
                 <?php p($l->t('Refresh')); ?>
@@ -115,4 +116,5 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
         business_trip: <?php echo json_encode($l->t('Business Trip'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>
     };
 </script>
+</div><!-- /.azc-page-stack -->
 <?php include __DIR__ . '/common/page-end.php'; ?>

@@ -202,8 +202,8 @@
             '    <p class="pending-approval-card__title"><strong>' + displayName + '</strong> – ' + typeDisplay + '</p>' +
             '    <p class="pending-approval-card__meta">' + escapeHtml(start) + ' – ' + escapeHtml(end) + (days ? ' (' + escapeHtml(String(days)) + ' ' + t('days', 'days') + ')' : '') + '</p>' +
             '    <div class="pending-approval-card__actions">' +
-            '      <button type="button" class="btn btn--primary btn-approve-absence" data-absence-id="' + escapeHtml(String(id)) + '" aria-label="' + t('Approve', 'Approve') + ' ' + displayName + '">' + t('Approve', 'Approve') + '</button>' +
-            '      <button type="button" class="btn btn--secondary btn-reject-absence" data-absence-id="' + escapeHtml(String(id)) + '" aria-label="' + t('Reject', 'Reject') + ' ' + displayName + '">' + t('Reject', 'Reject') + '</button>' +
+            '      <button type="button" class="azc-btn azc-btn--primary btn-approve-absence" data-absence-id="' + escapeHtml(String(id)) + '" aria-label="' + t('Approve', 'Approve') + ' ' + displayName + '">' + t('Approve', 'Approve') + '</button>' +
+            '      <button type="button" class="azc-btn azc-btn--secondary btn-reject-absence" data-absence-id="' + escapeHtml(String(id)) + '" aria-label="' + t('Reject', 'Reject') + ' ' + displayName + '">' + t('Reject', 'Reject') + '</button>' +
             '    </div>' +
             '  </div>' +
             '</div>'
@@ -257,8 +257,8 @@
             '<label for="' + textareaId + '" class="visually-hidden">' + escapeHtml(t('Reason for rejection (optional)', 'Reason for rejection (optional)')) + '</label>',
             '<textarea id="' + textareaId + '" rows="3" class="reject-modal-textarea" placeholder="' + escapeHtml(t('Enter reason for rejection...', 'Enter reason for rejection...')) + '" maxlength="1000" aria-describedby="reject-absence-desc-' + absenceId + '"></textarea>',
             '<div class="reject-modal-actions">',
-            '  <button type="button" class="btn btn--secondary btn-reject-modal-cancel">' + t('Cancel', 'Cancel') + '</button>',
-            '  <button type="button" class="btn btn--primary btn-reject-modal-confirm">' + t('Confirm rejection', 'Confirm rejection') + '</button>',
+            '  <button type="button" class="azc-btn azc-btn--secondary btn-reject-modal-cancel">' + t('Cancel', 'Cancel') + '</button>',
+            '  <button type="button" class="azc-btn azc-btn--primary btn-reject-modal-confirm">' + t('Confirm rejection', 'Confirm rejection') + '</button>',
             '</div>'
         ].join('');
         const modal = Components.createModal({
@@ -407,8 +407,8 @@
             diffHtml +
             (justification ? '<p class="pending-approval-card__reason"><strong>' + escapeHtml(t('Reason:', 'Reason:')) + '</strong> <em>' + justification + (String(justificationText).length > 300 ? '…' : '') + '</em></p>' : '') +
             '    <div class="pending-approval-card__actions">' +
-            '      <button type="button" class="btn btn--primary btn-approve-time-entry" data-time-entry-id="' + escapeHtml(String(id)) + '" aria-label="' + escapeHtml(t('Approve', 'Approve') + ' ' + (item.displayName || '')) + '">' + t('Approve', 'Approve') + '</button>' +
-            '      <button type="button" class="btn btn--secondary btn-reject-time-entry" data-time-entry-id="' + escapeHtml(String(id)) + '" aria-label="' + escapeHtml(t('Reject', 'Reject') + ' ' + (item.displayName || '')) + '">' + t('Reject', 'Reject') + '</button>' +
+            '      <button type="button" class="azc-btn azc-btn--primary btn-approve-time-entry" data-time-entry-id="' + escapeHtml(String(id)) + '" aria-label="' + escapeHtml(t('Approve', 'Approve') + ' ' + (item.displayName || '')) + '">' + t('Approve', 'Approve') + '</button>' +
+            '      <button type="button" class="azc-btn azc-btn--secondary btn-reject-time-entry" data-time-entry-id="' + escapeHtml(String(id)) + '" aria-label="' + escapeHtml(t('Reject', 'Reject') + ' ' + (item.displayName || '')) + '">' + t('Reject', 'Reject') + '</button>' +
             '    </div>' +
             '  </div>' +
             '</div>'
@@ -463,8 +463,8 @@
             '<label for="' + textareaId + '" class="visually-hidden">' + escapeHtml(t('Reason for rejection (optional)', 'Reason for rejection (optional)')) + '</label>',
             '<textarea id="' + textareaId + '" rows="3" class="reject-modal-textarea" placeholder="' + escapeHtml(t('Enter reason for rejection...', 'Enter reason for rejection...')) + '" maxlength="1000" aria-describedby="reject-time-entry-desc-' + timeEntryId + '"></textarea>',
             '<div class="reject-modal-actions">',
-            '  <button type="button" class="btn btn--secondary btn-reject-modal-cancel">' + t('Cancel', 'Cancel') + '</button>',
-            '  <button type="button" class="btn btn--primary btn-reject-modal-confirm">' + t('Confirm rejection', 'Confirm rejection') + '</button>',
+            '  <button type="button" class="azc-btn azc-btn--secondary btn-reject-modal-cancel">' + t('Cancel', 'Cancel') + '</button>',
+            '  <button type="button" class="azc-btn azc-btn--primary btn-reject-modal-confirm">' + t('Confirm rejection', 'Confirm rejection') + '</button>',
             '</div>'
         ].join('');
         const modal = Components.createModal({

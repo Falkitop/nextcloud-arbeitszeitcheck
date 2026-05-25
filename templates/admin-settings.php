@@ -31,6 +31,7 @@ $cancelUrl = $isNcAdminShell
 
 <?php if (!$isNcAdminShell): ?>
 <?php include __DIR__ . '/common/page-start.php'; ?>
+        <div class="azc-page-stack">
 <?php else: ?>
 <div class="azc-nc-admin-settings" id="arbeitszeitcheck-nc-admin-settings">
 	<div id="azc-live-region" class="azc-sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
@@ -48,11 +49,9 @@ $cancelUrl = $isNcAdminShell
 
         <div class="section<?php echo $isNcAdminShell ? ' azc-nc-admin-settings__form' : ''; ?>">
 <?php if (isset($_['error']) && !empty($_['error'])): ?>
-                <div class="alert alert--error" role="alert">
-                    <span class="alert-icon" aria-hidden="true"><?php print_unescaped(\OCA\ArbeitszeitCheck\Service\IconCatalog::render('triangle-alert', 'alert-icon-svg')); ?></span>
-                    <div class="alert-content">
-                        <strong class="alert-title"><?php p($l->t('An error occurred')); ?></strong>
-                        <p class="alert-message">
+                <div class="azc-callout azc-callout--danger" role="alert">
+                    <p class="azc-callout__title"><?php p($l->t('An error occurred')); ?></p>
+                    <p class="azc-callout__text">
                             <?php 
                             // Make error message more helpful
                             $error = $_['error'];
@@ -62,8 +61,7 @@ $cancelUrl = $isNcAdminShell
                                 p($error);
                             }
                             ?>
-                        </p>
-                    </div>
+                    </p>
                 </div>
             <?php endif; ?>
 
@@ -711,6 +709,7 @@ window.ArbeitszeitCheck.l10n.appAdminsAllAdmins = <?php echo json_encode($l->t('
 </script>
 
 <?php if (!$isNcAdminShell): ?>
+        </div><!-- /.azc-page-stack -->
 <?php include __DIR__ . '/common/page-end.php'; ?>
 <?php else: ?>
 </div>

@@ -20,9 +20,11 @@ It complements PHPUnit coverage with explicit end-to-end expectations.
 - Status polling is read-only (no auto-complete side effects).
 
 ## Manual Time Entry Lifecycle
+- GET `/time-entries/create` (and edit) must render without server error (JS l10n partial uses `TemplateL10n` for `%` placeholders — `tests/Unit/Templates/TimeEntryFormL10nTest.php`).
 - Create manual entry validates date format (ISO/German date only).
 - Create manual entry rejects overlap.
 - Create manual entry enforces rest-period validation.
+- Auto-break toggle on create/edit form inserts §4-compliant breaks client-side when enabled (`#auto-break-enabled`; distinct from user setting `auto_break_calculation`).
 - Update entry rejects invalid date/time formats.
 - Update entry enforces overlap + month-closure mutability.
 - Delete rejects non-deletable automatic entries.

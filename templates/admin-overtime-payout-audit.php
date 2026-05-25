@@ -20,6 +20,7 @@ $monthLabels = is_array($_['monthLabels'] ?? null) ? $_['monthLabels'] : [];
 
 <?php include __DIR__ . '/common/page-start.php'; ?>
 
+        <div class="azc-page-stack">
         <div class="header-actions azc-page-actions-source">
             <a href="<?php p($payoutUrl); ?>" class="azc-btn azc-btn--secondary">
                 <?php p($l->t('Process payouts')); ?>
@@ -151,8 +152,8 @@ $monthLabels = is_array($_['monthLabels'] ?? null) ? $_['monthLabels'] : [];
                     </div>
                 </header>
                 <div class="azc-card__body">
-                    <div class="table-responsive" role="region" aria-labelledby="ot-audit-table-heading">
-                        <table class="grid-table admin-ot-audit__grid" id="ot-audit-table">
+                    <div class="table-container" role="region" aria-labelledby="ot-audit-table-heading">
+                        <table class="table table--hover grid-table admin-ot-audit__grid" id="ot-audit-table">
                             <caption class="sr-only"><?php p($l->t('Recorded overtime payouts matching the current filters')); ?></caption>
                             <thead>
                                 <tr>
@@ -184,4 +185,5 @@ window.ARBEITSZEITCHECK_OT_PAYOUT_AUDIT = {
 };
 </script>
 
+</div><!-- /.azc-page-stack -->
 <?php include __DIR__ . '/common/page-end.php'; ?>

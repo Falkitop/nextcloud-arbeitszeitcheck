@@ -1,7 +1,7 @@
 /**
  * Manager / admin: revision PDFs — choose month first, then list people with actionable sealed data.
  *
- * Config: read from data-* on .manager-month-closures-page (server-rendered), with optional
+ * Config: read from data-* on .manager-month-closures (server-rendered), with optional
  * window.OCA.ArbeitszeitCheck.managerMonthClosures fallback. URLs must never rely on executable
  * inline scripts alone (CSP / load order).
  *
@@ -16,7 +16,7 @@
      * @returns {{ revisionPdfAvailableMonthsUrl: string, revisionPdfUsersForMonthUrl: string, pdfUrlBase: string }}
      */
     function readConfigFromDom() {
-        const root = document.querySelector('.manager-month-closures-page');
+        const root = document.querySelector('.manager-month-closures');
         const fromWin = (window.OCA && window.OCA.ArbeitszeitCheck && window.OCA.ArbeitszeitCheck.managerMonthClosures) || {};
         if (!root || !root.dataset) {
             return {
@@ -126,15 +126,39 @@
             if (!pageErr) {
                 return;
             }
-            pageErr.textContent = msg;
+            const textEl = pageErr.querySelector('.azc-callout__text');
+            if (textEl) {
+                textEl.textContent = msg;
+            } else {
+                pageErr.textContent = msg;
+            }
             pageErr.hidden = false;
         }
 
         function clearPageError() {
-            if (pageErr) {
-                pageErr.hidden = true;
+            if (!pageErr) {
+                return;
+            }
+            pageErr.hidden = true;
+            const textEl = pageErr.querySelector('.azc-callout__text');
+            if (textEl) {
+                textEl.textContent = '';
+            } else {
                 pageErr.textContent = '';
             }
+        }
+
+        function setEmptyMessage(text) {
+            if (!peopleEmpty) {
+                return;
+            }
+            const textEl = peopleEmpty.querySelector('.azc-empty-state__text');
+            if (textEl) {
+                textEl.textContent = text;
+            } else {
+                peopleEmpty.textContent = text;
+            }
+            peopleEmpty.hidden = !text;
         }
 
         function setMonthSelectLoading(loading) {
@@ -149,46 +173,40 @@
             peopleStatus.textContent = '';
 
             if (!users || users.length === 0) {
-                peopleEmpty.textContent = t(
+                setEmptyMessage(t(
                     l10n,
                     'No one has a finalized revision for this month in your scope.',
                     'No one has a finalized revision for this month in your scope.'
-                );
-                peopleEmpty.hidden = false;
+                ));
                 return;
             }
+
+            peopleEmpty.hidden = true;
 
             users.forEach(function (u) {
                 const uid = u.userId || '';
                 const name = (u.displayName && String(u.displayName).trim()) ? String(u.displayName) : uid;
                 const email = u.email ? String(u.email) : '';
                 const li = document.createElement('li');
-                li.className = 'manager-mc-person-row';
+                li.className = 'manager-mc-person';
 
                 const info = document.createElement('div');
-                info.className = 'manager-mc-person-info';
+                info.className = 'manager-mc-person__info';
                 const nameEl = document.createElement('span');
-                nameEl.className = 'manager-mc-person-name';
+                nameEl.className = 'manager-mc-person__name';
                 nameEl.textContent = name;
                 info.appendChild(nameEl);
-                if (email) {
-                    const meta = document.createElement('span');
-                    meta.className = 'manager-mc-person-meta';
-                    meta.textContent = uid + ' · ' + email;
-                    info.appendChild(meta);
-                } else {
-                    const meta = document.createElement('span');
-                    meta.className = 'manager-mc-person-meta';
-                    meta.textContent = uid;
-                    info.appendChild(meta);
-                }
+                const meta = document.createElement('span');
+                meta.className = 'manager-mc-person__meta';
+                meta.textContent = email ? (uid + ' · ' + email) : uid;
+                info.appendChild(meta);
 
                 const btn = document.createElement('a');
                 const pdfHref = buildPdfUrl(cfg, uid, year, month);
                 const pdfMissing = !cfg.pdfUrlBase || pdfHref === '#';
                 btn.href = pdfHref;
-                btn.className = 'btn btn--primary manager-mc-person-download' +
-                    (pdfMissing ? ' manager-mc-person-download--disabled' : '');
+                btn.className = 'azc-btn azc-btn--primary manager-mc-person__download' +
+                    (pdfMissing ? ' manager-mc-person__download--disabled' : '');
                 if (pdfMissing) {
                     btn.setAttribute('aria-disabled', 'true');
                 }
@@ -204,10 +222,11 @@
         }
 
         function loadPeopleForMonth(year, month) {
-            peopleEmpty.hidden = true;
             peopleList.hidden = true;
             peopleList.innerHTML = '';
+            setEmptyMessage('');
             peopleStatus.textContent = t(l10n, 'Loading…', 'Loading…');
+            peopleStatus.classList.add('manager-mc-status--loading');
             clearPageError();
 
             if (!ajax) {
@@ -225,6 +244,7 @@
                 method: 'GET',
                 onSuccess: function (data) {
                     peopleStatus.textContent = '';
+                    peopleStatus.classList.remove('manager-mc-status--loading');
                     if (!data || !data.success || !Array.isArray(data.users)) {
                         showPageError(t(l10n, 'Could not load people for this month.', 'Could not load people for this month.'));
                         return;
@@ -233,6 +253,7 @@
                 },
                 onError: function (err) {
                     peopleStatus.textContent = '';
+                    peopleStatus.classList.remove('manager-mc-status--loading');
                     let msg = t(l10n, 'Could not load people for this month.', 'Could not load people for this month.');
                     if (err && typeof err.error === 'string' && err.error !== '') {
                         msg = err.error;
@@ -284,12 +305,11 @@
                                 );
                                 monthSel.add(opt);
                                 monthSel.disabled = true;
-                                peopleEmpty.textContent = t(
+                                setEmptyMessage(t(
                                     l10n,
                                     'No finalized months are available for your access yet.',
                                     'No finalized months are available for your access yet.'
-                                );
-                                peopleEmpty.hidden = false;
+                                ));
                                 return;
                             }
 
@@ -300,12 +320,11 @@
                             });
                             monthSel.disabled = false;
 
-                            peopleEmpty.textContent = t(
+                            setEmptyMessage(t(
                                 l10n,
                                 'Select a month to see who you can download for.',
                                 'Select a month to see who you can download for.'
-                            );
-                            peopleEmpty.hidden = false;
+                            ));
                         } catch (e) {
                             setMonthSelectLoading(false);
                             monthLoadStatus.textContent = '';
@@ -346,12 +365,11 @@
             if (!v || v.indexOf('-') < 0) {
                 peopleList.innerHTML = '';
                 peopleList.hidden = true;
-                peopleEmpty.textContent = t(
+                setEmptyMessage(t(
                     l10n,
                     'Select a month to see who you can download for.',
                     'Select a month to see who you can download for.'
-                );
-                peopleEmpty.hidden = false;
+                ));
                 peopleStatus.textContent = '';
                 return;
             }

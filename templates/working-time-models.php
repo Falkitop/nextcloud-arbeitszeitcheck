@@ -20,6 +20,8 @@ $models = $_['models'] ?? [];
 <?php include __DIR__ . '/common/page-start.php'; ?>
 
 
+        <div class="azc-page-stack">
+
         <div class="section">
 <div class="section-content mb-3">
                 <button type="button" 
@@ -160,4 +162,5 @@ $models = $_['models'] ?? [];
     window.ArbeitszeitCheck.l10n.thisWorkSchedule = <?php echo json_encode($l->t('this work schedule'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 </script>
 
+</div><!-- /.azc-page-stack -->
 <?php include __DIR__ . '/common/page-end.php'; ?>

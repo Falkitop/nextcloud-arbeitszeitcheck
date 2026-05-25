@@ -7,8 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- **Unified layout system**: `css/common/page-patterns.css` with `.azc-page-stack`, `.azc-shell--wide` / `--minimal`, shared filter grid, empty/loading states; `shellWidth` on page shell (auto-wide for dashboards, admin tables, manager lists).
+- **Shared filter panel** partials (`templates/common/azc-filter-panel.php`) and admin **app teams** callouts when `use_app_teams` is off.
+- **Dialog API**: `ArbeitszeitCheckComponents.openDialog()`; modals use `inert` on nav/main instead of `aria-hidden` on `#app-content` (live regions stay available).
+- **`AzcApi.isApiSuccess()`** for consistent JSON success checks.
+- **E2E**: `tests/e2e/layout-smoke.spec.js`, `tests/e2e/a11y-smoke.spec.js` (`@axe-core/playwright`, WCAG 2.1 AA tags).
+
+### Changed
+
+- **All routed pages** wrapped in `.azc-page-stack`; legacy `.section` chrome reset inside the app shell; `.btn` aliases to `.azc-btn` styling under `#app-content.azc-app`.
+- **Admin teams** page uses full page shell (`buildAdminShellParams`); navigation exposes a single skip link to app nav (main content skip remains in `page-start`).
+- **Personal settings** (Nextcloud user settings) and **SettingsController** load assets via `FrontEndAssetService::registerCore()` only.
+- **`tests/WORKFLOW_ROLE_MATRIX.md`**: manager role requires app teams; `/reports` is manager/admin only.
+
 ### Fixed
 
+- **Admin users page**: pagination label uses `{shown}` / `{total}` placeholders and `TemplateL10n` for JS export — fixes Internal Server Error from `json_encode($l->t('Showing %d of %d employees'))` without `vsprintf` arguments.
+- **Employee absence request form**: `azc-card` layout, visible page title, workflow callouts (auto-approve vs manager/substitute path), fieldsets for request details and substitute (fixes duplicate “Substitute” label), side-by-side dates, clearer optional/required labels, `azc-btn` actions.
+- **Time entry create/edit form**: page shell + assets via `TimeEntryController`; timezone and approval callouts; `azc-card` with fieldsets (date/time, breaks, note); aligned break matrix labels; dynamic breaks match PHP a11y; responsive fieldset layout (WCAG 2.1 AA).
+- **Absence create/edit/view routes**: `AbsenceController` now uses `PageShellTrait` + form assets (same gap as time-entry create had — broken nav/header without shell); errors render on the list page with a visible callout instead of a blank layout.
+- **Time entry edit errors**: denied or failed edits show the list layout with shell, assets, and an error callout (no half-rendered page).
+- **Navigation flags**: centralized in `NavigationFlagsService` + `NavigationFlagsTrait` (all page controllers including Manager, Substitute, Compliance) — removes duplicated `getNavigationFlags()` implementations; compliance pages use `forComplianceUser()` (substitution nav hidden).
+- **Absences list filter**: legacy `.section` filter replaced with `azc-card` / `azc-filter-grid` (matches time entries list UX).
+- **API compliance gate**: `blockingIssuesForCompletedEntry()` + pre-save check in `apiStore` / `update` / `store` — ArbZG §4 break rules always block invalid manual entries server-side (strict mode adds further checks without writing violations before persist).
+- **Calendar absence indicators**: month/week cells show readable chips (type label + approval status + tinted icon), not icon-only strokes; week view shows absences; day panel lists status; legend explains approved vs pending; `forced-colors` and theme-safe contrast.
+- **Manager month-closure PDF page**: refactored to `azc-card` step wizard (numbered steps, person rows with `azc-btn` downloads, standard-width shell); removed narrow floating column layout.
+- **Manager absences & time entries**: legacy `.section` / `.btn` layout replaced with `azc-page-stack`, `azc-card` filter/results blocks, shared `azc-filter-grid`, standard-width centered shell (like month-closures), and `azc-empty-state` / `azc-btn` patterns.
+- **Manager dashboard**: migrated from legacy `.section` blocks (broken by shell section reset) to `azc-card` sections, admin-style stat tiles, standard-width centered layout, and `azc-btn` export action.
+- **Admin holidays**: refactored to `azc-card` layout, shared `azc-filter-grid` toolbar, `table-container` / `table--hover`, scoped CSS under `azc-app--admin-holidays`, and `azc-btn` row actions (fixes broken `.admin-holidays-page` selectors).
+- **Admin vacation layers**: `azc-page-stack` + `azc-card` sections (intro, L0/L1/L2, simulator), `table-container` / `table--hover`, scoped layout under `azc-app--admin-vacation-layers` (removes duplicate page padding and standalone `.layer-card` chrome), `azc-btn` / `azc-badge` throughout.
+- **Employee time entries (list)**: timezone callout, stats, month closure, filter panel, and entries table use `azc-card` / `azc-callout` / `azc-filter-grid`; toolbar buttons relocate to the page header; scoped layout under `azc-app--time-entries` (fixes double margins from legacy `.section` / `.stats-grid`).
+- **Dashboard overtime balance**: negative and positive balances use main text on tinted pills instead of raw `--color-error` / `--color-success`, so large values stay readable in all Nextcloud themes (WCAG contrast).
+- **Unified data tables**: `page-patterns.css` defines one table system under `#app-content.azc-app` (`.table-container` + `.table.table--hover`, action columns, empty/loading cells); all routed list templates and dynamic report/admin tables migrated off legacy `table-responsive` / bare `grid-table`; `TableConventionTest` guards the convention.
+- **Manager absences & time entries**: filters moved into the list card as a flat toolbar directly above the table (no nested box or `azc-filter-panel` accent); dedicated filter grid alignment (no subgrid glitches); “Record approved absence” sits below the list.
+- **Audit pass (workflows / a11y / security)**: `l10n` for app-teams callouts (en/de); **admin teams** full shell; **working time model delete** fail-closed typed `DELETE`; **calendar day panel** `inert` + focus trap + Escape; **admin settings** `azc-callout` errors; manager dashboard error path includes team-mode URLs.
 - **Breadcrumb trail**: simplified shell markup (no separator `<li>` nodes) and scoped styles so the trail reads as one line — primary link, muted section, bold current page — with CSS `/` dividers and ellipsis on long titles.
 - **Compliance dashboard cards**: migrated status and violations blocks to `azc-card` header/body layout (title + help left, actions right, sized button icons); removed broken `card-header--with-actions` stacking.
 - **Admin dashboard layout**: fixed styles targeting wrong `.admin-dashboard` class (shell uses `azc-app--admin-dashboard`); removed extra `.section` padding; `azc-callout` warning banner; stat cards grid; issues block in `azc-card`.

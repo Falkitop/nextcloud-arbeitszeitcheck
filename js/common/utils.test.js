@@ -164,6 +164,16 @@ describe('ArbeitszeitCheckUtils', () => {
     expect(u.confirmDialogReason(false, 'user_request')).toBe('user_request')
   })
 
+  it('isApiSuccess respects HTTP ok and JSON success flag', async () => {
+    await import('./api.js')
+    const api = window.AzcApi
+    expect(api.isApiSuccess({ ok: true, data: { success: true } })).toBe(true)
+    expect(api.isApiSuccess({ ok: true, data: {} })).toBe(true)
+    expect(api.isApiSuccess({ ok: false, data: { success: true } })).toBe(false)
+    expect(api.isApiSuccess({ ok: true, data: { success: false } })).toBe(false)
+    expect(api.isApiSuccess({ ok: true, data: { ok: false } })).toBe(false)
+  })
+
   it('confirmDestructiveAction fails closed when dialog API is missing', async () => {
     const u = window.ArbeitszeitCheckUtils
     const showError = vi.fn()

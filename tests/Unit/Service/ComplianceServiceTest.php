@@ -968,4 +968,38 @@ class ComplianceServiceTest extends TestCase
 		$this->assertEquals(1, $report['violations_by_severity'][ComplianceViolation::SEVERITY_ERROR]);
 		$this->assertEquals(1, $report['violations_by_severity'][ComplianceViolation::SEVERITY_WARNING]);
 	}
+
+	public function testBlockingIssuesForCompletedEntryFlagsMissingThirtyMinuteBreak(): void
+	{
+		$timeEntry = new TimeEntry();
+		$timeEntry->setUserId('testuser');
+		$timeEntry->setStartTime(new \DateTime('2026-05-02 08:00:00'));
+		$timeEntry->setEndTime(new \DateTime('2026-05-02 15:00:00'));
+		$timeEntry->setBreaks(json_encode([]));
+		$timeEntry->setStatus(TimeEntry::STATUS_COMPLETED);
+		$timeEntry->setIsManualEntry(true);
+		$timeEntry->setCreatedAt(new \DateTime());
+		$timeEntry->setUpdatedAt(new \DateTime());
+
+		$issues = $this->service->blockingIssuesForCompletedEntry($timeEntry);
+
+		$this->assertNotEmpty($issues);
+		$this->assertStringContainsString('30-minute', $issues[0]);
+	}
+
+	public function testBlockingIssuesForCompletedEntryAllowsCompliantBreaks(): void
+	{
+		$timeEntry = new TimeEntry();
+		$timeEntry->setUserId('testuser');
+		$timeEntry->setStartTime(new \DateTime('2026-05-02 08:00:00'));
+		$timeEntry->setEndTime(new \DateTime('2026-05-02 15:00:00'));
+		$timeEntry->setBreakStartTime(new \DateTime('2026-05-02 12:00:00'));
+		$timeEntry->setBreakEndTime(new \DateTime('2026-05-02 12:35:00'));
+		$timeEntry->setStatus(TimeEntry::STATUS_COMPLETED);
+		$timeEntry->setIsManualEntry(true);
+		$timeEntry->setCreatedAt(new \DateTime());
+		$timeEntry->setUpdatedAt(new \DateTime());
+
+		$this->assertSame([], $this->service->blockingIssuesForCompletedEntry($timeEntry));
+	}
 }

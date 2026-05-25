@@ -99,6 +99,7 @@ $tariffL10n = [
 
 <?php include __DIR__ . '/common/page-start.php'; ?>
 
+        <div class="azc-page-stack">
         <div id="admin-tariff-rules-feedback" class="azc-sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 
         <div class="admin-tariff-rules">
@@ -130,8 +131,8 @@ $tariffL10n = [
                     </div>
                 </header>
                 <div class="azc-card__body">
-                    <div class="table-responsive admin-tariff-rules__table-wrap" role="region" aria-labelledby="admin-tariff-rules-list-heading">
-                        <table class="grid-table admin-tariff-rules__table" id="tariff-rules-table">
+                    <div class="table-container admin-tariff-rules__table-wrap" role="region" aria-labelledby="admin-tariff-rules-list-heading">
+                        <table class="table table--hover grid-table admin-tariff-rules__table" id="tariff-rules-table">
                             <caption class="sr-only"><?php p($l->t('Tariff rule sets')); ?></caption>
                             <thead>
                                 <tr>
@@ -161,4 +162,5 @@ window.ArbeitszeitCheck = window.ArbeitszeitCheck || {};
 window.ArbeitszeitCheck.tariffRulesL10n = <?php echo json_encode($tariffL10n, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;
 </script>
 
+</div><!-- /.azc-page-stack -->
 <?php include __DIR__ . '/common/page-end.php'; ?>

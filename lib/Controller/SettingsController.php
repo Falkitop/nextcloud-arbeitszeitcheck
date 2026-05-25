@@ -14,6 +14,7 @@ namespace OCA\ArbeitszeitCheck\Controller;
 use OCA\ArbeitszeitCheck\Db\UserSettingsMapper;
 use OCA\ArbeitszeitCheck\Db\AuditLogMapper;
 use OCA\ArbeitszeitCheck\Service\CSPService;
+use OCA\ArbeitszeitCheck\Service\FrontEndAssetService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCP\IURLGenerator;
 use OCP\AppFramework\Controller;
@@ -162,28 +163,7 @@ class SettingsController extends Controller
 	#[NoCSRFRequired]
 	public function index(): TemplateResponse
 	{
-		Util::addTranslations('arbeitszeitcheck');
-
-		// Add common CSS files (including app-layout for full-width layout)
-		Util::addStyle('arbeitszeitcheck', 'common/colors');
-		Util::addStyle('arbeitszeitcheck', 'common/typography');
-		Util::addStyle('arbeitszeitcheck', 'common/base');
-		Util::addStyle('arbeitszeitcheck', 'common/components');
-		Util::addStyle('arbeitszeitcheck', 'common/layout');
-		Util::addStyle('arbeitszeitcheck', 'common/app-layout');
-		Util::addStyle('arbeitszeitcheck', 'common/utilities');
-		Util::addStyle('arbeitszeitcheck', 'common/responsive');
-		Util::addStyle('arbeitszeitcheck', 'common/accessibility');
-		Util::addStyle('arbeitszeitcheck', 'navigation');
-		Util::addStyle('arbeitszeitcheck', 'arbeitszeitcheck-main');
-
-		// Add common JavaScript files
-		Util::addScript('arbeitszeitcheck', 'common/utils');
-		Util::addScript('arbeitszeitcheck', 'common/time');
-		Util::addScript('arbeitszeitcheck', 'common/components');
-		Util::addScript('arbeitszeitcheck', 'common/messaging');
-		Util::addScript('arbeitszeitcheck', 'common/validation');
-		Util::addScript('arbeitszeitcheck', 'settings');
+		FrontEndAssetService::registerCore();
 
 		$user = $this->userSession->getUser();
 		$userId = $user ? $user->getUID() : null;

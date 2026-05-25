@@ -74,6 +74,54 @@ class ShellAccessibilityTest extends TestCase
 		$this->assertStringContainsString('</main>', $content);
 	}
 
+	public function testPageStartSupportsShellWidthModifier(): void
+	{
+		$content = (string)file_get_contents(__DIR__ . '/../../templates/common/page-start.php');
+		$this->assertStringContainsString('shellWidth', $content);
+		$this->assertStringContainsString('azc-shell--wide', $content);
+		$this->assertStringContainsString('azc-shell--minimal', $content);
+	}
+
+	public function testNavigationHasOnlyNavSkipLink(): void
+	{
+		$content = (string)file_get_contents(__DIR__ . '/../../templates/common/navigation.php');
+		$this->assertStringNotContainsString('href="#app-content"', $content);
+		$this->assertStringContainsString('href="#app-navigation"', $content);
+	}
+
+	/**
+	 * @return list<string>
+	 */
+	public static function routedPageTemplatesProvider(): array
+	{
+		$dir = __DIR__ . '/../../templates';
+		$files = [
+			'dashboard.php',
+			'settings.php',
+			'substitution-requests.php',
+			'manager-dashboard.php',
+			'compliance-dashboard.php',
+			'admin-dashboard.php',
+		];
+		$out = [];
+		foreach ($files as $file) {
+			$out[] = [$dir . '/' . $file];
+		}
+		return $out;
+	}
+
+	/**
+	 * @dataProvider routedPageTemplatesProvider
+	 */
+	public function testRoutedTemplatesUsePageStackAndSingleH1(string $path): void
+	{
+		$this->assertFileExists($path);
+		$content = (string)file_get_contents($path);
+		$this->assertStringContainsString('page-start.php', $content);
+		$this->assertStringContainsString('azc-page-stack', $content);
+		$this->assertSame(0, substr_count($content, '<h1'), $path . ' must not declare h1 (shell owns it)');
+	}
+
 	public function testSubstitutionRequestsHasSingleDocumentHeading(): void
 	{
 		$path = __DIR__ . '/../../templates/substitution-requests.php';

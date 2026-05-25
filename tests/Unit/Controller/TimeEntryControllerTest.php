@@ -23,6 +23,8 @@ use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCA\ArbeitszeitCheck\Service\TimeTrackingService;
 use OCA\ArbeitszeitCheck\Service\TimeZoneService;
 use OCA\ArbeitszeitCheck\Service\TimeEntryCorrectionService;
+use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
+use OCA\ArbeitszeitCheck\Service\NavigationFlagsService;
 use OCA\ArbeitszeitCheck\Service\TeamResolverService;
 use OCA\ArbeitszeitCheck\Service\NotificationService;
 use OCA\ArbeitszeitCheck\Service\MonthClosureGuard;
@@ -146,6 +148,14 @@ class TimeEntryControllerTest extends TestCase
 		$overtimeBankService->method('isEnabled')->willReturn(false);
 		$overtimeBankService->method('getBankStatus')->willReturn(['enabled' => false]);
 
+		$localeFormat = $this->createMock(LocaleFormatService::class);
+		$localeFormat->method('clientHints')->willReturn([]);
+		$navigationFlags = new NavigationFlagsService(
+			$this->absenceMapper,
+			$this->permissionService,
+			$this->config
+		);
+
 		$this->controller = new TimeEntryController(
 			'arbeitszeitcheck',
 			$this->request,
@@ -166,7 +176,9 @@ class TimeEntryControllerTest extends TestCase
 			$this->absenceMapper,
 			$this->permissionService,
 			$timeZoneService,
-			$this->createMock(TimeEntryCorrectionService::class)
+			$this->createMock(TimeEntryCorrectionService::class),
+			$localeFormat,
+			$navigationFlags
 		);
 	}
 
@@ -765,6 +777,8 @@ class TimeEntryControllerTest extends TestCase
 	 */
 	public function testApiStoreCreatesEntryFromJson(): void
 	{
+		$this->complianceService->method('blockingIssuesForCompletedEntry')->willReturn([]);
+
 		$userId = 'testuser';
 		$user = $this->createMock(IUser::class);
 		$user->method('getUID')->willReturn($userId);
@@ -818,8 +832,38 @@ class TimeEntryControllerTest extends TestCase
 		$this->assertStringContainsString('Either (date and hours) or (startTime and endTime) are required', $data['error']);
 	}
 
+	public function testApiStoreBlocksCompletedEntryWithoutMandatoryBreak(): void
+	{
+		$userId = 'testuser';
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn($userId);
+		$this->userSession->method('getUser')->willReturn($user);
+
+		$this->request->method('getParams')->willReturn([
+			'date' => '2024-01-15',
+			'startTime' => '08:00',
+			'endTime' => '15:00',
+		]);
+
+		$this->complianceService->expects($this->once())
+			->method('blockingIssuesForCompletedEntry')
+			->willReturn(['Mandatory 30-minute break missing after 6 hours of work (ArbZG §4).']);
+		$this->complianceService->method('checkComplianceForCompletedEntry')->willReturn([]);
+
+		$this->timeEntryMapper->expects($this->never())->method('insert');
+
+		$response = $this->controller->apiStore();
+		$data = $response->getData();
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
+		$this->assertFalse($data['success']);
+		$this->assertSame('compliance_blocked', $data['error_code']);
+		$this->assertStringContainsString('30-minute', $data['error']);
+	}
+
 	public function testApiStoreAcceptsBreaksArrayPayload(): void
 	{
+		$this->complianceService->method('blockingIssuesForCompletedEntry')->willReturn([]);
+
 		$userId = 'testuser';
 		$user = $this->createMock(IUser::class);
 		$user->method('getUID')->willReturn($userId);

@@ -87,4 +87,48 @@ final class NavigationFlagsService
 
 		return $flags;
 	}
+
+	/**
+	 * Compliance area: no substitution-requests nav noise.
+	 *
+	 * @return array{
+	 *   showSubstitutionLink: bool,
+	 *   showManagerLink: bool,
+	 *   showReportsLink: bool,
+	 *   showAdminNav: bool,
+	 *   monthClosureEnabled: bool
+	 * }
+	 */
+	public function forComplianceUser(string $userId): array
+	{
+		$flags = $this->forUser($userId);
+		$flags['showSubstitutionLink'] = false;
+
+		return $flags;
+	}
+
+	/**
+	 * @return array{
+	 *   showSubstitutionLink: bool,
+	 *   showManagerLink: bool,
+	 *   showReportsLink: bool,
+	 *   showAdminNav: bool,
+	 *   monthClosureEnabled: bool
+	 * }
+	 */
+	public function emptyFlags(): array
+	{
+		return [
+			'showSubstitutionLink' => false,
+			'showManagerLink' => false,
+			'showReportsLink' => false,
+			'showAdminNav' => false,
+			'monthClosureEnabled' => $this->config->getAppValue(
+				'arbeitszeitcheck',
+				Constants::CONFIG_MONTH_CLOSURE_ENABLED,
+				'0'
+			) === '1',
+		];
+	}
 }
+

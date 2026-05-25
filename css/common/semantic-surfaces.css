@@ -1,0 +1,179 @@
+/*
+ * High-contrast semantic panels (success / warning / info accents).
+ * Body text always uses --color-main-text; accents are borders + icon wells only.
+ * Works on light, dark, and high-contrast Nextcloud themes (WCAG 2.1 AA).
+ */
+
+#app-content.azc-app .azc-semantic-panel.azc-callout {
+	background: var(--color-main-background);
+	border: 2px solid var(--color-border);
+	border-radius: var(--azc-radius-md, 12px);
+	box-shadow: var(--azc-shadow-sm);
+	color: var(--color-main-text);
+}
+
+#app-content.azc-app .azc-semantic-panel--success.azc-callout {
+	border-color: var(--color-success);
+	border-left-width: 5px;
+	border-left-color: var(--color-success);
+	background: color-mix(in srgb, var(--color-success) 10%, var(--color-main-background));
+}
+
+#app-content.azc-app .azc-semantic-panel--success.azc-callout.auto-break-panel--disabled,
+#app-content.azc-app .azc-semantic-panel--success.azc-callout.auto-break-panel--disabled {
+	border-left-color: color-mix(in srgb, var(--color-main-text) 40%, var(--color-border));
+	border-color: color-mix(in srgb, var(--color-main-text) 35%, var(--color-border));
+	background: var(--color-main-background);
+}
+
+#app-content.azc-app .azc-semantic-panel--warning.azc-callout {
+	border-color: var(--color-warning);
+	border-left-width: 5px;
+	border-left-color: var(--color-warning);
+	background: color-mix(in srgb, var(--color-warning) 12%, var(--color-main-background));
+}
+
+#app-content.azc-app .azc-semantic-panel--info.azc-callout {
+	border-color: var(--color-primary-element);
+	border-left-width: 5px;
+	border-left-color: var(--color-primary-element);
+	background: color-mix(in srgb, var(--color-primary-element) 8%, var(--color-main-background));
+}
+
+#app-content.azc-app .azc-semantic-panel .azc-callout__title,
+#app-content.azc-app .azc-semantic-panel .azc-callout__text,
+#app-content.azc-app .azc-semantic-panel .auto-break-panel__title,
+#app-content.azc-app .azc-semantic-panel .auto-break-panel__help,
+#app-content.azc-app .azc-semantic-panel .toggle-label,
+#app-content.azc-app .azc-semantic-panel .break-requirement-indicator__text {
+	color: var(--color-main-text);
+}
+
+#app-content.azc-app .azc-semantic-panel--success .azc-callout__icon {
+	background: var(--color-success);
+	color: var(--color-main-background);
+	border: 2px solid color-mix(in srgb, var(--color-main-text) 15%, transparent);
+}
+
+#app-content.azc-app .azc-semantic-panel--warning .azc-callout__icon {
+	background: var(--color-warning);
+	color: var(--color-main-background);
+	border: 2px solid color-mix(in srgb, var(--color-main-text) 15%, transparent);
+}
+
+#app-content.azc-app .azc-semantic-panel--info .azc-callout__icon {
+	background: var(--color-primary-element);
+	color: var(--color-primary-element-text, var(--color-main-background));
+	border: 2px solid color-mix(in srgb, var(--color-main-text) 15%, transparent);
+}
+
+/* Status pill — never color-only; outline + optional dot */
+#app-content.azc-app .azc-status-pill,
+#app-content.azc-app .auto-break-toggle__status {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.35rem;
+	min-height: 2.75rem;
+	min-width: 5.5rem;
+	padding: 0.375rem 1rem;
+	border-radius: 999px;
+	font-size: 0.875rem;
+	font-weight: 700;
+	letter-spacing: 0.03em;
+	text-transform: uppercase;
+	border: 2px solid var(--color-main-text);
+	color: var(--color-main-text);
+	background: var(--color-main-background);
+	flex-shrink: 0;
+}
+
+#app-content.azc-app .azc-status-pill--on,
+#app-content.azc-app .auto-break-toggle__status--on {
+	border-color: var(--color-success);
+	background: var(--color-main-background);
+	color: var(--color-main-text);
+}
+
+#app-content.azc-app .azc-status-pill--on::before,
+#app-content.azc-app .auto-break-toggle__status--on::before {
+	content: '';
+	width: 0.5rem;
+	height: 0.5rem;
+	border-radius: 50%;
+	background: var(--color-success);
+	flex-shrink: 0;
+}
+
+#app-content.azc-app .azc-status-pill--off,
+#app-content.azc-app .auto-break-toggle__status--off {
+	border-color: var(--color-main-text);
+	background: var(--color-main-background);
+	color: var(--color-main-text);
+}
+
+#app-content.azc-app .azc-status-pill--off::before,
+#app-content.azc-app .auto-break-toggle__status--off::before {
+	content: '';
+	width: 0.5rem;
+	height: 0.5rem;
+	border-radius: 50%;
+	background: color-mix(in srgb, var(--color-main-text) 45%, var(--color-border));
+	flex-shrink: 0;
+}
+
+/* Toggle inside semantic success panel */
+#app-content.azc-app .azc-semantic-panel--success .toggle-slider {
+	background: var(--color-main-background);
+	border: 2px solid var(--color-main-text);
+	box-shadow: inset 0 0 0 1px var(--color-border);
+}
+
+#app-content.azc-app .azc-semantic-panel--success .form-toggle input[type="checkbox"]:checked + .toggle-slider {
+	background: var(--color-success);
+	border-color: var(--color-success);
+}
+
+#app-content.azc-app .azc-semantic-panel--success .form-toggle .toggle-slider::before {
+	background: var(--color-main-background);
+	border: 2px solid var(--color-main-text);
+}
+
+#app-content.azc-app .azc-semantic-panel--success .form-toggle input[type="checkbox"]:focus-visible + .toggle-slider {
+	outline: 3px solid var(--color-primary-element);
+	outline-offset: 3px;
+}
+
+@media (prefers-contrast: more) {
+	#app-content.azc-app .azc-semantic-panel.azc-callout {
+		border-width: 3px;
+	}
+
+	#app-content.azc-app .azc-semantic-panel .azc-callout__text,
+	#app-content.azc-app .azc-semantic-panel .auto-break-panel__help {
+		font-weight: 600;
+	}
+}
+
+@media (forced-colors: active) {
+	#app-content.azc-app .azc-semantic-panel.azc-callout {
+		border: 2px solid CanvasText;
+		background: Canvas;
+		color: CanvasText;
+	}
+
+	#app-content.azc-app .azc-semantic-panel .azc-callout__icon {
+		background: Canvas;
+		color: CanvasText;
+		border: 1px solid CanvasText;
+	}
+
+	#app-content.azc-app .azc-status-pill--on::before,
+	#app-content.azc-app .auto-break-toggle__status--on::before {
+		background: Highlight;
+	}
+
+	#app-content.azc-app .azc-semantic-panel--success .form-toggle input[type="checkbox"]:checked + .toggle-slider {
+		background: Highlight;
+	}
+}

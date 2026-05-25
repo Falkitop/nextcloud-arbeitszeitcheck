@@ -81,6 +81,28 @@ const AzcApi = {
     return { ok: true, status: response.status, data, error: null };
   },
 
+  /**
+   * True when HTTP succeeded and JSON body indicates success (if present).
+   *
+   * @param {{ok?: boolean, data?: object|null}} result
+   * @returns {boolean}
+   */
+  isApiSuccess(result) {
+    if (!result || result.ok !== true) {
+      return false;
+    }
+    const data = result.data;
+    if (data && typeof data === 'object') {
+      if (data.ok === false) {
+        return false;
+      }
+      if (typeof data.success === 'boolean') {
+        return data.success;
+      }
+    }
+    return true;
+  },
+
   mapApiError(data, status) {
     if (data && typeof data === 'object') {
       if (typeof data.error === 'string' && data.error !== '') {

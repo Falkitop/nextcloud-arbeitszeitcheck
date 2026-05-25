@@ -20,6 +20,7 @@ use OCA\ArbeitszeitCheck\Service\TimeTrackingService;
 use OCA\ArbeitszeitCheck\Service\AbsenceService;
 use OCA\ArbeitszeitCheck\Service\CSPService;
 use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
+use OCA\ArbeitszeitCheck\Service\NavigationFlagsService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCA\ArbeitszeitCheck\Service\TeamResolverService;
 use OCA\ArbeitszeitCheck\Service\OvertimeDisplayService;
@@ -44,6 +45,7 @@ use OCP\Util;
 class PageController extends Controller
 {
 	use CSPTrait;
+	use NavigationFlagsTrait;
 	use PageShellTrait;
 
 	private TimeTrackingService $timeTrackingService;
@@ -62,6 +64,7 @@ class PageController extends Controller
 	private OvertimeBankService $overtimeBankService;
 	private OvertimePayoutService $overtimePayoutService;
 	private LocaleFormatService $localeFormat;
+	private NavigationFlagsService $navigationFlags;
 	private IL10N $l10n;
 
 	/**
@@ -98,6 +101,7 @@ class PageController extends Controller
 		OvertimePayoutService $overtimePayoutService,
 		CSPService $cspService,
 		LocaleFormatService $localeFormat,
+		NavigationFlagsService $navigationFlags,
 		IL10N $l10n
 	) {
 		parent::__construct($appName, $request);
@@ -117,6 +121,7 @@ class PageController extends Controller
 		$this->overtimeBankService = $overtimeBankService;
 		$this->overtimePayoutService = $overtimePayoutService;
 		$this->localeFormat = $localeFormat;
+		$this->navigationFlags = $navigationFlags;
 		$this->l10n = $l10n;
 		$this->setCspService($cspService);
 	}
@@ -223,69 +228,6 @@ class PageController extends Controller
 				),
 			];
 		}
-	}
-
-	/**
-	 * Build common navigation flags for templates.
-	 *
-	 * @param string $userId
-	 * @return array{showSubstitutionLink: bool, showManagerLink: bool, showReportsLink: bool, showAdminNav: bool, monthClosureEnabled: bool}
-	 */
-	private function getNavigationFlags(string $userId): array
-	{
-		$showSubstitutionLink = false;
-		$showManagerLink = false;
-		$showReportsLink = false;
-		$showAdminNav = false;
-
-		// Substitution requests (link only when there is at least one pending request)
-		try {
-			$pending = $this->absenceMapper->findSubstitutePendingForUser($userId, 1, 0);
-			$showSubstitutionLink = \is_array($pending) && \count($pending) > 0;
-		} catch (\Throwable $e) {
-			$showSubstitutionLink = false;
-		}
-
-		// Manager / reports / admin visibility derived from permission service
-		try {
-			$canAccessManagerDashboard = $this->permissionService->canAccessManagerDashboard($userId);
-			$isAdmin = $this->permissionService->isAdmin($userId);
-
-			$showManagerLink = $canAccessManagerDashboard;
-			$showReportsLink = $canAccessManagerDashboard || $isAdmin;
-			$showAdminNav = $isAdmin;
-		} catch (\Throwable $e) {
-			$showManagerLink = false;
-			$showReportsLink = false;
-			$showAdminNav = false;
-		}
-
-		return [
-			'showSubstitutionLink' => $showSubstitutionLink,
-			'showManagerLink' => $showManagerLink,
-			'showReportsLink' => $showReportsLink,
-			'showAdminNav' => $showAdminNav,
-			'monthClosureEnabled' => $this->config->getAppValue('arbeitszeitcheck', Constants::CONFIG_MONTH_CLOSURE_ENABLED, '0') === '1',
-		];
-	}
-
-	/**
-	 * @return array{showSubstitutionLink: bool, showManagerLink: bool, showReportsLink: bool, showAdminNav: bool, monthClosureEnabled: bool}
-	 */
-	private function getNavigationFlagsForSession(): array
-	{
-		$user = $this->userSession->getUser();
-		if ($user === null) {
-			return [
-				'showSubstitutionLink' => false,
-				'showManagerLink' => false,
-				'showReportsLink' => false,
-				'showAdminNav' => false,
-				'monthClosureEnabled' => $this->config->getAppValue('arbeitszeitcheck', Constants::CONFIG_MONTH_CLOSURE_ENABLED, '0') === '1',
-			];
-		}
-
-		return $this->getNavigationFlags($user->getUID());
 	}
 
 	/**
@@ -444,15 +386,17 @@ class PageController extends Controller
 	{
 		$extraScripts = ['time-entry-correction', 'time-entry-form-accessibility'];
 		$extraStyles = ['time-entries', 'time-entry-correction', 'time-entry-form-accessibility'];
-		$this->registerFrontEndAssets('arbeitszeitcheck-main', null, $extraStyles);
+		// time-entry-form.js is loaded only on create/edit via TimeEntryController::registerTimeEntryFormAssets()
+		$this->registerFrontEndAssets('arbeitszeitcheck-main', null, $extraStyles, [
+			'common/datepicker',
+			'common/validation',
+		]);
 		foreach ($extraScripts as $script) {
 			\OCP\Util::addScript('arbeitszeitcheck', $script);
 		}
 		if ($this->config->getAppValue('arbeitszeitcheck', Constants::CONFIG_MONTH_CLOSURE_ENABLED, '0') === '1') {
 			\OCP\Util::addScript('arbeitszeitcheck', 'month-closure');
 		}
-		\OCP\Util::addScript('arbeitszeitcheck', 'common/datepicker');
-		\OCP\Util::addScript('arbeitszeitcheck', 'common/validation');
 
 		try {
 			$userId = $this->getUserId();
@@ -515,7 +459,7 @@ class PageController extends Controller
 	#[NoCSRFRequired]
 	public function absences(): TemplateResponse
 	{
-		$this->registerFrontEndAssets('arbeitszeitcheck-main', 'absences', ['absences']);
+		$this->registerFrontEndAssets('arbeitszeitcheck-main', 'absences', ['absences'], ['common/datepicker']);
 		Util::addScript('arbeitszeitcheck', 'entitlement-explainer');
 
 		try {

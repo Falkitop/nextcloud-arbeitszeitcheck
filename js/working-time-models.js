@@ -573,9 +573,9 @@
     }
 
     /**
-     * Handle delete model with helpful confirmation
+     * Handle delete model with fail-closed destructive confirmation (audit-critical).
      */
-    function handleDeleteModel(e) {
+    async function handleDeleteModel(e) {
         const button = e.currentTarget || e.target;
         const modelId = button.dataset.modelId;
         if (!modelId) {
@@ -598,88 +598,46 @@
             )) ||
             'Are you sure you want to delete "{name}"?\n\nThis will permanently remove this work schedule. If any employees are using this schedule, you should assign them to a different schedule first.\n\nThis action cannot be undone.';
 
-        const body = String(bodyTemplate)
+        const message = String(bodyTemplate)
             .replace(/\{name\}/g, modelName)
-            // Support both real newlines and escaped \n sequences.
-            .replace(/\\n/g, '<br>')
-            .replace(/\n/g, '<br>');
+            .replace(/\\n/g, '\n')
+            .replace(/\n/g, '\n');
 
-        const content = `
-            <div class="modal-section">
-                <p id="wtm-delete-body" class="modal-text">${body}</p>
-            </div>
-            <div class="form-actions">
-                <button type="button" class="btn btn--secondary" data-action="close-modal">
-                    ${(window.ArbeitszeitCheck?.l10n?.cancel) || (window.t && window.t('arbeitszeitcheck', 'Cancel')) || 'Cancel'}
-                </button>
-                <button type="button" class="btn btn--primary btn--danger" data-action="confirm-delete-model">
-                    ${(window.ArbeitszeitCheck?.l10n?.delete) || (window.t && window.t('arbeitszeitcheck', 'Delete')) || 'Delete'}
-                </button>
-            </div>
-        `;
-
-        const _modal = Components.createModal({
-            id: 'delete-model-modal',
-            title: title,
-            content: content,
-            size: 'md',
-            closable: true,
-            ariaDescribedBy: 'wtm-delete-body',
-            onClose: function() {
-                const modalEl = document.getElementById('delete-model-modal');
-                if (modalEl && modalEl.parentNode) {
-                    modalEl.parentNode.remove();
-                }
-            }
+        const confirmed = await Utils.confirmDestructiveAction({
+            title,
+            message,
+            variant: 'danger',
+            requireTypedConfirm: true,
+            typedConfirmPhrase: 'DELETE',
         });
-
-        Components.openModal('delete-model-modal');
-
-        const modalEl = document.getElementById('delete-model-modal');
-        if (!modalEl) {
+        if (!confirmed) {
             return;
         }
 
-        const cancelBtn = modalEl.querySelector('[data-action="close-modal"]');
-        const confirmBtn = modalEl.querySelector('[data-action="confirm-delete-model"]');
-
-        if (cancelBtn) {
-            cancelBtn.addEventListener('click', function() {
-                Components.closeModal(modalEl);
-            });
-        }
-
-        if (confirmBtn) {
-            confirmBtn.addEventListener('click', function() {
-                Utils.ajax('/apps/arbeitszeitcheck/api/admin/working-time-models/' + modelId, {
-                    method: 'DELETE',
-                    onSuccess: function(data) {
-                        Components.closeModal(modalEl);
-                        if (data.success) {
-                            const successMsg = window.ArbeitszeitCheck?.l10n?.modelDeleted ||
-                                (window.t && window.t('arbeitszeitcheck', 'Working time model deleted successfully')) ||
-                                'Working time model deleted successfully';
-                            Messaging.showSuccess(successMsg);
-                            location.reload();
-                        } else {
-                            const errorMsg = data.error ||
-                                (window.ArbeitszeitCheck?.l10n?.failedToDeleteModel ||
-                                    (window.t && window.t('arbeitszeitcheck', 'Failed to delete model'))) ||
-                                'Failed to delete model';
-                            Messaging.showError(errorMsg);
-                        }
-                    },
-                    onError: function(_error) {
-                        Components.closeModal(modalEl);
-                        const errorMsg = window.ArbeitszeitCheck?.l10n?.failedToDeleteModel ||
-                            (window.t && window.t('arbeitszeitcheck', 'Failed to delete model')) ||
-                            'Failed to delete model';
-                        Messaging.showError(errorMsg);
-                    }
-                });
-            });
-            confirmBtn.focus();
-        }
+        Utils.ajax('/apps/arbeitszeitcheck/api/admin/working-time-models/' + modelId, {
+            method: 'DELETE',
+            onSuccess: function(data) {
+                if (data.success) {
+                    const successMsg = window.ArbeitszeitCheck?.l10n?.modelDeleted ||
+                        (window.t && window.t('arbeitszeitcheck', 'Working time model deleted successfully')) ||
+                        'Working time model deleted successfully';
+                    Messaging.showSuccess(successMsg);
+                    location.reload();
+                } else {
+                    const errorMsg = data.error ||
+                        (window.ArbeitszeitCheck?.l10n?.failedToDeleteModel ||
+                            (window.t && window.t('arbeitszeitcheck', 'Failed to delete model'))) ||
+                        'Failed to delete model';
+                    Messaging.showError(errorMsg);
+                }
+            },
+            onError: function(_error) {
+                const errorMsg = window.ArbeitszeitCheck?.l10n?.failedToDeleteModel ||
+                    (window.t && window.t('arbeitszeitcheck', 'Failed to delete model')) ||
+                    'Failed to delete model';
+                Messaging.showError(errorMsg);
+            }
+        });
     }
 
     // Initialize on DOM ready

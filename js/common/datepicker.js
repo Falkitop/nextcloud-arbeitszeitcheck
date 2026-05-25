@@ -309,7 +309,15 @@ function initializeDatepicker(input, options = {}) {
 	element.addEventListener('paste', function (e) { e.preventDefault(); });
 
 	const wrapper = document.createElement('div');
-	wrapper.style.cssText = 'position:relative;display:inline-block;width:100%;';
+	wrapper.className = 'azc-datepicker-host';
+	const parent = element.parentNode;
+	const inDateRow = parent && (
+		parent.classList.contains('form-input-wrapper--date')
+		|| (parent.closest && parent.closest('.form-input-wrapper--date'))
+	);
+	wrapper.style.cssText = inDateRow
+		? 'position:relative;display:block;flex:1 1 10rem;min-width:0;max-width:100%;'
+		: 'position:relative;display:inline-block;width:100%;max-width:100%;';
 	element.parentNode.insertBefore(wrapper, element);
 	wrapper.appendChild(element);
 
@@ -340,6 +348,7 @@ function initializeDatepicker(input, options = {}) {
 	if (typeof window !== 'undefined') {
 		window.ArbeitszeitCheckDatepicker = {
 			initializeDatepicker: initializeDatepicker,
+			initInRoot: initInRoot,
 			convertEuropeanToISO: convertEuropeanToISO,
 			convertISOToEuropean: convertISOToEuropean
 		};
@@ -354,28 +363,45 @@ function initializeDatepicker(input, options = {}) {
 			return null;
 		}
 
+		function buildOptionsForElement(el) {
+			var opts = {};
+			var minVal = el.getAttribute('data-datepicker-min');
+			var maxVal = el.getAttribute('data-datepicker-max');
+			var minDate = minVal === 'today' ? new Date() : parseDateFromAttr(minVal);
+			var maxDate = maxVal === 'today' ? new Date() : parseDateFromAttr(maxVal);
+			if (minDate) opts.minDate = minDate;
+			if (maxDate) opts.maxDate = maxDate;
+			var syncId = el.getAttribute('data-datepicker-sync-month-with');
+			if (syncId) {
+				opts.getInitialMonth = function () {
+					var other = document.getElementById(syncId);
+					if (!other || !other.value) return null;
+					return parseDDMMYYYYToDate(other.value);
+				};
+			}
+			if (el.getAttribute('data-datepicker-min-sick')) opts.useDynamicMin = true;
+			return opts;
+		}
+
 		function initAll() {
 			document.querySelectorAll('.datepicker-input:not([data-datepicker-defer])').forEach(function (el) {
-				if (el.dataset.datepickerInit) return;
+				if (el.dataset.datepickerInit === '1' || el.dataset.datepickerInit === 'true') return;
 				if (el.closest('#time-entry-correction-source, [data-datepicker-defer]')) return;
-				el.dataset.datepickerInit = '1';
-				var opts = {};
-				var minVal = el.getAttribute('data-datepicker-min');
-				var maxVal = el.getAttribute('data-datepicker-max');
-				var minDate = minVal === 'today' ? new Date() : parseDateFromAttr(minVal);
-				var maxDate = maxVal === 'today' ? new Date() : parseDateFromAttr(maxVal);
-				if (minDate) opts.minDate = minDate;
-				if (maxDate) opts.maxDate = maxDate;
-				var syncId = el.getAttribute('data-datepicker-sync-month-with');
-				if (syncId) {
-					opts.getInitialMonth = function () {
-						var other = document.getElementById(syncId);
-						if (!other || !other.value) return null;
-						return parseDDMMYYYYToDate(other.value);
-					};
-				}
-				if (el.getAttribute('data-datepicker-min-sick')) opts.useDynamicMin = true;
-				initializeDatepicker(el, opts);
+				initializeDatepicker(el, buildOptionsForElement(el));
+			});
+		}
+
+		/**
+		 * Initialize datepickers inside a subtree (e.g. after dynamic HTML). Skips already-initialized inputs.
+		 *
+		 * @param {ParentNode|Document} [root]
+		 */
+		function initInRoot(root) {
+			var scope = root && root.querySelectorAll ? root : document;
+			scope.querySelectorAll('.datepicker-input:not([data-datepicker-defer])').forEach(function (el) {
+				if (el.dataset.datepickerInit === '1' || el.dataset.datepickerInit === 'true') return;
+				if (el.closest('#time-entry-correction-source, [data-datepicker-defer]')) return;
+				initializeDatepicker(el, buildOptionsForElement(el));
 			});
 		}
 

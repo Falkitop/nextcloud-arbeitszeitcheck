@@ -83,6 +83,7 @@ $arbeitszeitCheckFormatHours = static function (float $hours): string {
 
 <?php include __DIR__ . '/common/page-start.php'; ?>
 
+        <div class="azc-page-stack">
         <div class="azc-dashboard-alerts">
         <?php if ($dashboardError !== ''): ?>
             <div class="azc-callout azc-callout--danger" role="alert" aria-live="assertive">
@@ -515,8 +516,8 @@ $arbeitszeitCheckFormatHours = static function (float $hours): string {
                                 ?>
                                 <div class="dashboard-overtime-payout-history" role="region" aria-labelledby="dashboard-payout-history-heading">
                                     <h4 id="dashboard-payout-history-heading" class="dashboard-overtime-card__bank-title"><?php p($l->t('Payout history')); ?></h4>
-                                    <div class="table-responsive">
-                                        <table class="report-table dashboard-overtime-payout-history__table">
+                                    <div class="table-container">
+                                        <table class="table table--hover report-table dashboard-overtime-payout-history__table">
                                             <caption class="visually-hidden"><?php p($l->t('Recorded overtime payouts')); ?></caption>
                                             <thead>
                                                 <tr>
@@ -868,4 +869,5 @@ $arbeitszeitCheckFormatHours = static function (float $hours): string {
         });
     }
 </script>
+        </div><!-- /.azc-page-stack -->
 <?php include __DIR__ . '/common/page-end.php'; ?>

@@ -77,7 +77,7 @@
             label.textContent = prevLabel;
         }
 
-        if (result && result.ok && result.data && result.data.success) {
+        if (window.AzcApi && window.AzcApi.isApiSuccess(result)) {
             const stats = result.data.stats || {};
             const usersChecked = stats.users_checked ?? stats.usersChecked ?? '—';
             const violationsFound = stats.violations_found ?? stats.violationsFound ?? '—';

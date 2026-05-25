@@ -25,6 +25,7 @@ use OCA\ArbeitszeitCheck\Service\TimeTrackingService;
 use OCA\ArbeitszeitCheck\Service\OvertimeBankService;
 use OCA\ArbeitszeitCheck\Service\OvertimeDisplayService;
 use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
+use OCA\ArbeitszeitCheck\Service\NavigationFlagsService;
 use OCA\ArbeitszeitCheck\Service\OvertimePayoutService;
 use OCP\AppFramework\Http\RedirectResponse;
 use OCP\AppFramework\Http\TemplateResponse;
@@ -96,6 +97,11 @@ class PageControllerTest extends TestCase
 			'timezone' => 'Europe/Berlin',
 			'displayTimezone' => 'Europe/Berlin',
 		]);
+		$navigationFlags = new NavigationFlagsService(
+			$absenceMapper,
+			$permissionService,
+			$config
+		);
 		$l10n = $this->createMock(IL10N::class);
 		$l10n->method('t')->willReturnArgument(0);
 
@@ -119,6 +125,7 @@ class PageControllerTest extends TestCase
 			$overtimePayoutService,
 			$cspService,
 			$localeFormat,
+			$navigationFlags,
 			$l10n
 		);
 	}

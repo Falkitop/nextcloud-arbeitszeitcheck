@@ -36,6 +36,7 @@ use OCA\ArbeitszeitCheck\Service\AppLocalNaiveDateTimeNormalizer;
 use OCA\ArbeitszeitCheck\Service\TimeZoneService;
 use OCA\ArbeitszeitCheck\Service\TimeEntryCorrectionService;
 use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
+use OCA\ArbeitszeitCheck\Service\NavigationFlagsService;
 use OCA\ArbeitszeitCheck\Constants;
 use OCA\ArbeitszeitCheck\Support\TimeEntryClockPayloadBuilder;
 use OCP\AppFramework\Controller;
@@ -60,6 +61,7 @@ use OCP\Util;
 class ManagerController extends Controller
 {
 	use CSPTrait;
+	use NavigationFlagsTrait;
 	use PageShellTrait;
 
 	private AbsenceService $absenceService;
@@ -87,6 +89,7 @@ class ManagerController extends Controller
 	private MonthClosureService $monthClosureService;
 	private TimeZoneService $timeZoneService;
 	private TimeEntryCorrectionService $correctionService;
+	protected NavigationFlagsService $navigationFlags;
 
 	public function __construct(
 		string $appName,
@@ -117,6 +120,7 @@ class ManagerController extends Controller
 		TimeZoneService $timeZoneService,
 		TimeEntryCorrectionService $correctionService,
 		LocaleFormatService $localeFormat,
+		NavigationFlagsService $navigationFlags,
 	) {
 		parent::__construct($appName, $request);
 		$this->absenceService = $absenceService;
@@ -144,62 +148,8 @@ class ManagerController extends Controller
 		$this->timeZoneService = $timeZoneService;
 		$this->correctionService = $correctionService;
 		$this->localeFormat = $localeFormat;
+		$this->navigationFlags = $navigationFlags;
 		$this->setCspService($cspService);
-	}
-
-	/**
-	 * @return array{showSubstitutionLink: bool, showManagerLink: bool, showReportsLink: bool, showAdminNav: bool}
-	 */
-	private function getNavigationFlags(string $userId): array
-	{
-		$showSubstitutionLink = false;
-		$showManagerLink = false;
-		$showReportsLink = false;
-		$showAdminNav = false;
-
-		try {
-			$pending = $this->absenceMapper->findSubstitutePendingForUser($userId, 1, 0);
-			$showSubstitutionLink = \is_array($pending) && \count($pending) > 0;
-		} catch (\Throwable $e) {
-			$showSubstitutionLink = false;
-		}
-
-		try {
-			$canAccessManagerDashboard = $this->permissionService->canAccessManagerDashboard($userId);
-			$isAdmin = $this->permissionService->isAdmin($userId);
-			$showManagerLink = $canAccessManagerDashboard;
-			$showReportsLink = $canAccessManagerDashboard || $isAdmin;
-			$showAdminNav = $isAdmin;
-		} catch (\Throwable $e) {
-			$showManagerLink = false;
-			$showReportsLink = false;
-			$showAdminNav = false;
-		}
-
-		return [
-			'showSubstitutionLink' => $showSubstitutionLink,
-			'showManagerLink' => $showManagerLink,
-			'showReportsLink' => $showReportsLink,
-			'showAdminNav' => $showAdminNav,
-		];
-	}
-
-	/**
-	 * @return array{showSubstitutionLink: bool, showManagerLink: bool, showReportsLink: bool, showAdminNav: bool}
-	 */
-	private function getNavigationFlagsForSession(): array
-	{
-		$user = $this->userSession->getUser();
-		if ($user === null) {
-			return [
-				'showSubstitutionLink' => false,
-				'showManagerLink' => false,
-				'showReportsLink' => false,
-				'showAdminNav' => false,
-			];
-		}
-
-		return $this->getNavigationFlags($user->getUID());
 	}
 
 	/**
@@ -529,6 +479,7 @@ class ManagerController extends Controller
 
 			$navFlags = $this->getNavigationFlags($managerId);
 
+			$useAppTeams = $this->config->getAppValue('arbeitszeitcheck', 'use_app_teams', '0') === '1';
 			$response = new TemplateResponse('arbeitszeitcheck', 'manager-dashboard', $this->buildManagerShellParams(
 				'manager-dashboard',
 				$this->l10n->t('Manager Dashboard'),
@@ -538,6 +489,8 @@ class ManagerController extends Controller
 				'teamStats' => $teamStats,
 				'teamMembers' => $teamMembers,
 				'monthClosureEnabled' => $this->monthClosureEnabledParam(),
+				'useAppTeams' => $useAppTeams,
+				'adminTeamsUrl' => $this->urlGenerator->linkToRoute('arbeitszeitcheck.admin.teams'),
 			]);
 			return $this->configureCSP($response);
 		} catch (\Throwable $e) {
@@ -546,6 +499,7 @@ class ManagerController extends Controller
 				['exception' => $e]
 			);
 			$navFlags = $this->getNavigationFlagsForSession();
+			$useAppTeams = $this->config->getAppValue('arbeitszeitcheck', 'use_app_teams', '0') === '1';
 			$response = new TemplateResponse('arbeitszeitcheck', 'manager-dashboard', $this->buildManagerShellParams(
 				'manager-dashboard',
 				$this->l10n->t('Manager Dashboard'),
@@ -560,6 +514,8 @@ class ManagerController extends Controller
 				],
 				'teamMembers' => [],
 				'monthClosureEnabled' => $this->monthClosureEnabledParam(),
+				'useAppTeams' => $useAppTeams,
+				'adminTeamsUrl' => $this->urlGenerator->linkToRoute('arbeitszeitcheck.admin.teams'),
 				'error' => $this->l10n->t('An internal error occurred. Please contact your administrator.'),
 			]);
 			return $this->configureCSP($response);

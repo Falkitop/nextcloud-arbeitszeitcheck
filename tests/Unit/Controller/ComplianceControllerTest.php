@@ -19,7 +19,10 @@ use OCA\ArbeitszeitCheck\Db\ComplianceViolationMapper;
 use OCA\ArbeitszeitCheck\Service\ComplianceService;
 use OCA\ArbeitszeitCheck\Service\CSPService;
 use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
+use OCA\ArbeitszeitCheck\Db\AbsenceMapper;
+use OCA\ArbeitszeitCheck\Service\NavigationFlagsService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
+use OCP\IConfig;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\AppFramework\Http\TemplateResponse;
@@ -107,7 +110,17 @@ class ComplianceControllerTest extends TestCase
 			$this->urlGenerator,
 			$this->cspService,
 			$localeFormat,
-			$this->l10n
+			$this->l10n,
+			$this->createNavigationFlagsService(),
+		);
+	}
+
+	private function createNavigationFlagsService(): NavigationFlagsService
+	{
+		return new NavigationFlagsService(
+			$this->createMock(AbsenceMapper::class),
+			$this->permissionService,
+			$this->createMock(IConfig::class),
 		);
 	}
 
@@ -373,7 +386,12 @@ class ComplianceControllerTest extends TestCase
 			$this->urlGenerator,
 			$this->cspService,
 			$localeFormat,
-			$this->l10n
+			$this->l10n,
+			new NavigationFlagsService(
+				$this->createMock(AbsenceMapper::class),
+				$permissionService,
+				$this->createMock(IConfig::class),
+			),
 		);
 
 		$violation = new ComplianceViolation();
@@ -640,7 +658,12 @@ class ComplianceControllerTest extends TestCase
 			$this->urlGenerator,
 			$this->cspService,
 			$localeFormat,
-			$this->l10n
+			$this->l10n,
+			new NavigationFlagsService(
+				$this->createMock(AbsenceMapper::class),
+				$permissionService,
+				$this->createMock(IConfig::class),
+			),
 		);
 
 		$violation = new ComplianceViolation();

@@ -20,6 +20,8 @@ use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCA\ArbeitszeitCheck\Service\TeamResolverService;
 use OCA\ArbeitszeitCheck\Service\MonthClosureService;
 use OCA\ArbeitszeitCheck\Service\VacationEntitlementEngine;
+use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
+use OCA\ArbeitszeitCheck\Service\NavigationFlagsService;
 use OCA\ArbeitszeitCheck\Exception\BusinessRuleException;
 use OCA\ArbeitszeitCheck\Exception\MonthFinalizedException;
 use OCP\AppFramework\Controller;
@@ -43,6 +45,8 @@ use OCP\IL10N;
 class AbsenceController extends Controller
 {
 	use CSPTrait;
+	use NavigationFlagsTrait;
+	use PageShellTrait;
 
 	private AbsenceService $absenceService;
 	private AbsenceMapper $absenceMapper;
@@ -55,6 +59,8 @@ class AbsenceController extends Controller
 	private IConfig $config;
 	private MonthClosureService $monthClosureService;
 	private VacationEntitlementEngine $vacationEntitlementEngine;
+	private LocaleFormatService $localeFormat;
+	private NavigationFlagsService $navigationFlags;
 
 	public function __construct(
 		string $appName,
@@ -70,7 +76,9 @@ class AbsenceController extends Controller
 		IL10N $l10n,
 		IConfig $config,
 		MonthClosureService $monthClosureService,
-		VacationEntitlementEngine $vacationEntitlementEngine
+		VacationEntitlementEngine $vacationEntitlementEngine,
+		LocaleFormatService $localeFormat,
+		NavigationFlagsService $navigationFlags
 	) {
 		parent::__construct($appName, $request);
 		$this->absenceService = $absenceService;
@@ -84,7 +92,127 @@ class AbsenceController extends Controller
 		$this->config = $config;
 		$this->monthClosureService = $monthClosureService;
 		$this->vacationEntitlementEngine = $vacationEntitlementEngine;
+		$this->localeFormat = $localeFormat;
+		$this->navigationFlags = $navigationFlags;
 		$this->setCspService($cspService);
+	}
+
+	private function registerAbsenceFormAssets(): void
+	{
+		$this->registerFrontEndAssets(
+			'arbeitszeitcheck-main',
+			'absences',
+			['absences'],
+			['common/datepicker', 'common/validation', 'entitlement-explainer'],
+		);
+	}
+
+	/**
+	 * Parse a user-supplied date string in either German (dd.mm.yyyy) or strict ISO
+	 * (yyyy-mm-dd) form and return a `\DateTime` at 00:00:00.
+	 *
+	 * The form is rendered with European date inputs (dd.mm.yyyy). When JavaScript
+	 * runs, those inputs are converted to ISO before submission. When it does NOT
+	 * run (no-JS users, screen readers in some browsers, broken bundles, etc.) the
+	 * raw German format is POSTed instead, and `new \DateTime("12.05.2026")` throws
+	 * a hard `Exception` ("Failed to parse time string"). That generic error then
+	 * surfaces as "An unexpected error occurred." even though the input is valid.
+	 *
+	 * Centralising the parser here:
+	 *   1. Guarantees both representations are accepted server-side so the form
+	 *      always works without JS (WCAG 2.1 + progressive enhancement).
+	 *   2. Lets us reject ambiguous/relative strings ("now", "yesterday", or
+	 *      ISO-with-time) early instead of letting `\DateTime` quietly accept
+	 *      them.
+	 *
+	 * @throws \InvalidArgumentException if the input is not a valid calendar date
+	 *         in one of the two accepted formats.
+	 */
+	private function parseFormDate(string $raw): \DateTime
+	{
+		$raw = trim($raw);
+		if ($raw === '') {
+			throw new \InvalidArgumentException('empty');
+		}
+		if (preg_match('/^(\d{2})\.(\d{2})\.(\d{4})$/', $raw, $m)) {
+			$d = (int)$m[1];
+			$mo = (int)$m[2];
+			$y = (int)$m[3];
+			if (!checkdate($mo, $d, $y) || $y < 1900 || $y > 2999) {
+				throw new \InvalidArgumentException('invalid_calendar_date');
+			}
+			$dt = \DateTime::createFromFormat('!Y-m-d', sprintf('%04d-%02d-%02d', $y, $mo, $d));
+			if ($dt === false) {
+				throw new \InvalidArgumentException('parse_failed');
+			}
+			return $dt;
+		}
+		if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $raw, $m)) {
+			$y = (int)$m[1];
+			$mo = (int)$m[2];
+			$d = (int)$m[3];
+			if (!checkdate($mo, $d, $y) || $y < 1900 || $y > 2999) {
+				throw new \InvalidArgumentException('invalid_calendar_date');
+			}
+			$dt = \DateTime::createFromFormat('!Y-m-d', $raw);
+			if ($dt === false) {
+				throw new \InvalidArgumentException('parse_failed');
+			}
+			return $dt;
+		}
+		throw new \InvalidArgumentException('unrecognised_format');
+	}
+
+	/**
+	 * Render the user-friendly error/redirect for invalid dates submitted via the form.
+	 */
+	private function invalidDatesResponse(): JSONResponse|RedirectResponse
+	{
+		$msg = $this->l10n->t('Please enter dates in the format dd.mm.yyyy.');
+		if (!$this->wantsJson()) {
+			$url = $this->urlGenerator->linkToRoute('arbeitszeitcheck.absence.create') . '?error=' . rawurlencode($msg);
+			return new RedirectResponse($url, Http::STATUS_SEE_OTHER);
+		}
+		return new JSONResponse([
+			'success' => false,
+			'error' => $msg,
+		], Http::STATUS_BAD_REQUEST);
+	}
+
+	/**
+	 * @param array<string, mixed> $pageData
+	 * @return array<string, mixed>
+	 */
+	private function buildAbsencePageTemplateParams(string $mode, array $pageData): array
+	{
+		$userId = $this->getUserId();
+		$navFlags = $this->getNavigationFlags($userId);
+		if (\in_array($mode, ['create', 'edit', 'view'], true)) {
+			$this->registerAbsenceFormAssets();
+		}
+
+		return \array_merge($this->buildAbsencesShellParams($mode, $navFlags), $pageData);
+	}
+
+	/**
+	 * @return array<string, mixed>
+	 */
+	private function buildAbsenceListErrorParams(string $error): array
+	{
+		return $this->buildAbsencePageTemplateParams('list', [
+			'mode' => 'list',
+			'absence' => null,
+			'absences' => [],
+			'hasColleagues' => false,
+			'requireSubstituteTypes' => [],
+			'stats' => [],
+			'currentUserId' => $this->getUserId(),
+			'colleagues' => [],
+			'usersUrl' => $this->urlGenerator->linkToRoute('arbeitszeitcheck.absence.users'),
+			'employeeHasAssignableManager' => true,
+			'useAppTeams' => $this->teamResolver->useAppTeams(),
+			'error' => $error,
+		]);
 	}
 
 	/**
@@ -601,6 +729,8 @@ class AbsenceController extends Controller
 	#[NoCSRFRequired]
 	public function create(): TemplateResponse
 	{
+		\OCP\Util::addTranslations('arbeitszeitcheck');
+
 		$userId = $this->getUserId();
 		$colleagues = $this->getColleaguesForSubstitute($userId);
 		$hasColleagues = count($colleagues) > 0;
@@ -629,16 +759,17 @@ class AbsenceController extends Controller
 			$prefillEnd = $prefillStart;
 		}
 
-		\OCP\Log\logger('arbeitszeitcheck')->info(
-			'[Vertretung] create() userId=' . $userId . ' colleagues=' . count($colleagues) . ' hasColleagues=' . ($hasColleagues ? '1' : '0'),
-			['app' => 'arbeitszeitcheck']
-		);
+		// Surface server-side errors that came from a no-JS form POST so the user
+		// sees a usable message instead of just a silent redirect. The error
+		// string is already l10n-translated (built in this controller) and is
+		// re-escaped by the template before printing.
+		$queryError = trim((string)$this->request->getParam('error', ''));
+		$displayError = ($queryError !== '' && strlen($queryError) <= 500) ? $queryError : null;
 
 		$response = new TemplateResponse(
 			$this->appName,
 			'absences',
-			[
-				'urlGenerator' => $this->urlGenerator,
+			$this->buildAbsencePageTemplateParams('create', [
 				'mode' => 'create',
 				'absence' => null,
 				'absences' => [],
@@ -648,12 +779,12 @@ class AbsenceController extends Controller
 				'currentUserId' => $userId,
 				'colleagues' => $colleagues,
 				'usersUrl' => $this->urlGenerator->linkToRoute('arbeitszeitcheck.absence.users'),
-				'l' => $this->l10n,
 				'employeeHasAssignableManager' => $this->teamResolver->hasAssignableManagerForEmployee($userId),
 				'useAppTeams' => $this->teamResolver->useAppTeams(),
 				'prefillStart' => $prefillStart,
 				'prefillEnd' => $prefillEnd,
-			]
+				'error' => $displayError,
+			])
 		);
 		return $this->configureCSP($response);
 	}
@@ -668,35 +799,32 @@ class AbsenceController extends Controller
 	#[NoCSRFRequired]
 	public function edit(int $id): TemplateResponse
 	{
+		\OCP\Util::addTranslations('arbeitszeitcheck');
+
 		try {
 			$userId = $this->getUserId();
 			$absence = $this->absenceService->getAbsence($id, $userId);
 
 			if (!$absence) {
-				// Redirect to absences list if not found
 				$response = new TemplateResponse(
 					$this->appName,
 					'absences',
-					[
-						'urlGenerator' => $this->urlGenerator,
-						'error' => $this->l10n->t('Absence not found'),
-						'l' => $this->l10n,
-					],
-					'blank'
+					$this->buildAbsenceListErrorParams($this->l10n->t('Absence not found'))
 				);
 				return $this->configureCSP($response);
 			}
 
-			$userId = $this->getUserId();
 			$colleagues = $this->getColleaguesForSubstitute($userId);
 			$hasColleagues = count($colleagues) > 0;
 			$requireSubstituteTypes = $this->getRequireSubstituteTypes();
 
+			$queryError = trim((string)$this->request->getParam('error', ''));
+			$displayError = ($queryError !== '' && strlen($queryError) <= 500) ? $queryError : null;
+
 			$response = new TemplateResponse(
 				$this->appName,
 				'absences',
-				[
-					'urlGenerator' => $this->urlGenerator,
+				$this->buildAbsencePageTemplateParams('edit', [
 					'mode' => 'edit',
 					'absence' => $absence,
 					'absences' => [],
@@ -706,36 +834,27 @@ class AbsenceController extends Controller
 					'currentUserId' => $userId,
 					'colleagues' => $colleagues,
 					'usersUrl' => $this->urlGenerator->linkToRoute('arbeitszeitcheck.absence.users'),
-					'l' => $this->l10n,
 					'employeeHasAssignableManager' => $this->teamResolver->hasAssignableManagerForEmployee($userId),
 					'useAppTeams' => $this->teamResolver->useAppTeams(),
-				]
+					'error' => $displayError,
+				])
 			);
 			return $this->configureCSP($response);
 		} catch (DoesNotExistException $e) {
-			// Absence not found - redirect to absences list
 			$response = new TemplateResponse(
 				$this->appName,
 				'absences',
-				[
-					'urlGenerator' => $this->urlGenerator,
-					'error' => $this->l10n->t('Absence not found'),
-					'l' => $this->l10n,
-				],
-				'blank'
+				$this->buildAbsenceListErrorParams($this->l10n->t('Absence not found'))
 			);
 			return $this->configureCSP($response);
 		} catch (\Throwable $e) {
-			// Redirect to absences list on error
+			\OCP\Log\logger('arbeitszeitcheck')->error('Error in AbsenceController::edit: ' . $e->getMessage(), ['exception' => $e]);
 			$response = new TemplateResponse(
 				$this->appName,
 				'absences',
-				[
-					'urlGenerator' => $this->urlGenerator,
-					'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.'),
-					'l' => $this->l10n,
-				],
-				'blank'
+				$this->buildAbsenceListErrorParams(
+					$this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.')
+				)
 			);
 			return $this->configureCSP($response);
 		}
@@ -751,6 +870,8 @@ class AbsenceController extends Controller
 	#[NoCSRFRequired]
 	public function show(int $id): TemplateResponse
 	{
+		\OCP\Util::addTranslations('arbeitszeitcheck');
+
 		try {
 			$userId = $this->getUserId();
 			$absence = $this->absenceService->getAbsence($id, $userId);
@@ -759,12 +880,7 @@ class AbsenceController extends Controller
 				$response = new TemplateResponse(
 					$this->appName,
 					'absences',
-					[
-						'urlGenerator' => $this->urlGenerator,
-						'error' => $this->l10n->t('Absence not found'),
-						'l' => $this->l10n,
-					],
-					'blank'
+					$this->buildAbsenceListErrorParams($this->l10n->t('Absence not found'))
 				);
 				return $this->configureCSP($response);
 			}
@@ -787,8 +903,7 @@ class AbsenceController extends Controller
 			$response = new TemplateResponse(
 				$this->appName,
 				'absences',
-				[
-					'urlGenerator' => $this->urlGenerator,
+				$this->buildAbsencePageTemplateParams('view', [
 					'mode' => 'view',
 					'absence' => $absence,
 					'displayDays' => $displayDays,
@@ -800,22 +915,19 @@ class AbsenceController extends Controller
 					'stats' => [],
 					'currentUserId' => $userId,
 					'usersUrl' => $this->urlGenerator->linkToRoute('arbeitszeitcheck.absence.users'),
-					'l' => $this->l10n,
 					'employeeHasAssignableManager' => $this->teamResolver->hasAssignableManagerForEmployee($userId),
 					'useAppTeams' => $this->teamResolver->useAppTeams(),
-				]
+				])
 			);
 			return $this->configureCSP($response);
 		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error('Error in AbsenceController::show: ' . $e->getMessage(), ['exception' => $e]);
 			$response = new TemplateResponse(
 				$this->appName,
 				'absences',
-				[
-					'urlGenerator' => $this->urlGenerator,
-					'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.'),
-					'l' => $this->l10n,
-				],
-				'blank'
+				$this->buildAbsenceListErrorParams(
+					$this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.')
+				)
 			);
 			return $this->configureCSP($response);
 		}
@@ -853,25 +965,52 @@ class AbsenceController extends Controller
 				'substitute_user_id' => is_array($params['substitute_user_id'] ?? null) ? (string)reset($params['substitute_user_id']) : ($params['substitute_user_id'] ?? null)
 			];
 
-			// Validate required fields
 			if (empty($data['type']) || empty($data['start_date']) || empty($data['end_date'])) {
+				$msg = $this->l10n->t('Please choose a type and fill in start and end date.');
+				if (!$this->wantsJson()) {
+					$url = $this->urlGenerator->linkToRoute('arbeitszeitcheck.absence.create') . '?error=' . rawurlencode($msg);
+					return new RedirectResponse($url, Http::STATUS_SEE_OTHER);
+				}
 				return new JSONResponse([
 					'success' => false,
-					'error' => $this->l10n->t('Type, start_date, and end_date are required')
+					'error' => $msg,
 				], Http::STATUS_BAD_REQUEST);
 			}
 
 			try {
-				$ds = new \DateTime($data['start_date']);
-				$de = new \DateTime($data['end_date']);
+				$ds = $this->parseFormDate($data['start_date']);
+				$de = $this->parseFormDate($data['end_date']);
+			} catch (\InvalidArgumentException $e) {
+				return $this->invalidDatesResponse();
+			}
+
+			if ($ds > $de) {
+				$msg = $this->l10n->t('End date cannot be before start date.');
+				if (!$this->wantsJson()) {
+					$url = $this->urlGenerator->linkToRoute('arbeitszeitcheck.absence.create') . '?error=' . rawurlencode($msg);
+					return new RedirectResponse($url, Http::STATUS_SEE_OTHER);
+				}
+				return new JSONResponse(['success' => false, 'error' => $msg], Http::STATUS_BAD_REQUEST);
+			}
+
+			try {
 				$de->setTime(23, 59, 59);
 				$this->monthClosureService->assertDateRangeMutable($userId, $ds, $de);
 			} catch (MonthFinalizedException $e) {
+				$msg = $this->l10n->t('This calendar month is finalized. Contact an administrator if a correction must be made.');
+				if (!$this->wantsJson()) {
+					$url = $this->urlGenerator->linkToRoute('arbeitszeitcheck.absence.create') . '?error=' . rawurlencode($msg);
+					return new RedirectResponse($url, Http::STATUS_SEE_OTHER);
+				}
 				return new JSONResponse([
 					'success' => false,
-					'error' => $this->l10n->t('This calendar month is finalized. Contact an administrator if a correction must be made.'),
+					'error' => $msg,
 				], Http::STATUS_CONFLICT);
 			}
+
+			// Normalise to ISO so the service layer's parseDate() always sees a canonical value.
+			$data['start_date'] = $ds->format('Y-m-d');
+			$data['end_date'] = $de->format('Y-m-d');
 
 			$absence = $this->absenceService->createAbsence($data, $userId);
 
@@ -885,9 +1024,14 @@ class AbsenceController extends Controller
 			], Http::STATUS_CREATED);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in AbsenceController::store: ' . $e->getMessage(), ['exception' => $e]);
+			$msg = $this->getSafeErrorMessage($e);
+			if (!$this->wantsJson()) {
+				$url = $this->urlGenerator->linkToRoute('arbeitszeitcheck.absence.create') . '?error=' . rawurlencode($msg);
+				return new RedirectResponse($url, Http::STATUS_SEE_OTHER);
+			}
 			return new JSONResponse([
 				'success' => false,
-				'error' => $this->getSafeErrorMessage($e)
+				'error' => $msg,
 			], Http::STATUS_BAD_REQUEST);
 		}
 	}
@@ -952,10 +1096,28 @@ class AbsenceController extends Controller
 					$existing->getStartDate(),
 					$existing->getEndDate()
 				);
-				$nStart = isset($data['start_date']) ? new \DateTime($data['start_date']) : $existing->getStartDate();
-				$nEnd = isset($data['end_date']) ? new \DateTime($data['end_date']) : $existing->getEndDate();
+				try {
+					$nStart = isset($data['start_date']) ? $this->parseFormDate((string)$data['start_date']) : $existing->getStartDate();
+					$nEnd = isset($data['end_date']) ? $this->parseFormDate((string)$data['end_date']) : $existing->getEndDate();
+				} catch (\InvalidArgumentException $e) {
+					return $this->invalidDatesResponse();
+				}
+				if ($nStart > $nEnd) {
+					$msg = $this->l10n->t('End date cannot be before start date.');
+					if (!$this->wantsJson()) {
+						$url = $this->urlGenerator->linkToRoute('arbeitszeitcheck.absence.edit', ['id' => $id]) . '?error=' . rawurlencode($msg);
+						return new RedirectResponse($url, Http::STATUS_SEE_OTHER);
+					}
+					return new JSONResponse(['success' => false, 'error' => $msg], Http::STATUS_BAD_REQUEST);
+				}
 				$nEnd->setTime(23, 59, 59);
 				$this->monthClosureService->assertDateRangeMutable($userId, $nStart, $nEnd);
+				if (isset($data['start_date'])) {
+					$data['start_date'] = $nStart->format('Y-m-d');
+				}
+				if (isset($data['end_date'])) {
+					$data['end_date'] = $nEnd->format('Y-m-d');
+				}
 			} catch (MonthFinalizedException $e) {
 				return new JSONResponse([
 					'success' => false,

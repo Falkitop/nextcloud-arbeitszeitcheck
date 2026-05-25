@@ -1,6 +1,7 @@
 /*
  * ArbeitszeitCheck design tokens (--azc-*).
  * Colors derive from Nextcloud theme variables; no raw hex in feature CSS.
+ * Spacing/typography on :root; theme colors on body (NC sets --color-* on body).
  */
 :root {
 	--azc-space-1: 4px;
@@ -30,19 +31,30 @@
 	--azc-breakpoint-md: 768px;
 	--azc-breakpoint-lg: 1024px;
 
-	--azc-bg-soft: color-mix(in srgb, var(--color-main-background, #fff) 96%, var(--color-main-text, #1d1d1d) 4%);
-	--azc-bg-card: var(--color-main-background, #fff);
-	--azc-text: var(--color-main-text, #1d1d1d);
-	--azc-muted: var(--color-text-maxcontrast, color-mix(in srgb, var(--color-main-text, #1d1d1d) 60%, transparent));
-	--azc-border: color-mix(in srgb, var(--color-main-text, #1d1d1d) 12%, transparent);
-	--azc-border-strong: color-mix(in srgb, var(--color-main-text, #1d1d1d) 24%, transparent);
-
-	--azc-tint-success: color-mix(in srgb, var(--color-success, #46ba61) 18%, transparent);
-	--azc-tint-warning: color-mix(in srgb, var(--color-warning, #c98600) 18%, transparent);
-	--azc-tint-danger: color-mix(in srgb, var(--color-error, #cc4646) 18%, transparent);
-	--azc-tint-info: color-mix(in srgb, var(--color-primary-element, #0082c9) 14%, transparent);
+	/* Inline SVG catalogue (IconCatalog / AzcCatalog) */
+	--azc-icon-sm: 1rem;
+	--azc-icon-md: 1.125rem;
+	--azc-icon-lg: 1.25rem;
+	--azc-icon-well: 2.25rem;
 
 	--azc-tab-num: tabular-nums;
-	--azc-shadow-sm: 0 1px 2px color-mix(in srgb, var(--color-main-text, #1d1d1d) 8%, transparent);
-	--azc-shadow-md: 0 8px 24px color-mix(in srgb, var(--color-main-text, #1d1d1d) 12%, transparent);
+}
+
+/* Theme-bound tokens — must follow body [data-theme-*] where NC defines --color-* */
+body {
+	--azc-bg-soft: color-mix(in srgb, var(--color-main-background) 96%, var(--color-main-text) 4%);
+	--azc-bg-card: var(--color-main-background);
+	--azc-text: var(--color-main-text);
+	--azc-muted: var(--color-text-maxcontrast);
+	--azc-border: color-mix(in srgb, var(--color-main-text) 12%, transparent);
+	--azc-border-strong: color-mix(in srgb, var(--color-main-text) 24%, transparent);
+
+	/* Mix with main background — not transparent — so callouts stay visible on all NC themes */
+	--azc-tint-success: color-mix(in srgb, var(--color-success) 10%, var(--color-main-background));
+	--azc-tint-warning: color-mix(in srgb, var(--color-warning) 12%, var(--color-main-background));
+	--azc-tint-danger: color-mix(in srgb, var(--color-error) 10%, var(--color-main-background));
+	--azc-tint-info: color-mix(in srgb, var(--color-primary-element) 8%, var(--color-main-background));
+
+	--azc-shadow-sm: 0 1px 2px color-mix(in srgb, var(--color-main-text) 8%, transparent);
+	--azc-shadow-md: 0 8px 24px color-mix(in srgb, var(--color-main-text) 12%, transparent);
 }

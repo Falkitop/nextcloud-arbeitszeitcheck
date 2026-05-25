@@ -16,6 +16,7 @@ $hint = (string)($_['hint'] ?? $l->t('If you believe this is a mistake, contact 
 $homeUrl = (string)($_['homeUrl'] ?? '/');
 ?>
 <div id="app-content" class="azc-app azc-app--access-denied">
+	<div id="app-content-wrapper" class="azc-shell azc-shell--minimal">
 	<a class="azc-skip-link" href="#azc-denied-main"><?php p($l->t('Skip to main content')); ?></a>
 	<div class="azc-denied">
 		<section id="azc-denied-main" class="azc-card azc-denied__card" role="alert" aria-labelledby="azc-denied-title" tabindex="-1">
@@ -29,5 +30,6 @@ $homeUrl = (string)($_['homeUrl'] ?? '/');
 				<?php p($l->t('Back to Nextcloud')); ?>
 			</a>
 		</section>
+	</div>
 	</div>
 </div>

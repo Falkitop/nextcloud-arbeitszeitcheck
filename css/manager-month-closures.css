@@ -1,211 +1,230 @@
 /**
- * Manager — revision PDF (month closure): month first, then people with per-row download.
- *
- * @copyright Copyright (c) 2026
- * @license AGPL-3.0-or-later
+ * Manager — revision PDF downloads (month closure wizard).
+ * Scoped to app shell page id for predictable layout in wide shell.
  */
 
-.manager-month-closures-page__content {
-	max-width: 42rem;
+#app-content.azc-app--manager-month-closures .manager-month-closures {
+	width: 100%;
+	max-width: 56rem;
 	margin-inline: auto;
 }
 
-.manager-mc-header {
-	margin-bottom: 1.75rem;
+#app-content.azc-app--manager-month-closures .manager-mc-wizard.azc-card {
+	overflow: hidden;
 }
 
-.manager-mc-header__title {
-	margin: 0 0 0.5rem;
-	font-size: var(--arbeitszeitcheck-font-size-h1, 1.5rem);
-	font-weight: 700;
-	line-height: 1.25;
-	color: var(--color-main-text);
-}
-
-.manager-mc-header__intro {
-	margin: 0;
-	color: var(--color-text-maxcontrast);
-	line-height: 1.5;
-}
-
-.manager-mc-flow {
-	display: flex;
-	flex-direction: column;
-	gap: 1.5rem;
-}
-
-.manager-mc-panel {
-	margin: 0;
-	padding: 1.25rem 1.25rem 1.35rem;
-	border: 1px solid var(--color-border);
-	border-radius: var(--border-radius-large, var(--border-radius-element));
-	background: var(--color-main-background);
-	box-shadow: var(--arbeitszeitcheck-shadow-base, 0 1px 2px color-mix(in srgb, var(--color-main-text) 6%, transparent));
-}
-
-.manager-mc-panel__legend {
-	display: flex;
-	align-items: center;
-	gap: 0.65rem;
-	margin: 0 0 0.75rem;
-	padding: 0;
-	font-size: 1.05rem;
-	font-weight: 700;
-	color: var(--color-main-text);
-}
-
-.manager-mc-step {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	min-width: 2rem;
-	min-height: 2rem;
-	padding: 0 0.35rem;
-	border-radius: 999px;
-	font-size: 0.95rem;
-	font-weight: 700;
-	line-height: 1;
-	color: var(--color-primary-element-text);
-	background: var(--color-primary-element);
-	flex-shrink: 0;
-}
-
-.manager-mc-panel__legend-text {
-	flex: 1;
-}
-
-.manager-mc-panel__hint {
-	margin: 0 0 0.85rem;
-	font-size: 0.92rem;
-	line-height: 1.45;
-	color: var(--color-text-maxcontrast);
-}
-
-.manager-mc-month-row {
-	display: flex;
-	flex-direction: column;
-	gap: 0.45rem;
-}
-
-.manager-mc-label {
-	font-weight: 600;
-	font-size: 0.95rem;
-	color: var(--color-main-text);
-}
-
-.manager-mc-select {
-	width: 100%;
-	min-height: 44px;
-	box-sizing: border-box;
-}
-
-.manager-mc-select:focus {
-	outline: 2px solid var(--color-primary-element);
-	outline-offset: 2px;
-}
-
-.manager-mc-month-status {
-	margin: 0.5rem 0 0;
-	min-height: 1.25rem;
-	font-size: 0.92rem;
-	color: var(--color-text-maxcontrast);
-}
-
-/* People list */
-.manager-mc-people-region {
-	min-height: 3rem;
-}
-
-.manager-mc-empty {
-	margin: 0;
-	padding: 1rem 1.1rem;
-	border-radius: var(--border-radius-element);
-	background: var(--color-background-dark, color-mix(in srgb, var(--color-main-text) 4%, var(--color-main-background)));
-	color: var(--color-text-maxcontrast);
-	line-height: 1.5;
-	font-size: 0.95rem;
-}
-
-.manager-mc-people-list {
+#app-content.azc-app--manager-month-closures .manager-mc-steps {
 	list-style: none;
 	margin: 0;
 	padding: 0;
 	display: flex;
 	flex-direction: column;
-	gap: 0.65rem;
+	gap: var(--azc-space-6, 1.5rem);
 }
 
-.manager-mc-person-row {
+#app-content.azc-app--manager-month-closures .manager-mc-step {
+	margin: 0;
+	padding: 0;
+}
+
+#app-content.azc-app--manager-month-closures .manager-mc-step__head {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--azc-space-4, 1rem);
+	margin-bottom: var(--azc-space-4, 1rem);
+}
+
+#app-content.azc-app--manager-month-closures .manager-mc-step__badge {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	min-width: 2.5rem;
+	min-height: 2.5rem;
+	border-radius: 999px;
+	font-size: var(--azc-fs-md, 1rem);
+	font-weight: 700;
+	line-height: 1;
+	color: var(--color-primary-element-text, #fff);
+	background: var(--color-primary-element, #0082c9);
+}
+
+#app-content.azc-app--manager-month-closures .manager-mc-step__titles {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+#app-content.azc-app--manager-month-closures .manager-mc-step__title {
+	margin: 0 0 var(--azc-space-1, 0.25rem);
+	font-size: var(--azc-fs-lg, 1.125rem);
+	font-weight: 600;
+	line-height: var(--azc-line-tight, 1.25);
+	color: var(--azc-text, var(--color-main-text));
+}
+
+#app-content.azc-app--manager-month-closures .manager-mc-step__hint {
+	margin: 0;
+	font-size: var(--azc-fs-sm, 0.9375rem);
+	line-height: var(--azc-line-base, 1.5);
+	color: var(--azc-muted, var(--color-text-maxcontrast));
+	max-width: 52ch;
+}
+
+#app-content.azc-app--manager-month-closures .manager-mc-step__body {
+	padding: var(--azc-space-4, 1rem) var(--azc-space-5, 1.25rem);
+	border: 1px solid var(--azc-border, var(--color-border));
+	border-radius: var(--azc-radius-md, 0.5rem);
+	background: var(--azc-bg-soft, var(--color-background-dark));
+	border-left: 4px solid var(--color-primary-element, #0082c9);
+}
+
+#app-content.azc-app--manager-month-closures .manager-mc-field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--azc-space-2, 0.5rem);
+	max-width: 28rem;
+}
+
+#app-content.azc-app--manager-month-closures .manager-mc-field__label {
+	font-size: var(--azc-fs-sm, 0.9375rem);
+	font-weight: 600;
+	color: var(--azc-text, var(--color-main-text));
+}
+
+#app-content.azc-app--manager-month-closures .manager-mc-field__control {
+	width: 100%;
+	min-height: 44px;
+	box-sizing: border-box;
+}
+
+#app-content.azc-app--manager-month-closures .manager-mc-field__control:focus-visible {
+	outline: 3px solid color-mix(in srgb, var(--color-primary-element, #0082c9) 55%, transparent);
+	outline-offset: 2px;
+}
+
+#app-content.azc-app--manager-month-closures .manager-mc-status {
+	margin: var(--azc-space-3, 0.75rem) 0 0;
+	min-height: 1.25rem;
+	font-size: var(--azc-fs-sm, 0.9375rem);
+	color: var(--azc-muted, var(--color-text-maxcontrast));
+}
+
+#app-content.azc-app--manager-month-closures .manager-mc-status.manager-mc-status--loading {
+	display: flex;
+	align-items: center;
+	gap: var(--azc-space-2, 0.5rem);
+}
+
+#app-content.azc-app--manager-month-closures .manager-mc-people {
+	min-height: 4rem;
+}
+
+#app-content.azc-app--manager-month-closures .manager-mc-people__empty {
+	padding: var(--azc-space-5, 1.25rem);
+}
+
+#app-content.azc-app--manager-month-closures .manager-mc-people__empty[hidden] {
+	display: none !important;
+}
+
+#app-content.azc-app--manager-month-closures .manager-mc-people__list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--azc-space-3, 0.75rem);
+}
+
+#app-content.azc-app--manager-month-closures .manager-mc-people__list[hidden] {
+	display: none !important;
+}
+
+#app-content.azc-app--manager-month-closures .manager-mc-person {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
 	justify-content: space-between;
-	gap: 0.75rem 1rem;
-	padding: 0.85rem 1rem;
-	border: 1px solid var(--color-border);
-	border-radius: var(--border-radius-element);
-	background: var(--color-main-background);
+	gap: var(--azc-space-3, 0.75rem) var(--azc-space-4, 1rem);
+	padding: var(--azc-space-4, 1rem) var(--azc-space-5, 1.25rem);
+	border: 1px solid var(--azc-border, var(--color-border));
+	border-radius: var(--azc-radius-sm, 0.375rem);
+	background: var(--azc-bg-card, var(--color-main-background));
+	box-shadow: var(--azc-shadow-sm, 0 1px 2px rgb(0 0 0 / 6%));
 }
 
-.manager-mc-person-info {
+#app-content.azc-app--manager-month-closures .manager-mc-person__info {
 	display: flex;
 	flex-direction: column;
-	gap: 0.2rem;
+	gap: var(--azc-space-1, 0.25rem);
 	min-width: 0;
 	flex: 1 1 12rem;
 }
 
-.manager-mc-person-name {
+#app-content.azc-app--manager-month-closures .manager-mc-person__name {
+	font-size: var(--azc-fs-md, 1rem);
 	font-weight: 600;
-	color: var(--color-main-text);
+	line-height: var(--azc-line-tight, 1.25);
+	color: var(--azc-text, var(--color-main-text));
 	word-break: break-word;
 }
 
-.manager-mc-person-meta {
-	font-size: 0.85rem;
-	color: var(--color-text-maxcontrast);
-	word-break: break-all;
+#app-content.azc-app--manager-month-closures .manager-mc-person__meta {
+	font-size: var(--azc-fs-xs, 0.8125rem);
+	line-height: var(--azc-line-base, 1.4);
+	color: var(--azc-muted, var(--color-text-maxcontrast));
+	word-break: break-word;
 }
 
-.manager-mc-person-download {
+#app-content.azc-app--manager-month-closures .manager-mc-person__download {
 	flex-shrink: 0;
-	min-height: 44px;
-	min-width: 9rem;
+	min-width: 10rem;
 	text-align: center;
 	text-decoration: none;
-	box-sizing: border-box;
 }
 
-.manager-mc-person-download:focus-visible {
-	outline: 2px solid var(--color-primary-element);
-	outline-offset: 2px;
-}
-
-.manager-mc-person-download--disabled {
+#app-content.azc-app--manager-month-closures .manager-mc-person__download--disabled {
 	pointer-events: none;
 	opacity: 0.55;
 	cursor: not-allowed;
 }
 
-.manager-mc-page-error {
-	margin-top: 0.5rem;
+#app-content.azc-app--manager-month-closures .manager-mc-page-error {
+	margin-top: var(--azc-space-5, 1.25rem);
+}
+
+#app-content.azc-app--manager-month-closures .manager-mc-page-error[hidden] {
+	display: none !important;
+}
+
+@media (min-width: 900px) {
+	#app-content.azc-app--manager-month-closures .manager-month-closures {
+		max-width: 48rem;
+	}
 }
 
 @media (max-width: 768px) {
-	.manager-month-closures-page__content {
+	#app-content.azc-app--manager-month-closures .manager-mc-step__body {
+		padding: var(--azc-space-3, 0.75rem) var(--azc-space-4, 1rem);
+	}
+
+	#app-content.azc-app--manager-month-closures .manager-mc-field {
 		max-width: none;
 	}
 
-	.manager-mc-panel {
-		padding: 1rem 1rem 1.15rem;
-	}
-
-	.manager-mc-person-row {
+	#app-content.azc-app--manager-month-closures .manager-mc-person {
 		flex-direction: column;
 		align-items: stretch;
 	}
 
-	.manager-mc-person-download {
+	#app-content.azc-app--manager-month-closures .manager-mc-person__download {
 		width: 100%;
+		min-width: 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	#app-content.azc-app--manager-month-closures .manager-mc-person {
+		box-shadow: none;
 	}
 }

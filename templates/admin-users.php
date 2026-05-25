@@ -10,6 +10,8 @@ declare(strict_types=1);
  */
 
 
+use OCA\ArbeitszeitCheck\Util\TemplateL10n;
+
 /** @var array $_ */
 /** @var \OCP\IL10N $l */
 $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
@@ -21,21 +23,26 @@ $total = $_['total'] ?? 0;
 <?php include __DIR__ . '/common/page-start.php'; ?>
 
 
+        <div class="azc-page-stack">
+
         <div class="section">
-<!-- Search and Filters -->
             <div class="section-content">
-                <div class="flex flex--between flex--gap mb-3">
+                <div class="azc-list-toolbar">
                     <label for="user-search" class="visually-hidden"><?php p($l->t('Search employees')); ?></label>
-                    <input type="text" id="user-search" class="form-input" 
+                    <input type="search"
+                        id="user-search"
+                        class="form-input"
+                        autocomplete="off"
                         placeholder="<?php p($l->t('Search employees...')); ?>">
-                    <button type="button" id="refresh-users" class="btn btn--secondary">
-                        <?php p($l->t('Refresh')); ?>
-                    </button>
+                    <div class="azc-list-toolbar__actions">
+                        <button type="button" id="refresh-users" class="btn btn--secondary">
+                            <?php p($l->t('Refresh')); ?>
+                        </button>
+                    </div>
                 </div>
 
-                <!-- Users Table -->
-                <div class="table-responsive" role="region" aria-label="<?php p($l->t('Employee list')); ?>">
-                    <table class="table" id="users-table" role="table" aria-label="<?php p($l->t('Employee list')); ?>">
+                <div class="table-container" role="region" aria-label="<?php p($l->t('Employee list')); ?>">
+                    <table class="table table--hover" id="users-table" role="table" aria-label="<?php p($l->t('Employee list')); ?>">
                         <thead>
                             <tr>
                                 <th scope="col"><?php p($l->t('Name')); ?></th>
@@ -45,7 +52,7 @@ $total = $_['total'] ?? 0;
                                 <th scope="col"><?php p($l->t('Valid from / to')); ?></th>
                                 <th scope="col"><?php p($l->t('Overtime Stichtag')); ?></th>
                                 <th scope="col"><?php p($l->t('Status')); ?></th>
-                                <th scope="col"><?php p($l->t('Actions')); ?></th>
+                                <th scope="col" class="azc-table-actions-col"><?php p($l->t('Actions')); ?></th>
                             </tr>
                         </thead>
                         <tbody id="users-tbody">
@@ -58,7 +65,9 @@ $total = $_['total'] ?? 0;
                             <?php else: ?>
                                 <?php
                                 $formatDate = function ($iso) use ($l) {
-                                    if (empty($iso)) return '-';
+                                    if (empty($iso)) {
+                                        return '-';
+                                    }
                                     $d = \DateTime::createFromFormat('Y-m-d', $iso);
                                     return $d ? $d->format('d.m.Y') : $iso;
                                 };
@@ -97,20 +106,20 @@ $total = $_['total'] ?? 0;
                                                 <span class="badge badge--error"><?php p($l->t('Disabled')); ?></span>
                                             <?php endif; ?>
                                         </td>
-                                        <td>
-                                            <div class="user-actions" role="group" aria-label="<?php p($l->t('Actions for %s', [$user['displayName']])); ?>">
-                                                <button type="button" 
-                                                        class="btn btn--sm btn--tertiary" 
-                                                        data-action="history-user" 
+                                        <td class="azc-table-actions-col">
+                                            <div class="user-actions azc-table-actions" role="group" aria-label="<?php p($l->t('Actions for %s', [$user['displayName']])); ?>">
+                                                <button type="button"
+                                                        class="btn btn--sm btn--tertiary"
+                                                        data-action="history-user"
                                                         data-user-id="<?php p($user['userId']); ?>"
                                                         data-user-name="<?php p($user['displayName']); ?>"
                                                         aria-label="<?php p($l->t('View assignment history for %s', [$user['displayName']])); ?>"
                                                         title="<?php p($l->t('View model assignment history')); ?>">
                                                     <?php p($l->t('History')); ?>
                                                 </button>
-                                                <button type="button" 
-                                                        class="btn btn--sm btn--secondary" 
-                                                        data-action="edit-user" 
+                                                <button type="button"
+                                                        class="btn btn--sm btn--secondary"
+                                                        data-action="edit-user"
                                                         data-user-id="<?php p($user['userId']); ?>"
                                                         aria-label="<?php p($l->t('Edit this employee\'s work schedule')); ?>"
                                                         title="<?php p($l->t('Click to change this employee\'s work schedule or other settings')); ?>">
@@ -125,8 +134,14 @@ $total = $_['total'] ?? 0;
                     </table>
                 </div>
 
-                <div class="pagination-info">
-                    <p><?php p($l->t('Showing %d of %d employees', [count($users), $total])); ?></p>
+                <div class="azc-table-meta pagination-info" id="users-pagination" aria-live="polite">
+                    <p><?php
+                        p(str_replace(
+                            ['{shown}', '{total}'],
+                            [(string) count($users), (string) $total],
+                            $l->t('Showing {shown} of {total} employees')
+                        ));
+                    ?></p>
                 </div>
             </div>
 <?php
@@ -245,7 +260,13 @@ foreach ($holidayStates as $code => $name) {
     window.ArbeitszeitCheck.l10n.sourceManualException = <?php echo json_encode($l->t('Manual exception'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.sourceSimpleModel = <?php echo json_encode($l->t('Model based'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.sourceTariff = <?php echo json_encode($l->t('Tariff'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.showingEmployees = <?php echo json_encode(
+        TemplateL10n::translate($l, 'Showing {shown} of {total} employees'),
+        TemplateL10n::JSON_ENCODE_FLAGS
+    ); ?>;
     window.ArbeitszeitCheck.states = <?php echo json_encode($holidayStatesForJs, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 </script>
 
+</div><!-- /.section -->
+</div><!-- /.azc-page-stack -->
 <?php include __DIR__ . '/common/page-end.php'; ?>

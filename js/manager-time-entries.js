@@ -82,7 +82,7 @@
 
 	function setLoading(isLoading) {
 		state.loading = isLoading;
-		const results = document.querySelector('.manager-time-entries-page__results');
+		const results = document.querySelector('.manager-scope-page__results');
 		if (results) {
 			results.setAttribute('aria-busy', isLoading ? 'true' : 'false');
 		}
@@ -124,18 +124,25 @@
 			el.removeAttribute('aria-invalid');
 		});
 		const errorEl = document.getElementById('employee-time-entries-filter-error');
-		if (errorEl) {
-			errorEl.textContent = '';
-			errorEl.hidden = true;
+		setFilterErrorText(errorEl, '');
+	}
+
+	function setFilterErrorText(errorEl, message) {
+		if (!errorEl) {
+			return;
 		}
+		const inner = errorEl.querySelector('.azc-callout__text');
+		if (inner) {
+			inner.textContent = message;
+		} else {
+			errorEl.textContent = message;
+		}
+		errorEl.hidden = !message;
 	}
 
 	function setFilterError(message, focusId) {
 		const errorEl = document.getElementById('employee-time-entries-filter-error');
-		if (errorEl) {
-			errorEl.textContent = message;
-			errorEl.hidden = !message;
-		}
+		setFilterErrorText(errorEl, message);
 		if (message && focusId) {
 			const focusEl = document.getElementById(focusId);
 			if (focusEl) {
@@ -231,7 +238,8 @@
 		}
 		emptyEl.classList.remove('visually-hidden');
 		tableWrap.classList.add('visually-hidden');
-		const desc = emptyEl.querySelector('.empty-state__description');
+		const desc = emptyEl.querySelector('.azc-empty-state__text')
+			|| emptyEl.querySelector('.empty-state__description');
 		if (desc) {
 			desc.textContent = message;
 		}
@@ -262,7 +270,7 @@
 				? Utils.encodeAttributeJson(summaryPayload)
 				: escapeHtml(JSON.stringify(summaryPayload));
 			const actionCell = canCorrect
-				? `<button type="button" class="btn btn--sm btn--secondary btn-manager-correct" data-entry-id="${escapeHtml(String(entry.id))}" data-entry-updated="${escapeHtml(entry.updatedAt || '')}" data-entry-summary="${summaryJson}" aria-label="${escapeHtml(t('Correct time entry', 'Correct time entry'))}">${escapeHtml(t('Correct', 'Correct'))}</button>`
+				? `<button type="button" class="azc-btn azc-btn--secondary azc-btn--sm btn-manager-correct" data-entry-id="${escapeHtml(String(entry.id))}" data-entry-updated="${escapeHtml(entry.updatedAt || '')}" data-entry-summary="${summaryJson}" aria-label="${escapeHtml(t('Correct time entry', 'Correct time entry'))}">${escapeHtml(t('Correct', 'Correct'))}</button>`
 				: '<span class="text-muted">–</span>';
 			return [
 				'<tr>',
@@ -274,7 +282,7 @@
 				`<td>${escapeHtml(formatBreaks(entry))}</td>`,
 				`<td><span class="badge badge--primary">${escapeHtml(entry.status || '-')}</span></td>`,
 				`<td>${escapeHtml(entry.description || t('No description', 'No description'))}</td>`,
-				`<td>${actionCell}</td>`,
+				`<td class="azc-table-actions-col"><div class="azc-table-actions" role="group">${actionCell}</div></td>`,
 				'</tr>',
 			].join('');
 		}).join('');

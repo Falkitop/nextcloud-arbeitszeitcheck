@@ -380,7 +380,7 @@
         <td data-label="${escape(t('Tariff rule set', 'Tariff rule set'))}">${escape(fmtRuleSet(row.tariffRuleSetId))}</td>
         <td data-label="${escape(t('Description', 'Description'))}">${escape(row.description || '')}</td>
         <td data-label="${escape(t('Actions', 'Actions'))}" class="layer-card__history-actions">
-          <button type="button" class="btn btn--small btn--danger" data-delete-org="${row.id}" aria-label="${escape(t('Delete organisation default', 'Delete organisation default'))} #${row.id}">${escape(t('Delete', 'Delete'))}</button>
+          <button type="button" class="azc-btn azc-btn--sm azc-btn--danger admin-vacation-layers__row-action" data-delete-org="${row.id}" aria-label="${escape(t('Delete organisation default', 'Delete organisation default'))} #${row.id}">${escape(t('Delete', 'Delete'))}</button>
         </td>
       </tr>
     `).join('');
@@ -404,7 +404,7 @@
         <td data-label="${escape(t('Tariff rule set', 'Tariff rule set'))}">${escape(fmtRuleSet(row.tariffRuleSetId))}</td>
         <td data-label="${escape(t('Description', 'Description'))}">${escape(row.description || '')}</td>
         <td data-label="${escape(t('Actions', 'Actions'))}" class="layer-card__history-actions">
-          <button type="button" class="btn btn--small btn--danger" data-delete-model="${row.id}" aria-label="${escape(t('Delete model default', 'Delete model default'))} #${row.id}">${escape(t('Delete', 'Delete'))}</button>
+          <button type="button" class="azc-btn azc-btn--sm azc-btn--danger admin-vacation-layers__row-action" data-delete-model="${row.id}" aria-label="${escape(t('Delete model default', 'Delete model default'))} #${row.id}">${escape(t('Delete', 'Delete'))}</button>
         </td>
       </tr>
     `).join('');
@@ -428,7 +428,7 @@
         <td data-label="${escape(t('Priority', 'Priority'))}">${escape(String(row.priority ?? 0))}</td>
         <td data-label="${escape(t('Description', 'Description'))}">${escape(row.description || '')}</td>
         <td data-label="${escape(t('Actions', 'Actions'))}" class="layer-card__history-actions">
-          <button type="button" class="btn btn--small btn--danger" data-delete-team="${row.id}" aria-label="${escape(t('Delete team policy', 'Delete team policy'))} #${row.id}">${escape(t('Delete', 'Delete'))}</button>
+          <button type="button" class="azc-btn azc-btn--sm azc-btn--danger admin-vacation-layers__row-action" data-delete-team="${row.id}" aria-label="${escape(t('Delete team policy', 'Delete team policy'))} #${row.id}">${escape(t('Delete', 'Delete'))}</button>
         </td>
       </tr>
     `).join('');

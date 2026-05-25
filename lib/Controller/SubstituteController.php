@@ -18,6 +18,7 @@ use OCA\ArbeitszeitCheck\Service\CSPService;
 use OCA\ArbeitszeitCheck\Db\AbsenceMapper;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
+use OCA\ArbeitszeitCheck\Service\NavigationFlagsService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Http;
@@ -38,6 +39,7 @@ use OCP\Util;
 class SubstituteController extends Controller
 {
 	use CSPTrait;
+	use NavigationFlagsTrait;
 	use PageShellTrait;
 
 	private AbsenceService $absenceService;
@@ -48,6 +50,7 @@ class SubstituteController extends Controller
 	protected IL10N $l10n;
 	protected PermissionService $permissionService;
 	protected LocaleFormatService $localeFormat;
+	protected NavigationFlagsService $navigationFlags;
 
 	public function __construct(
 		string $appName,
@@ -60,7 +63,8 @@ class SubstituteController extends Controller
 		CSPService $cspService,
 		LocaleFormatService $localeFormat,
 		IL10N $l10n,
-		PermissionService $permissionService
+		PermissionService $permissionService,
+		NavigationFlagsService $navigationFlags,
 	) {
 		parent::__construct($appName, $request);
 		$this->absenceService = $absenceService;
@@ -71,49 +75,8 @@ class SubstituteController extends Controller
 		$this->localeFormat = $localeFormat;
 		$this->l10n = $l10n;
 		$this->permissionService = $permissionService;
+		$this->navigationFlags = $navigationFlags;
 		$this->setCspService($cspService);
-	}
-
-	/**
-	 * @return array{showSubstitutionLink: bool, showManagerLink: bool, showReportsLink: bool, showAdminNav: bool}
-	 */
-	private function getNavigationFlags(string $userId): array
-	{
-		$showSubstitutionLink = false;
-		try {
-			$pending = $this->absenceMapper->findSubstitutePendingForUser($userId, 1, 0);
-			$showSubstitutionLink = \is_array($pending) && \count($pending) > 0;
-		} catch (\Throwable $e) {
-			$showSubstitutionLink = false;
-		}
-
-		$canAccessManagerDashboard = $this->permissionService->canAccessManagerDashboard($userId);
-		$isAdmin = $this->permissionService->isAdmin($userId);
-
-		return [
-			'showSubstitutionLink' => $showSubstitutionLink,
-			'showManagerLink' => $canAccessManagerDashboard,
-			'showReportsLink' => $canAccessManagerDashboard || $isAdmin,
-			'showAdminNav' => $isAdmin,
-		];
-	}
-
-	/**
-	 * @return array{showSubstitutionLink: bool, showManagerLink: bool, showReportsLink: bool, showAdminNav: bool}
-	 */
-	private function getNavigationFlagsForSession(): array
-	{
-		$user = $this->userSession->getUser();
-		if ($user === null) {
-			return [
-				'showSubstitutionLink' => false,
-				'showManagerLink' => false,
-				'showReportsLink' => false,
-				'showAdminNav' => false,
-			];
-		}
-
-		return $this->getNavigationFlags($user->getUID());
 	}
 
 	private function getUserId(): string

@@ -2,7 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 describe('ArbeitszeitCheckComponents confirmDialog', () => {
   beforeEach(async () => {
-    document.body.innerHTML = '<div id="app-content" data-azc-html-lang="en"></div>'
+    document.body.innerHTML = `
+      <nav id="app-navigation"></nav>
+      <div id="app-content" data-azc-html-lang="en">
+        <div id="azc-live-region" role="status" aria-live="polite"></div>
+        <div id="app-content-wrapper">
+          <main id="azc-main-content" tabindex="-1"></main>
+        </div>
+      </div>`
     vi.resetModules()
     await import('./components.js')
   })
@@ -28,7 +35,7 @@ describe('ArbeitszeitCheckComponents confirmDialog', () => {
     cancel.click()
 
     await expect(promise).resolves.toBe(false)
-    expect(document.getElementById('app-content').getAttribute('aria-hidden')).toBeNull()
+    expect(document.getElementById('azc-main-content').hasAttribute('inert')).toBe(false)
   })
 
   it('resolves with confirmed payload when confirm is clicked', async () => {
@@ -73,7 +80,7 @@ describe('ArbeitszeitCheckComponents confirmDialog', () => {
     document.querySelector('.confirm-dialog__cancel')?.click()
   })
 
-  it('sets aria-hidden on app content while open', async () => {
+  it('sets inert on main and nav while open (live regions stay available)', async () => {
     const Components = window.ArbeitszeitCheckComponents
     const promise = Components.confirmDialog({
       title: 'Finalize month',
@@ -83,7 +90,9 @@ describe('ArbeitszeitCheckComponents confirmDialog', () => {
       typedConfirmPhrase: 'DELETE',
     })
 
-    expect(document.getElementById('app-content').getAttribute('aria-hidden')).toBe('true')
+    expect(document.getElementById('azc-main-content').hasAttribute('inert')).toBe(true)
+    expect(document.getElementById('app-navigation').hasAttribute('inert')).toBe(true)
+    expect(document.getElementById('app-content').getAttribute('aria-hidden')).toBeNull()
 
     document.querySelector('.confirm-dialog__cancel')?.click()
     await promise
@@ -100,7 +109,7 @@ describe('ArbeitszeitCheckComponents confirmDialog', () => {
 
     Components.openModal(modal)
     expect(document.body.style.overflow).toBe('hidden')
-    expect(document.getElementById('app-content').getAttribute('aria-hidden')).toBe('true')
+    expect(document.getElementById('azc-main-content').hasAttribute('inert')).toBe(true)
 
     await new Promise((r) => setTimeout(r, 60))
     expect(modal.contains(document.activeElement)).toBe(true)
@@ -110,7 +119,7 @@ describe('ArbeitszeitCheckComponents confirmDialog', () => {
 
     expect(document.getElementById('test-open-modal')).toBeNull()
     expect(document.body.style.overflow).toBe('')
-    expect(document.getElementById('app-content').getAttribute('aria-hidden')).toBeNull()
+    expect(document.getElementById('azc-main-content').hasAttribute('inert')).toBe(false)
     expect(Components._modalLockDepth).toBe(0)
   })
 })

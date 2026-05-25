@@ -19,9 +19,23 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
 <?php include __DIR__ . '/common/page-start.php'; ?>
 
 
+        <div class="azc-page-stack">
+
+        <?php
+        $useAppTeams = (bool)($_['useAppTeams'] ?? false);
+        $adminTeamsUrl = (string)($_['adminTeamsUrl'] ?? '');
+        if (!$useAppTeams):
+        ?>
+        <div class="azc-callout azc-callout--warning" role="status" aria-labelledby="teams-enable-app-teams-title">
+            <p id="teams-enable-app-teams-title" class="azc-callout__title"><?php p($l->t('App teams are disabled')); ?></p>
+            <p class="azc-callout__text">
+                <?php p($l->t('Manager approvals, the manager dashboard, and team-scoped reports require ArbeitszeitCheck teams. Enable the option below and assign at least one manager per unit.')); ?>
+            </p>
+        </div>
+        <?php endif; ?>
+
         <div class="admin-teams">
-        <!-- Use app teams toggle -->
-        <section class="section section--config" aria-labelledby="teams-config-heading">
+        <section class="azc-card section--config" aria-labelledby="teams-config-heading">
             <h2 id="teams-config-heading" class="section__heading"><?php p($l->t('Manager assignment')); ?></h2>
             <div class="config-card">
                 <div class="form-checkbox form-checkbox--switch">
@@ -42,7 +56,7 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
         <section class="section section--teams-list" aria-labelledby="teams-list-heading">
             <div class="section__header flex flex--between flex--wrap flex--gap">
                 <h2 id="teams-list-heading" class="section__heading"><?php p($l->t('Structure')); ?></h2>
-                <button type="button" id="admin-teams-add" class="btn btn--primary"
+                <button type="button" id="admin-teams-add" class="azc-btn azc-btn--primary"
                         aria-label="<?php p($l->t('Add new organizational unit')); ?>">
                     <?php p($l->t('Add unit')); ?>
                 </button>
@@ -88,4 +102,5 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
 
 <?php include __DIR__ . '/common/teams-l10n.php'; ?>
 
+</div><!-- /.azc-page-stack -->
 <?php include __DIR__ . '/common/page-end.php'; ?>

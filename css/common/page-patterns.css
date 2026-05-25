@@ -181,6 +181,12 @@
 	align-self: end;
 }
 
+#app-content.azc-app .azc-filter-field__control .form-input[aria-invalid='true'],
+#app-content.azc-app .azc-filter-field__control .form-select[aria-invalid='true'] {
+	border-color: var(--color-error, #e9322d);
+	outline-color: var(--color-error, #e9322d);
+}
+
 @media (max-width: 1200px) {
 	#app-content.azc-app .azc-filter-grid--extended,
 	#app-content.azc-app .azc-filter-grid--record {
@@ -273,8 +279,174 @@
 	}
 }
 
-/* Manager filter aliases (backward compat during migration) */
-#app-content.azc-app .manager-time-entries-page__filters.azc-card,
-#app-content.azc-app .azc-filter-panel.azc-card {
-	padding: var(--azc-space-5);
+/* Nextcloud personal settings panel (outside app shell) */
+#arbeitszeitcheck-personal-settings.azc-nc-settings-panel {
+	max-width: 52rem;
+}
+
+#arbeitszeitcheck-personal-settings .settings-hint {
+	max-width: 60ch;
+	line-height: var(--azc-line-base, 1.5);
+	color: var(--color-text-maxcontrast, var(--azc-muted, #666));
+}
+
+#arbeitszeitcheck-personal-settings .settings-subheading {
+	margin: var(--azc-space-5, 1.25rem) 0 var(--azc-space-2, 0.5rem);
+	font-size: var(--azc-fs-md, 1rem);
+	font-weight: 600;
+}
+
+#arbeitszeitcheck-personal-settings .azc-btn + .azc-btn {
+	margin-inline-start: var(--azc-space-2, 0.5rem);
+}
+
+/* Filter panel cards use azc-card header/body padding (app.css); accent bar only on .azc-filter-panel */
+
+/* ── Data tables (single convention app-wide) ─────────────────
+   Markup: .table-container > .table.table--hover
+   Legacy aliases: .table-responsive, .azc-table-wrap, .grid-table, .arbeitszeitcheck-table
+   Actions column: .azc-table-actions-col + .azc-table-actions
+   Matrix tables: .azc-table--matrix (admin notification grids)
+   Card layout on narrow screens: .azc-table--responsive + data-label on td
+   ───────────────────────────────────────────────────────────── */
+#app-content.azc-app .table-container,
+#app-content.azc-app .table-responsive,
+#app-content.azc-app .azc-table-wrap {
+	margin: 0;
+	width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+}
+
+#app-content.azc-app .azc-card__body > .table-container,
+#app-content.azc-app .azc-card__body > .table-responsive,
+#app-content.azc-app .azc-card__body > .azc-table-wrap {
+	margin-block: 0;
+}
+
+#app-content.azc-app .table-container .table,
+#app-content.azc-app .table-container .grid-table,
+#app-content.azc-app .table-container .arbeitszeitcheck-table,
+#app-content.azc-app .table-container .report-table,
+#app-content.azc-app .table-responsive .table,
+#app-content.azc-app .table-responsive .grid-table,
+#app-content.azc-app .azc-table-wrap .table,
+#app-content.azc-app .azc-table-wrap .grid-table {
+	margin-bottom: 0;
+	width: 100%;
+}
+
+#app-content.azc-app .table thead th,
+#app-content.azc-app .grid-table thead th {
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	background-color: var(--arbeitszeitcheck-color-table-header-background, var(--color-background-dark));
+	box-shadow: 0 1px 0 var(--arbeitszeitcheck-color-table-border, var(--color-border));
+}
+
+#app-content.azc-app .table tbody tr:focus-within,
+#app-content.azc-app .grid-table tbody tr:focus-within {
+	outline: 2px solid var(--color-primary-element, #0082c9);
+	outline-offset: -2px;
+}
+
+#app-content.azc-app .table td.azc-table-empty,
+#app-content.azc-app .table td.azc-table-loading,
+#app-content.azc-app .grid-table td.azc-table-empty,
+#app-content.azc-app .grid-table td.azc-table-loading,
+#app-content.azc-app .table td.text-center:not(:only-child),
+#app-content.azc-app .grid-table td.text-center:not(:only-child) {
+	text-align: center;
+	color: var(--azc-muted, var(--color-text-maxcontrast));
+	font-size: var(--azc-fs-sm, 0.875rem);
+	padding: var(--azc-space-5, 1.25rem) var(--azc-space-4, 1rem);
+}
+
+#app-content.azc-app .table td .azc-empty-state,
+#app-content.azc-app .grid-table td .azc-empty-state {
+	padding: var(--azc-space-5, 1.25rem) var(--azc-space-3, 0.75rem);
+}
+
+#app-content.azc-app .table .azc-table-actions,
+#app-content.azc-app .grid-table .azc-table-actions,
+#app-content.azc-app .table .actions-cell,
+#app-content.azc-app .grid-table .actions-cell {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--azc-space-2, 0.5rem);
+	align-items: center;
+	justify-content: flex-end;
+}
+
+#app-content.azc-app .table th.azc-table-actions-col,
+#app-content.azc-app .table td.azc-table-actions-col,
+#app-content.azc-app .grid-table th.azc-table-actions-col,
+#app-content.azc-app .grid-table td.azc-table-actions-col {
+	text-align: right;
+	white-space: nowrap;
+}
+
+#app-content.azc-app .azc-table-meta {
+	margin: var(--azc-space-3, 0.75rem) 0 0;
+	font-size: var(--azc-fs-sm, 0.875rem);
+	color: var(--azc-muted, var(--color-text-maxcontrast));
+}
+
+/* Report preview + dynamic HTML tables */
+#app-content.azc-app .report-preview-content .table-container,
+#app-content.azc-app .report-preview-content .report-table {
+	margin-top: var(--azc-space-3, 0.75rem);
+}
+
+#app-content.azc-app .report-preview-content .report-table {
+	border-collapse: collapse;
+	font-size: var(--azc-fs-sm, 0.875rem);
+}
+
+#app-content.azc-app .report-preview-content .table-container .report-table {
+	margin-bottom: 0;
+}
+
+/* Notification matrices — not row lists; keep compact grid */
+#app-content.azc-app .azc-table--matrix {
+	font-size: var(--azc-fs-sm, 0.875rem);
+}
+
+#app-content.azc-app .azc-table--matrix th,
+#app-content.azc-app .azc-table--matrix td {
+	text-align: center;
+	vertical-align: middle;
+	padding: var(--azc-space-2, 0.5rem);
+}
+
+#app-content.azc-app .azc-table--matrix thead th {
+	position: static;
+	box-shadow: none;
+}
+
+@media (max-width: 768px) {
+	#app-content.azc-app .table-container .table:not(.azc-table--matrix):not(.azc-table--responsive),
+	#app-content.azc-app .table-container .grid-table:not(.azc-table--matrix):not(.azc-table--responsive) {
+		min-width: 36rem;
+	}
+
+	#app-content.azc-app .table .azc-table-actions,
+	#app-content.azc-app .table .actions-cell {
+		justify-content: flex-start;
+	}
+}
+
+@media (forced-colors: active) {
+	#app-content.azc-app .table-container,
+	#app-content.azc-app .table-responsive,
+	#app-content.azc-app .azc-table-wrap {
+		border-color: CanvasText;
+	}
+
+	#app-content.azc-app .table--hover tbody tr:hover,
+	#app-content.azc-app .grid-table.table--hover tbody tr:hover {
+		background: Highlight;
+		color: HighlightText;
+	}
 }

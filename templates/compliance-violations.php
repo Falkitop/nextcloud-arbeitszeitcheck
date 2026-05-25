@@ -20,6 +20,7 @@ $total = $_['total'] ?? 0;
 
 <?php include __DIR__ . '/common/page-start.php'; ?>
 
+                <div class="azc-page-stack">
                 <?php include __DIR__ . '/common/compliance-tabs.php'; ?>
 
 <div class="section">
@@ -65,8 +66,8 @@ $total = $_['total'] ?? 0;
             </div>
 
             <!-- Violations Table -->
-            <div class="table-responsive" role="region" aria-label="<?php p($l->t('Compliance violations list')); ?>">
-                <table class="table" id="violations-table" role="table" aria-label="<?php p($l->t('Compliance violations list')); ?>">
+            <div class="table-container" role="region" aria-label="<?php p($l->t('Compliance violations list')); ?>">
+                <table class="table table--hover" id="violations-table" role="table" aria-label="<?php p($l->t('Compliance violations list')); ?>">
                     <thead>
                         <tr>
                             <th scope="col"><?php p($l->t('Problem Type')); ?></th>
@@ -173,4 +174,5 @@ window.ArbeitszeitCheck.complianceViolationsL10n = <?php echo json_encode($compl
 window.ArbeitszeitCheck.complianceFilterUserId = <?php echo json_encode($_['filterUserId'] ?? null, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;
 </script>
 
+</div><!-- /.azc-page-stack -->
 <?php include __DIR__ . '/common/page-end.php'; ?>

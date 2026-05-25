@@ -53,6 +53,7 @@
     }
 
     let searchTimeout = null;
+    const USERS_TABLE_COLS = 8;
 
     function buildApiUrl(path) {
         if (Utils && typeof Utils.resolveUrl === 'function') {
@@ -138,8 +139,7 @@
         }
         search = search.trim();
 
-        // Show loading
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center">' + auMsg('loadingEllipsis', 'Loading…') + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="' + USERS_TABLE_COLS + '" class="text-center">' + auMsg('loadingEllipsis', 'Loading…') + '</td></tr>';
 
         const url = buildApiUrl('/apps/arbeitszeitcheck/api/admin/users' + (search ? '?search=' + encodeURIComponent(search) : ''));
         
@@ -147,13 +147,13 @@
             method: 'GET',
             onSuccess: function(data) {
                 if (data.success && data.users) {
-                    renderUsers(data.users);
+                    renderUsers(data.users, data.total);
                 } else {
-                    tbody.innerHTML = '<tr><td colspan="7" class="text-center">' + auMsg('errorLoadingUsers', 'Error loading users') + '</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="' + USERS_TABLE_COLS + '" class="text-center">' + auMsg('errorLoadingUsers', 'Error loading users') + '</td></tr>';
                 }
             },
             onError: function(_error) {
-                tbody.innerHTML = '<tr><td colspan="7" class="text-center">' + auMsg('errorLoadingUsers', 'Error loading users') + '</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="' + USERS_TABLE_COLS + '" class="text-center">' + auMsg('errorLoadingUsers', 'Error loading users') + '</td></tr>';
                 if (Messaging && Messaging.showError) {
                     Messaging.showError(auMsg('failedToLoadUsersRetry', 'Failed to load users. Please try again.'));
                 }
@@ -161,15 +161,41 @@
         });
     }
 
+    function formatShowingEmployees(shown, total) {
+        const template = auMsg('showingEmployees', 'Showing {shown} of {total} employees');
+        return template
+            .replace('{shown}', String(shown))
+            .replace('{total}', String(total));
+    }
+
+    function updateUsersPagination(shown, total) {
+        const meta = document.getElementById('users-pagination');
+        if (!meta) {
+            return;
+        }
+        const shownCount = Number.isFinite(shown) ? shown : 0;
+        const totalCount = Number.isFinite(total) ? total : shownCount;
+        const text = formatShowingEmployees(shownCount, totalCount);
+        const p = meta.querySelector('p');
+        if (p) {
+            p.textContent = text;
+        } else {
+            meta.textContent = text;
+        }
+    }
+
     /**
      * Render users table
      */
-    function renderUsers(users) {
+    function renderUsers(users, total) {
         const tbody = Utils.$('#users-tbody');
         if (!tbody) return;
 
+        const totalCount = Number.isFinite(total) ? total : users.length;
+        updateUsersPagination(users.length, totalCount);
+
         if (users.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" class="text-center">' + auMsg('noUsersFound', 'No users found') + '</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="' + USERS_TABLE_COLS + '" class="text-center">' + auMsg('noUsersFound', 'No users found') + '</td></tr>';
             return;
         }
 
@@ -208,17 +234,19 @@
                         : auMsg('disabled', 'Disabled')}
                     </span>
                 </td>
-                <td>
-                    <div class="user-actions" role="group" aria-label="${Utils.escapeHtml(auMsg('actions', 'Actions'))}">
+                <td class="azc-table-actions-col">
+                    <div class="user-actions azc-table-actions" role="group" aria-label="${Utils.escapeHtml(auMsg('actions', 'Actions'))}">
                         <button type="button" class="btn btn--sm btn--tertiary" 
                             data-action="history-user" 
                             data-user-id="${Utils.escapeHtml(user.userId)}"
-                            data-user-name="${Utils.escapeHtml(user.displayName || user.userId)}">
+                            data-user-name="${Utils.escapeHtml(user.displayName || user.userId)}"
+                            aria-label="${Utils.escapeHtml(auMsg('history', 'History'))}">
                             ${Utils.escapeHtml(auMsg('history', 'History'))}
                         </button>
                         <button type="button" class="btn btn--sm btn--secondary" 
                             data-action="edit-user" 
-                            data-user-id="${Utils.escapeHtml(user.userId)}">
+                            data-user-id="${Utils.escapeHtml(user.userId)}"
+                            aria-label="${Utils.escapeHtml(auMsg('edit', 'Edit'))}">
                             ${Utils.escapeHtml(auMsg('edit', 'Edit'))}
                         </button>
                     </div>
@@ -227,10 +255,13 @@
         `;
         }).join('');
 
-        // Rebind edit buttons
         const editButtons = Utils.$$('[data-action="edit-user"]');
         editButtons.forEach(btn => {
             Utils.on(btn, 'click', handleEditUser);
+        });
+        const historyButtons = Utils.$$('[data-action="history-user"]');
+        historyButtons.forEach(btn => {
+            Utils.on(btn, 'click', handleHistoryUser);
         });
     }
 
@@ -249,7 +280,8 @@
      * Handle edit user
      */
     function handleEditUser(e) {
-        const userId = e.target.dataset.userId;
+        const btn = e.currentTarget || (e.target && e.target.closest ? e.target.closest('[data-action="edit-user"]') : null);
+        const userId = btn && btn.dataset ? btn.dataset.userId : '';
         if (!userId) return;
 
         // Load user details and show modal
@@ -348,8 +380,8 @@
                             : '<span class="badge">' + endedVal + '</span>';
                         return '<tr><td>' + model + '</td><td>' + vacation + '</td><td>' + from + '</td><td>' + to + '</td><td>' + status + '</td></tr>';
                     }).join('');
-                    contentEl.innerHTML = '<div class="table-responsive" role="region" aria-label="' + Utils.escapeHtml(t('assignmentHistory', 'Assignment history')) + '">' +
-                        '<table class="table history-modal__table" role="table" aria-label="' + Utils.escapeHtml(t('assignmentHistory', 'Assignment history')) + '">' +
+                    contentEl.innerHTML = '<div class="table-container" role="region" aria-label="' + Utils.escapeHtml(t('assignmentHistory', 'Assignment history')) + '">' +
+                        '<table class="table table--hover history-modal__table" role="table" aria-label="' + Utils.escapeHtml(t('assignmentHistory', 'Assignment history')) + '">' +
                         '<thead><tr>' +
                         '<th scope="col">' + workScheduleHdr + '</th>' +
                         '<th scope="col">' + vacationDaysHdr + '</th>' +

@@ -36,12 +36,12 @@ FrontEndAssetService::registerCore();
 	</p>
 
 	<p class="settings-hint">
-		<a class="btn btn--primary"
+		<a class="azc-btn azc-btn--primary"
 			href="<?php p($inAppSettingsUrl); ?>"
 			aria-label="<?php p($l->t('Open ArbeitszeitCheck personal settings page')); ?>">
 			<?php p($l->t('Open personal settings in app')); ?>
 		</a>
-		<a class="btn btn--secondary"
+		<a class="azc-btn azc-btn--secondary"
 			href="<?php p($inAppLandingUrl); ?>"
 			aria-label="<?php p($l->t('Open the ArbeitszeitCheck dashboard')); ?>">
 			<?php p($l->t('Open ArbeitszeitCheck')); ?>

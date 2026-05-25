@@ -11,6 +11,17 @@ const ArbeitszeitCheckComponents = {
   _modalEscHandlerBound: false,
 
   /**
+   * Lock nav/main for inline overlays (e.g. calendar day panel). Live regions stay active.
+   */
+  lockBackground() {
+    this._lockPageBehindModal();
+  },
+
+  unlockBackground() {
+    this._unlockPageBehindModal();
+  },
+
+  /**
    * Initialize all components
    */
   init() {
@@ -25,13 +36,28 @@ const ArbeitszeitCheckComponents = {
     return document.getElementById('app-content');
   },
 
+  _getModalInertTargets() {
+    const targets = [];
+    const nav = document.getElementById('app-navigation');
+    const main = document.getElementById('azc-main-content');
+    const shell = document.getElementById('app-content-wrapper');
+    if (nav) {
+      targets.push(nav);
+    }
+    if (main) {
+      targets.push(main);
+    } else if (shell) {
+      targets.push(shell);
+    }
+    return targets;
+  },
+
   _lockPageBehindModal() {
     if (++this._modalLockDepth === 1) {
       document.body.style.overflow = 'hidden';
-      const appContent = this._getAppContent();
-      if (appContent) {
-        appContent.setAttribute('aria-hidden', 'true');
-      }
+      this._getModalInertTargets().forEach((el) => {
+        el.setAttribute('inert', '');
+      });
     }
   },
 
@@ -42,10 +68,9 @@ const ArbeitszeitCheckComponents = {
     }
     if (--this._modalLockDepth === 0) {
       document.body.style.overflow = '';
-      const appContent = this._getAppContent();
-      if (appContent) {
-        appContent.removeAttribute('aria-hidden');
-      }
+      this._getModalInertTargets().forEach((el) => {
+        el.removeAttribute('inert');
+      });
     }
   },
 
@@ -77,7 +102,12 @@ const ArbeitszeitCheckComponents = {
       return;
     }
     const handler = (e) => {
-      if (e.key !== 'Tab' || !modal.closest('.modal-backdrop')) {
+      if (e.key !== 'Tab') {
+        return;
+      }
+      const inBackdrop = modal.closest('.modal-backdrop');
+      const standalone = modal.dataset.azcFocusTrapStandalone === '1';
+      if (!inBackdrop && !standalone) {
         return;
       }
       const focusable = Array.from(
@@ -294,6 +324,24 @@ const ArbeitszeitCheckComponents = {
   },
 
   /**
+   * Unified dialog entry: create (if needed) and open.
+   *
+   * @param {Object} options - Same as createModal; opens when `open` is not false.
+   * @returns {HTMLElement}
+   */
+  openDialog(options = {}) {
+    const { id, open = true, ...rest } = options;
+    let modal = id ? document.getElementById(id) : null;
+    if (!modal) {
+      modal = this.createModal({ id, ...rest });
+    }
+    if (open !== false) {
+      this.openModal(modal);
+    }
+    return modal;
+  },
+
+  /**
    * Create modal dynamically
    */
   createModal(options = {}) {
@@ -309,10 +357,13 @@ const ArbeitszeitCheckComponents = {
     } = options;
 
     const modal = document.createElement('div');
-    modal.className = `modal modal--${size}`;
+    modal.className = `modal modal--${size} azc-dialog`;
     modal.id = id;
     modal.setAttribute('role', 'dialog');
     modal.setAttribute('aria-modal', 'true');
+    if (title) {
+      modal.setAttribute('aria-labelledby', `${id}-title`);
+    }
     modal.setAttribute('aria-hidden', 'true');
     modal.style.display = 'none';
     if (persist) {
@@ -328,7 +379,7 @@ const ArbeitszeitCheckComponents = {
     
     modal.innerHTML = `
       <div class="modal-header">
-        <h2 class="modal-title">${this._escapeHtml(title)}</h2>
+        <h2 class="modal-title" id="${id}-title">${this._escapeHtml(title)}</h2>
         ${closable ? `<button type="button" class="modal-close" aria-label="${this._escapeHtml(closeLabel)}">&times;</button>` : ''}
       </div>
       <div class="modal-body">

@@ -19,6 +19,8 @@ use OCA\ArbeitszeitCheck\Service\CSPService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCA\ArbeitszeitCheck\Service\TeamResolverService;
 use OCA\ArbeitszeitCheck\Service\MonthClosureService;
+use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
+use OCA\ArbeitszeitCheck\Service\NavigationFlagsService;
 use OCA\ArbeitszeitCheck\Exception\MonthFinalizedException;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\JSONResponse;
@@ -108,6 +110,13 @@ class AbsenceControllerTest extends TestCase
 		});
 
 		$this->vacationEntitlementEngine = $this->createMock(\OCA\ArbeitszeitCheck\Service\VacationEntitlementEngine::class);
+		$localeFormat = $this->createMock(LocaleFormatService::class);
+		$localeFormat->method('clientHints')->willReturn([]);
+		$navigationFlags = new NavigationFlagsService(
+			$this->absenceMapper,
+			$this->permissionService,
+			$this->config
+		);
 		$this->controller = new AbsenceController(
 			'arbeitszeitcheck',
 			$this->request,
@@ -122,7 +131,9 @@ class AbsenceControllerTest extends TestCase
 			$this->l10n,
 			$this->config,
 			$this->monthClosureService,
-			$this->vacationEntitlementEngine
+			$this->vacationEntitlementEngine,
+			$localeFormat,
+			$navigationFlags
 		);
 	}
 

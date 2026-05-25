@@ -102,33 +102,6 @@
         return '';
     }
 
-    function calendarAbsenceIndicator(absence) {
-        const type = absence.type || 'absence';
-        const status = absence.status || 'pending';
-        const isCoverage = absence.role === 'substitute';
-        let iconName = 'calendar-off';
-        if (isCoverage) {
-            iconName = 'user-check';
-        } else if (type === 'vacation' || type === 'holiday') {
-            iconName = 'calendar-heart';
-        } else if (type === 'sick' || type === 'sick_leave') {
-            iconName = 'circle-alert';
-        }
-        let statusLabel = '';
-        if (status === 'pending' || status === 'substitute_pending') {
-            statusLabel = mainT('Pending');
-        } else if (status === 'approved') {
-            statusLabel = mainT('Approved');
-        } else if (status === 'rejected' || status === 'substitute_declined') {
-            statusLabel = mainT('Rejected');
-        }
-        const statusIcon = status === 'approved' ? 'check' : (status === 'rejected' || status === 'substitute_declined' ? 'x' : 'clock');
-        const statusHtml = statusLabel
-            ? `<span class="calendar-day-status" title="${escapeHtml(statusLabel)}">${azcIcon(statusIcon, 'calendar-day-status-icon')}<span class="azc-sr-only">${escapeHtml(statusLabel)}</span></span>`
-            : '';
-        return `<span class="calendar-day-absence-icons" aria-hidden="true">${azcIcon(iconName, 'calendar-day-type-icon')}${statusHtml}</span>`;
-    }
-
     // Main application object
     const ArbeitszeitCheck = {
         config: window.ArbeitszeitCheck || {},
@@ -2242,6 +2215,132 @@
         },
 
         /**
+         * Translated workflow status for an absence (calendar, timeline, day panel).
+         */
+        getAbsenceStatusLabel: function(absence) {
+            const status = absence && absence.status ? String(absence.status) : 'pending';
+            const l10n = this.config.l10n || {};
+            if (status === 'approved') {
+                return l10n.statusApproved || mainT('Approved');
+            }
+            if (status === 'rejected') {
+                return l10n.statusRejected || mainT('Rejected');
+            }
+            if (status === 'substitute_pending') {
+                return l10n.statusSubstitutePending || mainT('Awaiting substitute approval');
+            }
+            if (status === 'substitute_declined') {
+                return l10n.statusSubstituteDeclined || mainT('Declined by substitute');
+            }
+            if (status === 'pending') {
+                return l10n.statusPending || mainT('Pending');
+            }
+            return status;
+        },
+
+        getAbsenceStatusBadgeClass: function(absence) {
+            const status = absence && absence.status ? String(absence.status) : 'pending';
+            if (status === 'approved') {
+                return 'success';
+            }
+            if (status === 'rejected' || status === 'substitute_declined') {
+                return 'error';
+            }
+            return 'warning';
+        },
+
+        getAbsenceIconName: function(absence) {
+            const type = absence && absence.type ? String(absence.type) : 'absence';
+            if (absence && absence.role === 'substitute') {
+                return 'user-check';
+            }
+            if (type === 'vacation' || type === 'holiday') {
+                return 'calendar-heart';
+            }
+            if (type === 'sick' || type === 'sick_leave') {
+                return 'circle-alert';
+            }
+            if (type === 'unpaid_leave') {
+                return 'calendar-off';
+            }
+            if (type === 'business_trip') {
+                return 'activity';
+            }
+            if (type === 'home_office') {
+                return 'users';
+            }
+            return 'calendar-off';
+        },
+
+        getAbsenceTypeModifierClass: function(absence) {
+            if (absence && absence.role === 'substitute') {
+                return 'calendar-day-absence--coverage';
+            }
+            const type = absence && absence.type ? String(absence.type) : 'other';
+            if (type === 'vacation' || type === 'holiday') {
+                return 'calendar-day-absence--vacation';
+            }
+            if (type === 'sick' || type === 'sick_leave') {
+                return 'calendar-day-absence--sick';
+            }
+            if (type === 'unpaid_leave') {
+                return 'calendar-day-absence--unpaid';
+            }
+            return 'calendar-day-absence--other';
+        },
+
+        formatMoreAbsencesLabel: function(extraCount) {
+            const count = Number(extraCount);
+            if (!Number.isFinite(count) || count < 1) {
+                return '';
+            }
+            const tpl = (this.config.l10n && this.config.l10n.moreAbsencesOnDay) || '+{count} more';
+            return String(tpl).replace('{count}', String(count));
+        },
+
+        /**
+         * Visible absence chip: icon + type label + status text (theme-safe, not icon-only).
+         */
+        renderCalendarDayAbsenceMarkup: function(absence, options) {
+            const opts = options || {};
+            const extraCount = Number(opts.extraCount) || 0;
+            const displayLabel = this.getAbsenceDisplayLabel(absence);
+            const statusLabel = this.getAbsenceStatusLabel(absence);
+            const badgeClass = this.getAbsenceStatusBadgeClass(absence);
+            const typeClass = this.getAbsenceTypeModifierClass(absence);
+            const iconName = this.getAbsenceIconName(absence);
+            const titleParts = [displayLabel, statusLabel].filter(Boolean).join(' – ');
+            let html = `<div class="calendar-day-absence ${typeClass}" title="${escapeHtml(titleParts)}">`;
+            html += '<span class="calendar-day-absence-chip">';
+            html += `<span class="calendar-day-absence-chip__icon" aria-hidden="true">${azcIcon(iconName, 'calendar-day-absence-chip__icon-svg')}</span>`;
+            html += `<span class="calendar-day-absence-chip__label">${escapeHtml(displayLabel)}</span>`;
+            html += `<span class="calendar-day-absence-chip__status badge badge--${badgeClass}">${escapeHtml(statusLabel)}</span>`;
+            html += '</span>';
+            if (extraCount > 0) {
+                const moreLabel = this.formatMoreAbsencesLabel(extraCount);
+                const moreTitle = (this.config.l10n && this.config.l10n.moreAbsencesOnDayTitle)
+                    || 'Additional absences on this day';
+                html += `<span class="calendar-day-absence-more" title="${escapeHtml(moreTitle)}">${escapeHtml(moreLabel)}</span>`;
+            }
+            html += '</div>';
+            return html;
+        },
+
+        buildCalendarDayAbsenceContent: function(dayData) {
+            if (!dayData || !dayData.hasAbsence || !dayData.absences || dayData.absences.length === 0) {
+                return '';
+            }
+            const absence = dayData.absences[0];
+            let html = '';
+            if (this.isPastAbsenceRecord(absence)) {
+                html += `<span class="calendar-day-past-label">${escapeHtml(this.config.l10n?.pastRecord || 'Past record')}</span>`;
+            }
+            const extraCount = Math.max(0, dayData.absences.length - 1);
+            html += this.renderCalendarDayAbsenceMarkup(absence, { extraCount });
+            return html;
+        },
+
+        /**
          * Render an absence item for timeline
          */
         renderAbsenceItem: function(absence) {
@@ -2283,23 +2382,9 @@
                 ? formatDate(start)
                 : `${formatDate(start)} - ${formatDate(end)}`;
 
-            // Translate status
-            let statusLabel = status;
-            if (status === 'approved') {
-                statusLabel = this.config.l10n?.statusApproved || 'Approved';
-            } else if (status === 'rejected') {
-                statusLabel = this.config.l10n?.statusRejected || 'Rejected';
-            } else if (status === 'substitute_pending') {
-                statusLabel = this.config.l10n?.statusSubstitutePending || 'Awaiting substitute approval';
-            } else if (status === 'substitute_declined') {
-                statusLabel = this.config.l10n?.statusSubstituteDeclined || 'Declined by substitute';
-            } else if (status === 'pending') {
-                statusLabel = this.config.l10n?.statusPending || 'Awaiting manager approval';
-            }
-
-            const badgeClass = status === 'approved' ? 'success' : status === 'rejected' || status === 'substitute_declined' ? 'error' : 'warning';
-
-            const absenceIconName = isCoverage ? 'user-check' : 'calendar-off';
+            const statusLabel = this.getAbsenceStatusLabel(absence);
+            const badgeClass = this.getAbsenceStatusBadgeClass(absence);
+            const absenceIconName = this.getAbsenceIconName(absence);
             return `
                 <div class="timeline-item timeline-item--absence${isCoverage ? ' timeline-item--coverage' : ''}">
                     <div class="timeline-item-icon">${azcIcon(absenceIconName, 'timeline-item-icon-svg')}</div>
@@ -2589,17 +2674,8 @@
                     dayContent += `<div class="calendar-day-hours" title="${dayData.hours.toFixed(1)} ${this.config.l10n?.hours || 'hours'}">${dayData.hours.toFixed(1)}h</div>`;
                 }
                 
-                // Show absence type with icon/indicator
                 if (dayData.hasAbsence && dayData.absences.length > 0) {
-                    const absence = dayData.absences[0];
-
-                    const absenceIndicator = calendarAbsenceIndicator(absence);
-
-                    const displayLabel = this.getAbsenceDisplayLabel(absence);
-                    if (this.isPastAbsenceRecord(absence)) {
-                        dayContent += `<span class="calendar-day-past-label">${escapeHtml(this.config.l10n?.pastRecord || 'Past record')}</span>`;
-                    }
-                    dayContent += `<div class="calendar-day-absence" title="${escapeHtml(displayLabel)}">${absenceIndicator}</div>`;
+                    dayContent += this.buildCalendarDayAbsenceContent(dayData);
                 }
                 
                 // Show entry count if multiple entries
@@ -2716,14 +2792,28 @@
                 const weekDayClasses = ['calendar-week-day'];
                 if (isHoliday) weekDayClasses.push('calendar-day--holiday');
                 if (isCompanyHoliday) weekDayClasses.push('calendar-day--company-holiday');
+                if (dayData.hasTimeEntry) weekDayClasses.push('calendar-day--has-entry');
+                if (dayData.hasAbsence) {
+                    weekDayClasses.push('calendar-day--has-absence');
+                    const firstAbsence = dayData.absences[0];
+                    if (firstAbsence && firstAbsence.role === 'substitute') {
+                        weekDayClasses.push('calendar-day--has-coverage');
+                    }
+                    if (dayData.absences.some(absence => this.isPastAbsenceRecord(absence))) {
+                        weekDayClasses.push('calendar-day--past-absence');
+                    }
+                }
+                if (dayData.isToday) weekDayClasses.push('calendar-day--today');
                 const holidayNames = holidays.filter(h => h && h.date === dateKey).map(h => h.name).filter(Boolean).join(', ');
                 const holidayHtml = holidayNames ? `<div class="week-day-holiday" aria-hidden="true">${escapeHtml(holidayNames)}</div>` : '';
+                const absenceHtml = dayData.hasAbsence ? this.buildCalendarDayAbsenceContent(dayData) : '';
                 html += `
                     <div class="${weekDayClasses.join(' ')}" data-date="${dateKey}">
                         <div class="week-day-name">${weekdays[i]}</div>
                         <div class="week-day-number">${date.getDate()}</div>
                         ${dayData.hours > 0 ? `<div class="week-day-hours">${dayData.hours.toFixed(1)}h</div>` : ''}
                         ${holidayHtml}
+                        ${absenceHtml}
                     </div>
                 `;
             }
@@ -2843,10 +2933,16 @@
             if (dayData.isToday) label += ', ' + (this.config.l10n?.today || 'Today');
             if (dayData.hours > 0) label += ', ' + dayData.hours.toFixed(1) + ' ' + (this.config.l10n?.hours || 'hours');
             if (dayData.hasAbsence && dayData.absences.length > 0) {
-                const displayLabel = this.getAbsenceDisplayLabel(dayData.absences[0]);
-                label += ', ' + displayLabel;
-                if (this.isPastAbsenceRecord(dayData.absences[0])) {
+                const firstAbsence = dayData.absences[0];
+                const displayLabel = this.getAbsenceDisplayLabel(firstAbsence);
+                const statusLabel = this.getAbsenceStatusLabel(firstAbsence);
+                label += ', ' + displayLabel + ', ' + statusLabel;
+                if (this.isPastAbsenceRecord(firstAbsence)) {
                     label += ', ' + (this.config.l10n?.pastRecord || 'Past record');
+                }
+                const extra = dayData.absences.length - 1;
+                if (extra > 0) {
+                    label += ', ' + this.formatMoreAbsencesLabel(extra);
                 }
             }
             label += '. ' + (this.config.l10n?.clickForDetails || 'Click for details');
@@ -2986,7 +3082,7 @@
             const reqAbsAria = escapeHtml(reqAbsLabelPlain);
             html += `<div class="day-details-actions" role="region" aria-label="${reqAbsAria}">`;
             html += `<p class="day-details-actions__help" id="day-details-absence-help">${reqAbsHelp}</p>`;
-            html += `<a class="btn btn--primary day-details-actions__link" href="${escapeHtml(createUrl)}">${reqAbsLabel}</a>`;
+            html += `<a class="azc-btn azc-btn--primary day-details-actions__link" href="${escapeHtml(createUrl)}">${reqAbsLabel}</a>`;
             html += '</div>';
 
             // Holiday info
@@ -3042,10 +3138,13 @@
                     html += `<div class="day-details-section"><h4>${absencesLabel}</h4><ul>`;
                     dayData.absences.forEach(absence => {
                         const displayLabel = this.getAbsenceDisplayLabel(absence);
+                        const statusLabel = this.getAbsenceStatusLabel(absence);
+                        const badgeClass = this.getAbsenceStatusBadgeClass(absence);
                         const pastBadge = this.isPastAbsenceRecord(absence)
                             ? ` <span class="calendar-past-record-badge">${escapeHtml(this.config.l10n?.pastRecord || 'Past record')}</span>`
                             : '';
-                        html += `<li>${escapeHtml(displayLabel)}${pastBadge}</li>`;
+                        html += `<li><span class="day-details-absence-label">${escapeHtml(displayLabel)}</span>`
+                            + ` <span class="badge badge--${badgeClass}">${escapeHtml(statusLabel)}</span>${pastBadge}</li>`;
                     });
                     html += '</ul></div>';
                 }
@@ -3053,6 +3152,19 @@
 
             content.innerHTML = html;
             panel.style.display = 'block';
+            panel.removeAttribute('inert');
+            const Components = window.ArbeitszeitCheckComponents;
+            if (Components && typeof Components.lockBackground === 'function') {
+                Components.lockBackground();
+            }
+            const closeBtn = document.getElementById('btn-close-panel');
+            if (closeBtn && typeof closeBtn.focus === 'function') {
+                setTimeout(() => closeBtn.focus(), 0);
+            }
+            if (Components && typeof Components._bindFocusTrap === 'function') {
+                panel.dataset.azcFocusTrapStandalone = '1';
+                Components._bindFocusTrap(panel);
+            }
         },
 
         /**
@@ -3060,8 +3172,15 @@
          */
         closeDayDetailsPanel: function() {
             const panel = document.getElementById('day-details-panel');
+            const Components = window.ArbeitszeitCheckComponents;
+            if (panel && Components && typeof Components._unbindFocusTrap === 'function') {
+                Components._unbindFocusTrap(panel);
+            }
             if (panel) {
                 panel.style.display = 'none';
+            }
+            if (Components && typeof Components.unlockBackground === 'function') {
+                Components.unlockBackground();
             }
             // Restore focus to the last active day tile to keep keyboard users oriented
             if (this.calendarData && this.calendarData.lastActiveDayElement && typeof this.calendarData.lastActiveDayElement.focus === 'function') {

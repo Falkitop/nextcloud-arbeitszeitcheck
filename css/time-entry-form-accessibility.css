@@ -427,15 +427,34 @@
   align-items: center;
 }
 
+#time-entry-form .form-input-wrapper--date {
+  flex-wrap: wrap;
+  gap: var(--space-2, 0.5rem);
+}
+
+#time-entry-form .form-input-wrapper--date > .azc-datepicker-host {
+  flex: 1 1 10rem;
+  min-width: 0;
+}
+
 #time-entry-form .form-input-wrapper .form-input {
   flex: 1;
 }
 
-#time-entry-form .form-input-wrapper .btn {
+#time-entry-form .form-input-wrapper--date .datepicker-input {
+  flex: none;
+  width: 100%;
+}
+
+#time-entry-form .form-input-wrapper .btn,
+#time-entry-form .time-entry-form__today-btn {
   flex-shrink: 0;
   min-width: auto;
+  min-height: 44px;
   padding: 8px 16px;
 }
+
+/* Auto-break / break-requirement: common/semantic-surfaces.css (loaded via app.css) */
 
 /* ===== MOBILE ACCESSIBILITY ===== */
 

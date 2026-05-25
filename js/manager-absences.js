@@ -72,6 +72,19 @@
 		return false;
 	}
 
+	function setFilterErrorText(errorEl, message) {
+		if (!errorEl) {
+			return;
+		}
+		const inner = errorEl.querySelector('.azc-callout__text');
+		if (inner) {
+			inner.textContent = message;
+		} else {
+			errorEl.textContent = message;
+		}
+		errorEl.hidden = !message;
+	}
+
 	function setEmpty(message) {
 		const emptyEl = document.getElementById('employee-absences-empty');
 		const tableWrap = document.getElementById('employee-absences-table-wrap');
@@ -80,7 +93,8 @@
 		}
 		emptyEl.classList.remove('visually-hidden');
 		tableWrap.classList.add('visually-hidden');
-		const desc = emptyEl.querySelector('.empty-state__description');
+		const desc = emptyEl.querySelector('.azc-empty-state__text')
+			|| emptyEl.querySelector('.empty-state__description');
 		if (desc) {
 			desc.textContent = message;
 		}
@@ -158,7 +172,7 @@
 
 	function setLoading(isLoading) {
 		state.loading = isLoading;
-		const results = document.querySelector('.manager-time-entries-page__results');
+		const results = document.querySelector('.manager-scope-page__results');
 		if (results) {
 			results.setAttribute('aria-busy', isLoading ? 'true' : 'false');
 		}
@@ -199,18 +213,12 @@
 			el.removeAttribute('aria-invalid');
 		});
 		const errorEl = document.getElementById('employee-absences-filter-error');
-		if (errorEl) {
-			errorEl.textContent = '';
-			errorEl.hidden = true;
-		}
+		setFilterErrorText(errorEl, '');
 	}
 
 	function setFilterError(message, focusId) {
 		const errorEl = document.getElementById('employee-absences-filter-error');
-		if (errorEl) {
-			errorEl.textContent = message;
-			errorEl.hidden = !message;
-		}
+		setFilterErrorText(errorEl, message);
 		if (message && focusId) {
 			const focusEl = document.getElementById(focusId);
 			if (focusEl) {

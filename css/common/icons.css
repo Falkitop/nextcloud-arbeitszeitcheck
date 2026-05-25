@@ -1,0 +1,113 @@
+/**
+ * IconCatalog / AzcCatalog SVG sizing (global).
+ *
+ * Icons must stay compact in flex column layouts and on mobile, where
+ * responsive.css applies max-width:100% to generic svg elements.
+ * Rules here apply inside and outside #app-content (toasts, modals).
+ */
+
+.azc-icon {
+	width: var(--azc-icon-md);
+	height: var(--azc-icon-md);
+	flex-shrink: 0;
+	display: block;
+	max-width: none;
+}
+
+/* Legacy .alert (compliance dashboard, etc.) */
+.alert-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+}
+
+.alert-icon .azc-icon {
+	width: var(--azc-icon-md);
+	height: var(--azc-icon-md);
+}
+
+/* Toasts (appended to document.body) */
+.toast-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+}
+
+.toast-icon .azc-icon,
+.toast-icon .toast__icon-svg {
+	width: var(--azc-icon-md);
+	height: var(--azc-icon-md);
+}
+
+/* Confirm dialogs (portaled modals) */
+.confirm-dialog__icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	line-height: 1;
+}
+
+.confirm-dialog__icon .azc-icon,
+.confirm-dialog__icon .confirm-dialog__icon-svg {
+	width: var(--azc-icon-lg);
+	height: var(--azc-icon-lg);
+}
+
+/* Legacy empty state decorative well */
+.empty-state__icon .azc-icon {
+	width: 2rem;
+	height: 2rem;
+}
+
+/* Design-system empty state (if an icon is added later) */
+.azc-empty-state__icon .azc-icon {
+	width: 1.75rem;
+	height: 1.75rem;
+}
+
+/* Legacy .btn with IconCatalog (not only .azc-btn) */
+.btn .btn__icon,
+.btn__icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+}
+
+.btn .btn__icon-svg,
+.btn__icon .azc-icon,
+.btn__icon-svg {
+	width: var(--azc-icon-md);
+	height: var(--azc-icon-md);
+}
+
+/* Host wrapper created by js/common/datepicker.js */
+.azc-datepicker-host {
+	position: relative;
+	display: inline-block;
+	width: 100%;
+	max-width: 100%;
+}
+
+/* Datepicker toggle injected beside inputs */
+.azc-datepicker-toggle {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.azc-datepicker-toggle .azc-icon,
+.azc-datepicker-toggle__icon {
+	width: var(--azc-icon-sm);
+	height: var(--azc-icon-sm);
+}
+
+/* NC dashboard desklet status glyphs */
+.dashboard-widget-status-icon.azc-icon,
+.dashboard-widget-status-icon {
+	width: var(--azc-icon-sm);
+	height: var(--azc-icon-sm);
+}

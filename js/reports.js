@@ -458,11 +458,11 @@
 			if (report.total_undertime != null) html += `<p class="report-meta"><strong>${L.undertime || 'Undertime'}:</strong> ${esc(report.total_undertime)} h</p>`;
 			if (report.bank_enabled) html += `<p class="report-meta"><strong>${L.overtimeBank || 'Overtime bank'}:</strong> ${esc(L.enabled || 'Enabled')}</p>`;
 			if (report.entries && report.entries.length) {
-				html += `<table class="report-table"><thead><tr><th>${L.date || 'Date'}</th><th>${L.hours || 'Hours'}</th></tr></thead><tbody>`;
+				html += `<div class="table-container" role="region"><table class="table table--hover report-table"><thead><tr><th>${L.date || 'Date'}</th><th>${L.hours || 'Hours'}</th></tr></thead><tbody>`;
 				report.entries.forEach((entry) => {
 					html += `<tr><td>${esc(entry.date || entry.start || '-')}</td><td>${esc(entry.hours != null ? entry.hours : (entry.duration || '-'))}</td></tr>`;
 				});
-				html += '</tbody></table>';
+				html += '</tbody></table></div>';
 			}
 			const isAbsenceReport = report.type === 'absence' || report.absences_by_type || report.absences_by_status;
 			const isComplianceReport = report.violations_by_type || report.violations_by_severity;
@@ -475,22 +475,22 @@
 					const rows = Object.entries(report.absences_by_type)
 						.sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0));
 					html += `<h4 class="report-subhead">${esc(L.absencesByType || 'Absences by type')}</h4>`;
-					html += `<table class="report-table"><thead><tr><th>${esc(L.type || 'Type')}</th><th>${esc(L.count || 'Count')}</th></tr></thead><tbody>`;
+					html += `<div class="table-container" role="region"><table class="table table--hover report-table"><thead><tr><th>${esc(L.type || 'Type')}</th><th>${esc(L.count || 'Count')}</th></tr></thead><tbody>`;
 					rows.forEach(([k, v]) => {
 						html += `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`;
 					});
-					html += '</tbody></table>';
+					html += '</tbody></table></div>';
 				}
 
 				if (report.absences_by_status && typeof report.absences_by_status === 'object') {
 					const rows = Object.entries(report.absences_by_status)
 						.sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0));
 					html += `<h4 class="report-subhead">${esc(L.absencesByStatus || 'Absences by status')}</h4>`;
-					html += `<table class="report-table"><thead><tr><th>${esc(L.status || 'Status')}</th><th>${esc(L.count || 'Count')}</th></tr></thead><tbody>`;
+					html += `<div class="table-container" role="region"><table class="table table--hover report-table"><thead><tr><th>${esc(L.status || 'Status')}</th><th>${esc(L.count || 'Count')}</th></tr></thead><tbody>`;
 					rows.forEach(([k, v]) => {
 						html += `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`;
 					});
-					html += '</tbody></table>';
+					html += '</tbody></table></div>';
 				}
 
 				// Flatten per-user absences for a simple, predictable preview.
@@ -511,11 +511,11 @@
 
 					if (allAbsences.length) {
 						html += `<h4 class="report-subhead">${esc(L.details || 'Details')}</h4>`;
-						html += `<table class="report-table"><thead><tr><th>${esc(L.name || 'Name')}</th><th>${esc(L.type || 'Type')}</th><th>${esc(L.startDateCol || L.startDate || 'Start')}</th><th>${esc(L.endDateCol || L.endDate || 'End')}</th><th>${esc(L.days || 'Days')}</th><th>${esc(L.status || 'Status')}</th></tr></thead><tbody>`;
+						html += `<div class="table-container" role="region"><table class="table table--hover report-table"><thead><tr><th>${esc(L.name || 'Name')}</th><th>${esc(L.type || 'Type')}</th><th>${esc(L.startDateCol || L.startDate || 'Start')}</th><th>${esc(L.endDateCol || L.endDate || 'End')}</th><th>${esc(L.days || 'Days')}</th><th>${esc(L.status || 'Status')}</th></tr></thead><tbody>`;
 						allAbsences.forEach((a) => {
 							html += `<tr><td>${esc(a.user_name)}</td><td>${esc(a.type)}</td><td>${esc(a.start)}</td><td>${esc(a.end)}</td><td>${esc(a.days)}</td><td>${esc(a.status)}</td></tr>`;
 						});
-						html += '</tbody></table>';
+						html += '</tbody></table></div>';
 					}
 				}
 			} else if (isComplianceReport) {
@@ -525,11 +525,11 @@
 						.sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
 						.slice(0, 10);
 					html += `<h4 class="report-subhead">${esc(L.violationTypes || 'Violation types')}</h4>`;
-					html += `<table class="report-table"><thead><tr><th>${esc(L.type || 'Type')}</th><th>${esc(L.count || 'Count')}</th></tr></thead><tbody>`;
+					html += `<div class="table-container" role="region"><table class="table table--hover report-table"><thead><tr><th>${esc(L.type || 'Type')}</th><th>${esc(L.count || 'Count')}</th></tr></thead><tbody>`;
 					rows.forEach(([k, v]) => {
 						html += `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`;
 					});
-					html += '</tbody></table>';
+					html += '</tbody></table></div>';
 				}
 
 				if (report.violations_by_severity && typeof report.violations_by_severity === 'object') {
@@ -537,16 +537,16 @@
 						.sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
 						.slice(0, 10);
 					html += `<h4 class="report-subhead">${esc(L.severities || 'Severities')}</h4>`;
-					html += `<table class="report-table"><thead><tr><th>${esc(L.severity || 'Severity')}</th><th>${esc(L.count || 'Count')}</th></tr></thead><tbody>`;
+					html += `<div class="table-container" role="region"><table class="table table--hover report-table"><thead><tr><th>${esc(L.severity || 'Severity')}</th><th>${esc(L.count || 'Count')}</th></tr></thead><tbody>`;
 					rows.forEach(([k, v]) => {
 						html += `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`;
 					});
-					html += '</tbody></table>';
+					html += '</tbody></table></div>';
 				}
 			} else if (report.type === 'overtime' && report.users && report.users.length) {
 				const bankOn = report.bank_enabled === true;
 				html += `<h4 class="report-subhead">${esc(L.users || 'Users')}</h4>`;
-				html += `<table class="report-table"><thead><tr>`
+				html += `<div class="table-container" role="region"><table class="table table--hover report-table"><thead><tr>`
 					+ `<th>${esc(L.name || 'Name')}</th>`
 					+ `<th>${esc(L.workedHours || L.hours || 'Worked')}</th>`
 					+ `<th>${esc(L.requiredHours || 'Required')}</th>`
@@ -566,30 +566,30 @@
 						+ (bankOn ? `<td>${esc(u.payout_eligible_hours != null ? u.payout_eligible_hours : '0')}</td>` : '')
 						+ `</tr>`;
 				});
-				html += '</tbody></table>';
+				html += '</tbody></table></div>';
 			} else if (report.members && report.members.length) {
 				// Team report (aggregated members)
-				html += `<h4 class="report-subhead">${L.users || 'Users'}</h4><table class="report-table"><thead><tr><th>${L.name || 'Name'}</th><th>${L.hours || 'Hours'}</th><th>${L.overtime || 'Overtime'}</th></tr></thead><tbody>`;
+				html += `<h4 class="report-subhead">${L.users || 'Users'}</h4><div class="table-container" role="region"><table class="table table--hover report-table"><thead><tr><th>${L.name || 'Name'}</th><th>${L.hours || 'Hours'}</th><th>${L.overtime || 'Overtime'}</th></tr></thead><tbody>`;
 				report.members.forEach((m) => {
 					html += `<tr><td>${esc(m.display_name || m.user_id || '-')}</td><td>${esc(m.total_hours != null ? m.total_hours : '-')}</td><td>${esc(m.overtime_hours != null ? m.overtime_hours : '-')}</td></tr>`;
 				});
-				html += '</tbody></table>';
+				html += '</tbody></table></div>';
 			} else if (report.users && report.users.length) {
-				html += `<h4 class="report-subhead">${L.users || 'Users'}</h4><table class="report-table"><thead><tr><th>${L.name || 'Name'}</th><th>${L.hours || 'Hours'}</th><th>${L.overtime || 'Overtime'}</th></tr></thead><tbody>`;
+				html += `<h4 class="report-subhead">${L.users || 'Users'}</h4><div class="table-container" role="region"><table class="table table--hover report-table"><thead><tr><th>${L.name || 'Name'}</th><th>${L.hours || 'Hours'}</th><th>${L.overtime || 'Overtime'}</th></tr></thead><tbody>`;
 				report.users.forEach((u) => {
 					html += `<tr><td>${esc(u.display_name || u.user_id || '-')}</td><td>${esc(u.total_hours != null ? u.total_hours : (u.total_hours_worked != null ? u.total_hours_worked : '-'))}</td><td>${esc(u.overtime_hours != null ? u.overtime_hours : '-')}</td></tr>`;
 				});
-				html += '</tbody></table>';
+				html += '</tbody></table></div>';
 			}
 			if (report.daily_breakdown && Object.keys(report.daily_breakdown).length) {
-				html += `<h4 class="report-subhead">${L.dailyBreakdown || 'Daily breakdown'}</h4><table class="report-table"><thead><tr><th>${L.date || 'Date'}</th><th>${L.hours || 'Hours'}</th></tr></thead><tbody>`;
+				html += `<h4 class="report-subhead">${L.dailyBreakdown || 'Daily breakdown'}</h4><div class="table-container" role="region"><table class="table table--hover report-table"><thead><tr><th>${L.date || 'Date'}</th><th>${L.hours || 'Hours'}</th></tr></thead><tbody>`;
 				Object.keys(report.daily_breakdown)
 					.sort()
 					.forEach((d) => {
 						const day = report.daily_breakdown[d];
 						html += `<tr><td>${esc(day.date || d)}</td><td>${esc(day.total_hours != null ? day.total_hours : '-')}</td></tr>`;
 					});
-				html += '</tbody></table>';
+				html += '</tbody></table></div>';
 			}
 			if (report.summary) {
 				const readyMsg = (A.l10n && A.l10n.reportReady) ? String(A.l10n.reportReady).trim() : '';

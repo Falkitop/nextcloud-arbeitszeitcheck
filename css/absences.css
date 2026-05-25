@@ -47,71 +47,137 @@
 	padding: var(--space-8, 2rem);
 }
 
-.section--form .form-group {
+.section--form .form-group,
+#app-content.azc-app--absences .absence-request-form .form-group {
+	margin-bottom: 0;
+}
+
+/* Employee absence request form (create / edit) */
+#app-content.azc-app--absences .absence-request-callout,
+#app-content.azc-app--absences .absences-page__list-error {
 	margin-bottom: var(--space-6, 1.5rem);
 }
 
-.section--form .form-group:last-of-type {
-	margin-bottom: 0;
+#app-content.azc-app--absences .absences-page__filter {
+	margin-bottom: var(--space-6, 1.5rem);
 }
 
-/* Form sections: clear hierarchy and spacing (WCAG 2.1 AA, simple UX) */
-.absence-request-form .absence-form-section {
-	margin-bottom: var(--space-8, 2rem);
-}
-.absence-request-form .absence-form-section:last-of-type {
-	margin-bottom: 0;
-}
-.absence-form-section__title {
-	font-size: 1rem;
-	font-weight: 600;
-	color: var(--arbeitszeitcheck-color-main-text);
-	margin: 0 0 var(--space-4, 1rem);
-	line-height: 1.4;
-}
-.absence-form-section__title--main {
-	margin-bottom: var(--space-5, 1.25rem);
-	padding-bottom: var(--space-2, 0.5rem);
-	border-bottom: 1px solid var(--arbeitszeitcheck-color-border);
-}
-.absence-form-section--substitute {
-	margin-top: var(--space-6, 1.5rem);
-	padding-top: var(--space-6, 1.5rem);
-	border-top: 1px solid var(--arbeitszeitcheck-color-border);
-	background: var(--arbeitszeitcheck-color-background-hover, var(--color-background-hover, rgba(0, 0, 0, 0.03)));
-	border-radius: var(--radius-base, 8px);
-	padding-right: var(--space-6, 1.5rem);
-	padding-bottom: var(--space-6, 1.5rem);
-	padding-left: var(--space-6, 1.5rem);
-	margin-left: calc(-1 * var(--space-6, 1.5rem));
-	margin-right: calc(-1 * var(--space-6, 1.5rem));
-	margin-bottom: 0;
-}
-.absence-form-section--substitute .absence-form-section__title {
-	margin-top: 0;
-	margin-bottom: var(--space-3, 0.75rem);
+#app-content.azc-app--absences .absences-page__filter-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: var(--space-4, 1rem) var(--space-6, 1.5rem);
+	align-items: end;
 }
 
-.absence-past-entry-hint {
-	margin: 0 0 var(--space-6, 1.5rem);
-	padding: var(--space-4, 1rem);
-	border: 1px solid color-mix(in srgb, var(--color-primary-element) 32%, var(--arbeitszeitcheck-color-border));
-	border-left: 4px solid var(--color-primary-element);
-	border-radius: var(--radius-base, 8px);
-	background: color-mix(in srgb, var(--color-primary-element) 8%, var(--arbeitszeitcheck-color-background-elevated));
+@media (max-width: 640px) {
+	#app-content.azc-app--absences .absences-page__filter-grid {
+		grid-template-columns: 1fr;
+	}
 }
 
-.absence-past-entry-hint h4 {
-	margin: 0 0 var(--space-2, 0.5rem);
-	font-size: 1rem;
-	line-height: 1.35;
-	color: var(--arbeitszeitcheck-color-main-text);
+#app-content.azc-app--absences .absence-request-card .azc-card__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5, 1.25rem);
 }
 
-.absence-past-entry-hint p {
+#app-content.azc-app--absences .absence-request-form {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-8, 2rem);
+}
+
+#app-content.azc-app--absences .absence-form-fieldset {
 	margin: 0;
-	line-height: 1.5;
-	color: var(--arbeitszeitcheck-color-text-maxcontrast);
+	padding: 0;
+	border: 0;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5, 1.25rem);
+}
+
+#app-content.azc-app--absences .absence-form-fieldset__legend {
+	font-size: 1.0625rem;
+	font-weight: 700;
+	color: var(--color-main-text, var(--arbeitszeitcheck-color-main-text));
+	padding: 0;
+	margin: 0 0 var(--space-2, 0.5rem);
+	line-height: 1.35;
+	width: 100%;
+	border-bottom: 1px solid var(--color-border, var(--arbeitszeitcheck-color-border));
+	padding-bottom: var(--space-2, 0.5rem);
+}
+
+#app-content.azc-app--absences .absence-form-fieldset--substitute {
+	padding: var(--space-5, 1.25rem);
+	border-radius: var(--radius-base, 8px);
+	border: 1px solid var(--color-border, var(--arbeitszeitcheck-color-border));
+	background: color-mix(in srgb, var(--color-primary-element, var(--color-primary)) 6%, var(--color-main-background, var(--arbeitszeitcheck-color-background-elevated)));
+}
+
+#app-content.azc-app--absences .absence-past-entry-hint {
+	margin: 0;
+}
+
+#app-content.azc-app--absences .absence-form-dates__legend {
+	margin: 0 0 var(--space-2, 0.5rem);
+	font-size: 0.9375rem;
+	font-weight: 600;
+	color: var(--color-main-text, var(--arbeitszeitcheck-color-main-text));
+}
+
+#app-content.azc-app--absences .absence-form-dates__grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: var(--space-4, 1rem) var(--space-6, 1.5rem);
+}
+
+/* Datepicker: visible toggle + room for calendar icon (all NC themes) */
+#app-content.azc-app--absences .absence-form-dates .datepicker-input {
+	min-height: 44px;
+	padding-inline-end: 3rem;
+	color: var(--color-main-text);
+	background-color: var(--color-main-background);
+	border: 1px solid var(--color-border);
+}
+
+#app-content.azc-app--absences .absence-form-dates .datepicker-input:focus {
+	border-color: var(--color-primary-element);
+	outline: 2px solid var(--color-primary-element);
+	outline-offset: 2px;
+}
+
+#app-content.azc-app--absences .absence-form-dates .azc-datepicker-toggle {
+	color: var(--color-main-text);
+	background: color-mix(in srgb, var(--color-primary-element) 12%, var(--color-main-background));
+	border: 1px solid color-mix(in srgb, var(--color-primary-element) 35%, var(--color-border));
+	border-radius: var(--azc-radius-sm, 6px);
+}
+
+#app-content.azc-app--absences .absence-form-dates .azc-datepicker-toggle:focus-visible {
+	outline: 3px solid var(--color-primary-element);
+	outline-offset: 2px;
+}
+
+#app-content.azc-app--absences .arbeitszeitcheck-datepicker {
+	z-index: 10000;
+	border: 2px solid var(--color-border);
+	background: var(--color-main-background);
+	color: var(--color-main-text);
+	box-shadow: var(--azc-shadow-md);
+}
+
+#app-content.azc-app--absences .form-optional {
+	font-weight: 500;
+	font-size: 0.875rem;
+	color: var(--color-text-maxcontrast, var(--arbeitszeitcheck-color-text-maxcontrast));
+}
+
+#app-content.azc-app--absences .absence-request-form__actions {
+	margin-top: 0;
+	padding-top: var(--space-6, 1.5rem);
+	border-top: 1px solid var(--color-border, var(--arbeitszeitcheck-color-border));
 }
 
 /*
@@ -141,11 +207,11 @@
 /* Visually-disabled form section used to dim the substitute selector for
  * historical entries without removing it from the DOM (we keep the field
  * present so the user understands *why* it is unavailable). */
-.absence-form-section--disabled {
-	opacity: 0.6;
+.absence-form-fieldset--disabled {
+	opacity: 0.72;
 }
-.absence-form-section--disabled .form-select:disabled,
-.absence-form-section--disabled .form-input:disabled {
+.absence-form-fieldset--disabled .form-select:disabled,
+.absence-form-fieldset--disabled .form-input:disabled {
 	cursor: not-allowed;
 }
 
@@ -165,11 +231,9 @@
 	margin-top: 0;
 }
 
-@media (max-width: 768px) {
-	.absence-form-section--substitute {
-		margin-left: 0;
-		margin-right: 0;
-		padding: var(--space-5, 1.25rem);
+@media (max-width: 640px) {
+	#app-content.azc-app--absences .absence-form-dates__grid {
+		grid-template-columns: 1fr;
 	}
 }
 

@@ -5,7 +5,7 @@ It maps **routes → workflows → required roles/permissions** and highlights *
 
 Roles referenced:
 - **Employee**: regular authenticated user acting on own data
-- **Manager**: can manage team members (via **Nextcloud groups** *or* **app teams** `use_app_teams=1`)
+- **Manager**: can manage team members only when **`use_app_teams=1`** and the user is assigned as a **team manager** in ArbeitszeitCheck (Nextcloud group membership alone is not sufficient for manager UI/API)
 - **Admin**: Nextcloud admin group
 - **Substitute**: user selected as substitute approver for an absence request
 
@@ -20,7 +20,7 @@ Source of truth for routes: `appinfo/routes.php`.
 - **`page#dashboard` `/dashboard`**: Employee/Manager/Admin
 - **`page#timeEntries` `/time-entries`**: Employee/Manager/Admin
 - **`page#absences` `/absences`**: Employee/Manager/Admin
-- **`page#reports` `/reports`**: Employee + Manager/Admin (scope differs)
+- **`page#reports` `/reports`**: Manager/Admin only (employees use `/compliance/reports` for self-scope)
 - **`page#calendar` `/calendar`**: Employee/Manager/Admin
 - **`page#timeline` `/timeline`**: Employee/Manager/Admin
 - **`page#settings` `/settings`**: Employee/Manager/Admin

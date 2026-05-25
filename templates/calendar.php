@@ -21,6 +21,7 @@ $currentMonth = $_['currentMonth'] ?? date('Y-m');
 
 <?php include __DIR__ . '/common/page-start.php'; ?>
 
+        <div class="azc-page-stack">
         <div class="header-actions">
             <div class="view-toggle" role="group" aria-label="<?php p($l->t('View')); ?>">
                 <button id="btn-month-view" class="btn btn--secondary active" type="button" data-view="month" aria-pressed="true">
@@ -84,7 +85,19 @@ $currentMonth = $_['currentMonth'] ?? date('Y-m');
                     </div>
                     <div class="legend-item" role="listitem">
                         <span class="legend-color legend-color--absence" aria-hidden="true"></span>
-                        <span class="legend-label"><?php p($l->t('Day with absence')); ?></span>
+                        <span class="legend-label"><?php p($l->t('Day with absence (type and status shown on the day)')); ?></span>
+                    </div>
+                    <div class="legend-item" role="listitem">
+                        <span class="legend-sample-chip legend-sample-chip--approved" aria-hidden="true">
+                            <span class="legend-sample-chip__status legend-sample-chip__status--approved"><?php p($l->t('Approved')); ?></span>
+                        </span>
+                        <span class="legend-label"><?php p($l->t('Approved absence')); ?></span>
+                    </div>
+                    <div class="legend-item" role="listitem">
+                        <span class="legend-sample-chip legend-sample-chip--pending" aria-hidden="true">
+                            <span class="legend-sample-chip__status legend-sample-chip__status--pending"><?php p($l->t('Pending')); ?></span>
+                        </span>
+                        <span class="legend-label"><?php p($l->t('Absence awaiting approval')); ?></span>
                     </div>
                     <div class="legend-item" role="listitem">
                         <span class="legend-color legend-color--coverage" aria-hidden="true"></span>
@@ -168,6 +181,13 @@ $currentMonth = $_['currentMonth'] ?? date('Y-m');
     window.ArbeitszeitCheck.l10n.requestAbsenceThisDay = <?php echo json_encode($l->t('Request absence for this day'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.requestAbsenceThisDayHelp = <?php echo json_encode($l->t('Request absence (opens form with this day prefilled). Past dates are allowed for migration.'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.historicalAbsenceLegend = <?php echo json_encode($l->t('Historical absence (already ended)'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.statusPending = <?php echo json_encode($l->t('Pending'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.statusApproved = <?php echo json_encode($l->t('Approved'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.statusRejected = <?php echo json_encode($l->t('Rejected'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.statusSubstitutePending = <?php echo json_encode($l->t('Awaiting substitute approval'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.statusSubstituteDeclined = <?php echo json_encode($l->t('Declined by substitute'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.moreAbsencesOnDay = <?php echo json_encode($l->t('+{count} more'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.moreAbsencesOnDayTitle = <?php echo json_encode($l->t('Additional absences on this day'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.absenceTypes = {
         vacation: <?php echo json_encode($l->t('Vacation'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
         holiday: <?php echo json_encode($l->t('Vacation'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
@@ -188,4 +208,5 @@ $currentMonth = $_['currentMonth'] ?? date('Y-m');
         absenceCreate: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.absence.create'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>
     };
 </script>
+</div><!-- /.azc-page-stack -->
 <?php include __DIR__ . '/common/page-end.php'; ?>

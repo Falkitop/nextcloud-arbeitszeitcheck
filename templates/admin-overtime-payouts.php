@@ -35,6 +35,7 @@ for ($m = 1; $m <= 12; $m++) {
 
 <?php include __DIR__ . '/common/page-start.php'; ?>
 
+        <div class="azc-page-stack">
         <div class="header-actions azc-page-actions-source">
             <a href="<?php p($auditUrl); ?>" class="azc-btn azc-btn--secondary">
                 <?php p($l->t('Payout audit')); ?>
@@ -142,8 +143,8 @@ for ($m = 1; $m <= 12; $m++) {
                     </div>
                 </header>
                 <div class="azc-card__body">
-                    <div class="table-responsive">
-                        <table class="grid-table admin-ot-payouts__grid" id="ot-payout-table">
+                    <div class="table-container">
+                        <table class="table table--hover grid-table admin-ot-payouts__grid" id="ot-payout-table">
                             <caption class="sr-only"><?php p($l->t('Employees with overtime eligible for payout')); ?></caption>
                             <thead>
                                 <tr>
@@ -176,4 +177,5 @@ window.ARBEITSZEITCHECK_OT_PAYOUT = {
 };
 </script>
 
+</div><!-- /.azc-page-stack -->
 <?php include __DIR__ . '/common/page-end.php'; ?>

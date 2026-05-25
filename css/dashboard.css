@@ -500,12 +500,23 @@
     color: var(--azc-muted, var(--color-text-maxcontrast));
 }
 
+#app-content.azc-app--dashboard .azc-dashboard-metric__value--positive,
+#app-content.azc-app--dashboard .azc-dashboard-metric__value--negative {
+    color: var(--azc-text, var(--color-main-text));
+}
+
 #app-content.azc-app--dashboard .azc-dashboard-metric__value--positive {
-    color: var(--color-success-text, var(--color-element-success, #2d7b46));
+    background: var(--azc-tint-success);
+    border: 1px solid color-mix(in srgb, var(--color-success, #46ba61) 45%, var(--color-border));
+    border-radius: var(--azc-radius-sm, 6px);
+    padding: 0.1rem 0.45rem;
 }
 
 #app-content.azc-app--dashboard .azc-dashboard-metric__value--negative {
-    color: var(--color-error, #cc4646);
+    background: var(--azc-tint-danger);
+    border: 1px solid color-mix(in srgb, var(--color-error, #cc4646) 50%, var(--color-border));
+    border-radius: var(--azc-radius-sm, 6px);
+    padding: 0.1rem 0.45rem;
 }
 
 #app-content.azc-app--dashboard .azc-dashboard-overtime.azc-card,

@@ -21,9 +21,14 @@ $endDate = $_['endDate'] ?? date('Y-m-d');
 
 <?php include __DIR__ . '/common/page-start.php'; ?>
 
+                <div class="azc-page-stack">
                 <?php include __DIR__ . '/common/compliance-tabs.php'; ?>
 
-<div class="section">
+        <p class="azc-callout azc-callout--info" role="note">
+            <?php p($l->t('Managers and administrators use Reports in the main menu for team exports. This page shows your personal compliance summary.')); ?>
+        </p>
+
+<div class="section azc-card">
 <!-- Report Summary -->
             <div class="stats-grid">
                 <div class="stat-card"
@@ -47,8 +52,8 @@ $endDate = $_['endDate'] ?? date('Y-m-d');
                         <h3><?php p($l->t('Problems by Type')); ?></h3>
                         <p><?php p($l->t('See what kinds of working time problems occurred')); ?></p>
                     </div>
-                    <div class="table-responsive" role="region" aria-label="<?php p($l->t('Problems by Type')); ?>">
-                        <table class="table" role="table" aria-label="<?php p($l->t('Problems by Type')); ?>">
+                    <div class="table-container" role="region" aria-label="<?php p($l->t('Problems by Type')); ?>">
+                        <table class="table table--hover" role="table" aria-label="<?php p($l->t('Problems by Type')); ?>">
                             <thead>
                                 <tr>
                                     <th scope="col"><?php p($l->t('Type')); ?></th>
@@ -88,8 +93,8 @@ $endDate = $_['endDate'] ?? date('Y-m-d');
                         <h3><?php p($l->t('Problems by How Serious')); ?></h3>
                         <p><?php p($l->t('See how serious the problems were')); ?></p>
                     </div>
-                    <div class="table-responsive" role="region" aria-label="<?php p($l->t('Problems by How Serious')); ?>">
-                        <table class="table" role="table" aria-label="<?php p($l->t('Problems by How Serious')); ?>">
+                    <div class="table-container" role="region" aria-label="<?php p($l->t('Problems by How Serious')); ?>">
+                        <table class="table table--hover" role="table" aria-label="<?php p($l->t('Problems by How Serious')); ?>">
                             <thead>
                                 <tr>
                                     <th scope="col"><?php p($l->t('How Serious')); ?></th>
@@ -127,4 +132,5 @@ $endDate = $_['endDate'] ?? date('Y-m-d');
                 </div>
             <?php endif; ?>
 
+</div><!-- /.azc-page-stack -->
 <?php include __DIR__ . '/common/page-end.php'; ?>

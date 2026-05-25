@@ -21,8 +21,7 @@ $urls = $_['urls'] ?? [];
 
 <?php include __DIR__ . '/common/page-start.php'; ?>
 
-        <section class="section" aria-labelledby="settings-sections-heading" aria-label="<?php p($l->t('Settings options')); ?>">
-            <div class="settings-container">
+        <div class="azc-page-stack settings-container" aria-label="<?php p($l->t('Settings options')); ?>">
                 <!-- Working Time Preferences -->
                 <div class="settings-section azc-card">
                     <h3 id="settings-sections-heading" class="section-title azc-card__title"><?php p($l->t('Working Time Preferences')); ?></h3>
@@ -181,7 +180,7 @@ $urls = $_['urls'] ?? [];
                     </div>
                 </div>
             </div>
-        </section>
+        </div><!-- /.azc-page-stack -->
 
 <script nonce="<?php p($_['cspNonce'] ?? ''); ?>">
     window.ArbeitszeitCheck = window.ArbeitszeitCheck || {};

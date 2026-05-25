@@ -311,11 +311,16 @@
   }
 
   img,
-  svg,
+  svg:not(.azc-icon),
   video,
   iframe {
     max-width: 100%;
     height: auto;
+  }
+
+  /* Catalogue icons keep fixed dimensions (see common/icons.css) */
+  svg.azc-icon {
+    max-width: none;
   }
 
   /* Ensure containers don't overflow */

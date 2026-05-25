@@ -4510,14 +4510,15 @@ class AdminController extends Controller
 	public function teams(): TemplateResponse
 	{
 		$this->registerFrontEndAssets('admin-teams', 'admin-teams');
+		$useAppTeams = $this->appConfig->getAppValueString('use_app_teams', '0') === '1';
 
-		$response = new TemplateResponse('arbeitszeitcheck', 'admin-teams', [
-			'urlGenerator' => $this->urlGenerator,
-			'l' => $this->l10n,
-			'showSubstitutionLink' => false,
-			'showManagerLink' => true,
-			'showReportsLink' => true,
-			'showAdminNav' => true,
+		$response = new TemplateResponse('arbeitszeitcheck', 'admin-teams', $this->buildAdminShellParams(
+			'admin-teams',
+			$this->l10n->t('Teams'),
+			$this->l10n->t('Define organizational units, assign members, and designate managers for approvals.'),
+		) + [
+			'useAppTeams' => $useAppTeams,
+			'adminTeamsUrl' => $this->urlGenerator->linkToRoute('arbeitszeitcheck.admin.teams'),
 		]);
 		return $this->configureCSP($response, 'admin');
 	}

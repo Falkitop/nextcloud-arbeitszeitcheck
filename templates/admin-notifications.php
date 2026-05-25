@@ -21,6 +21,7 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 
 <?php include __DIR__ . '/common/page-start.php'; ?>
 
+        <div class="azc-page-stack">
         <div class="azc-admin-notifications-layout">
             <?php
             $jumpNavLayout = 'bar';
@@ -283,7 +284,7 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 					<p class="form-help form-help--block">
 						<?php p($l->t('Choose which severity levels should trigger notifications for overtime and undertime.')); ?>
 					</p>
-					<div class="azc-table-wrap table-responsive admin-notifications-matrix-wrap">
+					<div class="table-container azc-table-wrap admin-notifications-matrix-wrap">
 						<table class="grid-table admin-notifications-matrix azc-table--matrix" role="table" aria-labelledby="block-trafficlight-matrix-heading">
 							<caption class="sr-only"><?php p($l->t('Severity levels that trigger notifications for overtime and undertime')); ?></caption>
 							<thead>
@@ -459,7 +460,7 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 					<p class="form-help form-help--block">
 						<?php p($l->t('Activate exactly which event should trigger an HR email for each absence type. Disabled cells mean no email is sent for that combination.')); ?>
 					</p>
-					<div class="azc-table-wrap table-responsive admin-notifications-matrix-wrap">
+					<div class="table-container azc-table-wrap admin-notifications-matrix-wrap">
 						<table class="grid-table admin-notifications-matrix azc-table--matrix" role="table" aria-labelledby="notification-matrix-heading">
 							<caption class="sr-only"><?php p($l->t('Notification rules by absence type and event')); ?></caption>
 							<thead>
@@ -542,4 +543,5 @@ window.ArbeitszeitCheck.l10n.invalidCarryoverMaxDays = <?php echo json_encode($l
 window.ArbeitszeitCheck.l10n.failedToSaveNotifications = <?php echo json_encode($l->t('Failed to save notification settings'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 </script>
 
+</div><!-- /.azc-page-stack -->
 <?php include __DIR__ . '/common/page-end.php'; ?>

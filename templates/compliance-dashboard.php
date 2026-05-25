@@ -25,6 +25,7 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
 
 <?php include __DIR__ . '/common/page-start.php'; ?>
 
+        <div class="azc-page-stack">
         <?php include __DIR__ . '/common/compliance-tabs.php'; ?>
 
         <section class="azc-card compliance-dashboard__status" aria-labelledby="compliance-status-heading">
@@ -138,8 +139,8 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
                         <p class="azc-empty-state__title"><?php p($l->t('No recent violations')); ?></p>
                     </div>
                 <?php else: ?>
-                    <div class="table-responsive" role="region" aria-label="<?php p($l->t('Recent violations')); ?>">
-                        <table class="table" aria-label="<?php p($l->t('Recent violations')); ?>">
+                    <div class="table-container" role="region" aria-label="<?php p($l->t('Recent violations')); ?>">
+                        <table class="table table--hover" aria-label="<?php p($l->t('Recent violations')); ?>">
                             <thead>
                                 <tr>
                                     <th scope="col"><?php p($l->t('Type')); ?></th>
@@ -200,4 +201,5 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
             </div>
         </section>
 
+</div><!-- /.azc-page-stack -->
 <?php include __DIR__ . '/common/page-end.php'; ?>

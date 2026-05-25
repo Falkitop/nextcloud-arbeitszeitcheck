@@ -21,7 +21,6 @@ $l10nKeys = [
 	'Download PDF',
 	'Download revision PDF for {name}',
 	'Could not initialize the month list. Please reload the page.',
-	// Calendar month names (same msgids as calendar / datepicker)
 	'January',
 	'February',
 	'March',
@@ -43,73 +42,96 @@ foreach ($l10nKeys as $key) {
 
 <?php include __DIR__ . '/common/page-start.php'; ?>
 
-        <div class="manager-month-closures-page"
-            <?php if (!$error): ?>
-            data-revision-pdf-available-months-url="<?php p($availableMonthsUrl); ?>"
-            data-revision-pdf-users-for-month-url="<?php p($usersForMonthUrl); ?>"
-            data-pdf-url-base="<?php p($pdfUrlBase); ?>"
-            <?php endif; ?>>
-        <?php if (!$error): ?>
-        <script type="application/json" id="manager-mc-l10n-json" nonce="<?php p($_['cspNonce'] ?? ''); ?>">
-        <?php echo json_encode($l10nMap, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>
-        </script>
-        <?php endif; ?>
-        <div class="section manager-month-closures-page__content">
-            <p class="manager-mc-header__intro form-help" id="manager-month-closures-intro">
-                <?php p($l->t('Pick a month that already has sealed data, then download the same revision-secure PDF for each person you are allowed to access.')); ?>
-            </p>
+<div class="azc-page-stack">
+	<div class="manager-month-closures"
+		<?php if (!$error): ?>
+		data-revision-pdf-available-months-url="<?php p($availableMonthsUrl); ?>"
+		data-revision-pdf-users-for-month-url="<?php p($usersForMonthUrl); ?>"
+		data-pdf-url-base="<?php p($pdfUrlBase); ?>"
+		<?php endif; ?>>
 
-            <?php if ($error): ?>
-				<p class="form-help form-help--error" role="alert"><?php p($error); ?></p>
-			<?php else: ?>
+		<?php if (!$error): ?>
+		<script type="application/json" id="manager-mc-l10n-json" nonce="<?php p($_['cspNonce'] ?? ''); ?>">
+		<?php echo json_encode($l10nMap, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>
+		</script>
+		<?php endif; ?>
 
-			<div class="manager-mc-flow" role="region" aria-labelledby="manager-mc-flow-title">
-				<h2 id="manager-mc-flow-title" class="visually-hidden"><?php p($l->t('Download revision PDF')); ?></h2>
-
-				<fieldset class="manager-mc-panel">
-					<legend class="manager-mc-panel__legend">
-						<span class="manager-mc-step" aria-hidden="true">1</span>
-						<span class="manager-mc-panel__legend-text"><?php p($l->t('Choose month')); ?></span>
-					</legend>
-					<p class="manager-mc-panel__hint" id="manager-mc-month-hint">
-						<?php p($l->t('Only months with finalized (sealed) data you can act on are listed.')); ?>
-					</p>
-					<div class="manager-mc-month-row">
-						<label class="manager-mc-label" for="manager-mc-month-select"><?php p($l->t('Calendar month')); ?></label>
-						<select id="manager-mc-month-select"
-							class="form-input form-select manager-mc-select"
-							aria-busy="true"
-							aria-describedby="manager-mc-month-hint manager-mc-month-load-status manager-month-closures-intro">
-							<option value=""><?php p($l->t('Loading…')); ?></option>
-						</select>
-					</div>
-					<p id="manager-mc-month-load-status" class="manager-mc-month-status" role="status" aria-live="polite"></p>
-				</fieldset>
-
-				<fieldset class="manager-mc-panel">
-					<legend class="manager-mc-panel__legend">
-						<span class="manager-mc-step" aria-hidden="true">2</span>
-						<span class="manager-mc-panel__legend-text"><?php p($l->t('Download for each person')); ?></span>
-					</legend>
-					<p class="manager-mc-panel__hint" id="manager-mc-people-hint">
-						<?php p($l->t('Everyone listed has a finalized month for your selection and matches your permissions.')); ?>
-					</p>
-					<div id="manager-mc-people-region"
-						class="manager-mc-people-region"
-						role="region"
-						aria-labelledby="manager-mc-people-title"
-						aria-describedby="manager-mc-people-hint">
-						<h3 id="manager-mc-people-title" class="visually-hidden"><?php p($l->t('People')); ?></h3>
-						<div id="manager-mc-people-empty" class="manager-mc-empty" hidden></div>
-						<ul id="manager-mc-people-list" class="manager-mc-people-list" hidden></ul>
-					</div>
-					<p id="manager-mc-people-status" class="manager-mc-month-status" role="status" aria-live="polite"></p>
-				</fieldset>
-
-				<p id="manager-mc-page-error" class="form-help form-help--error manager-mc-page-error" role="alert" aria-live="assertive" hidden></p>
+		<?php if ($error): ?>
+			<div class="azc-callout azc-callout--danger" role="alert">
+				<p class="azc-callout__text"><?php p($error); ?></p>
 			</div>
-			<?php endif; ?>
-        </div>
-        </div>
+		<?php else: ?>
+
+		<section class="azc-card manager-mc-wizard" aria-labelledby="manager-mc-wizard-title">
+			<header class="azc-card__header">
+				<div class="azc-card__header-text">
+					<h2 id="manager-mc-wizard-title" class="azc-card__title"><?php p($l->t('How it works')); ?></h2>
+					<p class="azc-card__lead">
+						<?php p($l->t('First choose a sealed month, then download the official revision PDF for each person in your scope.')); ?>
+					</p>
+				</div>
+			</header>
+
+			<div class="azc-card__body">
+				<ol class="manager-mc-steps" role="list">
+					<li class="manager-mc-step">
+						<div class="manager-mc-step__head">
+							<span class="manager-mc-step__badge" aria-hidden="true">1</span>
+							<div class="manager-mc-step__titles">
+								<h3 id="manager-mc-step-month-title" class="manager-mc-step__title"><?php p($l->t('Choose month')); ?></h3>
+								<p id="manager-mc-month-hint" class="manager-mc-step__hint">
+									<?php p($l->t('Only months with finalized (sealed) data you can act on are listed.')); ?>
+								</p>
+							</div>
+						</div>
+						<div class="manager-mc-step__body">
+							<div class="manager-mc-field">
+								<label class="manager-mc-field__label" for="manager-mc-month-select"><?php p($l->t('Calendar month')); ?></label>
+								<select id="manager-mc-month-select"
+									class="form-select manager-mc-field__control"
+									aria-busy="true"
+									aria-describedby="manager-mc-month-hint manager-mc-month-load-status">
+									<option value=""><?php p($l->t('Loading…')); ?></option>
+								</select>
+							</div>
+							<p id="manager-mc-month-load-status" class="manager-mc-status" role="status" aria-live="polite"></p>
+						</div>
+					</li>
+
+					<li class="manager-mc-step">
+						<div class="manager-mc-step__head">
+							<span class="manager-mc-step__badge" aria-hidden="true">2</span>
+							<div class="manager-mc-step__titles">
+								<h3 id="manager-mc-step-people-title" class="manager-mc-step__title"><?php p($l->t('Download for each person')); ?></h3>
+								<p id="manager-mc-people-hint" class="manager-mc-step__hint">
+									<?php p($l->t('Everyone listed has a finalized month for your selection and matches your permissions.')); ?>
+								</p>
+							</div>
+						</div>
+						<div class="manager-mc-step__body">
+							<div id="manager-mc-people-region"
+								class="manager-mc-people"
+								role="region"
+								aria-labelledby="manager-mc-step-people-title"
+								aria-describedby="manager-mc-people-hint manager-mc-people-status">
+								<div id="manager-mc-people-empty" class="azc-empty-state manager-mc-people__empty" hidden>
+									<p class="azc-empty-state__text"></p>
+								</div>
+								<ul id="manager-mc-people-list" class="manager-mc-people__list" hidden></ul>
+							</div>
+							<p id="manager-mc-people-status" class="manager-mc-status" role="status" aria-live="polite"></p>
+						</div>
+					</li>
+				</ol>
+
+				<div id="manager-mc-page-error" class="azc-callout azc-callout--danger manager-mc-page-error" role="alert" aria-live="assertive" hidden>
+					<p class="azc-callout__text"></p>
+				</div>
+			</div>
+		</section>
+
+		<?php endif; ?>
+	</div>
+</div>
 
 <?php include __DIR__ . '/common/page-end.php'; ?>

@@ -45,100 +45,161 @@ $absenceFormEndDisplay = ($mode === 'create')
 
 <?php include __DIR__ . '/common/page-start.php'; ?>
 
+        <div class="azc-page-stack">
+        <?php if ($mode === 'list' && $error): ?>
+            <div class="azc-callout azc-callout--danger absences-page__list-error" role="alert">
+                <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('alert-triangle', 'azc-callout__icon-svg')); ?></span>
+                <p class="azc-callout__text"><?php p($error); ?></p>
+            </div>
+        <?php endif; ?>
         <?php if ($mode === 'list'): ?>
-        <div class="header-actions">
+        <div class="header-actions azc-page-actions-source">
             <button id="btn-request-absence"
-                    class="btn btn--primary"
+                    class="azc-btn azc-btn--primary"
                     type="button"
-                    aria-label="<?php p($l->t('Request time off for vacation or sick leave')); ?>"
-                    title="<?php p($l->t('Click to request time off. You can request vacation days, sick leave, or other types of absences.')); ?>">
+                    aria-label="<?php p($l->t('Request time off for vacation or sick leave')); ?>">
                 <?php p($l->t('Request Time Off')); ?>
             </button>
             <button id="btn-filter"
-                    class="btn btn--secondary"
+                    class="azc-btn azc-btn--secondary"
                     type="button"
-                    aria-label="<?php p($l->t('Filter absence requests by date or status')); ?>"
-                    title="<?php p($l->t('Click to show options for filtering your absence requests. You can filter by date range or approval status.')); ?>">
+                    aria-label="<?php p($l->t('Filter absence requests by date or status')); ?>">
                 <?php p($l->t('Filter')); ?>
             </button>
         </div>
         <?php endif; ?>
 
-        <?php if ($useAppTeams && !$employeeHasAssignableManager && in_array($mode, ['list', 'create', 'edit'], true)): ?>
-            <div class="section section--approval-hint" role="region" aria-labelledby="approval-hint-title">
-                <div class="alert alert--info" role="status" aria-live="polite">
-                    <div class="alert-content">
-                        <h2 id="approval-hint-title" class="alert-title"><?php p($l->t('How your request is approved')); ?></h2>
-                        <p class="alert-message"><?php p($l->t('No approver is assigned to your team in the app. Requests you submit without a substitute are approved automatically when you send them.')); ?></p>
-                    </div>
+        <?php if (in_array($mode, ['create', 'edit'], true) && $useAppTeams): ?>
+            <?php if (!$employeeHasAssignableManager): ?>
+            <div class="azc-callout azc-callout--info absence-request-callout" role="status" aria-live="polite" aria-labelledby="approval-hint-title">
+                <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('info', 'azc-callout__icon-svg')); ?></span>
+                <div class="azc-callout__body">
+                    <p id="approval-hint-title" class="azc-callout__title"><?php p($l->t('How your request is approved')); ?></p>
+                    <p class="azc-callout__text"><?php p($l->t('No approver is assigned to your team in the app. Requests you submit without a substitute are approved automatically when you send them.')); ?></p>
+                </div>
+            </div>
+            <?php else: ?>
+            <div class="azc-callout azc-callout--info absence-request-callout" role="status" aria-labelledby="approval-hint-manager-title">
+                <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('user-check', 'azc-callout__icon-svg')); ?></span>
+                <div class="azc-callout__body">
+                    <p id="approval-hint-manager-title" class="azc-callout__title"><?php p($l->t('How your request is approved')); ?></p>
+                    <p class="azc-callout__text"><?php p($l->t('After you submit, your manager reviews the request. If you choose a substitute, they must approve first, then your manager.')); ?></p>
+                </div>
+            </div>
+            <?php endif; ?>
+        <?php elseif ($useAppTeams && !$employeeHasAssignableManager && $mode === 'list'): ?>
+            <div class="azc-callout azc-callout--info absence-request-callout" role="status" aria-live="polite" aria-labelledby="approval-hint-list-title">
+                <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('info', 'azc-callout__icon-svg')); ?></span>
+                <div class="azc-callout__body">
+                    <p id="approval-hint-list-title" class="azc-callout__title"><?php p($l->t('How your request is approved')); ?></p>
+                    <p class="azc-callout__text"><?php p($l->t('No approver is assigned to your team in the app. Requests you submit without a substitute are approved automatically when you send them.')); ?></p>
                 </div>
             </div>
         <?php endif; ?>
 
         <?php if ($mode === 'list'): ?>
-            <!-- Filter section (hidden by default, toggled by Filter button) -->
-            <section id="filter-section" class="section section--filter" aria-labelledby="filter-title" style="display: none;">
-                <h2 id="filter-title" class="section__title visually-hidden"><?php p($l->t('Filter absence requests')); ?></h2>
-                <?php
-                        $filterStartDate = $_['filterStartDate'] ?? '';
-                        $filterEndDate = $_['filterEndDate'] ?? '';
-                        $filterStatus = $_['filterStatus'] ?? '';
-                        ?>
-                <div class="form form--inline">
-                    <div class="form-group">
-                        <label for="filter-start-date" class="form-label"><?php p($l->t('Start Date')); ?></label>
-                        <input type="text" id="filter-start-date" class="form-input datepicker-input" placeholder="<?php p($l->t('dd.mm.yyyy')); ?>" value="<?php p($filterStartDate); ?>" data-datepicker-min="">
+            <?php
+            $filterStartDate = $_['filterStartDate'] ?? '';
+            $filterEndDate = $_['filterEndDate'] ?? '';
+            $filterStatus = $_['filterStatus'] ?? '';
+            ?>
+            <section id="filter-section" class="azc-card azc-filter-panel absences-page__filter" style="display: none;" aria-labelledby="absences-filter-title">
+                <header class="azc-card__header">
+                    <div class="azc-card__header-text">
+                        <h2 id="absences-filter-title" class="azc-card__title"><?php p($l->t('Filter')); ?></h2>
+                        <p class="azc-card__lead"><?php p($l->t('Narrow the list by date range or status, then click Apply.')); ?></p>
                     </div>
-                    <div class="form-group">
-                        <label for="filter-end-date" class="form-label"><?php p($l->t('End Date')); ?></label>
-                        <input type="text" id="filter-end-date" class="form-input datepicker-input" placeholder="<?php p($l->t('dd.mm.yyyy')); ?>" value="<?php p($filterEndDate); ?>" data-datepicker-min="">
-                    </div>
-                    <div class="form-group">
-                        <label for="filter-status" class="form-label"><?php p($l->t('Status')); ?></label>
-                        <select id="filter-status" class="form-select">
-                            <option value=""><?php p($l->t('All')); ?></option>
-                            <option value="pending" <?php echo ($filterStatus === 'pending') ? 'selected' : ''; ?>><?php p($l->t('Pending')); ?></option>
-                            <option value="approved" <?php echo ($filterStatus === 'approved') ? 'selected' : ''; ?>><?php p($l->t('Approved')); ?></option>
-                            <option value="rejected" <?php echo ($filterStatus === 'rejected') ? 'selected' : ''; ?>><?php p($l->t('Rejected')); ?></option>
-                            <option value="substitute_declined" <?php echo ($filterStatus === 'substitute_declined') ? 'selected' : ''; ?>><?php p($l->t('Declined by substitute')); ?></option>
-                        </select>
-                    </div>
-                    <div class="form-group form-group--actions">
-                        <button type="button" id="btn-apply-filter" class="btn btn--primary"><?php p($l->t('Apply')); ?></button>
-                        <button type="button" id="btn-clear-filter" class="btn btn--secondary"><?php p($l->t('Clear')); ?></button>
-                    </div>
+                </header>
+                <div class="azc-card__body">
+                    <form class="azc-filter-panel__form" novalidate>
+                        <div class="azc-filter-grid absences-page__filter-grid" role="group" aria-label="<?php p($l->t('Filter options')); ?>">
+                            <div class="azc-filter-field">
+                                <label for="filter-start-date" class="azc-filter-field__label"><?php p($l->t('Start Date')); ?></label>
+                                <div class="azc-filter-field__control">
+                                    <input type="text" id="filter-start-date" name="start_date" class="form-input datepicker-input" placeholder="<?php p($l->t('dd.mm.yyyy')); ?>" value="<?php p($filterStartDate); ?>" pattern="\d{2}\.\d{2}\.\d{4}" maxlength="10" readonly>
+                                </div>
+                            </div>
+                            <div class="azc-filter-field">
+                                <label for="filter-end-date" class="azc-filter-field__label"><?php p($l->t('End Date')); ?></label>
+                                <div class="azc-filter-field__control">
+                                    <input type="text" id="filter-end-date" name="end_date" class="form-input datepicker-input" placeholder="<?php p($l->t('dd.mm.yyyy')); ?>" value="<?php p($filterEndDate); ?>" pattern="\d{2}\.\d{2}\.\d{4}" maxlength="10" readonly>
+                                </div>
+                            </div>
+                            <div class="azc-filter-field">
+                                <label for="filter-status" class="azc-filter-field__label"><?php p($l->t('Status')); ?></label>
+                                <div class="azc-filter-field__control">
+                                    <select id="filter-status" name="status" class="form-select">
+                                        <option value=""><?php p($l->t('All')); ?></option>
+                                        <option value="pending" <?php echo ($filterStatus === 'pending') ? 'selected' : ''; ?>><?php p($l->t('Pending')); ?></option>
+                                        <option value="approved" <?php echo ($filterStatus === 'approved') ? 'selected' : ''; ?>><?php p($l->t('Approved')); ?></option>
+                                        <option value="rejected" <?php echo ($filterStatus === 'rejected') ? 'selected' : ''; ?>><?php p($l->t('Rejected')); ?></option>
+                                        <option value="substitute_declined" <?php echo ($filterStatus === 'substitute_declined') ? 'selected' : ''; ?>><?php p($l->t('Declined by substitute')); ?></option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="azc-filter-field azc-filter-field--actions">
+                                <span class="azc-filter-field__label" aria-hidden="true">&nbsp;</span>
+                                <div class="azc-filter-field__control azc-filter-field__control--actions">
+                                    <button type="button" id="btn-apply-filter" class="azc-btn azc-btn--primary"><?php p($l->t('Apply')); ?></button>
+                                    <button type="button" id="btn-clear-filter" class="azc-btn azc-btn--secondary"><?php p($l->t('Clear')); ?></button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
                 </div>
             </section>
         <?php endif; ?>
 
         <?php if ($mode === 'create' || $mode === 'edit'): ?>
-            <!-- Create/Edit Form -->
-            <section class="section section--form" aria-labelledby="form-title" aria-describedby="form-desc">
-                <h2 id="form-title" class="section__title visually-hidden"><?php p($l->t('Absence request details')); ?></h2>
-                <p id="form-desc" class="section__desc visually-hidden"><?php p($l->t('Fill in the type, dates, and optional reason and substitute.')); ?></p>
-                <p class="form-required-note" aria-hidden="false">
+            <section class="azc-card absence-request-card" aria-labelledby="form-title" aria-describedby="form-desc">
+                <header class="azc-card__header">
+                    <div class="azc-card__header-text">
+                        <h2 id="form-title" class="azc-card__title"><?php
+                            if ($mode === 'create') {
+                                p($l->t('Request time off'));
+                            } else {
+                                p($l->t('Edit absence request'));
+                            }
+                        ?></h2>
+                        <p id="form-desc" class="azc-card__lead"><?php p($l->t('Fill in the type, dates, and optional reason and substitute.')); ?></p>
+                    </div>
+                </header>
+                <div class="azc-card__body">
+                <p class="form-required-note">
                     <span class="form-required" aria-hidden="true">*</span>
                     <?php p($l->t('Required field')); ?>
                 </p>
-                <div class="alert alert--error" role="alert" id="absence-form-error"<?php echo $error ? '' : ' style="display: none;"'; ?>>
-                    <p id="absence-form-error-text"><?php echo $error ? htmlspecialchars($error, ENT_QUOTES, 'UTF-8') : ''; ?></p>
+                <div class="azc-callout azc-callout--danger" role="alert" id="absence-form-error"<?php echo $error ? '' : ' hidden'; ?>>
+                    <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('alert-triangle', 'azc-callout__icon-svg')); ?></span>
+                    <p id="absence-form-error-text" class="azc-callout__text"><?php echo $error ? htmlspecialchars($error, ENT_QUOTES, 'UTF-8') : ''; ?></p>
                 </div>
-                
-                <form id="absence-form" class="form absence-request-form" method="POST" action="<?php 
+
+                <form id="absence-form" class="form absence-request-form" method="POST" novalidate
+                      action="<?php 
                     if ($mode === 'create') {
                         p($urlGenerator->linkToRoute('arbeitszeitcheck.absence.store'));
                     } else {
                         p($urlGenerator->linkToRoute('arbeitszeitcheck.absence.updatePost', ['id' => $absence->getId()]));
                     }
                 ?>">
-                    <section class="absence-form-section absence-form-section--main" aria-labelledby="absence-form-section-main-title">
-                        <h3 id="absence-form-section-main-title" class="absence-form-section__title absence-form-section__title--main"><?php p($l->t('Request details')); ?></h3>
+                    <input type="hidden" name="requesttoken" value="<?php p($_['requesttoken'] ?? ''); ?>">
+                    <fieldset class="absence-form-fieldset" id="absence-form-details-fieldset">
+                        <legend class="absence-form-fieldset__legend"><?php p($l->t('Request details')); ?></legend>
+
+                    <div class="azc-callout azc-callout--info absence-past-entry-hint" role="note" aria-labelledby="absence-past-entry-title">
+                        <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('calendar', 'azc-callout__icon-svg')); ?></span>
+                        <div class="azc-callout__body">
+                            <p id="absence-past-entry-title" class="azc-callout__title"><?php p($l->t('Past absences are allowed')); ?></p>
+                            <p class="azc-callout__text"><?php p($l->t('Use the same form for old vacation, sick leave, migration records, and future requests. Closed months stay protected and cannot be changed unless an administrator reopens them.')); ?></p>
+                        </div>
+                    </div>
+
                     <div class="form-group">
                         <label for="absence-type" class="form-label">
-                            <?php p($l->t('Type')); ?> <span class="form-required">*</span>
+                            <?php p($l->t('Type')); ?> <span class="form-required" aria-hidden="true">*</span>
                         </label>
-                        <select id="absence-type" name="type" class="form-select" required>
-                            <option value=""><?php p($l->t('Select the type of absence you want to request')); ?></option>
+                        <select id="absence-type" name="type" class="form-select" required aria-describedby="absence-type-help">
+                            <option value=""><?php p($l->t('Choose absence type…')); ?></option>
                             <option value="vacation" <?php echo ($absence && $absence->getType() === 'vacation') ? 'selected' : ''; ?>>
                                 <?php p($l->t('Vacation')); ?>
                             </option>
@@ -164,84 +225,93 @@ $absenceFormEndDisplay = ($mode === 'create')
                                 <?php p($l->t('Business Trip')); ?>
                             </option>
                         </select>
-                        <p class="form-help"><?php p($l->t('Select the type of absence you want to request')); ?></p>
+                        <p id="absence-type-help" class="form-help"><?php p($l->t('Vacation, sick leave, and other types each follow your organisation’s rules.')); ?></p>
                     </div>
 
-                    <div class="absence-past-entry-hint" role="note" aria-labelledby="absence-past-entry-title">
-                        <h4 id="absence-past-entry-title"><?php p($l->t('Past absences are allowed')); ?></h4>
-                        <p><?php p($l->t('Use the same form for old vacation, sick leave, migration records, and future requests. Closed months stay protected and cannot be changed unless an administrator reopens them.')); ?></p>
+                    <div class="absence-form-dates" role="group" aria-labelledby="absence-dates-legend">
+                        <p id="absence-dates-legend" class="absence-form-dates__legend"><?php p($l->t('Period')); ?> <span class="form-required" aria-hidden="true">*</span></p>
+                        <div class="absence-form-dates__grid">
+                            <div class="form-group">
+                                <label for="absence-start-date" class="form-label">
+                                    <?php p($l->t('Start Date')); ?> <span class="form-required" aria-hidden="true">*</span>
+                                </label>
+                                <input type="text"
+                                       id="absence-start-date"
+                                       name="start_date"
+                                       class="form-input datepicker-input"
+                                       data-datepicker-min=""
+                                       data-datepicker-sync-month-with="absence-end-date"
+                                       value="<?php p($absenceFormStartDisplay); ?>"
+                                       placeholder="<?php p($l->t('dd.mm.yyyy')); ?>"
+                                       pattern="\d{2}\.\d{2}\.\d{4}"
+                                       maxlength="10"
+                                       inputmode="numeric"
+                                       autocomplete="off"
+                                       spellcheck="false"
+                                       required
+                                       aria-required="true"
+                                       aria-describedby="absence-start-date-help">
+                                <p id="absence-start-date-help" class="form-help"><?php p($l->t('First day away')); ?></p>
+                            </div>
+                            <div class="form-group">
+                                <label for="absence-end-date" class="form-label">
+                                    <?php p($l->t('End Date')); ?> <span class="form-required" aria-hidden="true">*</span>
+                                </label>
+                                <input type="text"
+                                       id="absence-end-date"
+                                       name="end_date"
+                                       class="form-input datepicker-input"
+                                       data-datepicker-min=""
+                                       data-datepicker-sync-month-with="absence-start-date"
+                                       value="<?php p($absenceFormEndDisplay); ?>"
+                                       placeholder="<?php p($l->t('dd.mm.yyyy')); ?>"
+                                       pattern="\d{2}\.\d{2}\.\d{4}"
+                                       maxlength="10"
+                                       inputmode="numeric"
+                                       autocomplete="off"
+                                       spellcheck="false"
+                                       required
+                                       aria-required="true"
+                                       aria-describedby="absence-end-date-help">
+                                <p id="absence-end-date-help" class="form-help"><?php p($l->t('Last day away (can match start for one day)')); ?></p>
+                            </div>
+                        </div>
                     </div>
 
-                    <!--
-                        Dynamic historical-entry hint. Hidden by default; the inline script below
-                        toggles it (and the substitute disabled state) once both dates have been
-                        entered. The element exists in the static markup so screen readers can
-                        announce its content via aria-live as soon as it becomes visible, and so
-                        the layout does not jump.
-                    -->
                     <div id="absence-historical-hint"
-                         class="absence-historical-hint"
+                         class="azc-callout azc-callout--warning absence-historical-hint"
                          role="status"
                          aria-live="polite"
                          hidden>
-                        <span class="absence-historical-hint__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('clock', 'absence-historical-hint__icon-svg')); ?></span>
-                        <div class="absence-historical-hint__body">
-                            <strong class="absence-historical-hint__title"><?php p($l->t('Historical entry – the dates you selected are in the past')); ?></strong>
-                            <p class="absence-historical-hint__text" id="absence-historical-hint-default-text"><?php p($l->t('You can submit this as a regular request. Your manager will still review and approve or reject it like any other request, and the substitute workflow does not apply to dates that already passed.')); ?></p>
-                            <p class="absence-historical-hint__text absence-historical-hint__text--auto" id="absence-historical-hint-auto-text" hidden><?php p($l->t('No approver is assigned to your team in the app, so this historical absence will be auto-approved as soon as you submit it.')); ?></p>
+                        <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('clock', 'azc-callout__icon-svg')); ?></span>
+                        <div class="azc-callout__body">
+                            <p class="azc-callout__title"><?php p($l->t('Historical entry – the dates you selected are in the past')); ?></p>
+                            <p class="azc-callout__text" id="absence-historical-hint-default-text"><?php p($l->t('You can submit this as a regular request. Your manager will still review and approve or reject it like any other request, and the substitute workflow does not apply to dates that already passed.')); ?></p>
+                            <p class="azc-callout__text absence-historical-hint__text--auto" id="absence-historical-hint-auto-text" hidden><?php p($l->t('No approver is assigned to your team in the app, so this historical absence will be auto-approved as soon as you submit it.')); ?></p>
                         </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="absence-start-date" class="form-label">
-                            <?php p($l->t('Start Date')); ?> <span class="form-required">*</span>
-                        </label>
-                        <input type="text"
-                               id="absence-start-date"
-                               name="start_date"
-                               class="form-input datepicker-input"
-                               data-datepicker-min=""
-                               data-datepicker-sync-month-with="absence-end-date"
-                               value="<?php p($absenceFormStartDisplay); ?>"
-                               placeholder="<?php p($l->t('dd.mm.yyyy')); ?>"
-                               pattern="\d{2}\.\d{2}\.\d{4}"
-                               maxlength="10"
-                               required>
-                        <p class="form-help"><?php p($l->t('The first day of your absence')); ?></p>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="absence-end-date" class="form-label">
-                            <?php p($l->t('End Date')); ?> <span class="form-required">*</span>
-                        </label>
-                        <input type="text"
-                               id="absence-end-date"
-                               name="end_date"
-                               class="form-input datepicker-input"
-                               data-datepicker-min=""
-                               data-datepicker-sync-month-with="absence-start-date"
-                               value="<?php p($absenceFormEndDisplay); ?>"
-                               placeholder="<?php p($l->t('dd.mm.yyyy')); ?>"
-                               pattern="\d{2}\.\d{2}\.\d{4}"
-                               maxlength="10"
-                               required>
-                        <p class="form-help"><?php p($l->t('The last day of your absence')); ?></p>
                     </div>
 
                     <div class="form-group">
                         <label for="absence-reason" class="form-label">
-                            <?php p($l->t('Reason')); ?>
+                            <?php p($l->t('Reason')); ?> <span class="form-optional"><?php p($l->t('(optional)')); ?></span>
                         </label>
-                        <textarea id="absence-reason" 
-                                  name="reason" 
-                                  class="form-textarea" 
+                        <textarea id="absence-reason"
+                                  name="reason"
+                                  class="form-textarea"
                                   rows="4"
-                                  placeholder="<?php p($l->t('Optional reason or notes for your absence request')); ?>"><?php p($absence ? ($absence->getReason() ?? '') : ''); ?></textarea>
-                        <p class="form-help"><?php p($l->t('You can provide additional information about your absence request')); ?></p>
+                                  maxlength="500"
+                                  aria-describedby="absence-reason-help"
+                                  placeholder="<?php p($l->t('Optional notes for your manager')); ?>"><?php p($absence ? ($absence->getReason() ?? '') : ''); ?></textarea>
+                        <p id="absence-reason-help" class="form-help"><?php p($l->t('Short note only — not shown on calendars. Maximum 500 characters.')); ?></p>
                     </div>
+                    </fieldset>
 
-                    <!-- Vertretung: always shown so every user sees the field; list filled via API -->
-                    <div class="form-group form-group--substitute absence-form-section absence-form-section--substitute" id="absence-substitute-group">
-                        <h3 class="absence-form-section__title" id="absence-substitute-section-title"><?php p($l->t('Substitute (Vertretung)')); ?></h3>
+                    <fieldset class="absence-form-fieldset absence-form-fieldset--substitute" id="absence-substitute-group">
+                        <legend class="absence-form-fieldset__legend" id="absence-substitute-legend">
+                            <?php p($l->t('Substitute (Vertretung)')); ?>
+                            <span id="absence-substitute-required-mark" class="form-required" hidden aria-hidden="true">*</span>
+                        </legend>
+                        <div class="form-group form-group--substitute">
                         <label for="absence-substitute" class="form-label" id="absence-substitute-label">
                             <?php p($l->t('Who will cover for you?')); ?>
                         </label>
@@ -251,26 +321,26 @@ $absenceFormEndDisplay = ($mode === 'create')
                                 aria-describedby="absence-substitute-help absence-substitute-status"
                                 aria-required="false"
                                 aria-busy="false">
-                            <option value=""><?php p($l->t('None')); ?></option>
-                            <!-- Options filled by JavaScript from /api/colleagues -->
+                            <option value=""><?php p($l->t('No substitute')); ?></option>
                         </select>
                         <p id="absence-substitute-help" class="form-help"><?php p($l->t('Choose a colleague from your team who will cover your tasks during your absence. Only team members appear in this list.')); ?></p>
                         <p id="absence-substitute-status" class="form-help form-help--status" aria-live="polite" role="status"></p>
-                        <p id="absence-substitute-empty" class="form-help form-help--info" style="display: none;" role="status"><?php p($l->t('No team members found. Add yourself to a team or group to select a substitute.')); ?></p>
-                        <p id="absence-substitute-error" class="form-help form-help--error" style="display: none;" role="alert"><?php p($l->t('Could not load team members. Please try again.')); ?></p>
-                        <p id="absence-substitute-required-msg" class="form-help form-help--error" style="display: none;" role="alert"><?php p($l->t('A substitute is required for this absence type. Please select who will cover for you.')); ?></p>
-                    </div>
-                    </section>
+                        <p id="absence-substitute-empty" class="form-help form-help--info" hidden role="status"><?php p($l->t('No team members found. Add yourself to a team or group to select a substitute.')); ?></p>
+                        <p id="absence-substitute-error" class="form-help form-help--error" hidden role="alert"><?php p($l->t('Could not load team members. Please try again.')); ?></p>
+                        <p id="absence-substitute-required-msg" class="form-help form-help--error" hidden role="alert"><?php p($l->t('A substitute is required for this absence type. Please select who will cover for you.')); ?></p>
+                        </div>
+                    </fieldset>
 
-                    <div class="form-actions">
-                        <button type="submit" class="btn btn--primary">
+                    <div class="form-actions absence-request-form__actions">
+                        <button type="submit" class="azc-btn azc-btn--primary">
                             <?php p($mode === 'create' ? $l->t('Submit Request') : $l->t('Update Request')); ?>
                         </button>
-                        <a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.page.absences')); ?>" class="btn btn--secondary">
+                        <a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.page.absences')); ?>" class="azc-btn azc-btn--secondary">
                             <?php p($l->t('Cancel')); ?>
                         </a>
                     </div>
                 </form>
+                </div>
             </section>
         <?php elseif ($mode === 'view' && $absence): ?>
             <?php
@@ -716,6 +786,7 @@ $absenceFormEndDisplay = ($mode === 'create')
             </section>
         <?php endif; ?>
 
+</div><!-- /.azc-page-stack -->
 <?php include __DIR__ . '/common/page-end.php'; ?>
 
 <!--
@@ -842,6 +913,20 @@ $absenceFormEndDisplay = ($mode === 'create')
         const form = document.getElementById('absence-form');
         const startDateInput = document.getElementById('absence-start-date');
         const endDateInput = document.getElementById('absence-end-date');
+
+        /* Ensure calendar pickers attach (global init + form fields that load with the page). */
+        (function initAbsenceFormDatepickers() {
+            const dp = window.ArbeitszeitCheckDatepicker;
+            if (!dp) return;
+            if (typeof dp.initInRoot === 'function') {
+                dp.initInRoot(form || document);
+            } else if (typeof dp.initializeDatepicker === 'function') {
+                [startDateInput, endDateInput].forEach(function (el) {
+                    if (!el || el.dataset.datepickerInit === '1') return;
+                    dp.initializeDatepicker(el, {});
+                });
+            }
+        })();
         const typeSelect = document.getElementById('absence-type');
         const substituteSelect = document.getElementById('absence-substitute');
         const substituteLabel = document.getElementById('absence-substitute-label');
@@ -866,13 +951,13 @@ $absenceFormEndDisplay = ($mode === 'create')
                 }
                 if (statusEl) {
                     statusEl.textContent = loading ? loadingText : '';
-                    statusEl.style.display = loading ? 'block' : 'none';
+                    statusEl.hidden = !loading;
                 }
                 if (errorHint) {
                     errorHint.textContent = errorText;
-                    errorHint.style.display = error ? 'block' : 'none';
+                    errorHint.hidden = !error;
                 }
-                if (emptyHint) emptyHint.style.display = (empty && !error) ? 'block' : 'none';
+                if (emptyHint) emptyHint.hidden = !(empty && !error);
             }
 
             function fillSubstituteOptions(users) {
@@ -888,7 +973,7 @@ $absenceFormEndDisplay = ($mode === 'create')
                     substituteSelect.appendChild(opt);
                     count++;
                 });
-                if (emptyHint) emptyHint.style.display = count === 0 ? 'block' : 'none';
+                if (emptyHint) emptyHint.hidden = count !== 0;
             }
 
             if (Array.isArray(colleagues) && colleagues.length > 0) {
@@ -922,17 +1007,20 @@ $absenceFormEndDisplay = ($mode === 'create')
         }
 
         function updateSubstituteRequiredState() {
-            if (!typeSelect || !substituteSelect || !substituteLabel || !substituteRequiredMsg) return;
+            if (!typeSelect || !substituteSelect || !substituteRequiredMsg) return;
             const type = typeSelect.value || '';
             const required = requireSubstituteTypes.indexOf(type) !== -1;
             substituteSelect.setAttribute('aria-required', required ? 'true' : 'false');
             substituteSelect.required = required;
-            if (substituteLabel) {
-                var base = <?php echo json_encode($l->t('Substitute'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
-                var reqLabel = <?php echo json_encode($l->t('required'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
-                substituteLabel.innerHTML = base + (required ? ' <span class="form-required" aria-label="' + reqLabel + '">*</span>' : '');
+            const requiredMark = document.getElementById('absence-substitute-required-mark');
+            if (requiredMark) {
+                requiredMark.hidden = !required;
+                requiredMark.setAttribute('aria-hidden', required ? 'false' : 'true');
             }
-            substituteRequiredMsg.style.display = 'none';
+            if (substituteLabel) {
+                substituteLabel.textContent = <?php echo json_encode($l->t('Who will cover for you?'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+            }
+            substituteRequiredMsg.hidden = true;
         }
         if (typeSelect) {
             typeSelect.addEventListener('change', updateSubstituteRequiredState);
@@ -986,7 +1074,7 @@ $absenceFormEndDisplay = ($mode === 'create')
             if (!end) {
                 historicalHint.hidden = true;
                 if (substituteGroupEl) {
-                    substituteGroupEl.classList.remove('absence-form-section--disabled');
+                    substituteGroupEl.classList.remove('absence-form-fieldset--disabled');
                 }
                 if (substituteSelectEl) {
                     substituteSelectEl.disabled = false;
@@ -1024,7 +1112,7 @@ $absenceFormEndDisplay = ($mode === 'create')
                 }
             }
             if (substituteGroupEl) {
-                substituteGroupEl.classList.toggle('absence-form-section--disabled', isPast);
+                substituteGroupEl.classList.toggle('absence-form-fieldset--disabled', isPast);
             }
             if (substituteHelpEl) {
                 substituteHelpEl.textContent = isPast ? substituteHelpHistoricalText : substituteHelpDefaultText;
@@ -1061,11 +1149,43 @@ $absenceFormEndDisplay = ($mode === 'create')
         
         function hideFormError() {
             var errEl = document.getElementById('absence-form-error');
-            if (errEl) { errEl.style.display = 'none'; }
+            if (errEl) { errEl.hidden = true; }
+        }
+        function showFormError(message) {
+            var errEl = document.getElementById('absence-form-error');
+            var errText = document.getElementById('absence-form-error-text');
+            if (errText && message) { errText.textContent = message; }
+            if (errEl) {
+                errEl.hidden = false;
+                /* Make the callout focusable so we can move keyboard focus to it
+                 * (WCAG 2.1 SC 3.3.1: errors must be programmatically associated
+                 * with the field that triggered them; for cross-field errors a
+                 * focused alert region is the recommended fallback). */
+                if (!errEl.hasAttribute('tabindex')) {
+                    errEl.setAttribute('tabindex', '-1');
+                }
+                try { errEl.focus({ preventScroll: false }); } catch (e) { errEl.focus(); }
+                if (errEl.scrollIntoView) {
+                    errEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            }
         }
         if (typeSelect) typeSelect.addEventListener('change', hideFormError);
         if (startDateInput) startDateInput.addEventListener('input', hideFormError);
         if (endDateInput) endDateInput.addEventListener('input', hideFormError);
+
+        /* When the page boots and a server-rendered error is already visible
+         * (e.g. coming back from a failed no-JS POST via ?error=…), move focus
+         * there so keyboard / screen-reader users land on the explanation. */
+        (function() {
+            var errEl = document.getElementById('absence-form-error');
+            if (errEl && !errEl.hidden) {
+                if (!errEl.hasAttribute('tabindex')) {
+                    errEl.setAttribute('tabindex', '-1');
+                }
+                try { errEl.focus({ preventScroll: false }); } catch (e) { errEl.focus(); }
+            }
+        })();
 
         if (form) {
             form.addEventListener('submit', function(e) {
@@ -1085,13 +1205,13 @@ $absenceFormEndDisplay = ($mode === 'create')
                 var subSubmitIsPast = subSubmitEnd ? (subSubmitEnd < subSubmitToday) : false;
                 var subRequired = !subSubmitIsPast && (requireSubstituteTypes.indexOf(type) !== -1);
                 if (subRequired && substituteSelect && (!substituteSelect.value || substituteSelect.value === '')) {
-                    if (substituteRequiredMsg) substituteRequiredMsg.style.display = 'block';
+                    if (substituteRequiredMsg) substituteRequiredMsg.hidden = false;
                     substituteSelect.setAttribute('aria-invalid', 'true');
                     substituteSelect.focus();
                     return;
                 }
                 if (substituteSelect) substituteSelect.setAttribute('aria-invalid', 'false');
-                if (substituteRequiredMsg) substituteRequiredMsg.style.display = 'none';
+                if (substituteRequiredMsg) substituteRequiredMsg.hidden = true;
                 
                 const formData = new FormData(form);
                 const dp = window.ArbeitszeitCheckDatepicker;
@@ -1154,13 +1274,7 @@ $absenceFormEndDisplay = ($mode === 'create')
                                 const j = JSON.parse(text);
                                 if (j && typeof j.error === 'string' && j.error) errMsg = j.error;
                             } catch (e) { /* ignore */ }
-                            var errEl = document.getElementById('absence-form-error');
-                            var errText = document.getElementById('absence-form-error-text');
-                            if (errEl && errText) {
-                                errText.textContent = errMsg;
-                                errEl.style.display = 'block';
-                                errEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                            }
+                            showFormError(errMsg);
                             if (window.AzcMessaging && typeof window.AzcMessaging.showError === 'function') {
                                 window.AzcMessaging.showError(errMsg);
                             } else if (window.OC && window.OC.Notification && window.OC.Notification.showTemporary) {
@@ -1174,13 +1288,7 @@ $absenceFormEndDisplay = ($mode === 'create')
                     .catch(function(err) {
                         if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = originalText; }
                         const errMsg = (err && err.message) || (window.t && window.t('arbeitszeitcheck', 'Failed to submit absence request')) || 'Failed to submit absence request';
-                        var errEl = document.getElementById('absence-form-error');
-                        var errText = document.getElementById('absence-form-error-text');
-                        if (errEl && errText) {
-                            errText.textContent = errMsg;
-                            errEl.style.display = 'block';
-                            errEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                        }
+                        showFormError(errMsg);
                         if (window.AzcMessaging && typeof window.AzcMessaging.showError === 'function') {
                             window.AzcMessaging.showError(errMsg);
                         } else if (window.OC && window.OC.Notification && window.OC.Notification.showTemporary) {

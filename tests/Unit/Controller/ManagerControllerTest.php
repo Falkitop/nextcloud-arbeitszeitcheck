@@ -32,6 +32,7 @@ use OCA\ArbeitszeitCheck\Service\TimeZoneService;
 use OCA\ArbeitszeitCheck\Service\TimeEntryCorrectionService;
 use OCA\ArbeitszeitCheck\Service\MonthClosureGuard;
 use OCA\ArbeitszeitCheck\Service\MonthClosureService;
+use OCA\ArbeitszeitCheck\Service\NavigationFlagsService;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\JSONResponse;
@@ -223,6 +224,11 @@ class ManagerControllerTest extends TestCase
 			$timeZoneService,
 			$this->correctionService,
 			$localeFormat,
+			new NavigationFlagsService(
+				$this->absenceMapper,
+				$this->permissionService,
+				$this->config
+			),
 		);
 	}
 

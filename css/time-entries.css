@@ -69,6 +69,10 @@
     width: 100%;
 }
 
+#app-content.azc-app--time-entries .stats-grid {
+	margin-bottom: 0;
+}
+
 .stat-card {
     background: var(--arbeitszeitcheck-color-background-elevated);
     border: 1px solid var(--arbeitszeitcheck-color-border);
@@ -311,6 +315,58 @@
     max-width: 28rem;
 }
 
+#time-entry-form .form-input-wrapper--date {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2, 0.5rem);
+}
+
+#time-entry-form .form-input-wrapper--date > .azc-datepicker-host {
+    flex: 1 1 10rem;
+    min-width: 0;
+}
+
+#time-entry-form .form-input-wrapper--date .datepicker-input {
+    min-height: 44px;
+    width: 100%;
+    padding-inline-end: 3rem;
+    color: var(--color-main-text);
+    background-color: var(--color-main-background);
+    border: 1px solid var(--color-border);
+}
+
+#time-entry-form .form-input-wrapper--date .datepicker-input:focus {
+    border-color: var(--color-primary-element);
+    outline: 2px solid var(--color-primary-element);
+    outline-offset: 2px;
+}
+
+#time-entry-form .form-input-wrapper--date .azc-datepicker-toggle {
+    color: var(--color-main-text);
+    background: color-mix(in srgb, var(--color-primary-element) 12%, var(--color-main-background));
+    border: 1px solid color-mix(in srgb, var(--color-primary-element) 35%, var(--color-border));
+    border-radius: var(--azc-radius-sm, 6px);
+}
+
+#time-entry-form .form-input-wrapper--date .azc-datepicker-toggle:focus-visible {
+    outline: 3px solid var(--color-primary-element);
+    outline-offset: 2px;
+}
+
+#time-entry-form .time-entry-form__today-btn {
+    flex: 0 0 auto;
+    min-height: 44px;
+}
+
+#app-content.azc-app--time-entries .arbeitszeitcheck-datepicker {
+    z-index: 10000;
+    border: 2px solid var(--color-border);
+    background: var(--color-main-background);
+    color: var(--color-main-text);
+    box-shadow: var(--azc-shadow-md);
+}
+
 /* Aligned start / end / action columns for work + breaks (WCAG: consistent layout, min 44px touch targets on actions) */
 .time-pair-matrix {
     margin-bottom: var(--space-2, 0.5rem);
@@ -413,10 +469,20 @@
 }
 
 .form-label-icon {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
     margin-right: var(--space-1, 0.25rem);
-    font-size: 1.1em;
     vertical-align: middle;
+    color: var(--color-text-maxcontrast, var(--arbeitszeitcheck-color-text-maxcontrast));
+}
+
+.form-label-icon .azc-icon,
+.form-label-icon__svg {
+    width: var(--azc-icon-sm, 1rem);
+    height: var(--azc-icon-sm, 1rem);
+    max-width: none;
 }
 
 .card {
@@ -576,7 +642,7 @@
     appearance: none;
     -webkit-appearance: none;
     -moz-appearance: none;
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+    background-image: var(--icon-triangle-s-dark, url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b6b6b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e"));
     background-position: right var(--space-2, 0.5rem) center;
     background-repeat: no-repeat;
     background-size: 1em 1em;
@@ -654,20 +720,9 @@
     }
 }
 
-/* Break requirement indicator */
-.break-requirement-indicator {
-    margin-top: var(--space-2, 0.5rem);
-    padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
-    background: var(--arbeitszeitcheck-color-background-secondary);
-    border: 1px solid var(--arbeitszeitcheck-color-border);
-    border-radius: var(--radius-lg, 8px);
-    opacity: 0;
+/* Break requirement: layout only — colors in common/semantic-surfaces.css */
+.break-requirement-indicator:not([hidden]) {
     animation: fadeIn 0.3s ease-in-out forwards;
-}
-
-.break-requirement-indicator small {
-    color: var(--arbeitszeitcheck-color-text-secondary);
-    font-weight: var(--arbeitszeitcheck-font-weight-medium, 500);
 }
 
 /* Break entry styling - Specific to time entries page */
@@ -690,15 +745,21 @@
 
 /* Auto-generated break styling */
 .break-entry[data-auto-break] {
-    background: color-mix(in srgb, var(--arbeitszeitcheck-color-success) 5%, transparent);
-    border: 1px solid color-mix(in srgb, var(--arbeitszeitcheck-color-success) 20%, transparent);
+    background: color-mix(in srgb, var(--color-success) 10%, var(--color-main-background));
+    border: 2px solid color-mix(in srgb, var(--color-success) 45%, var(--color-border));
     border-radius: var(--radius-lg, 8px);
     padding: var(--space-3, 0.75rem);
     margin-bottom: var(--space-4, 1rem);
 }
 
 .break-entry[data-auto-break] .form-label {
-    color: var(--arbeitszeitcheck-color-success);
+    color: var(--color-main-text);
+    font-weight: 600;
+}
+
+#app-content.azc-app--time-entries .break-entry[data-auto-break] .auto-break-note {
+    color: var(--color-main-text);
+    font-weight: 500;
 }
 
 .auto-break-indicator {
@@ -710,76 +771,157 @@
     margin-top: var(--space-2, 0.5rem);
     margin-bottom: 0;
     padding-top: var(--space-2, 0.5rem);
-    color: var(--arbeitszeitcheck-color-text-secondary);
+    color: var(--color-main-text);
 }
 
 .auto-break-note small {
     font-size: 0.85em;
 }
 
-/* Auto-break toggle */
-.auto-break-toggle {
+/* Auto-break panel — high-contrast card (theme overrides under #app-content.azc-app--time-entries) */
+.auto-break-panel {
     margin-top: var(--space-4, 1rem);
     margin-bottom: var(--space-4, 1rem);
-    padding: var(--space-4, 1rem);
-    background: var(--arbeitszeitcheck-color-background-elevated);
-    border: 1px solid var(--arbeitszeitcheck-color-border);
-    border-radius: var(--radius-lg, 8px);
 }
 
-.auto-break-toggle .form-help {
-    margin-top: var(--space-2, 0.5rem);
-    margin-bottom: 0;
+.auto-break-panel__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4, 1rem);
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.auto-break-panel__title {
+    margin: 0;
+    font-size: 1.0625rem;
+    font-weight: 700;
+    line-height: 1.35;
+    color: var(--color-main-text);
+}
+
+.auto-break-panel__control {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-4, 1rem);
+}
+
+.auto-break-panel__help {
+    margin: 0;
+    font-size: 1rem;
+    line-height: 1.5;
+    color: var(--color-main-text);
+    max-width: 65ch;
+}
+
+.auto-break-toggle__status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.75rem;
+    min-width: 5.5rem;
+    padding: 0.375rem 1rem;
+    border-radius: 999px;
+    font-size: 0.875rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    border: 2px solid var(--color-main-text);
+    color: var(--color-main-text);
+    background: var(--color-main-background);
+    flex-shrink: 0;
+}
+
+/* Status pill visuals: common/semantic-surfaces.css */
+
+.break-requirement-indicator {
+    margin-bottom: var(--space-4, 1rem);
+}
+
+.break-requirement-indicator__text {
+    margin: 0;
+    font-weight: 600;
 }
 
 .form-toggle {
-    display: flex;
+    position: relative;
+    display: inline-flex;
     align-items: center;
     gap: var(--space-3, 0.75rem);
     cursor: pointer;
     user-select: none;
+    min-height: 44px;
+    padding: 0.25rem 0;
+    padding-inline-start: 3.5rem;
+    flex: 1 1 14rem;
+    max-width: 100%;
 }
 
 .form-toggle input[type="checkbox"] {
     position: absolute;
+    inset-inline-start: 0;
+    top: 50%;
+    transform: translateY(-50%);
     opacity: 0;
-    width: 0;
-    height: 0;
+    width: 52px;
+    height: 32px;
+    margin: 0;
+    cursor: pointer;
+    z-index: 2;
+}
+
+.form-toggle input[type="checkbox"]:focus-visible + .toggle-slider {
+    outline: 3px solid var(--color-primary-element);
+    outline-offset: 3px;
 }
 
 .toggle-slider {
-    position: relative;
-    width: 44px;
-    height: 24px;
-    background: var(--arbeitszeitcheck-color-border);
-    border-radius: 24px;
-    transition: background-color 0.3s ease;
+    position: absolute;
+    inset-inline-start: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    flex-shrink: 0;
+    width: 52px;
+    height: 30px;
+    background: color-mix(in srgb, var(--color-main-text) 18%, var(--color-main-background));
+    border: 2px solid var(--color-main-text);
+    border-radius: 30px;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+    box-shadow: inset 0 1px 3px color-mix(in srgb, var(--color-main-text) 20%, transparent);
+    pointer-events: none;
 }
 
 .toggle-slider::before {
     content: '';
     position: absolute;
     top: 2px;
-    left: 2px;
-    width: 20px;
-    height: 20px;
+    inset-inline-start: 2px;
+    width: 22px;
+    height: 22px;
     background: var(--color-main-background);
+    border: 2px solid var(--color-main-text);
     border-radius: 50%;
-    transition: transform 0.3s ease;
-    box-shadow: var(--arbeitszeitcheck-shadow-subtle);
+    transition: transform 0.2s ease;
+    box-shadow: 0 1px 4px color-mix(in srgb, var(--color-main-text) 25%, transparent);
 }
 
 .form-toggle input[type="checkbox"]:checked + .toggle-slider {
-    background: var(--arbeitszeitcheck-color-success);
+    background: var(--color-success);
+    border-color: var(--color-success);
 }
 
 .form-toggle input[type="checkbox"]:checked + .toggle-slider::before {
-    transform: translateX(20px);
+    transform: translateX(22px);
+    border-color: color-mix(in srgb, var(--color-success) 65%, var(--color-main-text));
+    background: var(--color-main-background);
 }
 
 .toggle-label {
-    font-weight: var(--arbeitszeitcheck-font-weight-medium, 500);
-    color: var(--arbeitszeitcheck-color-text-maxcontrast);
+    font-weight: 600;
+    font-size: 1rem;
+    line-height: 1.4;
+    color: var(--color-main-text);
 }
 
 /* Revision-safe month closure (time entries header) — clear hierarchy, WCAG 2.1 AA touch targets */
@@ -793,9 +935,9 @@
     margin: 0;
     padding: var(--space-6, 1.5rem);
     border-radius: var(--border-radius-large, 10px);
-    background: var(--color-main-background, var(--color-background-plain, #fff));
+    background: var(--color-main-background);
     border: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
-    box-shadow: var(--arbeitszeitcheck-shadow-subtle, 0 1px 4px rgba(0, 0, 0, 0.06));
+    box-shadow: var(--arbeitszeitcheck-shadow-subtle);
 }
 
 .month-closure-section__title {
@@ -858,6 +1000,7 @@
 }
 
 .month-closure-section .month-closure-period-select:focus-visible,
+.month-closure-section .azc-btn:focus-visible,
 .month-closure-section .btn:focus-visible,
 .month-closure-section .month-closure-pdf-link:focus-visible {
     outline: 2px solid var(--color-primary-element, var(--color-primary));
@@ -899,7 +1042,7 @@
     margin-top: var(--space-3, 0.75rem);
     padding: var(--space-3, 0.75rem) var(--space-4, 1rem);
     border-radius: var(--border-radius, 6px);
-    border-left: 4px solid var(--arbeitszeitcheck-color-warning, #b58100);
+    border-left: 4px solid var(--arbeitszeitcheck-color-warning, var(--color-warning));
     background: var(--arbeitszeitcheck-color-background-hover, var(--color-background-hover));
     color: var(--arbeitszeitcheck-color-main-text, var(--color-main-text));
     line-height: 1.45;
@@ -921,6 +1064,7 @@
     line-height: 1.45;
 }
 
+.month-closure-actions .azc-btn,
 .month-closure-actions .btn {
     min-height: 44px;
 }
@@ -959,17 +1103,6 @@
 }
 
 /* Time zone context (list view): explains organization vs personal display time */
-.arbeitszeit-check-tz-context {
-    margin-bottom: var(--space-6, 1.5rem);
-}
-
-.arbeitszeit-check-tz-context__card {
-    border: 1px solid var(--arbeitszeitcheck-color-border);
-    border-radius: var(--radius-xl, 14px);
-    background: color-mix(in srgb, var(--color-primary-element-light, var(--arbeitszeitcheck-color-primary-lighter)) 22%, var(--arbeitszeitcheck-color-background-elevated));
-    box-shadow: var(--arbeitszeitcheck-shadow-subtle);
-}
-
 .arbeitszeit-check-tz-context__body {
     display: flex;
     flex-direction: column;
@@ -1048,4 +1181,328 @@
     .actions-cell .btn-complete-entry {
         min-height: 44px;
     }
+}
+
+/* -------------------------------------------------------------------------
+   Employee time entries — unified shell (azc-app--time-entries)
+   ------------------------------------------------------------------------- */
+#app-content.azc-app--time-entries .time-entries-page {
+	width: 100%;
+	max-width: 72rem;
+	margin-inline: auto;
+	min-width: 0;
+}
+
+#app-content.azc-app--time-entries .time-entries-page__export-hint {
+	margin: 0;
+}
+
+#app-content.azc-app--time-entries .arbeitszeit-check-tz-context {
+	margin: 0;
+}
+
+#app-content.azc-app--time-entries .arbeitszeit-check-tz-context__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--azc-space-3, 0.75rem);
+	align-items: flex-start;
+}
+
+@media (min-width: 48rem) {
+	#app-content.azc-app--time-entries .arbeitszeit-check-tz-context__body {
+		flex-direction: row;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+	}
+}
+
+#app-content.azc-app--time-entries .time-entries-page__stats-grid {
+	margin: 0;
+	gap: var(--azc-space-4, 1rem);
+}
+
+#app-content.azc-app--time-entries .time-entries-page__stats .stat-card {
+	margin: 0;
+	box-shadow: none;
+}
+
+#app-content.azc-app--time-entries .time-entries-page__stats .stat-card:hover {
+	transform: none;
+}
+
+#app-content.azc-app--time-entries .month-closure-section .azc-card__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--azc-space-4, 1rem);
+}
+
+#app-content.azc-app--time-entries .month-closure-section {
+	margin: 0;
+	padding: 0;
+	border: none;
+}
+
+#app-content.azc-app--time-entries .time-entries-page__filter-grid {
+	grid-template-columns:
+		minmax(0, 1fr)
+		minmax(0, 1fr)
+		minmax(0, 1fr)
+		auto;
+}
+
+#app-content.azc-app--time-entries .time-entries-page__list-body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--azc-space-4, 1rem);
+	min-width: 0;
+}
+
+#app-content.azc-app--time-entries .time-entries-page__list .table-container {
+	margin: 0;
+}
+
+#app-content.azc-app--time-entries #paused-entries-banner,
+#app-content.azc-app--time-entries .pending-correction-banner {
+	margin: 0;
+}
+
+#app-content.azc-app--time-entries .time-entries-page__pagination {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: center;
+	gap: var(--azc-space-3, 0.75rem);
+	margin: 0;
+	padding-top: var(--azc-space-4, 1rem);
+	border-top: 1px solid var(--azc-border, var(--color-border));
+}
+
+#app-content.azc-app--time-entries .time-entries-page__pagination-info {
+	font-size: var(--azc-fs-sm, 0.875rem);
+	color: var(--azc-muted, var(--color-text-maxcontrast));
+}
+
+#app-content.azc-app--time-entries .time-entries-page__form-inner {
+	min-width: 0;
+}
+
+#app-content.azc-app--time-entries .time-entries-page__list-error,
+#app-content.azc-app--time-entries .time-entries-page__tz-callout,
+#app-content.azc-app--time-entries .time-entries-page__workflow-callout {
+	margin-bottom: var(--azc-space-6, 1.5rem);
+}
+
+#app-content.azc-app--time-entries .time-entries-page__tz-badges {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--azc-space-2, 0.5rem);
+	margin-top: var(--azc-space-3, 0.75rem);
+}
+
+#app-content.azc-app--time-entries .time-entries-page__form .azc-card__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--azc-space-5, 1.25rem);
+}
+
+#app-content.azc-app--time-entries .time-entry-request-form {
+	display: flex;
+	flex-direction: column;
+	gap: var(--azc-space-8, 2rem);
+}
+
+#app-content.azc-app--time-entries .time-entry-form__required-note {
+	margin: 0;
+	padding-bottom: var(--azc-space-4, 1rem);
+	border-bottom: 1px solid var(--azc-border, var(--color-border));
+	font-size: var(--azc-fs-sm, 0.875rem);
+	line-height: var(--azc-line-base, 1.45);
+	color: var(--azc-muted, var(--color-text-maxcontrast));
+}
+
+#app-content.azc-app--time-entries .time-entry-form__required-note .form-required {
+	margin-left: 0;
+	margin-right: var(--azc-space-1, 0.25rem);
+}
+
+#app-content.azc-app--time-entries .time-entry-form-fieldset {
+	margin: 0;
+	padding: 0;
+	border: 0;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--azc-space-5, 1.25rem);
+}
+
+#app-content.azc-app--time-entries .time-entry-form-fieldset__legend {
+	font-size: 1.0625rem;
+	font-weight: 700;
+	color: var(--color-main-text, var(--arbeitszeitcheck-color-main-text));
+	padding: 0;
+	margin: 0 0 var(--azc-space-2, 0.5rem);
+	line-height: 1.35;
+	width: 100%;
+	border-bottom: 1px solid var(--azc-border, var(--color-border));
+	padding-bottom: var(--azc-space-2, 0.5rem);
+}
+
+#app-content.azc-app--time-entries .time-entry-form-fieldset--breaks {
+	padding: var(--azc-space-5, 1.25rem);
+	border-radius: var(--azc-radius-base, 8px);
+	border: 1px solid var(--azc-border, var(--color-border));
+	background: color-mix(in srgb, var(--color-primary-element, var(--color-primary)) 6%, var(--color-main-background));
+}
+
+#app-content.azc-app--time-entries .time-entry-form__break-intro {
+	margin: 0;
+}
+
+#app-content.azc-app--time-entries .time-entry-form__add-break {
+	margin-top: var(--azc-space-2, 0.5rem);
+}
+
+#app-content.azc-app--time-entries .time-entry-form__actions {
+	margin-top: 0;
+	padding-top: var(--azc-space-6, 1.5rem);
+	border-top: 1px solid var(--azc-border, var(--color-border));
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--azc-space-3, 0.75rem);
+	align-items: center;
+}
+
+#app-content.azc-app--time-entries .time-pair-matrix__row-label .form-label-icon {
+	margin-inline-end: 0.25rem;
+}
+
+@media (max-width: 640px) {
+	#app-content.azc-app--time-entries .time-pair-matrix__grid {
+		grid-template-columns: 1fr;
+	}
+
+	#app-content.azc-app--time-entries .time-pair-matrix__grid--header {
+		display: none;
+	}
+
+	#app-content.azc-app--time-entries .time-pair-matrix__row-label .sr-only {
+		position: static;
+		width: auto;
+		height: auto;
+		clip: auto;
+		overflow: visible;
+		font-weight: 600;
+		margin-bottom: var(--azc-space-1, 0.25rem);
+	}
+}
+
+#content.app-arbeitszeitcheck #app-content.azc-app--time-entries {
+	padding-bottom: var(--azc-space-5, 1.25rem);
+}
+
+@media (max-width: 768px) {
+	#app-content.azc-app--time-entries .time-entries-page__filter-grid {
+		grid-template-columns: 1fr;
+	}
+
+	#app-content.azc-app--time-entries .time-entries-page__stats-grid {
+		grid-template-columns: 1fr;
+	}
+}
+
+/* -------------------------------------------------------------------------
+   Time entry form — all Nextcloud themes (dark, high contrast, custom)
+   ------------------------------------------------------------------------- */
+
+/* Dark / high-contrast: time selects inside groups (transparent bg must stay readable) */
+html[data-theme="dark"] #app-content.azc-app--time-entries .time-input-group .time-hour,
+html[data-theme="dark"] #app-content.azc-app--time-entries .time-input-group .time-minute,
+html[data-theme="dark"] #app-content.azc-app--time-entries .time-input-group .time-hour option,
+html[data-theme="dark"] #app-content.azc-app--time-entries .time-input-group .time-minute option,
+body[data-theme-dark] #app-content.azc-app--time-entries .time-input-group .time-hour,
+body[data-theme-dark] #app-content.azc-app--time-entries .time-input-group .time-minute,
+body[data-theme-dark] #app-content.azc-app--time-entries .time-input-group .time-hour option,
+body[data-theme-dark] #app-content.azc-app--time-entries .time-input-group .time-minute option,
+body[data-theme-dark-highcontrast] #app-content.azc-app--time-entries .time-input-group .time-hour,
+body[data-theme-dark-highcontrast] #app-content.azc-app--time-entries .time-input-group .time-minute,
+body[data-theme-dark-highcontrast] #app-content.azc-app--time-entries .time-input-group .time-hour option,
+body[data-theme-dark-highcontrast] #app-content.azc-app--time-entries .time-input-group .time-minute option {
+	color: var(--color-main-text);
+	background-color: var(--color-main-background);
+}
+
+#app-content.azc-app--time-entries .time-input-group .time-hour,
+#app-content.azc-app--time-entries .time-input-group .time-minute {
+	color: var(--color-main-text);
+}
+
+#app-content.azc-app--time-entries .time-input-group .time-hour option,
+#app-content.azc-app--time-entries .time-input-group .time-minute option {
+	background-color: var(--color-main-background);
+	color: var(--color-main-text);
+}
+
+/* Auto-break + break-requirement contrast: common/semantic-surfaces.css */
+
+@media (max-width: 480px) {
+	#app-content.azc-app--time-entries .auto-break-panel__control {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	#app-content.azc-app--time-entries .auto-break-toggle__status {
+		align-self: flex-start;
+	}
+}
+
+#app-content.azc-app--time-entries .timezone-badge {
+	color: var(--color-main-text);
+	background: color-mix(in srgb, var(--color-primary-element) 14%, var(--color-main-background));
+	border: 1px solid color-mix(in srgb, var(--color-primary-element) 28%, var(--color-border));
+}
+
+#app-content.azc-app--time-entries .time-summary-card,
+#app-content.azc-app--time-entries #time-summary {
+	color: var(--color-main-text);
+}
+
+@media (forced-colors: active) {
+	#app-content.azc-app--time-entries .time-entry-form-fieldset__legend,
+	#app-content.azc-app--time-entries .time-pair-matrix__colhead,
+	#app-content.azc-app--time-entries .time-pair-matrix__intro {
+		color: CanvasText;
+	}
+
+	#app-content.azc-app--time-entries .time-entry-form-fieldset,
+	#app-content.azc-app--time-entries .time-entry-form-fieldset--breaks,
+	#app-content.azc-app--time-entries .time-input-group,
+	#app-content.azc-app--time-entries .auto-break-panel,
+	#app-content.azc-app--time-entries .break-requirement-indicator,
+	#app-content.azc-app--time-entries .time-summary-card,
+	#app-content.azc-app--time-entries #time-summary {
+		border-color: CanvasText;
+	}
+
+	#app-content.azc-app--time-entries .compliance-status.compliant,
+	#app-content.azc-app--time-entries .compliance-status.warning,
+	#app-content.azc-app--time-entries .compliance-status.violation {
+		border: 2px solid CanvasText;
+		background: Canvas;
+		color: CanvasText;
+	}
+
+	#app-content.azc-app--time-entries .auto-break-panel .form-toggle input[type="checkbox"]:checked + .toggle-slider {
+		background: Highlight;
+	}
+
+	#app-content.azc-app--time-entries .auto-break-panel .form-toggle .toggle-slider::before {
+		background: Canvas;
+		border: 2px solid CanvasText;
+	}
+
+	#app-content.azc-app--time-entries .auto-break-toggle__status--on {
+		background: Highlight;
+		color: HighlightText;
+	}
 }

@@ -310,7 +310,7 @@
 /* Consistent action rhythm inside all sections */
 #app-content-wrapper .section .card-actions,
 #app-content-wrapper .section .form-actions,
-#app-content-wrapper .section .manager-time-entries-page__filter-actions,
+#app-content-wrapper .section .manager-scope-page__filter-actions,
 #app-content-wrapper .section .pending-approval-card__actions {
   gap: var(--space-3);
 }

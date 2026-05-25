@@ -18,7 +18,9 @@ use OCA\ArbeitszeitCheck\Db\AbsenceMapper;
 use OCA\ArbeitszeitCheck\Service\AbsenceService;
 use OCA\ArbeitszeitCheck\Service\CSPService;
 use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
+use OCA\ArbeitszeitCheck\Service\NavigationFlagsService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
+use OCP\IConfig;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\JSONResponse;
@@ -69,6 +71,7 @@ class SubstituteControllerTest extends TestCase
 		$l10n = $this->createMock(IL10N::class);
 		$l10n->method('t')->willReturnCallback(fn ($s) => $s);
 		$permissionService = $this->createMock(PermissionService::class);
+		$config = $this->createMock(IConfig::class);
 		$localeFormat = $this->createMock(LocaleFormatService::class);
 		$localeFormat->method('clientHints')->willReturn([
 			'locale' => 'en-US',
@@ -87,7 +90,12 @@ class SubstituteControllerTest extends TestCase
 			$cspService,
 			$localeFormat,
 			$l10n,
-			$permissionService
+			$permissionService,
+			new NavigationFlagsService(
+				$this->absenceMapper,
+				$permissionService,
+				$config
+			),
 		);
 	}
 

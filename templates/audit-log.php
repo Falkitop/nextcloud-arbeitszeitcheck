@@ -23,6 +23,8 @@ $endDate = $_['endDate'] ?? '';
 <?php include __DIR__ . '/common/page-start.php'; ?>
 
 
+        <div class="azc-page-stack">
+
         <div class="audit-log-main audit-log-page">
             <section class="audit-log-filters" aria-labelledby="audit-filters-heading">
                 <h2 id="audit-filters-heading" class="visually-hidden"><?php p($l->t('Filter options')); ?></h2>
@@ -61,8 +63,8 @@ $endDate = $_['endDate'] ?? '';
 
             <section class="audit-log-table-section" aria-labelledby="audit-table-heading">
                 <h2 id="audit-table-heading" class="visually-hidden"><?php p($l->t('Activity log entries')); ?></h2>
-                <div class="table-responsive" role="region" aria-label="<?php p($l->t('Activity log')); ?>">
-                    <table class="table audit-log-table" id="audit-log-table" role="table" aria-label="<?php p($l->t('Activity log')); ?>">
+                <div class="table-container" role="region" aria-label="<?php p($l->t('Activity log')); ?>">
+                    <table class="table table--hover audit-log-table" id="audit-log-table" role="table" aria-label="<?php p($l->t('Activity log')); ?>">
                         <thead>
                             <tr>
                                 <th scope="col"><?php p($l->t('Date and time')); ?></th>
@@ -116,4 +118,5 @@ window.ArbeitszeitCheck = window.ArbeitszeitCheck || {};
 window.ArbeitszeitCheck.auditLogViewerL10n = <?php echo json_encode($auditLogViewerL10n, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;
 </script>
 
+</div><!-- /.azc-page-stack -->
 <?php include __DIR__ . '/common/page-end.php'; ?>

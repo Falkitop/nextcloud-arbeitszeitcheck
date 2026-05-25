@@ -15,6 +15,7 @@ use OCA\ArbeitszeitCheck\Service\ComplianceService;
 use OCA\ArbeitszeitCheck\Service\CSPService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
+use OCA\ArbeitszeitCheck\Service\NavigationFlagsService;
 use OCA\ArbeitszeitCheck\Db\AuditLogMapper;
 use OCA\ArbeitszeitCheck\Db\ComplianceViolationMapper;
 use OCA\ArbeitszeitCheck\Db\ComplianceViolation;
@@ -38,6 +39,7 @@ use OCP\Util;
 class ComplianceController extends Controller
 {
 	use CSPTrait;
+	use NavigationFlagsTrait;
 	use PageShellTrait;
 
 	private ComplianceService $complianceService;
@@ -49,6 +51,7 @@ class ComplianceController extends Controller
 	protected IURLGenerator $urlGenerator;
 	protected IL10N $l10n;
 	protected LocaleFormatService $localeFormat;
+	protected NavigationFlagsService $navigationFlags;
 
 	public function __construct(
 		string $appName,
@@ -62,7 +65,8 @@ class ComplianceController extends Controller
 		IURLGenerator $urlGenerator,
 		CSPService $cspService,
 		LocaleFormatService $localeFormat,
-		IL10N $l10n
+		IL10N $l10n,
+		NavigationFlagsService $navigationFlags,
 	) {
 		parent::__construct($appName, $request);
 		$this->complianceService = $complianceService;
@@ -74,41 +78,24 @@ class ComplianceController extends Controller
 		$this->urlGenerator = $urlGenerator;
 		$this->localeFormat = $localeFormat;
 		$this->l10n = $l10n;
+		$this->navigationFlags = $navigationFlags;
 		$this->setCspService($cspService);
 	}
 
 	/**
-	 * @return array{showSubstitutionLink: bool, showManagerLink: bool, showReportsLink: bool, showAdminNav: bool}
+	 * Compliance pages hide substitution-requests nav even when pending items exist.
+	 *
+	 * @return array{
+	 *   showSubstitutionLink: bool,
+	 *   showManagerLink: bool,
+	 *   showReportsLink: bool,
+	 *   showAdminNav: bool,
+	 *   monthClosureEnabled: bool
+	 * }
 	 */
-	private function getNavigationFlags(string $userId): array
+	protected function getNavigationFlags(string $userId): array
 	{
-		$canAccessManagerDashboard = $this->permissionService->canAccessManagerDashboard($userId);
-		$isAdmin = $this->permissionService->isAdmin($userId);
-
-		return [
-			'showSubstitutionLink' => false,
-			'showManagerLink' => $canAccessManagerDashboard,
-			'showReportsLink' => $canAccessManagerDashboard || $isAdmin,
-			'showAdminNav' => $isAdmin,
-		];
-	}
-
-	/**
-	 * @return array{showSubstitutionLink: bool, showManagerLink: bool, showReportsLink: bool, showAdminNav: bool}
-	 */
-	private function getNavigationFlagsForSession(): array
-	{
-		$user = $this->userSession->getUser();
-		if ($user === null) {
-			return [
-				'showSubstitutionLink' => false,
-				'showManagerLink' => false,
-				'showReportsLink' => false,
-				'showAdminNav' => false,
-			];
-		}
-
-		return $this->getNavigationFlags($user->getUID());
+		return $this->navigationFlags->forComplianceUser($userId);
 	}
 
 	/**

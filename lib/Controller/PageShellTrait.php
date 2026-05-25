@@ -20,9 +20,30 @@ use OCP\IUserSession;
  *  - protected IL10N $l10n
  *  - protected PermissionService $permissionService
  *  - protected LocaleFormatService $localeFormat
+ *
+ * Use {@see NavigationFlagsTrait} with {@see \OCA\ArbeitszeitCheck\Service\NavigationFlagsService}
+ * for nav visibility flags (do not duplicate getNavigationFlags in controllers).
  */
 trait PageShellTrait
 {
+	/** Page IDs that use full-width shell (tables, dashboards, dense admin). */
+	private const WIDE_SHELL_PAGE_IDS = [
+		'dashboard',
+		'reports',
+		'admin-dashboard',
+		'admin-users',
+		'admin-notifications',
+		'admin-settings',
+		'admin-overtime-payouts',
+		'admin-overtime-payout-audit',
+		'admin-tariff-rules',
+		'admin-vacation-layers',
+		'admin-teams',
+		'admin-holidays',
+		'admin-audit-log',
+		'admin-working-time-models',
+	];
+
 	/**
 	 * @param array<string, mixed> $navFlags
 	 * @return array<string, mixed>
@@ -39,6 +60,9 @@ trait PageShellTrait
 		$roleLabel = $this->resolveRoleLabel($userId);
 		$clientHints = $this->localeFormat->clientHints();
 		$shellWidth = in_array($shellWidth, ['standard', 'wide', 'minimal'], true) ? $shellWidth : 'standard';
+		if ($shellWidth === 'standard' && in_array($pageId, self::WIDE_SHELL_PAGE_IDS, true)) {
+			$shellWidth = 'wide';
+		}
 
 		return array_merge($navFlags, [
 			'pageId' => $pageId,
@@ -177,12 +201,12 @@ trait PageShellTrait
 	{
 		$titles = [
 			'create' => [
-				$this->l10n->t('Add Time Entry'),
-				$this->l10n->t('Record when you worked by entering the start and end times, and any breaks you took.'),
+				$this->l10n->t('Record working time'),
+				$this->l10n->t('Date, working hours, optional breaks, and a short note. Compliance is checked while you type.'),
 			],
 			'edit' => [
-				$this->l10n->t('Edit Time Entry'),
-				$this->l10n->t('Edit your time entry. You can edit manual entries, entries with pending approval, or completed automatic entries from the last 2 weeks.'),
+				$this->l10n->t('Edit time entry'),
+				$this->l10n->t('Change date, times, breaks, or note for this entry. Only entries you are allowed to edit appear here.'),
 			],
 			'list' => [
 				$this->l10n->t('Time Entries'),
@@ -202,12 +226,12 @@ trait PageShellTrait
 	{
 		$titles = [
 			'create' => [
-				$this->l10n->t('Request Absence'),
-				$this->l10n->t('Submit a new absence request for vacation, sick leave, or other types.'),
+				$this->l10n->t('Request time off'),
+				$this->l10n->t('Fill in the type, dates, and optional reason and substitute.'),
 			],
 			'edit' => [
-				$this->l10n->t('Edit Absence'),
-				$this->l10n->t('Update your absence request before it is approved.'),
+				$this->l10n->t('Edit absence request'),
+				$this->l10n->t('Change details before your manager approves the request.'),
 			],
 			'view' => [
 				$this->l10n->t('Absence Details'),

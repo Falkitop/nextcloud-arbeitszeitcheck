@@ -26,6 +26,8 @@ use OCA\ArbeitszeitCheck\Service\TimeZoneService;
 use OCA\ArbeitszeitCheck\Service\NotificationService;
 use OCA\ArbeitszeitCheck\Service\MonthClosureGuard;
 use OCA\ArbeitszeitCheck\Service\TimeEntryCorrectionService;
+use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
+use OCA\ArbeitszeitCheck\Service\NavigationFlagsService;
 use OCA\ArbeitszeitCheck\Exception\BusinessRuleException;
 use OCA\ArbeitszeitCheck\Exception\MonthFinalizedException;
 use OCP\Lock\LockedException;
@@ -48,6 +50,8 @@ use OCP\IL10N;
 class TimeEntryController extends Controller
 {
 	use CSPTrait;
+	use NavigationFlagsTrait;
+	use PageShellTrait;
 
 	private TimeEntryMapper $timeEntryMapper;
 	private IUserSession $userSession;
@@ -66,6 +70,8 @@ class TimeEntryController extends Controller
 	private PermissionService $permissionService;
 	private TimeZoneService $timeZoneService;
 	private TimeEntryCorrectionService $correctionService;
+	private LocaleFormatService $localeFormat;
+	private NavigationFlagsService $navigationFlags;
 
 	public function __construct(
 		string $appName,
@@ -87,7 +93,9 @@ class TimeEntryController extends Controller
 		AbsenceMapper $absenceMapper,
 		PermissionService $permissionService,
 		TimeZoneService $timeZoneService,
-		TimeEntryCorrectionService $correctionService
+		TimeEntryCorrectionService $correctionService,
+		LocaleFormatService $localeFormat,
+		NavigationFlagsService $navigationFlags
 	) {
 		parent::__construct($appName, $request);
 		$this->timeEntryMapper = $timeEntryMapper;
@@ -108,6 +116,8 @@ class TimeEntryController extends Controller
 		$this->permissionService = $permissionService;
 		$this->timeZoneService = $timeZoneService;
 		$this->correctionService = $correctionService;
+		$this->localeFormat = $localeFormat;
+		$this->navigationFlags = $navigationFlags;
 	}
 
 	/**
@@ -158,46 +168,6 @@ class TimeEntryController extends Controller
 	}
 
 	/**
-	 * Navigation flags for time-entries template (must match PageController::getNavigationFlags).
-	 *
-	 * @return array{showSubstitutionLink: bool, showManagerLink: bool, showReportsLink: bool, showAdminNav: bool}
-	 */
-	private function getNavigationFlags(string $userId): array
-	{
-		$showSubstitutionLink = false;
-		$showManagerLink = false;
-		$showReportsLink = false;
-		$showAdminNav = false;
-
-		try {
-			$pending = $this->absenceMapper->findSubstitutePendingForUser($userId, 1, 0);
-			$showSubstitutionLink = \is_array($pending) && \count($pending) > 0;
-		} catch (\Throwable $e) {
-			$showSubstitutionLink = false;
-		}
-
-		try {
-			$canAccessManagerDashboard = $this->permissionService->canAccessManagerDashboard($userId);
-			$isAdmin = $this->permissionService->isAdmin($userId);
-
-			$showManagerLink = $canAccessManagerDashboard;
-			$showReportsLink = $canAccessManagerDashboard || $isAdmin;
-			$showAdminNav = $isAdmin;
-		} catch (\Throwable $e) {
-			$showManagerLink = false;
-			$showReportsLink = false;
-			$showAdminNav = false;
-		}
-
-		return [
-			'showSubstitutionLink' => $showSubstitutionLink,
-			'showManagerLink' => $showManagerLink,
-			'showReportsLink' => $showReportsLink,
-			'showAdminNav' => $showAdminNav,
-		];
-	}
-
-	/**
 	 * Shared template parameters for time-entries (month closure + navigation).
 	 *
 	 * @return array{monthClosureEnabled: bool, showSubstitutionLink: bool, showManagerLink: bool, showReportsLink: bool, showAdminNav: bool}
@@ -209,6 +179,66 @@ class TimeEntryController extends Controller
 			'timeEntryChangesRequireApproval' => $this->requiresChangeApproval(),
 			'manualTimeEntriesRequireApproval' => $this->requiresManualEntryApproval(),
 		] + $this->getNavigationFlags($userId);
+	}
+
+	private function registerTimeEntryFormAssets(): void
+	{
+		$this->registerFrontEndAssets('arbeitszeitcheck-main', null, [
+			'time-entries',
+			'time-entry-correction',
+			'time-entry-form',
+			'time-entry-form-accessibility',
+		], [
+			'common/datepicker',
+			'common/validation',
+		]);
+		\OCP\Util::addScript('arbeitszeitcheck', 'time-entry-correction');
+		\OCP\Util::addScript('arbeitszeitcheck', 'time-entry-form');
+		\OCP\Util::addScript('arbeitszeitcheck', 'time-entry-form-accessibility');
+	}
+
+	/**
+	 * @param array<string, mixed> $pageData
+	 * @return array<string, mixed>
+	 */
+	private function buildTimeEntryFormTemplateParams(string $mode, array $pageData): array
+	{
+		$userId = $this->getUserId();
+		$navFlags = $this->getNavigationFlags($userId);
+		$navFlags['pendingCorrectionCount'] = \count(
+			$this->timeEntryMapper->findByUserAndStatus($userId, TimeEntry::STATUS_PENDING_APPROVAL)
+		);
+		$this->registerTimeEntryFormAssets();
+
+		return \array_merge($this->buildTimeEntriesShellParams($mode, $navFlags), $pageData);
+	}
+
+	/**
+	 * @param array<string, mixed> $pageData
+	 * @return array<string, mixed>
+	 */
+	private function buildTimeEntriesListTemplateParams(array $pageData): array
+	{
+		$userId = $this->getUserId();
+		$navFlags = $this->getNavigationFlags($userId);
+		$navFlags['pendingCorrectionCount'] = \count(
+			$this->timeEntryMapper->findByUserAndStatus($userId, TimeEntry::STATUS_PENDING_APPROVAL)
+		);
+		$this->registerFrontEndAssets('arbeitszeitcheck-main', null, [
+			'time-entries',
+			'time-entry-correction',
+			'time-entry-form-accessibility',
+		], [
+			'common/datepicker',
+			'common/validation',
+		]);
+		\OCP\Util::addScript('arbeitszeitcheck', 'time-entry-correction');
+		\OCP\Util::addScript('arbeitszeitcheck', 'time-entry-form-accessibility');
+		if ($this->config->getAppValue('arbeitszeitcheck', Constants::CONFIG_MONTH_CLOSURE_ENABLED, '0') === '1') {
+			\OCP\Util::addScript('arbeitszeitcheck', 'month-closure');
+		}
+
+		return \array_merge($this->buildTimeEntriesShellParams('list', $navFlags), $pageData);
 	}
 
 	private function requiresChangeApproval(): bool
@@ -656,7 +686,7 @@ class TimeEntryController extends Controller
 		$response = new TemplateResponse(
 			$this->appName,
 			'time-entries',
-			[
+			$this->buildTimeEntryFormTemplateParams('create', [
 				'urlGenerator' => $this->urlGenerator,
 				'mode' => 'create',
 				'entry' => null,
@@ -665,7 +695,7 @@ class TimeEntryController extends Controller
 				'maxDailyHours' => $maxDailyHours,
 				'complianceStrictMode' => $complianceStrictMode,
 				'l' => $this->l10n,
-			] + $this->getTimeEntriesSharedTemplateParams($userId)
+			] + $this->getTimeEntriesSharedTemplateParams($userId))
 		);
 		return $this->configureCSP($response);
 	}
@@ -696,15 +726,20 @@ class TimeEntryController extends Controller
 
 			// Check ownership
 			if ($entry->getUserId() !== $userId) {
-				// Redirect to time entries list if access denied
+				$maxDailyHours = (float)$this->config->getAppValue('arbeitszeitcheck', 'max_daily_hours', '10');
+				$complianceStrictMode = $this->config->getAppValue('arbeitszeitcheck', 'compliance_strict_mode', '0') === '1';
 				$response = new TemplateResponse(
 					$this->appName,
 					'time-entries',
-					[
-						'urlGenerator' => $this->urlGenerator,
+					$this->buildTimeEntriesListTemplateParams([
+						'mode' => 'list',
+						'entry' => null,
+						'entries' => [],
+						'stats' => [],
 						'error' => $this->l10n->t('Access denied'),
-						'l' => $this->l10n,
-					] + $this->getTimeEntriesSharedTemplateParams($userId)
+						'maxDailyHours' => $maxDailyHours,
+						'complianceStrictMode' => $complianceStrictMode,
+					] + $this->getTimeEntriesSharedTemplateParams($userId))
 				);
 				return $this->configureCSP($response);
 			}
@@ -726,15 +761,20 @@ class TimeEntryController extends Controller
 						? $this->l10n->t('Cannot edit this time entry. Only entries from the last 2 weeks can be edited.')
 						: $this->l10n->t('Cannot edit this time entry.'));
 
-				// Redirect to time entries list with error message
+				$maxDailyHours = (float)$this->config->getAppValue('arbeitszeitcheck', 'max_daily_hours', '10');
+				$complianceStrictMode = $this->config->getAppValue('arbeitszeitcheck', 'compliance_strict_mode', '0') === '1';
 				$response = new TemplateResponse(
 					$this->appName,
 					'time-entries',
-					[
-						'urlGenerator' => $this->urlGenerator,
+					$this->buildTimeEntriesListTemplateParams([
+						'mode' => 'list',
+						'entry' => null,
+						'entries' => [],
+						'stats' => [],
 						'error' => $errorMessage,
-						'l' => $this->l10n,
-					] + $this->getTimeEntriesSharedTemplateParams($userId)
+						'maxDailyHours' => $maxDailyHours,
+						'complianceStrictMode' => $complianceStrictMode,
+					] + $this->getTimeEntriesSharedTemplateParams($userId))
 				);
 				return $this->configureCSP($response);
 			}
@@ -746,7 +786,7 @@ class TimeEntryController extends Controller
 			$response = new TemplateResponse(
 				$this->appName,
 				'time-entries',
-				[
+				$this->buildTimeEntryFormTemplateParams('edit', [
 					'urlGenerator' => $this->urlGenerator,
 					'mode' => 'edit',
 					'entry' => $entry,
@@ -755,7 +795,7 @@ class TimeEntryController extends Controller
 					'maxDailyHours' => $maxDailyHours,
 					'complianceStrictMode' => $complianceStrictMode,
 					'l' => $this->l10n,
-				] + $this->getTimeEntriesSharedTemplateParams($userId)
+				] + $this->getTimeEntriesSharedTemplateParams($userId))
 			);
 			return $this->configureCSP($response);
 		} catch (\Throwable $e) {
@@ -765,14 +805,20 @@ class TimeEntryController extends Controller
 				$shared = $this->getTimeEntriesSharedTemplateParams($this->getUserId());
 			} catch (\Throwable $ignore) {
 			}
+			$maxDailyHours = (float)$this->config->getAppValue('arbeitszeitcheck', 'max_daily_hours', '10');
+			$complianceStrictMode = $this->config->getAppValue('arbeitszeitcheck', 'compliance_strict_mode', '0') === '1';
 			$response = new TemplateResponse(
 				$this->appName,
 				'time-entries',
-				[
-					'urlGenerator' => $this->urlGenerator,
+				$this->buildTimeEntriesListTemplateParams([
+					'mode' => 'list',
+					'entry' => null,
+					'entries' => [],
+					'stats' => [],
 					'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.'),
-					'l' => $this->l10n,
-				] + $shared
+					'maxDailyHours' => $maxDailyHours,
+					'complianceStrictMode' => $complianceStrictMode,
+				] + $shared)
 			);
 			return $this->configureCSP($response);
 		}
@@ -960,6 +1006,11 @@ class TimeEntryController extends Controller
 			$mc = $this->assertGuardTimeEntry($timeEntry);
 			if ($mc !== null) {
 				return $mc;
+			}
+
+			$complianceBlock = $this->complianceSaveBlockResponse($timeEntry);
+			if ($complianceBlock !== null) {
+				return $complianceBlock;
 			}
 
 			if ($manualRequiresApproval) {
@@ -1428,6 +1479,12 @@ class TimeEntryController extends Controller
 			if ($mc1 !== null) {
 				return $mc1;
 			}
+
+			$complianceBlock = $this->complianceSaveBlockResponse($entry);
+			if ($complianceBlock !== null) {
+				return $complianceBlock;
+			}
+
 			$updatedEntry = $this->timeEntryMapper->update($entry);
 
 			// Real-time compliance check if entry is now completed
@@ -2513,10 +2570,14 @@ class TimeEntryController extends Controller
 					return $mc;
 				}
 
+				$complianceBlock = $this->complianceSaveBlockResponse($timeEntry);
+				if ($complianceBlock !== null) {
+					return $complianceBlock;
+				}
+
 				$savedEntry = $this->timeEntryMapper->insert($timeEntry);
 
-				// Real-time compliance check for completed entries
-				// Based on industry best practices (Personio, Flintec): immediate compliance checking
+				// Record violations after save (warning mode); strict blocks already ran pre-save.
 				if ($savedEntry->getStatus() === TimeEntry::STATUS_COMPLETED && $savedEntry->getEndTime() !== null) {
 					$this->performRealTimeComplianceCheck($savedEntry);
 				}
@@ -2850,6 +2911,40 @@ class TimeEntryController extends Controller
 				'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.')
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
+	}
+
+	/**
+	 * Server-side ArbZG gate before persisting a completed manual/API entry.
+	 */
+	private function complianceSaveBlockResponse(TimeEntry $timeEntry): ?JSONResponse
+	{
+		if ($timeEntry->getStatus() !== TimeEntry::STATUS_COMPLETED || $timeEntry->getEndTime() === null) {
+			return null;
+		}
+
+		$strictMode = $this->config->getAppValue('arbeitszeitcheck', 'compliance_strict_mode', '0') === '1';
+		$issues = $this->complianceService->blockingIssuesForCompletedEntry($timeEntry);
+
+		if ($strictMode) {
+			try {
+				$this->complianceService->checkComplianceForCompletedEntry($timeEntry, true, false);
+			} catch (\Exception $e) {
+				$msg = trim($e->getMessage());
+				if ($msg !== '' && !\in_array($msg, $issues, true)) {
+					$issues[] = $msg;
+				}
+			}
+		}
+
+		if ($issues === []) {
+			return null;
+		}
+
+		return new JSONResponse([
+			'success' => false,
+			'error' => $issues[0],
+			'error_code' => 'compliance_blocked',
+		], Http::STATUS_BAD_REQUEST);
 	}
 
 	private function performRealTimeComplianceCheck(TimeEntry $timeEntry): void

@@ -227,7 +227,7 @@ class ComplianceService
      * @return array Array of detected violations (empty if compliant)
      * @throws \Exception If strict mode is enabled and critical violations are found
      */
-    public function checkComplianceForCompletedEntry(TimeEntry $timeEntry, bool $strictMode = false): array
+    public function checkComplianceForCompletedEntry(TimeEntry $timeEntry, bool $strictMode = false, bool $persistViolations = true): array
     {
         // Only check completed entries with end time
         if ($timeEntry->getStatus() !== TimeEntry::STATUS_COMPLETED || !$timeEntry->getEndTime()) {
@@ -238,14 +238,14 @@ class ComplianceService
         $criticalViolations = [];
 
         // Check mandatory breaks (ArbZG §4)
-        $breakViolations = $this->checkMandatoryBreaksWithResult($timeEntry);
+        $breakViolations = $this->checkMandatoryBreaksWithResult($timeEntry, $persistViolations);
         if (!empty($breakViolations)) {
             $violations = array_merge($violations, $breakViolations);
             $criticalViolations = array_merge($criticalViolations, array_filter($breakViolations, fn($v) => $v['severity'] === ComplianceViolation::SEVERITY_ERROR));
         }
 
         // Check excessive working hours (ArbZG §3)
-        $hoursViolations = $this->checkExcessiveWorkingHoursWithResult($timeEntry);
+        $hoursViolations = $this->checkExcessiveWorkingHoursWithResult($timeEntry, $persistViolations);
         if (!empty($hoursViolations)) {
             $violations = array_merge($violations, $hoursViolations);
             $criticalViolations = array_merge($criticalViolations, array_filter($hoursViolations, fn($v) => $v['severity'] === ComplianceViolation::SEVERITY_ERROR));
@@ -268,6 +268,33 @@ class ComplianceService
         }
 
         return $violations;
+    }
+
+    /**
+     * Pre-save compliance gate for employee/API completed entries (no violation rows written).
+     *
+     * ArbZG §4 mandatory breaks are always blocking for portal saves.
+     * Additional critical checks run when strict mode is enabled.
+     *
+     * @return list<string> Human-readable blocking messages (empty if savable)
+     */
+    public function blockingIssuesForCompletedEntry(TimeEntry $timeEntry, bool $strictMode = false): array
+    {
+        if ($timeEntry->getStatus() !== TimeEntry::STATUS_COMPLETED || $timeEntry->getEndTime() === null) {
+            return [];
+        }
+
+        $issues = [];
+        $duration = $timeEntry->getDurationHours();
+        $breakDuration = $timeEntry->getBreakDurationHours();
+
+        if ($duration >= 9 && $breakDuration < 0.75) {
+            $issues[] = $this->l10n->t('Mandatory 45-minute break missing after 9 hours of work (ArbZG §4).');
+        } elseif ($duration >= 6 && $breakDuration < 0.5) {
+            $issues[] = $this->l10n->t('Mandatory 30-minute break missing after 6 hours of work (ArbZG §4).');
+        }
+
+        return $issues;
     }
 
     /**
@@ -334,7 +361,7 @@ class ComplianceService
      * @param TimeEntry $timeEntry
      * @return array Array of violation information
      */
-    private function checkMandatoryBreaksWithResult(TimeEntry $timeEntry): array
+    private function checkMandatoryBreaksWithResult(TimeEntry $timeEntry, bool $persistViolations = true): array
     {
         $violations = [];
         $duration = $timeEntry->getDurationHours();
@@ -342,6 +369,14 @@ class ComplianceService
 
         // ArbZG §4: Check 9h (45 min break) first — otherwise duration >= 6 would catch it
         if ($duration >= 9 && $breakDuration < 0.75) { // 45 minutes break required
+            $message = $this->l10n->t('Mandatory 45-minute break missing after 9 hours of work');
+            if (!$persistViolations) {
+                return [[
+                    'type' => ComplianceViolation::TYPE_MISSING_BREAK,
+                    'severity' => ComplianceViolation::SEVERITY_ERROR,
+                    'message' => $message,
+                ]];
+            }
             $violation = $this->violationMapper->createViolation(
                 $timeEntry->getUserId(),
                 ComplianceViolation::TYPE_MISSING_BREAK,
@@ -369,10 +404,18 @@ class ComplianceService
                 ]);
             }
         } elseif ($duration >= 6 && $breakDuration < 0.5) { // 30 minutes break required
+            $message = $this->l10n->t('Mandatory 30-minute break missing after 6 hours of work');
+            if (!$persistViolations) {
+                return [[
+                    'type' => ComplianceViolation::TYPE_MISSING_BREAK,
+                    'severity' => ComplianceViolation::SEVERITY_ERROR,
+                    'message' => $message,
+                ]];
+            }
             $violation = $this->violationMapper->createViolation(
                 $timeEntry->getUserId(),
                 ComplianceViolation::TYPE_MISSING_BREAK,
-                $this->l10n->t('Mandatory 30-minute break missing after 6 hours of work'),
+                $message,
                 $timeEntry->getEndTime() ?: new \DateTime(),
                 $timeEntry->getId(),
                 ComplianceViolation::SEVERITY_ERROR
@@ -382,7 +425,7 @@ class ComplianceService
                 'id' => $violation->getId(),
                 'type' => ComplianceViolation::TYPE_MISSING_BREAK,
                 'severity' => ComplianceViolation::SEVERITY_ERROR,
-                'message' => $this->l10n->t('Mandatory 30-minute break missing after 6 hours of work')
+                'message' => $message,
             ];
 
             // Send notification
@@ -406,10 +449,10 @@ class ComplianceService
      * @param TimeEntry $timeEntry
      * @return array Array of violation information
      */
-    private function checkExcessiveWorkingHoursWithResult(TimeEntry $timeEntry): array
+    private function checkExcessiveWorkingHoursWithResult(TimeEntry $timeEntry, bool $persistViolations = true): array
     {
         $violations = [];
-        foreach ($this->createExcessiveHoursViolationsForEntry($timeEntry) as $recorded) {
+        foreach ($this->createExcessiveHoursViolationsForEntry($timeEntry, $persistViolations) as $recorded) {
             $violations[] = $recorded['summary'];
         }
 
@@ -421,7 +464,7 @@ class ComplianceService
      *
      * @return list<array{summary: array<string, mixed>, violation: ComplianceViolation}>
      */
-    private function createExcessiveHoursViolationsForEntry(TimeEntry $timeEntry): array
+    private function createExcessiveHoursViolationsForEntry(TimeEntry $timeEntry, bool $persistViolations = true): array
     {
         if ($timeEntry->getStartTime() === null || $timeEntry->getEndTime() === null) {
             return [];
@@ -445,7 +488,7 @@ class ComplianceService
                 new \DateTime($day['date'] . ' 12:00:00', $this->timeZoneService->storageTimeZone())
             );
 
-            if ($this->excessiveHoursViolationExistsForCalendarDay($userId, $dayStart)) {
+            if ($persistViolations && $this->excessiveHoursViolationExistsForCalendarDay($userId, $dayStart)) {
                 continue;
             }
 
@@ -457,6 +500,18 @@ class ComplianceService
                     $day['hours'],
                 ]
             );
+
+            if (!$persistViolations) {
+                $recorded[] = [
+                    'summary' => [
+                        'type' => ComplianceViolation::TYPE_EXCESSIVE_WORKING_HOURS,
+                        'severity' => ComplianceViolation::SEVERITY_ERROR,
+                        'message' => $message,
+                    ],
+                    'violation' => null,
+                ];
+                continue;
+            }
 
             $violation = $this->violationMapper->createViolation(
                 $userId,

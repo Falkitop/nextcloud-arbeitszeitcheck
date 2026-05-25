@@ -898,7 +898,7 @@ Use PHP translation in templates:
 <?php p($l->t('Hello world')); ?>
 ```
 
-Add the same English source string to `l10n/en.json` and `l10n/de.json`. Run `php scripts/check-l10n-placeholders.php` when strings contain `{placeholders}`.
+Add the same English source string to `l10n/en.json` and `l10n/de.json`. Run `php scripts/check-l10n-placeholders.php` when strings contain `{placeholders}` or printf-style tokens (`%s`, `%d`, `%1$s`, …).
 
 **JavaScript (dynamic UI):** Prefer server-injected bundles on `window.ArbeitszeitCheck.l10n` so strings are translated before scripts run (works when `window.t` is unavailable on app pages).
 
@@ -906,7 +906,12 @@ Add the same English source string to `l10n/en.json` and `l10n/de.json`. Run `ph
 |---------|---------------|---------|
 | `templates/common/main-ui-l10n.php` | Most employee/manager pages | `arbeitszeitcheck-main.js` |
 | `templates/common/time-entry-correction-l10n.php` | `templates/time-entries.php` | `time-entry-correction.js` (modal title, validation, dynamic break rows, submit/withdraw) |
+| `templates/common/time-entry-form-l10n.php` | `templates/time-entries.php` (create/edit) | `time-entry-form.js` (form manager, validation, auto-breaks, submit) — **must use `TemplateL10n`** (see below) |
+| `templates/common/time-entry-form-config.php` | `templates/time-entries.php` (create/edit) | `time-entry-form.js` (`breakIndex`, `submitUrl`, `maxDailyHours`, redirect) |
+| `templates/common/time-entries-page-bootstrap.php` | `templates/time-entries.php` | List + form pages (`entries`, `apiUrl`, shared l10n; `autoBreakDuration30` / `45`) |
 | `templates/common/manager-correction-l10n.php` | `manager-dashboard.php`, `manager-time-entries.php` | `manager-dashboard.js` (pending correction cards), `manager-time-entries.js` (direct “Correct” modal) |
+| `templates/common/manager-employee-list-l10n.php` | Manager list pages | `manager-time-entries.js`, absences manager list — **`TemplateL10n`** |
+| `templates/common/admin-overtime-payout-l10n.php` | Admin payout pages | Payout/audit JS — **`TemplateL10n`** |
 
 Pattern in JS:
 
@@ -918,7 +923,94 @@ function t(key, fallback) {
 }
 ```
 
-Register new keys in the partial’s `$msgid` list (or explicit map) and add translations to both JSON files. Template-only strings need only `$l->t()` in PHP.
+Register new keys in the partial’s message map and add translations to both JSON files. Template-only strings need only `$l->t()` in PHP (with parameters when the string has placeholders).
+
+#### Datepicker (`js/common/datepicker.js`)
+
+- Mark inputs with class `datepicker-input` and placeholder `dd.mm.yyyy`; use `data-datepicker-defer` only when a modal clones markup before init (correction wizard).
+- `data-datepicker-sync-month-with` links start/end fields (absence request form).
+- Load `common/datepicker` on any page that renders `.datepicker-input` (e.g. `TimeEntryController::registerTimeEntryFormAssets`, `AbsenceController::registerAbsenceFormAssets`, `PageController::timeEntries`).
+- Date + **Today** button rows use `form-input-wrapper--date`; the picker mounts inside `.azc-datepicker-host` so the calendar toggle does not overlap the Today control.
+- Global `initAll()` runs on `DOMContentLoaded`; pages may call `ArbeitszeitCheckDatepicker.initInRoot(form)` after dynamic HTML.
+- **Do not** set `data-datepicker-init` before calling `initializeDatepicker` — only `initializeDatepicker` may set that flag (otherwise the calendar never mounts).
+
+#### `TemplateL10n` (required for JS export bundles)
+
+`lib/Util/TemplateL10n.php` prevents **Internal Server Error** (`ValueError: The arguments array must contain N items, 0 given`) when a translated string is embedded in HTML via `json_encode(...)`.
+
+**Cause:** `$l->t('Automatic %s break…')` returns a lazy `IL10NString`. Casting or `json_encode` forces `__toString()`, which runs `vsprintf` **without** arguments if none were passed.
+
+**Rule:** Any message id containing `%s`, `%d`, `%1$s`, … that is exported to JavaScript must go through `TemplateL10n::translate($l, $messageId)` (or `mapFromMessageIds`). That supplies placeholder arguments so rendering succeeds, while leaving literals such as `%s` or `%1$s` in the output for **client-side** replacement.
+
+```php
+use OCA\ArbeitszeitCheck\Util\TemplateL10n;
+
+$timeEntryFormL10n['autoBreakAddedCompliance'] = TemplateL10n::translate(
+    $l,
+    'Automatic %s break added for legal compliance'
+);
+// JS: t('autoBreakAddedCompliance').replace('%s', breakText)
+```
+
+**Client replacement patterns** (keep in sync with docs/tests):
+
+| Placeholder | PHP export | JS consumer |
+|-------------|------------|-------------|
+| `%s` | `TemplateL10n::translate` → literal `%s` in JSON | `.replace('%s', value)` |
+| `%1$s` | `TemplateL10n::translate` → literal `%1$s` | `formatBreakRowLabel(pattern, index)` replaces `%1$s` with `index + 1` |
+| `%d` | `TemplateL10n::translate` → `0` in JSON (or explicit `[10]` when the final number is fixed server-side) | Use as fully translated string, or replace if you inject a literal `0` by design |
+
+**Never** do this in l10n partials:
+
+```php
+// WRONG — crashes create/edit page at render time
+'key' => $l->t('Automatic %s break added for legal compliance'),
+```
+
+**Checks:**
+
+- `php scripts/check-l10n-placeholders.php` — en/de JSON arity
+- `tests/Unit/Util/TemplateL10nTest.php`
+- `tests/Unit/Templates/TimeEntryFormL10nTest.php` — regression guard for the time-entry form bundle
+
+---
+
+## Time entry create/edit form (manual entry)
+
+**Routes:** `arbeitszeitcheck.page.timeEntries` with `mode=create` or `mode=edit` (e.g. `/apps/arbeitszeitcheck/time-entries/create`).
+
+**Primary files:**
+
+| Layer | Path |
+|-------|------|
+| Template | `templates/time-entries.php` (`#time-entry-form`, fieldsets, auto-break toggle) |
+| JS | `js/time-entry-form.js` (`TimeEntryFormManager`) |
+| CSS | `css/time-entries.css`, `css/time-entry-form-accessibility.css` |
+| L10n | `templates/common/time-entry-form-l10n.php`, `time-entry-form-config.php`, `time-entries-page-bootstrap.php` |
+
+**UX structure:** Page header → timezone/callout blocks → **Summary** (live working/break hours + compliance status) → **Date and time** (24h selects, “Today”) → **Breaks (optional)** (info callout, auto-break toggle, break matrix) → **Note** → actions. Uses shared `time-pair-matrix` layout and Nextcloud theme CSS variables so light/dark/high-contrast themes stay readable.
+
+**Auto-break toggle (`#auto-break-enabled`, on by default):**
+
+- When enabled, `time-entry-form.js` inserts or updates break rows to satisfy ArbZG §4 (30 min from 6 h work, 45 min from 9 h) before validation/submit.
+- Auto rows are marked `data-auto-break="true"`, styled in CSS, and annotated with `autoBreakNote` from the l10n bundle.
+- Notifications use `autoBreakAddedCompliance` with `%s` replaced by `autoBreakDuration30` / `autoBreakDuration45` from `time-entries-page-bootstrap.php`.
+- Turning the toggle off removes auto rows and shows `autoBreakDisabled`.
+- **Distinct from** the per-user setting **Automatic break calculation** (`auto_break_calculation` in `SettingsController` / clock-in flow via `TimeTrackingService`) — see `docs/Compliance-Implementation.en.md`.
+
+**Break row indexing:** Server renders `data-break-index` from `0..n-1`; `time-entry-form-config.php` passes `breakIndex = count(existingBreaks)`. After load, `syncBreakIndexFromDom()` in JS sets the next index to `max(index)+1` so dynamically added rows never collide with PHP-rendered `breaks[n][start|end]` names.
+
+**Accessibility (WCAG 2.1 AA target):**
+
+- Skip links to form and app navigation; visible focus on toggle (`:focus-visible` on `.toggle-slider`).
+- Auto-break and break-requirement blocks use `azc-semantic-panel` (`--success` / `--warning` / `--info`) from `css/common/semantic-surfaces.css`: body text always `--color-main-text`, accent via borders and solid icon wells, status via `azc-status-pill` (outline + dot, not filled success text). Panel state: `auto-break-panel--enabled` / `--disabled`. Legacy `azc-callout--success` tints in `app.css` are excluded when `.azc-semantic-panel` is present.
+- Toggle uses `aria-describedby` (`auto-break-toggle-help`, `auto-break-toggle-state`); break requirement hint is `azc-semantic-panel--warning` with `hidden` until active.
+- Summary and compliance text in `role="status"` / `aria-live="polite"` regions.
+- Break row labels use visible icons plus `.sr-only` text; details in `css/time-entry-form-accessibility.css`.
+
+**API:** Create `POST` `time_entry.apiStore`; edit `POST` `time_entry.apiUpdatePost` (URLs in `time-entry-form-config.php`). Times are normalized server-side (`AppLocalNaiveDateTimeNormalizer`) from the user’s display timezone to storage timezone.
+
+**Tests:** `tests/Unit/Templates/TimeEntryFormL10nTest.php`; compliance E2E may disable `auto_break_calculation` for the test user when asserting strict §4 gates (`tests/e2e/compliance-gate-smoke.spec.js`).
 
 ---
 
@@ -944,6 +1036,8 @@ Legacy clients may still send ISO-8601 `startTime`/`endTime` instants.
 **Manager approvals:** `ManagerController` pending time-entry cards + approve/reject endpoints; UI strings in `manager-correction-l10n.php`. **Manager direct edit:** `POST /api/manager/time-entries/{id}/correct` — see `docs/Compliance-Time-Entry-Workflows.de.md`.
 
 **Tests:** `tests/Unit/Controller/TimeEntryControllerTest.php` (correction paths); workflow matrix in `tests/WORKFLOW_ROLE_MATRIX.md`.
+
+**L10n:** Correction modal strings in `time-entry-correction-l10n.php` use plain `$l->t()` only where message ids have **no** printf placeholders. Strings with `{count}` / `{remaining}` are filled in JS; ids with `%` must follow the `TemplateL10n` rules if exported via `json_encode`.
 
 ---
 

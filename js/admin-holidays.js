@@ -181,7 +181,7 @@
         const actionsCell = document.createElement('td');
         const saveBtn = document.createElement('button');
         saveBtn.type = 'button';
-        saveBtn.className = 'btn btn--primary btn--sm';
+        saveBtn.className = 'azc-btn azc-btn--primary azc-btn--sm';
         saveBtn.textContent = tAzc('Save');
         Utils.on(saveBtn, 'click', function() {
             saveHolidayRow(row);
@@ -189,14 +189,17 @@
 
         const deleteBtn = document.createElement('button');
         deleteBtn.type = 'button';
-        deleteBtn.className = 'btn btn--secondary btn--sm';
+        deleteBtn.className = 'azc-btn azc-btn--secondary azc-btn--sm';
         deleteBtn.textContent = tAzc('Remove');
         Utils.on(deleteBtn, 'click', function() {
             row.remove();
         });
 
-        actionsCell.appendChild(saveBtn);
-        actionsCell.appendChild(deleteBtn);
+        const actionsWrap = document.createElement('div');
+        actionsWrap.className = 'admin-holidays__row-actions';
+        actionsWrap.appendChild(saveBtn);
+        actionsWrap.appendChild(deleteBtn);
+        actionsCell.appendChild(actionsWrap);
 
         row.appendChild(dateCell);
         row.appendChild(nameCell);
@@ -272,6 +275,13 @@
         });
     }
 
+    function setResultsBusy(isBusy) {
+        const results = document.getElementById('holiday-results');
+        if (results) {
+            results.setAttribute('aria-busy', isBusy ? 'true' : 'false');
+        }
+    }
+
     function loadExistingHolidays() {
         const tbody = Utils.$('#holiday-tbody');
         if (!tbody) {
@@ -283,8 +293,8 @@
         const url = OC.generateUrl('/apps/arbeitszeitcheck/api/admin/state-holidays') +
             '?state=' + encodeURIComponent(state) + '&year=' + encodeURIComponent(String(year));
 
-        // Clear existing content
         tbody.innerHTML = '';
+        setResultsBusy(true);
 
         fetch(url, {
             method: 'GET',
@@ -294,12 +304,10 @@
         }).then(function(response) {
             return response.json();
         }).then(function(data) {
+            setResultsBusy(false);
             if (!data || data.success !== true || !Array.isArray(data.holidays)) {
                 renderEmptyHolidaysRow(tbody);
-                if (Messaging && Messaging.showError) {
-                    const msg = tAzc('Holidays could not be loaded.');
-                    Messaging.showError(msg);
-                }
+                showUserError(tAzc('Holidays could not be loaded.'));
                 return;
             }
 
@@ -312,11 +320,9 @@
                 appendExistingHolidayRow(tbody, item);
             });
         }).catch(function() {
+            setResultsBusy(false);
             renderEmptyHolidaysRow(tbody);
-            if (Messaging && Messaging.showError) {
-                const msg = tAzc('Holidays could not be loaded.');
-                Messaging.showError(msg);
-            }
+            showUserError(tAzc('Holidays could not be loaded.'));
         });
     }
 
@@ -367,7 +373,7 @@
         {
             const deleteBtn = document.createElement('button');
             deleteBtn.type = 'button';
-            deleteBtn.className = 'btn btn--secondary btn--sm';
+            deleteBtn.className = 'azc-btn azc-btn--secondary azc-btn--sm';
             deleteBtn.textContent = tAzc('Remove');
             const labelTemplate = tAzc('Remove holiday {name} on {date}');
             const ariaLabel = labelTemplate
@@ -397,10 +403,10 @@
                             <p id="holiday-delete-body" class="modal-text">${body}</p>
                         </div>
                         <div class="form-actions">
-                            <button type="button" class="btn btn--secondary" data-action="close-modal">
+                            <button type="button" class="azc-btn azc-btn--secondary" data-action="close-modal">
                                 ${tAzc('Cancel')}
                             </button>
-                            <button type="button" class="btn btn--primary btn--danger" data-action="confirm-delete-holiday">
+                            <button type="button" class="azc-btn azc-btn--danger" data-action="confirm-delete-holiday">
                                 ${tAzc('Remove')}
                             </button>
                         </div>
@@ -462,7 +468,10 @@
                     }
                 }
             });
-            actionsCell.appendChild(deleteBtn);
+            const actionsWrap = document.createElement('div');
+            actionsWrap.className = 'admin-holidays__row-actions';
+            actionsWrap.appendChild(deleteBtn);
+            actionsCell.appendChild(actionsWrap);
         }
 
         row.appendChild(dateCell);

@@ -263,26 +263,124 @@
 	margin-top: auto;
 }
 
+/* Absence chip: readable label + status in every Nextcloud theme (not icon-only). */
 .calendar-day-absence {
-	font-size: 0.7rem;
-	color: var(--arbeitszeitcheck-color-warning, var(--color-warning));
-	font-weight: 500;
-	text-transform: capitalize;
+	margin-top: auto;
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: var(--space-1, 0.25rem);
+	min-width: 0;
+	width: 100%;
 }
 
-.calendar-day-absence-icons {
+.calendar-day-absence-chip {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.2rem 0.35rem;
+	padding: 0.25rem 0.4rem;
+	border-radius: var(--radius-base, 6px);
+	border: 1px solid var(--color-border, var(--arbeitszeitcheck-color-border));
+	background: var(--color-main-background, var(--arbeitszeitcheck-color-background-elevated));
+	color: var(--color-main-text, var(--arbeitszeitcheck-color-main-text));
+	box-shadow: 0 1px 0 color-mix(in srgb, var(--color-main-text, #000) 6%, transparent);
+}
+
+.calendar-day-absence-chip__icon {
 	display: inline-flex;
 	align-items: center;
-	gap: 0.15rem;
-	line-height: 1;
+	justify-content: center;
+	flex-shrink: 0;
+	width: 1.35rem;
+	height: 1.35rem;
+	border-radius: 4px;
+	background: color-mix(in srgb, var(--color-warning, #c98600) 22%, var(--color-main-background, #fff));
+	color: var(--color-warning-text, var(--color-warning, #9a6700));
+	border: 1px solid color-mix(in srgb, var(--color-warning, #c98600) 45%, var(--color-border, #ccc));
 }
 
-.calendar-day-absence-icons .azc-icon,
-.calendar-day-type-icon,
-.calendar-day-status-icon {
-	width: 0.85rem;
-	height: 0.85rem;
+.calendar-day-absence-chip__icon-svg,
+.calendar-day-absence-chip__icon .azc-icon {
+	width: 1rem;
+	height: 1rem;
+	stroke: currentColor;
+	stroke-width: 2;
+}
+
+.calendar-day-absence-chip__label {
+	flex: 1 1 3.5rem;
+	min-width: 0;
+	font-size: 0.68rem;
+	font-weight: 600;
+	line-height: 1.25;
+	color: var(--color-main-text, var(--arbeitszeitcheck-color-main-text));
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.calendar-day-absence-chip__status {
 	flex-shrink: 0;
+	font-size: 0.62rem;
+	font-weight: 700;
+	line-height: 1.2;
+	padding: 0.12rem 0.35rem;
+	text-transform: none;
+	letter-spacing: 0.01em;
+}
+
+.calendar-day-absence-more {
+	display: inline-block;
+	align-self: flex-start;
+	font-size: 0.62rem;
+	font-weight: 700;
+	line-height: 1.2;
+	padding: 0.1rem 0.35rem;
+	border-radius: 999px;
+	border: 1px dashed var(--color-border, var(--arbeitszeitcheck-color-border));
+	color: var(--color-text-maxcontrast, var(--arbeitszeitcheck-color-text-maxcontrast));
+	background: var(--color-background-hover, var(--arbeitszeitcheck-color-background-hover));
+}
+
+/* Type accents (border + icon well; text stays main-text for contrast). */
+.calendar-day-absence--vacation .calendar-day-absence-chip {
+	border-color: color-mix(in srgb, var(--color-success, #46ba61) 50%, var(--color-border, #ccc));
+	background: color-mix(in srgb, var(--color-success, #46ba61) 14%, var(--color-main-background, #fff));
+}
+
+.calendar-day-absence--vacation .calendar-day-absence-chip__icon {
+	background: color-mix(in srgb, var(--color-success, #46ba61) 24%, var(--color-main-background, #fff));
+	color: var(--color-success-text, var(--color-success, #2d7a3e));
+	border-color: color-mix(in srgb, var(--color-success, #46ba61) 45%, var(--color-border, #ccc));
+}
+
+.calendar-day-absence--sick .calendar-day-absence-chip {
+	border-color: color-mix(in srgb, var(--color-error, #cc4646) 45%, var(--color-border, #ccc));
+	background: color-mix(in srgb, var(--color-error, #cc4646) 12%, var(--color-main-background, #fff));
+}
+
+.calendar-day-absence--sick .calendar-day-absence-chip__icon {
+	background: color-mix(in srgb, var(--color-error, #cc4646) 22%, var(--color-main-background, #fff));
+	color: var(--color-error-text, var(--color-error, #a83232));
+	border-color: color-mix(in srgb, var(--color-error, #cc4646) 40%, var(--color-border, #ccc));
+}
+
+.calendar-day-absence--unpaid .calendar-day-absence-chip,
+.calendar-day-absence--other .calendar-day-absence-chip {
+	border-color: color-mix(in srgb, var(--color-warning, #c98600) 50%, var(--color-border, #ccc));
+	background: color-mix(in srgb, var(--color-warning, #c98600) 14%, var(--color-main-background, #fff));
+}
+
+.calendar-day-absence--coverage .calendar-day-absence-chip {
+	border-color: color-mix(in srgb, var(--color-primary-element, var(--color-primary, #00679e)) 50%, var(--color-border, #ccc));
+	background: color-mix(in srgb, var(--color-primary-element, var(--color-primary, #00679e)) 12%, var(--color-main-background, #fff));
+}
+
+.calendar-day-absence--coverage .calendar-day-absence-chip__icon {
+	background: color-mix(in srgb, var(--color-primary-element, var(--color-primary, #00679e)) 22%, var(--color-main-background, #fff));
+	color: var(--color-primary-text, var(--color-primary-element-text, var(--color-primary, #00679e)));
+	border-color: color-mix(in srgb, var(--color-primary-element, var(--color-primary, #00679e)) 40%, var(--color-border, #ccc));
 }
 
 .btn-close__icon,
@@ -336,6 +434,32 @@
 	cursor: pointer;
 	transition: all 0.2s ease;
 	text-align: center;
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	min-height: 7.5rem;
+	min-width: 0;
+}
+
+.calendar-week-day.calendar-day--has-entry {
+	border-left: 3px solid var(--arbeitszeitcheck-color-primary, var(--color-primary));
+}
+
+.calendar-week-day.calendar-day--has-absence {
+	border-left: 3px solid var(--arbeitszeitcheck-color-warning, var(--color-warning));
+}
+
+.calendar-week-day.calendar-day--has-coverage {
+	border-left-color: var(--arbeitszeitcheck-color-primary, var(--color-primary));
+}
+
+.calendar-week-day .calendar-day-absence {
+	margin-top: var(--space-2, 0.5rem);
+	text-align: left;
+}
+
+.calendar-week-day .calendar-day-past-label {
+	align-self: flex-start;
 }
 
 .calendar-week-day:hover {
@@ -447,6 +571,51 @@
 .legend-label {
 	font-size: 0.85rem;
 	color: var(--color-text-maxcontrast);
+}
+
+.legend-sample-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25rem;
+	padding: 0.15rem 0.35rem;
+	border-radius: 6px;
+	border: 1px solid var(--color-border);
+	background: var(--color-main-background);
+	font-size: 0.7rem;
+	font-weight: 600;
+	color: var(--color-main-text);
+	flex-shrink: 0;
+}
+
+.legend-sample-chip--approved {
+	border-color: color-mix(in srgb, var(--color-success) 50%, var(--color-border));
+}
+
+.legend-sample-chip--pending {
+	border-color: color-mix(in srgb, var(--color-warning) 50%, var(--color-border));
+}
+
+.legend-sample-chip__status {
+	font-size: 0.62rem;
+	padding: 0.08rem 0.3rem;
+	border-radius: 999px;
+	font-weight: 700;
+}
+
+.legend-sample-chip__status--approved {
+	background: color-mix(in srgb, var(--color-success) 20%, transparent);
+	color: var(--color-success-text, var(--color-success));
+	border: 1px solid color-mix(in srgb, var(--color-success) 45%, transparent);
+}
+
+.legend-sample-chip__status--pending {
+	background: color-mix(in srgb, var(--color-warning) 20%, transparent);
+	color: var(--color-warning-text, var(--color-warning));
+	border: 1px solid color-mix(in srgb, var(--color-warning) 45%, transparent);
+}
+
+.day-details-absence-label {
+	font-weight: 600;
 }
 
 /* Day Details Panel */
@@ -593,6 +762,19 @@
 		padding: var(--space-2, 0.5rem);
 	}
 
+	.calendar-day-absence-chip__label {
+		white-space: normal;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+
+	.calendar-week-day {
+		min-height: 6.5rem;
+		padding: var(--space-2, 0.5rem);
+	}
+
 	.calendar-weekdays {
 		gap: var(--space-1, 0.25rem);
 	}
@@ -622,6 +804,31 @@
 	.btn-nav,
 	.btn-close {
 		transition: none;
+	}
+}
+
+@media (forced-colors: active) {
+	.calendar-day-absence-chip,
+	.calendar-day-absence-more,
+	.calendar-day-past-label,
+	.calendar-past-record-badge {
+		border: 1px solid CanvasText;
+		background: Canvas;
+		color: CanvasText;
+		box-shadow: none;
+	}
+
+	.calendar-day-absence-chip__icon {
+		border: 1px solid CanvasText;
+		background: Canvas;
+		color: CanvasText;
+	}
+
+	.calendar-day-absence-chip__status,
+	.legend-sample-chip__status {
+		border: 1px solid CanvasText;
+		background: Canvas;
+		color: CanvasText;
 	}
 }
 

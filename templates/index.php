@@ -142,8 +142,8 @@ $content = '';
                 <!-- Recent Entries -->
                 <div class="arbeitszeitcheck-section recent-entries-section">
                     <h3><?php p($l->t('Recent Entries')); ?></h3>
-                    <div class="table-responsive">
-                        <table class="arbeitszeitcheck-table" role="table" aria-label="<?php p($l->t('Recent time entries')); ?>">
+                    <div class="table-container">
+                        <table class="table table--hover arbeitszeitcheck-table" role="table" aria-label="<?php p($l->t('Recent time entries')); ?>">
                             <thead>
                                 <tr>
                                     <th scope="col"><?php p($l->t('Date')); ?></th>
@@ -214,8 +214,8 @@ $content = '';
                 <div class="arbeitszeitcheck-header">
                     <h2><?php p($l->t('Time Entries')); ?></h2>
                 </div>
-                <div class="table-responsive">
-                    <table class="arbeitszeitcheck-table" role="table" aria-label="<?php p($l->t('Time entries list')); ?>">
+                <div class="table-container">
+                    <table class="table table--hover arbeitszeitcheck-table" role="table" aria-label="<?php p($l->t('Time entries list')); ?>">
                         <thead>
                             <tr>
                                 <th scope="col"><?php p($l->t('Date')); ?></th>
@@ -268,8 +268,8 @@ $content = '';
                 <div class="arbeitszeitcheck-header">
                     <h2><?php p($l->t('Absences')); ?></h2>
                 </div>
-                <div class="table-responsive">
-                    <table class="arbeitszeitcheck-table" role="table" aria-label="<?php p($l->t('Absence requests list')); ?>">
+                <div class="table-container">
+                    <table class="table table--hover arbeitszeitcheck-table" role="table" aria-label="<?php p($l->t('Absence requests list')); ?>">
                         <thead>
                             <tr>
                                 <th scope="col"><?php p($l->t('Type')); ?></th>
