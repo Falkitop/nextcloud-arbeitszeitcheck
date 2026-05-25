@@ -8,29 +8,10 @@ declare(strict_types=1);
  * @license AGPL-3.0-or-later
  */
 
-use OCP\Util;
-
 /** @var array $_ */
 /** @var \OCP\IL10N $l */
 
-// Add common + page-specific styles and scripts
-Util::addTranslations('arbeitszeitcheck');
-Util::addStyle('arbeitszeitcheck', 'common/colors');
-Util::addStyle('arbeitszeitcheck', 'common/typography');
-Util::addStyle('arbeitszeitcheck', 'common/base');
-Util::addStyle('arbeitszeitcheck', 'common/components');
-Util::addStyle('arbeitszeitcheck', 'common/layout');
-Util::addStyle('arbeitszeitcheck', 'common/app-layout');
-Util::addStyle('arbeitszeitcheck', 'common/utilities');
-Util::addStyle('arbeitszeitcheck', 'common/responsive');
-Util::addStyle('arbeitszeitcheck', 'common/accessibility');
-Util::addStyle('arbeitszeitcheck', 'navigation');
-Util::addStyle('arbeitszeitcheck', 'reports');
-Util::addScript('arbeitszeitcheck', 'common/utils');
-Util::addScript('arbeitszeitcheck', 'common/time');
-Util::addScript('arbeitszeitcheck', 'common/datepicker');
-Util::addScript('arbeitszeitcheck', 'arbeitszeitcheck-main');
-Util::addScript('arbeitszeitcheck', 'reports');
+// Assets registered by PageController::registerFrontEndAssets
 
 $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class);
 $isAdmin = $_['isAdmin'] ?? false;
@@ -42,49 +23,43 @@ $config = \OCP\Server::get(\OCP\IConfig::class);
 $useAppTeams = $config->getAppValue('arbeitszeitcheck', 'use_app_teams', '0') === '1';
 ?>
 
-<?php include __DIR__ . '/common/navigation.php'; ?>
+<?php include __DIR__ . '/common/page-start.php'; ?>
 
-<main id="app-content" role="main" aria-label="<?php p($l->t('Reports content')); ?>">
-    <div id="app-content-wrapper">
-        <!-- Breadcrumb Navigation -->
-        <div class="breadcrumb-container">
-            <nav class="breadcrumb" aria-label="<?php p($l->t('Breadcrumb')); ?>">
-                <ol>
-                    <li><a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.page.index')); ?>"><?php p($l->t('Dashboard')); ?></a></li>
-                    <li aria-current="page"><?php p($l->t('Reports')); ?></li>
-                </ol>
-            </nav>
-        </div>
-
-        <!-- Page Header -->
-        <header class="section page-header-section" aria-labelledby="reports-page-title">
-            <div class="header-content">
-                <div class="header-text">
-                    <h1 id="reports-page-title"><?php p($l->t('Reports')); ?></h1>
-                    <p><?php p($l->t('Generate and export working time reports')); ?></p>
-                </div>
-            </div>
-        </header>
-
-        <!-- Step 1: Scope & report type -->
-        <section id="report-type-section" class="reports-section section reports-step" aria-labelledby="report-scope-heading" aria-label="<?php p($l->t('Select what you want to see')); ?>">
+        <div class="reports-page">
             <?php if (!$canAccessReports): ?>
-                <div class="empty-state">
-                    <h3 class="empty-state__title" id="report-type-heading"><?php p($l->t('Reports are only available for administrators and managers')); ?></h3>
-                    <p class="empty-state__description">
-                        <?php p($l->t('If you need to generate reports, please contact your administrator or manager.')); ?>
-                    </p>
-                    <p class="empty-state__actions">
-                        <a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.page.index')); ?>"
-                           class="btn btn--primary">
-                            <?php p($l->t('Dashboard')); ?>
-                        </a>
-                    </p>
-                </div>
+                <section class="azc-card reports-page__denied" aria-labelledby="reports-denied-heading">
+                    <div class="azc-empty-state">
+                        <h2 id="reports-denied-heading" class="azc-empty-state__title"><?php p($l->t('Reports are only available for administrators and managers')); ?></h2>
+                        <p class="azc-empty-state__lead">
+                            <?php p($l->t('If you need to generate reports, please contact your administrator or manager.')); ?>
+                        </p>
+                        <p class="azc-empty-state__actions">
+                            <a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.page.index')); ?>"
+                               class="azc-btn azc-btn--primary">
+                                <?php p($l->t('Dashboard')); ?>
+                            </a>
+                        </p>
+                    </div>
+                </section>
             <?php else: ?>
 
-            <!-- Scope selection: who should be included -->
-            <div class="report-scope-section">
+            <ol class="azc-reports-stepper" aria-label="<?php p($l->t('Report creation steps')); ?>">
+                <li class="azc-reports-stepper__item azc-reports-stepper__item--current">
+                    <span class="azc-reports-stepper__badge" aria-hidden="true">1</span>
+                    <span class="azc-reports-stepper__label"><?php p($l->t('Who is included')); ?></span>
+                </li>
+                <li class="azc-reports-stepper__item">
+                    <span class="azc-reports-stepper__badge" aria-hidden="true">2</span>
+                    <span class="azc-reports-stepper__label"><?php p($l->t('Export type')); ?></span>
+                </li>
+                <li class="azc-reports-stepper__item">
+                    <span class="azc-reports-stepper__badge" aria-hidden="true">3</span>
+                    <span class="azc-reports-stepper__label"><?php p($l->t('Period and download')); ?></span>
+                </li>
+            </ol>
+
+            <!-- Step 1: scope -->
+            <section class="azc-card reports-step-card report-scope-section" aria-labelledby="report-scope-heading">
                 <h3 id="report-scope-heading" class="reports-section__title"><?php p($l->t('Who should be included in the report?')); ?></h3>
                 <p class="reports-section__desc">
                     <?php
@@ -200,38 +175,39 @@ $useAppTeams = $config->getAppValue('arbeitszeitcheck', 'use_app_teams', '0') ==
                         <?php endif; ?>
                     </fieldset>
                 </form>
-            </div>
+            </section>
 
-            <div class="report-selection-section reports-step" aria-labelledby="report-type-heading">
+            <!-- Step 2: export type -->
+            <section class="azc-card reports-step-card report-selection-section" aria-labelledby="report-type-heading">
                 <h3 id="report-type-heading" class="reports-section__title"><?php p($l->t('Choose an export')); ?></h3>
                 <p class="reports-section__desc"><?php p($l->t('Choose one of these exports, then set the period and format below.')); ?></p>
 
                 <div class="report-types-grid report-types-grid--simple" role="list">
-                    <div class="report-type-card report-type-card--primary" data-report-type="monthly">
+                    <article class="report-type-card report-type-card--primary" role="listitem" data-report-type="monthly">
                         <div class="report-type-icon report-type-icon--working-time" aria-hidden="true"><span class="report-type-icon__abbr"><?php p($l->t('WT')); ?></span></div>
-                        <h4><?php p($l->t('Working Time Export')); ?></h4>
-                        <p><?php p($l->t('Export a clear overview of worked hours for the selected period.')); ?></p>
-                        <button class="btn-select-report" data-report="monthly"><?php p($l->t('Select')); ?></button>
-                    </div>
+                        <h4 class="report-type-card__title"><?php p($l->t('Working Time Export')); ?></h4>
+                        <p class="report-type-card__desc"><?php p($l->t('Export a clear overview of worked hours for the selected period.')); ?></p>
+                        <button type="button" class="azc-btn azc-btn--primary btn-select-report" data-report="monthly"><?php p($l->t('Select')); ?></button>
+                    </article>
 
-                    <div class="report-type-card report-type-card--primary" data-report-type="absence">
+                    <article class="report-type-card report-type-card--primary" role="listitem" data-report-type="absence">
                         <div class="report-type-icon report-type-icon--absence" aria-hidden="true"><span class="report-type-icon__abbr"><?php p($l->t('AB')); ?></span></div>
-                        <h4><?php p($l->t('Absence Export')); ?></h4>
-                        <p><?php p($l->t('Export vacation and absence data with totals and status.')); ?></p>
-                        <button class="btn-select-report" data-report="absence"><?php p($l->t('Select')); ?></button>
-                    </div>
+                        <h4 class="report-type-card__title"><?php p($l->t('Absence Export')); ?></h4>
+                        <p class="report-type-card__desc"><?php p($l->t('Export vacation and absence data with totals and status.')); ?></p>
+                        <button type="button" class="azc-btn azc-btn--primary btn-select-report" data-report="absence"><?php p($l->t('Select')); ?></button>
+                    </article>
 
-                    <div class="report-type-card report-type-card--primary" data-report-type="compliance">
+                    <article class="report-type-card report-type-card--primary" role="listitem" data-report-type="compliance">
                         <div class="report-type-icon report-type-icon--compliance" aria-hidden="true"><span class="report-type-icon__abbr"><?php p($l->t('CP')); ?></span></div>
-                        <h4><?php p($l->t('Compliance Export')); ?></h4>
-                        <p><?php p($l->t('Export labor law compliance violations and severity details.')); ?></p>
-                        <button class="btn-select-report" data-report="compliance"><?php p($l->t('Select')); ?></button>
-                    </div>
+                        <h4 class="report-type-card__title"><?php p($l->t('Compliance Export')); ?></h4>
+                        <p class="report-type-card__desc"><?php p($l->t('Export labor law compliance violations and severity details.')); ?></p>
+                        <button type="button" class="azc-btn azc-btn--primary btn-select-report" data-report="compliance"><?php p($l->t('Select')); ?></button>
+                    </article>
                 </div>
-            </div>
+            </section>
 
-            <!-- Step 2: period, format, export options -->
-            <div id="report-parameters" class="reports-section report-parameters-section reports-step" style="display: none;" aria-labelledby="report-parameters-heading">
+            <!-- Step 3: period, format, export options -->
+            <section id="report-parameters" class="azc-card reports-step-card report-parameters-section" hidden aria-labelledby="report-parameters-heading">
                 <h3 id="report-parameters-heading" class="reports-section__title"><?php p($l->t('Set time period and format')); ?></h3>
                 <p class="reports-section__desc">
                     <?php p($l->t('Pick the time period for your report. The selected range applies to the export and preview.')); ?>
@@ -291,13 +267,18 @@ $useAppTeams = $config->getAppValue('arbeitszeitcheck', 'use_app_teams', '0') ==
                         <select id="format" 
                                 name="format" 
                                 class="form-select"
-                                aria-describedby="format-help">
+                                aria-describedby="<?php echo $isAdmin ? 'format-help format-help-datev' : 'format-help'; ?>">
                             <option value="csv"><?php p($l->t('CSV (for Excel or other programs)')); ?></option>
                             <option value="json"><?php p($l->t('JSON (for computer programs)')); ?></option>
                         </select>
                         <p id="format-help" class="form-help">
                             <?php p($l->t('Choose how you want to save the report. CSV works well with spreadsheet programs. JSON is best if another system needs to process the data.')); ?>
                         </p>
+                        <?php if ($isAdmin): ?>
+                        <p id="format-help-datev" class="form-help">
+                            <?php p($l->t('For payroll (DATEV) files, open Administration → Global settings and use the «Exports and reporting» section with your date range. This page offers CSV and JSON only.')); ?>
+                        </p>
+                        <?php endif; ?>
                     </div>
 
                     <div class="form-group" id="report-team-variant-group" style="display: none;" aria-labelledby="report-team-variant-label">
@@ -334,33 +315,30 @@ $useAppTeams = $config->getAppValue('arbeitszeitcheck', 'use_app_teams', '0') ==
                         </p>
                     </div>
                     
-                    <div class="card-actions">
-                        <button type="button" 
-                                id="btn-preview-report" 
-                                class="btn btn--secondary"
-                                aria-label="<?php p($l->t('Preview the report before downloading')); ?>"
-                                title="<?php p($l->t('Click to see what the report will look like before downloading it')); ?>">
+                    <div class="reports-form__actions">
+                        <button type="button"
+                                id="btn-preview-report"
+                                class="azc-btn azc-btn--secondary"
+                                aria-label="<?php p($l->t('Preview the report before downloading')); ?>">
                             <?php p($l->t('Preview')); ?>
                         </button>
-                        <button type="submit" 
-                                id="btn-generate-report" 
-                                class="btn btn--primary"
-                                aria-label="<?php p($l->t('Generate and download the report')); ?>"
-                                title="<?php p($l->t('Click to create the report and download it to your computer')); ?>">
+                        <button type="submit"
+                                id="btn-generate-report"
+                                class="azc-btn azc-btn--primary"
+                                aria-label="<?php p($l->t('Generate and download the report')); ?>">
                             <?php p($l->t('Generate and download')); ?>
                         </button>
                         <a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.page.index')); ?>"
-                           class="btn btn--secondary"
-                           aria-label="<?php p($l->t('Cancel and go back')); ?>"
-                           title="<?php p($l->t('Click to cancel and go back without generating a report')); ?>">
+                           class="azc-btn azc-btn--secondary"
+                           aria-label="<?php p($l->t('Cancel and go back')); ?>">
                             <?php p($l->t('Cancel')); ?>
                         </a>
                     </div>
                 </form>
-            </div>
+            </section>
 
-            <!-- Report Preview -->
-            <section id="report-preview" class="reports-section report-preview-section" style="display: none;" aria-labelledby="report-preview-heading">
+            <!-- Step 4: preview (shown after preview or generate) -->
+            <section id="report-preview" class="azc-card reports-step-card report-preview-section" hidden aria-labelledby="report-preview-heading">
                 <h3 id="report-preview-heading" class="reports-section__title" tabindex="-1"><?php p($l->t('Report Preview')); ?></h3>
                 <div id="report-preview-live" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
                 <div id="report-preview-content" class="report-preview-content">
@@ -368,10 +346,7 @@ $useAppTeams = $config->getAppValue('arbeitszeitcheck', 'use_app_teams', '0') ==
                 </div>
             </section>
             <?php endif; ?>
-        </section>
-    </div>
-</main>
-</div><!-- /#arbeitszeitcheck-app -->
+        </div>
 
 <?php include __DIR__ . '/common/main-ui-l10n.php'; ?>
 
@@ -441,4 +416,5 @@ $useAppTeams = $config->getAppValue('arbeitszeitcheck', 'use_app_teams', '0') ==
         compliance: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.export.compliance'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>
     };
 </script>
+<?php include __DIR__ . '/common/page-end.php'; ?>
 

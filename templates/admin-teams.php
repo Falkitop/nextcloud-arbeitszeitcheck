@@ -16,17 +16,10 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class);
 ?>
 
-<?php include __DIR__ . '/common/navigation.php'; ?>
+<?php include __DIR__ . '/common/page-start.php'; ?>
 
-<main id="app-content" role="main" aria-label="<?php p($l->t('Admin teams content')); ?>">
-    <div id="app-content-wrapper" class="admin-teams">
-        <header class="section section--teams-header" role="banner">
-            <h1 id="admin-teams-title" class="section__title"><?php p($l->t('Organization structure')); ?></h1>
-            <p id="admin-teams-desc" class="section__desc">
-                <?php p($l->t('Define teams, departments, or other organizational units in a flexible hierarchy. Assign members and managers. If enabled below, managers can approve absences and time corrections for their units.')); ?>
-            </p>
-        </header>
 
+        <div class="admin-teams">
         <!-- Use app teams toggle -->
         <section class="section section--config" aria-labelledby="teams-config-heading">
             <h2 id="teams-config-heading" class="section__heading"><?php p($l->t('Manager assignment')); ?></h2>
@@ -91,9 +84,8 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
             </div>
         </section>
     </div>
-</main>
-</div><!-- /#arbeitszeitcheck-app -->
-
 <div role="status" aria-live="polite" id="admin-teams-status" class="visually-hidden"></div>
 
 <?php include __DIR__ . '/common/teams-l10n.php'; ?>
+
+<?php include __DIR__ . '/common/page-end.php'; ?>

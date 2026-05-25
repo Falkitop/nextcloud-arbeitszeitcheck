@@ -526,6 +526,19 @@
 
     initialized = true;
 
+    // Nextcloud core sets `dialog { display: block }` — mount on <body> and
+    // guarantee a closed initial state (same pattern as admin vacation layers).
+    if (dlg.parentElement !== document.body) {
+      document.body.appendChild(dlg);
+    }
+    if (dlg.open) {
+      try {
+        dlg.close();
+      } catch (e) { /* noop */ }
+    }
+    dlg.removeAttribute('open');
+    cleanupDialogState(dlg);
+
     document.addEventListener('click', handleTriggerClick);
     document.addEventListener('click', handleCloseClick);
     document.addEventListener('click', handleRetryClick);

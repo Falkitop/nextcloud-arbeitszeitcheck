@@ -128,5 +128,54 @@ describe('ArbeitszeitCheckUtils', () => {
 
     fetchSpy.mockRestore()
   })
+
+  it('ajax surfaces session expiry on 412 with a stable message', async () => {
+    const u = window.ArbeitszeitCheckUtils
+    const showError = vi.fn()
+    window.ArbeitszeitCheckMessaging = { showError }
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 412,
+      json: async () => ({ error: 'CSRF check failed' })
+    })
+
+    const onError = vi.fn()
+    await u.ajax('/apps/arbeitszeitcheck/api/clock/status', { onError })
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(onError.mock.calls[0][0].status).toBe(412)
+    expect(onError.mock.calls[0][0].error).toContain('session expired')
+    expect(showError).toHaveBeenCalledTimes(1)
+
+    delete window.ArbeitszeitCheckMessaging
+    fetchSpy.mockRestore()
+  })
+
+  it('isConfirmAccepted accepts boolean true and confirmed objects', () => {
+    const u = window.ArbeitszeitCheckUtils
+    expect(u.isConfirmAccepted(true)).toBe(true)
+    expect(u.isConfirmAccepted({ confirmed: true, reason: 'ok' })).toBe(true)
+    expect(u.isConfirmAccepted(false)).toBe(false)
+    expect(u.isConfirmAccepted({ confirmed: false })).toBe(false)
+  })
+
+  it('confirmDialogReason returns trimmed reason or fallback', () => {
+    const u = window.ArbeitszeitCheckUtils
+    expect(u.confirmDialogReason({ confirmed: true, reason: '  audit  ' })).toBe('audit')
+    expect(u.confirmDialogReason(false, 'user_request')).toBe('user_request')
+  })
+
+  it('confirmDestructiveAction fails closed when dialog API is missing', async () => {
+    const u = window.ArbeitszeitCheckUtils
+    const showError = vi.fn()
+    window.ArbeitszeitCheckMessaging = { showError, announceAssertive: vi.fn() }
+    delete window.AzcComponents
+    delete window.ArbeitszeitCheckComponents
+
+    const result = await u.confirmDestructiveAction({ title: 'T', message: 'M' })
+    expect(result).toBeNull()
+    expect(showError).toHaveBeenCalledTimes(1)
+
+    delete window.ArbeitszeitCheckMessaging
+  })
 })
 

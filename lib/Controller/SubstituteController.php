@@ -17,6 +17,7 @@ use OCA\ArbeitszeitCheck\Service\AbsenceService;
 use OCA\ArbeitszeitCheck\Service\CSPService;
 use OCA\ArbeitszeitCheck\Db\AbsenceMapper;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
+use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Http;
@@ -37,14 +38,16 @@ use OCP\Util;
 class SubstituteController extends Controller
 {
 	use CSPTrait;
+	use PageShellTrait;
 
 	private AbsenceService $absenceService;
 	private AbsenceMapper $absenceMapper;
-	private IUserSession $userSession;
+	protected IUserSession $userSession;
 	private IUserManager $userManager;
-	private IURLGenerator $urlGenerator;
-	private IL10N $l10n;
-	private PermissionService $permissionService;
+	protected IURLGenerator $urlGenerator;
+	protected IL10N $l10n;
+	protected PermissionService $permissionService;
+	protected LocaleFormatService $localeFormat;
 
 	public function __construct(
 		string $appName,
@@ -55,6 +58,7 @@ class SubstituteController extends Controller
 		IUserManager $userManager,
 		IURLGenerator $urlGenerator,
 		CSPService $cspService,
+		LocaleFormatService $localeFormat,
 		IL10N $l10n,
 		PermissionService $permissionService
 	) {
@@ -64,9 +68,52 @@ class SubstituteController extends Controller
 		$this->userSession = $userSession;
 		$this->userManager = $userManager;
 		$this->urlGenerator = $urlGenerator;
+		$this->localeFormat = $localeFormat;
 		$this->l10n = $l10n;
 		$this->permissionService = $permissionService;
 		$this->setCspService($cspService);
+	}
+
+	/**
+	 * @return array{showSubstitutionLink: bool, showManagerLink: bool, showReportsLink: bool, showAdminNav: bool}
+	 */
+	private function getNavigationFlags(string $userId): array
+	{
+		$showSubstitutionLink = false;
+		try {
+			$pending = $this->absenceMapper->findSubstitutePendingForUser($userId, 1, 0);
+			$showSubstitutionLink = \is_array($pending) && \count($pending) > 0;
+		} catch (\Throwable $e) {
+			$showSubstitutionLink = false;
+		}
+
+		$canAccessManagerDashboard = $this->permissionService->canAccessManagerDashboard($userId);
+		$isAdmin = $this->permissionService->isAdmin($userId);
+
+		return [
+			'showSubstitutionLink' => $showSubstitutionLink,
+			'showManagerLink' => $canAccessManagerDashboard,
+			'showReportsLink' => $canAccessManagerDashboard || $isAdmin,
+			'showAdminNav' => $isAdmin,
+		];
+	}
+
+	/**
+	 * @return array{showSubstitutionLink: bool, showManagerLink: bool, showReportsLink: bool, showAdminNav: bool}
+	 */
+	private function getNavigationFlagsForSession(): array
+	{
+		$user = $this->userSession->getUser();
+		if ($user === null) {
+			return [
+				'showSubstitutionLink' => false,
+				'showManagerLink' => false,
+				'showReportsLink' => false,
+				'showAdminNav' => false,
+			];
+		}
+
+		return $this->getNavigationFlags($user->getUID());
 	}
 
 	private function getUserId(): string
@@ -156,23 +203,7 @@ class SubstituteController extends Controller
 	#[NoCSRFRequired]
 	public function index(): TemplateResponse
 	{
-		Util::addTranslations('arbeitszeitcheck');
-		Util::addStyle('arbeitszeitcheck', 'common/colors');
-		Util::addStyle('arbeitszeitcheck', 'common/typography');
-		Util::addStyle('arbeitszeitcheck', 'common/base');
-		Util::addStyle('arbeitszeitcheck', 'common/components');
-		Util::addStyle('arbeitszeitcheck', 'common/layout');
-		Util::addStyle('arbeitszeitcheck', 'common/utilities');
-		Util::addStyle('arbeitszeitcheck', 'common/accessibility');
-		Util::addStyle('arbeitszeitcheck', 'common/app-layout');
-		Util::addStyle('arbeitszeitcheck', 'common/responsive');
-		Util::addStyle('arbeitszeitcheck', 'navigation');
-		Util::addStyle('arbeitszeitcheck', 'arbeitszeitcheck-main');
-		Util::addScript('arbeitszeitcheck', 'common/utils');
-		Util::addScript('arbeitszeitcheck', 'common/time');
-		Util::addScript('arbeitszeitcheck', 'common/components');
-		Util::addScript('arbeitszeitcheck', 'common/messaging');
-		Util::addScript('arbeitszeitcheck', 'substitution-requests');
+		$this->registerFrontEndAssets('substitution-requests');
 
 		try {
 			$userId = $this->getUserId();
@@ -184,23 +215,31 @@ class SubstituteController extends Controller
 				$items[] = $summary;
 			}
 
-			$response = new TemplateResponse('arbeitszeitcheck', 'substitution-requests', [
+			$navFlags = $this->getNavigationFlags($userId);
+
+			$response = new TemplateResponse('arbeitszeitcheck', 'substitution-requests', $this->buildShellParams(
+				'substitution-requests',
+				$this->l10n->t('Substitution requests'),
+				$this->l10n->t('Review and respond to colleague coverage requests'),
+				$navFlags,
+			) + [
 				'requests' => $items,
-				'urlGenerator' => $this->urlGenerator,
-				'l' => $this->l10n,
-				// Navigation flags
-				'showSubstitutionLink' => \count($requests) > 0,
-				'showManagerLink' => $this->permissionService->canAccessManagerDashboard($userId),
-				'showReportsLink' => $this->permissionService->canAccessManagerDashboard($userId) || $this->permissionService->isAdmin($userId),
-				'showAdminNav' => $this->permissionService->isAdmin($userId),
 			]);
 			return $this->configureCSP($response);
 		} catch (\Throwable $e) {
-			$response = new TemplateResponse('arbeitszeitcheck', 'substitution-requests', [
+			$navFlags = $this->getNavigationFlagsForSession();
+			$user = $this->userSession->getUser();
+			$errorMessage = $user === null
+				? $this->l10n->t('User not authenticated')
+				: $this->getSafeErrorMessage($e);
+			$response = new TemplateResponse('arbeitszeitcheck', 'substitution-requests', $this->buildShellParams(
+				'substitution-requests',
+				$this->l10n->t('Substitution requests'),
+				$this->l10n->t('Review and respond to colleague coverage requests'),
+				$navFlags,
+			) + [
 				'requests' => [],
-				'urlGenerator' => $this->urlGenerator,
-				'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.'),
-				'l' => $this->l10n,
+				'error' => $errorMessage,
 			]);
 			return $this->configureCSP($response);
 		}

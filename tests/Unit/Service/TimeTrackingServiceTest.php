@@ -251,6 +251,8 @@ class TimeTrackingServiceTest extends TestCase {
 
 		$this->assertEquals('active', $result['status']);
 		$this->assertEquals(0.0, $result['working_today_hours']);
+		$this->assertIsBool($result['at_daily_maximum']);
+		$this->assertIsFloat($result['session_hours_on_calendar_today']);
 	}
 
 	/**
@@ -280,6 +282,8 @@ class TimeTrackingServiceTest extends TestCase {
 		$this->assertEquals('clocked_out', $result['status']);
 		$this->assertNull($result['current_entry']);
 		$this->assertEquals(0.0, $result['working_today_hours']);
+		$this->assertIsBool($result['at_daily_maximum']);
+		$this->assertSame(0.0, $result['session_hours_on_calendar_today']);
 	}
 
 	public function testClockInResumesPausedEntryWhenPausedEntryExists(): void

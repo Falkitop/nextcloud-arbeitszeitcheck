@@ -846,7 +846,7 @@
 
 		const api = cfg.apiUrl || {};
 		document.querySelectorAll('.btn-cancel-correction').forEach((btn) => {
-			btn.addEventListener('click', (e) => {
+			btn.addEventListener('click', async (e) => {
 				e.preventDefault();
 				e.stopPropagation();
 				const id = btn.getAttribute('data-entry-id');
@@ -855,7 +855,13 @@
 					return;
 				}
 				const confirmMsg = t('confirmCancelCorrection');
-				if (!window.confirm(confirmMsg)) {
+				const confirmed = await Utils.confirmDestructiveAction({
+					title: t('correctionWithdrawTitle', 'Withdraw correction'),
+					message: confirmMsg,
+					confirmLabel: t('correctionRemove', 'Withdraw'),
+					variant: 'destructive',
+				});
+				if (!confirmed) {
 					return;
 				}
 				Utils.ajax(url, {

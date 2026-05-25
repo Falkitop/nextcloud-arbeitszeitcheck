@@ -243,7 +243,17 @@ class GdprController extends Controller
 
 	/**
 	 * Delete all user data (GDPR Art. 17 - Right to erasure)
-	 * Note: This respects legal retention periods (2 years minimum for time records per German labor law)
+	 *
+	 * Server-side checks (the client also shows a destructive confirmDialog):
+	 *  - Authenticated session is required.
+	 *  - CSRF protection via the default Nextcloud requesttoken (no NoCSRFRequired).
+	 *  - Legal retention period (configurable, default 2 years per German labor law)
+	 *    is enforced server-side and cannot be bypassed by the caller.
+	 *  - Any reason text supplied by the client is recorded verbatim (truncated)
+	 *    in the audit log together with the IP / user agent for accountability.
+	 *
+	 * The controller responds with a deterministic summary so the UI can show
+	 * exactly which data was removed and which had to be retained.
 	 */
 	#[NoAdminRequired]
 	public function delete(): JSONResponse
@@ -259,6 +269,20 @@ class GdprController extends Controller
 
 			$userId = $user->getUID();
 			$now = new \DateTime();
+
+			// Capture the user-supplied reason (free-text) for the audit log. We never
+			// trust the client to enforce its presence; we only persist what was sent.
+			$rawReason = $this->request->getParam('reason', null);
+			if (!is_string($rawReason)) {
+				$rawReason = '';
+			}
+			$reason = trim($rawReason);
+			if ($reason === '') {
+				$reason = 'user_request';
+			}
+			if (mb_strlen($reason) > 500) {
+				$reason = mb_substr($reason, 0, 500);
+			}
 
 			// Use admin-configured retention period (default 2 years; German labor law minimum)
 			$retentionYears = max(1, min(10, (int)$this->config->getAppValue('arbeitszeitcheck', 'retention_period', '2')));
@@ -298,18 +322,20 @@ class GdprController extends Controller
 			// These are necessary for legal compliance and audit trails
 			// In a real implementation, these would have their own retention policies
 
-			// Create audit log entry for this deletion request
+			// Create audit log entry for this deletion request. Reason is captured
+			// for accountability; the AuditLog mapper already stamps IP + user-agent.
 			$this->auditLogMapper->logAction(
 				$userId,
 				'gdpr_data_deletion_request',
 				'user',
-				null, // entityId - not applicable for user-level deletion
-				null, // oldValues
+				null,
+				null,
 				[
 					'deleted_time_entries' => $deletedCount,
 					'retained_time_entries' => $retainedCount,
 					'retention_period_years' => $retentionYears,
-					'request_date' => $now->format('c')
+					'request_date' => $now->format('c'),
+					'reason' => $reason,
 				]
 			);
 

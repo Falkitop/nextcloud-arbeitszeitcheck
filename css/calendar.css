@@ -58,6 +58,10 @@
 }
 
 .btn-nav {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2, 0.5rem);
+	min-height: 44px;
 	background: var(--arbeitszeitcheck-color-background-hover, var(--color-background-hover, var(--arbeitszeitcheck-color-background-secondary)));
 	border: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
 	border-radius: var(--radius-base, 4px);
@@ -264,6 +268,29 @@
 	color: var(--arbeitszeitcheck-color-warning, var(--color-warning));
 	font-weight: 500;
 	text-transform: capitalize;
+}
+
+.calendar-day-absence-icons {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.15rem;
+	line-height: 1;
+}
+
+.calendar-day-absence-icons .azc-icon,
+.calendar-day-type-icon,
+.calendar-day-status-icon {
+	width: 0.85rem;
+	height: 0.85rem;
+	flex-shrink: 0;
+}
+
+.btn-close__icon,
+.btn-nav__icon-svg,
+.btn-nav__icon .azc-icon {
+	width: 1.125rem;
+	height: 1.125rem;
+	flex-shrink: 0;
 }
 
 .calendar-day-past-label,

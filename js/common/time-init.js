@@ -12,6 +12,25 @@
 (function (root) {
 	'use strict';
 
+	/**
+	 * @param {string} appId
+	 * @param {string} key
+	 * @returns {object|null}
+	 */
+	function loadAppInitialState(appId, key) {
+		try {
+			if (root.OCP?.InitialState && typeof root.OCP.InitialState.loadState === 'function') {
+				return root.OCP.InitialState.loadState(appId, key);
+			}
+			if (root.OC?.initialState && typeof root.OC.initialState.loadState === 'function') {
+				return root.OC.initialState.loadState(appId, key);
+			}
+		} catch (_) {
+			// Missing state — inline bootstrap in time-bootstrap.php covers this.
+		}
+		return null;
+	}
+
 	function applyBootstrap(cfg) {
 		if (!cfg || typeof cfg !== 'object') {
 			return;
@@ -30,13 +49,5 @@
 		}
 	}
 
-	try {
-		if (root.OC
-			&& root.OC.initialState
-			&& typeof root.OC.initialState.loadState === 'function') {
-			applyBootstrap(root.OC.initialState.loadState('arbeitszeitcheck', 'time'));
-		}
-	} catch (_) {
-		// InitialState unavailable — time.js will fall back to browser local TZ.
-	}
+	applyBootstrap(loadAppInitialState('arbeitszeitcheck', 'time'));
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use OCA\ArbeitszeitCheck\Service\FrontEndAssetService;
+
 /**
  * Personal settings template for arbeitszeitcheck app.
  *
@@ -22,16 +24,11 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
 $inAppSettingsUrl = $urlGenerator->linkToRoute('arbeitszeitcheck.page.settings');
 $inAppLandingUrl = $urlGenerator->linkToRoute('arbeitszeitcheck.page.index');
 
-\OCP\Util::addStyle('arbeitszeitcheck', 'common/colors');
-\OCP\Util::addStyle('arbeitszeitcheck', 'common/typography');
-\OCP\Util::addStyle('arbeitszeitcheck', 'common/base');
-\OCP\Util::addStyle('arbeitszeitcheck', 'common/components');
-\OCP\Util::addStyle('arbeitszeitcheck', 'common/utilities');
-\OCP\Util::addStyle('arbeitszeitcheck', 'common/accessibility');
+FrontEndAssetService::registerCore();
 ?>
 
 <section id="arbeitszeitcheck-personal-settings"
-	class="section"
+	class="section azc-nc-settings-panel"
 	aria-labelledby="azc-personal-settings-title">
 	<h2 id="azc-personal-settings-title"><?php p($l->t('ArbeitszeitCheck')); ?></h2>
 	<p class="settings-hint">

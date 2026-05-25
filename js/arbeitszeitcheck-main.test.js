@@ -20,6 +20,8 @@ beforeEach(async () => {
   // The IIFE in arbeitszeitcheck-main.js captures `window.OC` by reference at
   // import time, so we mutate that same object instead of replacing it.
   snapshot.OCDialogs = globalThis.OC ? globalThis.OC.dialogs : undefined
+  snapshot.AzcComponents = globalThis.window.AzcComponents
+  snapshot.ArbeitszeitCheckComponents = globalThis.window.ArbeitszeitCheckComponents
   snapshot.ArbeitszeitCheck = globalThis.window.ArbeitszeitCheck
   snapshot.ArbeitszeitCheckApp = globalThis.window.ArbeitszeitCheckApp
   vi.resetModules()
@@ -27,6 +29,8 @@ beforeEach(async () => {
   // Load the IIFE module which attaches `window.ArbeitszeitCheckApp`.
   // Set `page: 'none'` so init() does not try to wire up real DOM listeners.
   globalThis.window.ArbeitszeitCheck = { page: 'none' }
+  delete globalThis.window.AzcComponents
+  delete globalThis.window.ArbeitszeitCheckComponents
   await import('./arbeitszeitcheck-main.js')
 })
 
@@ -39,6 +43,8 @@ afterEach(() => {
     }
   }
   globalThis.window.ArbeitszeitCheck = snapshot.ArbeitszeitCheck
+  globalThis.window.AzcComponents = snapshot.AzcComponents
+  globalThis.window.ArbeitszeitCheckComponents = snapshot.ArbeitszeitCheckComponents
   globalThis.window.ArbeitszeitCheckApp = snapshot.ArbeitszeitCheckApp
 })
 
@@ -117,25 +123,43 @@ describe('ArbeitszeitCheck.confirmDestructiveMain', () => {
     expect(result).toBe(false)
   })
 
-  it('falls back to window.confirm when OC.dialogs is unavailable', async () => {
+  it('uses AzcComponents.confirmDialog when available', async () => {
+    const confirmDialog = vi.fn().mockResolvedValue(true)
+    globalThis.window.AzcComponents = { confirmDialog }
     delete globalThis.OC.dialogs
-    const spy = vi.spyOn(globalThis.window, 'confirm').mockReturnValue(true)
 
     const app = globalThis.window.ArbeitszeitCheckApp
     const result = await app.confirmDestructiveMain('Delete?', 'Confirm', {})
 
-    expect(spy).toHaveBeenCalledTimes(1)
+    expect(confirmDialog).toHaveBeenCalledTimes(1)
+    expect(confirmDialog).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Confirm',
+      message: 'Delete?',
+      variant: 'danger',
+    }))
     expect(result).toBe(true)
   })
 
-  it('falls back to window.confirm when OC.dialogs.confirmDestructive throws', async () => {
+  it('resolves to false when confirmDialog is unavailable and OC.dialogs is missing', async () => {
+    delete globalThis.window.AzcComponents
+    delete globalThis.window.ArbeitszeitCheckComponents
+    delete globalThis.OC.dialogs
+
+    const app = globalThis.window.ArbeitszeitCheckApp
+    const result = await app.confirmDestructiveMain('Delete?', 'Confirm', {})
+
+    expect(result).toBe(false)
+  })
+
+  it('resolves to false when OC.dialogs.confirmDestructive throws', async () => {
+    delete globalThis.window.AzcComponents
+    delete globalThis.window.ArbeitszeitCheckComponents
     globalThis.OC.dialogs = {
       confirmDestructive: () => {
         throw new Error('boom')
       },
       YES_NO_BUTTONS: 70,
     }
-    const spy = vi.spyOn(globalThis.window, 'confirm').mockReturnValue(true)
 
     const app = globalThis.window.ArbeitszeitCheckApp
     const result = await app.confirmDestructiveMain('Delete?', 'Confirm', {
@@ -143,7 +167,6 @@ describe('ArbeitszeitCheck.confirmDestructiveMain', () => {
       modal: true,
     })
 
-    expect(spy).toHaveBeenCalledTimes(1)
-    expect(result).toBe(true)
+    expect(result).toBe(false)
   })
 })

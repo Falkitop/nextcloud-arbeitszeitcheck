@@ -12,6 +12,23 @@
     const Validation = window.ArbeitszeitCheckValidation || {};
     const Messaging = window.ArbeitszeitCheckMessaging || {};
 
+    function setLiveMessage(liveRegion, message, type) {
+        if (!liveRegion) {
+            return;
+        }
+        liveRegion.textContent = message || '';
+        liveRegion.classList.remove('admin-settings-live--error', 'admin-settings-live--success');
+        if (type === 'error') {
+            liveRegion.classList.add('admin-settings-live--error');
+        } else if (type === 'success') {
+            liveRegion.classList.add('admin-settings-live--success');
+        }
+        if (message) {
+            const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            liveRegion.scrollIntoView({ block: 'nearest', behavior: prefersReduced ? 'auto' : 'smooth' });
+        }
+    }
+
     /**
      * Initialize settings page
      */
@@ -217,10 +234,19 @@
         const graceInput = Utils.$('#monthClosureGraceDaysAfterEom');
         formData.monthClosureGraceDaysAfterEom = graceInput ? int(graceInput.value, 0) : int(formData.monthClosureGraceDaysAfterEom, 0);
 
+        const liveRegion = Utils.$('#admin-settings-live');
+        const saveButton = Utils.$('#admin-settings-save');
+
         // Validate
-        if (!validateForm(formData)) {
+        if (!validateForm(formData, liveRegion)) {
             return;
         }
+
+        if (saveButton) {
+            saveButton.disabled = true;
+            saveButton.setAttribute('aria-busy', 'true');
+        }
+        setLiveMessage(liveRegion, '', null);
 
         // Submit (use server-generated URL for subpath compatibility)
         const apiUrl = (window.ArbeitszeitCheck && window.ArbeitszeitCheck.adminSettingsApiUrl) || '/apps/arbeitszeitcheck/api/admin/settings';
@@ -228,14 +254,28 @@
             method: 'POST',
             data: formData,
             onSuccess: function(data) {
+                if (saveButton) {
+                    saveButton.disabled = false;
+                    saveButton.removeAttribute('aria-busy');
+                }
                 if (data.success) {
-                    Messaging.showSuccess(data.message || window.ArbeitszeitCheck?.l10n?.settingsSavedSuccessfully || (window.t ? window.t('arbeitszeitcheck', 'Settings saved successfully') : 'Settings saved successfully'));
+                    const msg = data.message || window.ArbeitszeitCheck?.l10n?.settingsSavedSuccessfully || (window.t ? window.t('arbeitszeitcheck', 'Settings saved successfully') : 'Settings saved successfully');
+                    Messaging.showSuccess(msg);
+                    setLiveMessage(liveRegion, msg, 'success');
                 } else {
-                    Messaging.showError(data.error || window.ArbeitszeitCheck?.l10n?.failedToSaveSettings || (window.t ? window.t('arbeitszeitcheck', 'Failed to save settings') : 'Failed to save settings'));
+                    const msg = data.error || window.ArbeitszeitCheck?.l10n?.failedToSaveSettings || (window.t ? window.t('arbeitszeitcheck', 'Failed to save settings') : 'Failed to save settings');
+                    Messaging.showError(msg);
+                    setLiveMessage(liveRegion, msg, 'error');
                 }
             },
             onError: function(_error) {
-                Messaging.showError(window.ArbeitszeitCheck?.l10n?.errorSavingSettings || (window.t ? window.t('arbeitszeitcheck', 'An error occurred while saving settings') : 'An error occurred while saving settings'));
+                if (saveButton) {
+                    saveButton.disabled = false;
+                    saveButton.removeAttribute('aria-busy');
+                }
+                const msg = window.ArbeitszeitCheck?.l10n?.errorSavingSettings || (window.t ? window.t('arbeitszeitcheck', 'An error occurred while saving settings') : 'An error occurred while saving settings');
+                Messaging.showError(msg);
+                setLiveMessage(liveRegion, msg, 'error');
             }
         });
     }
@@ -361,7 +401,7 @@
     /**
      * Admin: reopen a finalized calendar month for an employee (revision-safe closure).
      */
-    function handleMonthReopen() {
+    async function handleMonthReopen() {
         const userEl = Utils.$('#monthClosureReopenUserId');
         const yearEl = Utils.$('#monthClosureReopenYear');
         const monthEl = Utils.$('#monthClosureReopenMonth');
@@ -383,7 +423,13 @@
             return;
         }
         const confirmMsg = l10n.monthReopenConfirm || 'Reopen this finalized month?';
-        if (typeof window.confirm === 'function' && !window.confirm(confirmMsg)) {
+        const confirmed = await Utils.confirmDestructiveAction({
+            title: l10n.monthReopenConfirmTitle || 'Reopen month',
+            message: confirmMsg,
+            confirmLabel: l10n.monthReopenConfirmAction || 'Reopen',
+            variant: 'destructive',
+        });
+        if (!confirmed) {
             return;
         }
         const url = window.ArbeitszeitCheck && window.ArbeitszeitCheck.monthClosureReopenUrl;
@@ -440,55 +486,75 @@
     /**
      * Validate form data
      */
-    function validateForm(data) {
-        if (data.maxDailyHours < 1 || data.maxDailyHours > 24) {
-            const msg = window.ArbeitszeitCheck?.l10n?.maxDailyHoursRange || (window.t && window.t('arbeitszeitcheck', 'Maximum daily hours must be between 1 and 24')) || 'Maximum daily hours must be between 1 and 24';
+    function validateForm(data, liveRegion) {
+        const fail = function (msg, focusId) {
             Messaging.showError(msg);
+            setLiveMessage(liveRegion, msg, 'error');
+            if (focusId) {
+                const el = document.getElementById(focusId);
+                if (el) {
+                    el.focus();
+                }
+            }
             return false;
+        };
+
+        if (data.maxDailyHours < 1 || data.maxDailyHours > 24) {
+            return fail(
+                window.ArbeitszeitCheck?.l10n?.maxDailyHoursRange || (window.t && window.t('arbeitszeitcheck', 'Maximum daily hours must be between 1 and 24')) || 'Maximum daily hours must be between 1 and 24',
+                'maxDailyHours'
+            );
         }
 
         if (data.minRestPeriod < 1 || data.minRestPeriod > 24) {
-            const msg = window.ArbeitszeitCheck?.l10n?.minRestPeriodRange || (window.t && window.t('arbeitszeitcheck', 'Minimum rest period must be between 1 and 24 hours')) || 'Minimum rest period must be between 1 and 24 hours';
-            Messaging.showError(msg);
-            return false;
+            return fail(
+                window.ArbeitszeitCheck?.l10n?.minRestPeriodRange || (window.t && window.t('arbeitszeitcheck', 'Minimum rest period must be between 1 and 24 hours')) || 'Minimum rest period must be between 1 and 24 hours',
+                'minRestPeriod'
+            );
         }
 
         if (data.defaultWorkingHours < 1 || data.defaultWorkingHours > 24) {
-            const msg = window.ArbeitszeitCheck?.l10n?.defaultWorkingHoursRange || (window.t && window.t('arbeitszeitcheck', 'Default working hours must be between 1 and 24')) || 'Default working hours must be between 1 and 24';
-            Messaging.showError(msg);
-            return false;
+            return fail(
+                window.ArbeitszeitCheck?.l10n?.defaultWorkingHoursRange || (window.t && window.t('arbeitszeitcheck', 'Default working hours must be between 1 and 24')) || 'Default working hours must be between 1 and 24',
+                'defaultWorkingHours'
+            );
         }
 
         if (data.retentionPeriod < 1 || data.retentionPeriod > 10) {
-            const msg = window.ArbeitszeitCheck?.l10n?.retentionPeriodRange || (window.t && window.t('arbeitszeitcheck', 'Retention period must be between 1 and 10 years')) || 'Retention period must be between 1 and 10 years';
-            Messaging.showError(msg);
-            return false;
+            return fail(
+                window.ArbeitszeitCheck?.l10n?.retentionPeriodRange || (window.t && window.t('arbeitszeitcheck', 'Retention period must be between 1 and 10 years')) || 'Retention period must be between 1 and 10 years',
+                'retentionPeriod'
+            );
         }
 
         if (data.vacationCarryoverExpiryMonth < 1 || data.vacationCarryoverExpiryMonth > 12) {
-            const msg = window.ArbeitszeitCheck?.l10n?.carryoverMonthRange || (window.t && window.t('arbeitszeitcheck', 'Carryover expiry month must be between 1 and 12')) || 'Carryover expiry month must be between 1 and 12';
-            Messaging.showError(msg);
-            return false;
+            return fail(
+                window.ArbeitszeitCheck?.l10n?.carryoverMonthRange || (window.t && window.t('arbeitszeitcheck', 'Carryover expiry month must be between 1 and 12')) || 'Carryover expiry month must be between 1 and 12',
+                'vacationCarryoverExpiryMonth'
+            );
         }
         if (data.vacationCarryoverExpiryDay < 1 || data.vacationCarryoverExpiryDay > 31) {
-            const msg = window.ArbeitszeitCheck?.l10n?.carryoverDayRange || (window.t && window.t('arbeitszeitcheck', 'Carryover expiry day must be between 1 and 31')) || 'Carryover expiry day must be between 1 and 31';
-            Messaging.showError(msg);
-            return false;
+            return fail(
+                window.ArbeitszeitCheck?.l10n?.carryoverDayRange || (window.t && window.t('arbeitszeitcheck', 'Carryover expiry day must be between 1 and 31')) || 'Carryover expiry day must be between 1 and 31',
+                'vacationCarryoverExpiryDay'
+            );
         }
 
         if (data.monthClosureGraceDaysAfterEom < 0 || data.monthClosureGraceDaysAfterEom > 90) {
-            const msg = window.ArbeitszeitCheck?.l10n?.monthClosureGraceDaysRange || (window.t && window.t('arbeitszeitcheck', 'Grace days after month end must be between 0 and 90')) || 'Grace days after month end must be between 0 and 90';
-            Messaging.showError(msg);
-            return false;
+            return fail(
+                window.ArbeitszeitCheck?.l10n?.monthClosureGraceDaysRange || (window.t && window.t('arbeitszeitcheck', 'Grace days after month end must be between 0 and 90')) || 'Grace days after month end must be between 0 and 90',
+                'monthClosureGraceDaysAfterEom'
+            );
         }
 
         const capRaw = data.vacationCarryoverMaxDays;
         if (capRaw !== undefined && capRaw !== null && String(capRaw).trim() !== '') {
             const cap = parseFloat(String(capRaw).replace(',', '.'));
             if (!Number.isFinite(cap) || cap < 0 || cap > 366) {
-                const msg = window.ArbeitszeitCheck?.l10n?.maxCarryoverDaysRange || (window.t && window.t('arbeitszeitcheck', 'Maximum carryover days must be empty (unlimited) or between 0 and 366')) || 'Maximum carryover days must be empty (unlimited) or between 0 and 366';
-                Messaging.showError(msg);
-                return false;
+                return fail(
+                    window.ArbeitszeitCheck?.l10n?.maxCarryoverDaysRange || (window.t && window.t('arbeitszeitcheck', 'Maximum carryover days must be empty (unlimited) or between 0 and 366')) || 'Maximum carryover days must be empty (unlimited) or between 0 and 366',
+                    'vacationCarryoverMaxDays'
+                );
             }
         }
 

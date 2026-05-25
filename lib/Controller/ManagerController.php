@@ -35,6 +35,7 @@ use OCA\ArbeitszeitCheck\Exception\MonthFinalizedException;
 use OCA\ArbeitszeitCheck\Service\AppLocalNaiveDateTimeNormalizer;
 use OCA\ArbeitszeitCheck\Service\TimeZoneService;
 use OCA\ArbeitszeitCheck\Service\TimeEntryCorrectionService;
+use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
 use OCA\ArbeitszeitCheck\Constants;
 use OCA\ArbeitszeitCheck\Support\TimeEntryClockPayloadBuilder;
 use OCP\AppFramework\Controller;
@@ -59,17 +60,19 @@ use OCP\Util;
 class ManagerController extends Controller
 {
 	use CSPTrait;
+	use PageShellTrait;
 
 	private AbsenceService $absenceService;
 	private TimeTrackingService $timeTrackingService;
 	private ComplianceService $complianceService;
 	private AbsenceMapper $absenceMapper;
 	private TeamResolverService $teamResolver;
-	private PermissionService $permissionService;
+	protected PermissionService $permissionService;
 	private TeamMapper $teamMapper;
-	private IUserSession $userSession;
+	protected IUserSession $userSession;
 	private IUserManager $userManager;
-	private IL10N $l10n;
+	protected IL10N $l10n;
+	protected LocaleFormatService $localeFormat;
 	private TeamManagerMapper $teamManagerMapper;
 	private OvertimeService $overtimeService;
 	private OvertimeDisplayService $overtimeDisplayService;
@@ -78,7 +81,7 @@ class ManagerController extends Controller
 	private AuditLogMapper $auditLogMapper;
 	private NotificationService $notificationService;
 	private TimeEntryMapper $timeEntryMapper;
-	private IURLGenerator $urlGenerator;
+	protected IURLGenerator $urlGenerator;
 	private IConfig $config;
 	private MonthClosureGuard $monthClosureGuard;
 	private MonthClosureService $monthClosureService;
@@ -112,7 +115,8 @@ class ManagerController extends Controller
 		MonthClosureGuard $monthClosureGuard,
 		MonthClosureService $monthClosureService,
 		TimeZoneService $timeZoneService,
-		TimeEntryCorrectionService $correctionService
+		TimeEntryCorrectionService $correctionService,
+		LocaleFormatService $localeFormat,
 	) {
 		parent::__construct($appName, $request);
 		$this->absenceService = $absenceService;
@@ -139,7 +143,72 @@ class ManagerController extends Controller
 		$this->monthClosureService = $monthClosureService;
 		$this->timeZoneService = $timeZoneService;
 		$this->correctionService = $correctionService;
+		$this->localeFormat = $localeFormat;
 		$this->setCspService($cspService);
+	}
+
+	/**
+	 * @return array{showSubstitutionLink: bool, showManagerLink: bool, showReportsLink: bool, showAdminNav: bool}
+	 */
+	private function getNavigationFlags(string $userId): array
+	{
+		$showSubstitutionLink = false;
+		$showManagerLink = false;
+		$showReportsLink = false;
+		$showAdminNav = false;
+
+		try {
+			$pending = $this->absenceMapper->findSubstitutePendingForUser($userId, 1, 0);
+			$showSubstitutionLink = \is_array($pending) && \count($pending) > 0;
+		} catch (\Throwable $e) {
+			$showSubstitutionLink = false;
+		}
+
+		try {
+			$canAccessManagerDashboard = $this->permissionService->canAccessManagerDashboard($userId);
+			$isAdmin = $this->permissionService->isAdmin($userId);
+			$showManagerLink = $canAccessManagerDashboard;
+			$showReportsLink = $canAccessManagerDashboard || $isAdmin;
+			$showAdminNav = $isAdmin;
+		} catch (\Throwable $e) {
+			$showManagerLink = false;
+			$showReportsLink = false;
+			$showAdminNav = false;
+		}
+
+		return [
+			'showSubstitutionLink' => $showSubstitutionLink,
+			'showManagerLink' => $showManagerLink,
+			'showReportsLink' => $showReportsLink,
+			'showAdminNav' => $showAdminNav,
+		];
+	}
+
+	/**
+	 * @return array{showSubstitutionLink: bool, showManagerLink: bool, showReportsLink: bool, showAdminNav: bool}
+	 */
+	private function getNavigationFlagsForSession(): array
+	{
+		$user = $this->userSession->getUser();
+		if ($user === null) {
+			return [
+				'showSubstitutionLink' => false,
+				'showManagerLink' => false,
+				'showReportsLink' => false,
+				'showAdminNav' => false,
+			];
+		}
+
+		return $this->getNavigationFlags($user->getUID());
+	}
+
+	/**
+	 * @param array<string, mixed> $navFlags
+	 * @return array<string, mixed>
+	 */
+	private function buildManagerShellParams(string $pageId, string $title, string $help, array $navFlags): array
+	{
+		return $this->buildShellParams($pageId, $title, $help, $navFlags, $this->l10n->t('Manager'));
 	}
 
 	/**
@@ -402,30 +471,8 @@ class ManagerController extends Controller
 	#[NoCSRFRequired]
 	public function dashboard(): TemplateResponse|\OCP\AppFramework\Http\RedirectResponse
 	{
-		Util::addTranslations('arbeitszeitcheck');
-		
-		// Add common CSS files (including colors, typography for consistent fonts across all views)
-		Util::addStyle('arbeitszeitcheck', 'common/colors');
-		Util::addStyle('arbeitszeitcheck', 'common/typography');
-		Util::addStyle('arbeitszeitcheck', 'common/base');
-		Util::addStyle('arbeitszeitcheck', 'common/components');
-		Util::addStyle('arbeitszeitcheck', 'common/layout');
-		Util::addStyle('arbeitszeitcheck', 'common/utilities');
-		Util::addStyle('arbeitszeitcheck', 'common/accessibility');
-		Util::addStyle('arbeitszeitcheck', 'common/app-layout');
-		Util::addStyle('arbeitszeitcheck', 'common/responsive');
-		Util::addStyle('arbeitszeitcheck', 'navigation');
-		Util::addStyle('arbeitszeitcheck', 'arbeitszeitcheck-main');
-		Util::addStyle('arbeitszeitcheck', 'manager-dashboard');
-		Util::addStyle('arbeitszeitcheck', 'time-entry-correction');
-		
-		// Add common JavaScript files
-		Util::addScript('arbeitszeitcheck', 'common/utils');
-		Util::addScript('arbeitszeitcheck', 'common/time');
-		Util::addScript('arbeitszeitcheck', 'common/components');
-		Util::addScript('arbeitszeitcheck', 'common/messaging');
-		Util::addScript('arbeitszeitcheck', 'manager-dashboard');
-		
+		$this->registerFrontEndAssets('manager-dashboard', 'manager-dashboard', ['time-entry-correction']);
+
 		try {
 			$managerId = $this->getUserId();
 
@@ -480,18 +527,17 @@ class ManagerController extends Controller
 				$showSubstitutionLink = false;
 			}
 
-			$isAdmin = $this->permissionService->isAdmin($managerId);
+			$navFlags = $this->getNavigationFlags($managerId);
 
-			$response = new TemplateResponse('arbeitszeitcheck', 'manager-dashboard', [
+			$response = new TemplateResponse('arbeitszeitcheck', 'manager-dashboard', $this->buildManagerShellParams(
+				'manager-dashboard',
+				$this->l10n->t('Manager Dashboard'),
+				$this->l10n->t('See how your team is doing with time tracking and check for any problems'),
+				$navFlags,
+			) + [
 				'teamStats' => $teamStats,
 				'teamMembers' => $teamMembers,
-				'showManagerLink' => true,
-				'showSubstitutionLink' => $showSubstitutionLink,
-				'showReportsLink' => true,
-				'showAdminNav' => $isAdmin,
 				'monthClosureEnabled' => $this->monthClosureEnabledParam(),
-				'urlGenerator' => $this->urlGenerator,
-				'l' => $this->l10n,
 			]);
 			return $this->configureCSP($response);
 		} catch (\Throwable $e) {
@@ -499,7 +545,13 @@ class ManagerController extends Controller
 				'Error in ManagerController::dashboard',
 				['exception' => $e]
 			);
-			$response = new TemplateResponse('arbeitszeitcheck', 'manager-dashboard', [
+			$navFlags = $this->getNavigationFlagsForSession();
+			$response = new TemplateResponse('arbeitszeitcheck', 'manager-dashboard', $this->buildManagerShellParams(
+				'manager-dashboard',
+				$this->l10n->t('Manager Dashboard'),
+				$this->l10n->t('See how your team is doing with time tracking and check for any problems'),
+				$navFlags,
+			) + [
 				'teamStats' => [
 					'total_members' => 0,
 					'active_today' => 0,
@@ -507,14 +559,8 @@ class ManagerController extends Controller
 					'pending_absences' => 0
 				],
 				'teamMembers' => [],
-				'showManagerLink' => true,
-				'showSubstitutionLink' => false,
-				'showReportsLink' => true,
-				'showAdminNav' => false,
 				'monthClosureEnabled' => $this->monthClosureEnabledParam(),
 				'error' => $this->l10n->t('An internal error occurred. Please contact your administrator.'),
-				'urlGenerator' => $this->urlGenerator,
-				'l' => $this->l10n,
 			]);
 			return $this->configureCSP($response);
 		}
@@ -524,29 +570,10 @@ class ManagerController extends Controller
 	#[NoCSRFRequired]
 	public function employeeTimeEntriesPage(): TemplateResponse|\OCP\AppFramework\Http\RedirectResponse
 	{
-		Util::addTranslations('arbeitszeitcheck');
-
-		Util::addStyle('arbeitszeitcheck', 'common/colors');
-		Util::addStyle('arbeitszeitcheck', 'common/typography');
-		Util::addStyle('arbeitszeitcheck', 'common/base');
-		Util::addStyle('arbeitszeitcheck', 'common/components');
-		Util::addStyle('arbeitszeitcheck', 'common/layout');
-		Util::addStyle('arbeitszeitcheck', 'common/utilities');
-		Util::addStyle('arbeitszeitcheck', 'common/accessibility');
-		Util::addStyle('arbeitszeitcheck', 'common/app-layout');
-		Util::addStyle('arbeitszeitcheck', 'common/responsive');
-		Util::addStyle('arbeitszeitcheck', 'navigation');
-		Util::addStyle('arbeitszeitcheck', 'manager-time-entries');
-		Util::addStyle('arbeitszeitcheck', 'time-entry-correction');
-
-		Util::addScript('arbeitszeitcheck', 'common/utils');
-		Util::addScript('arbeitszeitcheck', 'common/time');
-		Util::addScript('arbeitszeitcheck', 'common/messaging');
-		Util::addScript('arbeitszeitcheck', 'common/components');
+		$this->registerFrontEndAssets('manager-time-entries', 'manager-time-entries', ['time-entry-correction']);
 		Util::addScript('arbeitszeitcheck', 'common/datepicker');
 		Util::addScript('arbeitszeitcheck', 'common/time-entry-clock-form');
 		Util::addScript('arbeitszeitcheck', 'manager-correction-dialog');
-		Util::addScript('arbeitszeitcheck', 'manager-time-entries');
 
 		try {
 			$actorUserId = $this->getUserId();
@@ -563,17 +590,17 @@ class ManagerController extends Controller
 				$showSubstitutionLink = false;
 			}
 
-			$isAdmin = $this->permissionService->isAdmin($actorUserId);
+			$navFlags = $this->getNavigationFlags($actorUserId);
 			$response = new TemplateResponse('arbeitszeitcheck', 'manager-time-entries', array_merge(
+				$this->buildManagerShellParams(
+					'manager-time-entries',
+					$this->l10n->t('Employee time entries'),
+					$this->l10n->t('View your employees\' time entries directly in the app. Start by selecting a date range and optionally one person.'),
+					$navFlags,
+				),
 				$this->managerEmployeeListTemplateParams('time-entries'),
 				[
-					'showManagerLink' => true,
-					'showSubstitutionLink' => $showSubstitutionLink,
-					'showReportsLink' => true,
-					'showAdminNav' => $isAdmin,
 					'monthClosureEnabled' => $this->monthClosureEnabledParam(),
-					'urlGenerator' => $this->urlGenerator,
-					'l' => $this->l10n,
 				]
 			));
 			return $this->configureCSP($response);
@@ -582,15 +609,15 @@ class ManagerController extends Controller
 				'Error in ManagerController::employeeTimeEntriesPage',
 				['exception' => $e]
 			);
-			$response = new TemplateResponse('arbeitszeitcheck', 'manager-time-entries', [
-				'showManagerLink' => true,
-				'showSubstitutionLink' => false,
-				'showReportsLink' => true,
-				'showAdminNav' => false,
+			$navFlags = $this->getNavigationFlagsForSession();
+			$response = new TemplateResponse('arbeitszeitcheck', 'manager-time-entries', $this->buildManagerShellParams(
+				'manager-time-entries',
+				$this->l10n->t('Employee time entries'),
+				$this->l10n->t('View your employees\' time entries directly in the app. Start by selecting a date range and optionally one person.'),
+				$navFlags,
+			) + [
 				'monthClosureEnabled' => $this->monthClosureEnabledParam(),
 				'error' => $this->l10n->t('An internal error occurred. Please contact your administrator.'),
-				'urlGenerator' => $this->urlGenerator,
-				'l' => $this->l10n,
 			]);
 			return $this->configureCSP($response);
 		}
@@ -600,25 +627,8 @@ class ManagerController extends Controller
 	#[NoCSRFRequired]
 	public function employeeAbsencesPage(): TemplateResponse|\OCP\AppFramework\Http\RedirectResponse
 	{
-		Util::addTranslations('arbeitszeitcheck');
-
-		Util::addStyle('arbeitszeitcheck', 'common/colors');
-		Util::addStyle('arbeitszeitcheck', 'common/typography');
-		Util::addStyle('arbeitszeitcheck', 'common/base');
-		Util::addStyle('arbeitszeitcheck', 'common/components');
-		Util::addStyle('arbeitszeitcheck', 'common/layout');
-		Util::addStyle('arbeitszeitcheck', 'common/utilities');
-		Util::addStyle('arbeitszeitcheck', 'common/accessibility');
-		Util::addStyle('arbeitszeitcheck', 'common/app-layout');
-		Util::addStyle('arbeitszeitcheck', 'common/responsive');
-		Util::addStyle('arbeitszeitcheck', 'navigation');
-		Util::addStyle('arbeitszeitcheck', 'manager-time-entries');
-
-		Util::addScript('arbeitszeitcheck', 'common/utils');
-		Util::addScript('arbeitszeitcheck', 'common/time');
-		Util::addScript('arbeitszeitcheck', 'common/messaging');
+		$this->registerFrontEndAssets('manager-absences', 'manager-time-entries');
 		Util::addScript('arbeitszeitcheck', 'common/datepicker');
-		Util::addScript('arbeitszeitcheck', 'manager-absences');
 
 		try {
 			$actorUserId = $this->getUserId();
@@ -635,17 +645,17 @@ class ManagerController extends Controller
 				$showSubstitutionLink = false;
 			}
 
-			$isAdmin = $this->permissionService->isAdmin($actorUserId);
+			$navFlags = $this->getNavigationFlags($actorUserId);
 			$response = new TemplateResponse('arbeitszeitcheck', 'manager-absences', array_merge(
+				$this->buildManagerShellParams(
+					'manager-absences',
+					$this->l10n->t('Employee absences'),
+					$this->l10n->t('Review and manage absence requests for employees in your scope.'),
+					$navFlags,
+				),
 				$this->managerEmployeeListTemplateParams('absences'),
 				[
-					'showManagerLink' => true,
-					'showSubstitutionLink' => $showSubstitutionLink,
-					'showReportsLink' => true,
-					'showAdminNav' => $isAdmin,
 					'monthClosureEnabled' => $this->monthClosureEnabledParam(),
-					'urlGenerator' => $this->urlGenerator,
-					'l' => $this->l10n,
 				]
 			));
 			return $this->configureCSP($response);
@@ -654,15 +664,15 @@ class ManagerController extends Controller
 				'Error in ManagerController::employeeAbsencesPage',
 				['exception' => $e]
 			);
-			$response = new TemplateResponse('arbeitszeitcheck', 'manager-absences', [
-				'showManagerLink' => true,
-				'showSubstitutionLink' => false,
-				'showReportsLink' => true,
-				'showAdminNav' => false,
+			$navFlags = $this->getNavigationFlagsForSession();
+			$response = new TemplateResponse('arbeitszeitcheck', 'manager-absences', $this->buildManagerShellParams(
+				'manager-absences',
+				$this->l10n->t('Employee absences'),
+				$this->l10n->t('Review and manage absence requests for employees in your scope.'),
+				$navFlags,
+			) + [
 				'monthClosureEnabled' => $this->monthClosureEnabledParam(),
 				'error' => $this->l10n->t('An internal error occurred. Please contact your administrator.'),
-				'urlGenerator' => $this->urlGenerator,
-				'l' => $this->l10n,
 			]);
 			return $this->configureCSP($response);
 		}
@@ -676,25 +686,7 @@ class ManagerController extends Controller
 			return new \OCP\AppFramework\Http\RedirectResponse($this->urlGenerator->linkToRoute('arbeitszeitcheck.page.index'));
 		}
 
-		Util::addTranslations('arbeitszeitcheck');
-
-		Util::addStyle('arbeitszeitcheck', 'common/colors');
-		Util::addStyle('arbeitszeitcheck', 'common/typography');
-		Util::addStyle('arbeitszeitcheck', 'common/base');
-		Util::addStyle('arbeitszeitcheck', 'common/components');
-		Util::addStyle('arbeitszeitcheck', 'common/layout');
-		Util::addStyle('arbeitszeitcheck', 'common/utilities');
-		Util::addStyle('arbeitszeitcheck', 'common/accessibility');
-		Util::addStyle('arbeitszeitcheck', 'common/app-layout');
-		Util::addStyle('arbeitszeitcheck', 'common/responsive');
-		Util::addStyle('arbeitszeitcheck', 'navigation');
-		Util::addStyle('arbeitszeitcheck', 'arbeitszeitcheck-main');
-		Util::addStyle('arbeitszeitcheck', 'manager-month-closures');
-
-		Util::addScript('arbeitszeitcheck', 'common/utils');
-		Util::addScript('arbeitszeitcheck', 'common/time');
-		Util::addScript('arbeitszeitcheck', 'common/messaging');
-		Util::addScript('arbeitszeitcheck', 'manager-month-closures');
+		$this->registerFrontEndAssets('manager-month-closures', 'manager-month-closures');
 
 		try {
 			$actorUserId = $this->getUserId();
@@ -702,28 +694,20 @@ class ManagerController extends Controller
 				return new \OCP\AppFramework\Http\RedirectResponse($this->urlGenerator->linkToRoute('arbeitszeitcheck.page.index'));
 			}
 
-			$showSubstitutionLink = false;
-			try {
-				$pending = $this->absenceMapper->findSubstitutePendingForUser($actorUserId, 1, 0);
-				$showSubstitutionLink = \is_array($pending) && \count($pending) > 0;
-			} catch (\Throwable $e) {
-				$showSubstitutionLink = false;
-			}
-
 			$isAdmin = $this->permissionService->isAdmin($actorUserId);
+			$navFlags = $this->getNavigationFlags($actorUserId);
 
-			$response = new TemplateResponse('arbeitszeitcheck', 'manager-month-closures', [
-				'showManagerLink' => true,
-				'showSubstitutionLink' => $showSubstitutionLink,
-				'showReportsLink' => true,
-				'showAdminNav' => $isAdmin,
+			$response = new TemplateResponse('arbeitszeitcheck', 'manager-month-closures', $this->buildManagerShellParams(
+				'manager-month-closures',
+				$this->l10n->t('Revision PDFs (month closure)'),
+				$this->l10n->t('Pick a month that already has sealed data, then download the same revision-secure PDF for each person you are allowed to access.'),
+				$navFlags,
+			) + [
 				'monthClosureEnabled' => $this->monthClosureEnabledParam(),
 				'isAdmin' => $isAdmin,
 				'revisionPdfAvailableMonthsUrl' => $this->urlGenerator->linkToRoute('arbeitszeitcheck.manager.revisionPdfAvailableMonths'),
 				'revisionPdfUsersForMonthUrl' => $this->urlGenerator->linkToRoute('arbeitszeitcheck.manager.revisionPdfUsersForMonth'),
 				'pdfUrlBase' => $this->urlGenerator->linkToRoute('arbeitszeitcheck.month_closure.pdf'),
-				'urlGenerator' => $this->urlGenerator,
-				'l' => $this->l10n,
 			]);
 
 			return $this->configureCSP($response);
@@ -732,19 +716,19 @@ class ManagerController extends Controller
 				'Error in ManagerController::monthClosuresPage',
 				['exception' => $e]
 			);
-			$response = new TemplateResponse('arbeitszeitcheck', 'manager-month-closures', [
-				'showManagerLink' => true,
-				'showSubstitutionLink' => false,
-				'showReportsLink' => true,
-				'showAdminNav' => false,
+			$navFlags = $this->getNavigationFlagsForSession();
+			$response = new TemplateResponse('arbeitszeitcheck', 'manager-month-closures', $this->buildManagerShellParams(
+				'manager-month-closures',
+				$this->l10n->t('Revision PDFs (month closure)'),
+				$this->l10n->t('Pick a month that already has sealed data, then download the same revision-secure PDF for each person you are allowed to access.'),
+				$navFlags,
+			) + [
 				'monthClosureEnabled' => $this->monthClosureEnabledParam(),
 				'isAdmin' => false,
 				'revisionPdfAvailableMonthsUrl' => '',
 				'revisionPdfUsersForMonthUrl' => '',
 				'pdfUrlBase' => '',
 				'error' => $this->l10n->t('An internal error occurred. Please contact your administrator.'),
-				'urlGenerator' => $this->urlGenerator,
-				'l' => $this->l10n,
 			]);
 
 			return $this->configureCSP($response);

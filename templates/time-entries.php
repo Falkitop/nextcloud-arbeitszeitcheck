@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use OCA\ArbeitszeitCheck\Service\IconCatalog;
+
 /**
  * Time Entries template for arbeitszeitcheck app
  *
@@ -9,38 +11,10 @@ declare(strict_types=1);
  * @license AGPL-3.0-or-later
  */
 
-use OCP\Util;
-
 /** @var array $_ */
 /** @var \OCP\IL10N $l */
 
-// Add common + page-specific styles and scripts
-Util::addTranslations('arbeitszeitcheck');
-Util::addStyle('arbeitszeitcheck', 'common/colors');
-Util::addStyle('arbeitszeitcheck', 'common/typography');
-Util::addStyle('arbeitszeitcheck', 'common/base');
-Util::addStyle('arbeitszeitcheck', 'common/components');
-Util::addStyle('arbeitszeitcheck', 'common/layout');
-Util::addStyle('arbeitszeitcheck', 'common/app-layout');
-Util::addStyle('arbeitszeitcheck', 'common/utilities');
-Util::addStyle('arbeitszeitcheck', 'common/responsive');
-Util::addStyle('arbeitszeitcheck', 'common/accessibility');
-Util::addStyle('arbeitszeitcheck', 'navigation');
-Util::addStyle('arbeitszeitcheck', 'time-entries');
-Util::addStyle('arbeitszeitcheck', 'time-entry-correction');
-Util::addStyle('arbeitszeitcheck', 'time-entry-form-accessibility');
-Util::addScript('arbeitszeitcheck', 'common/utils');
-Util::addScript('arbeitszeitcheck', 'common/time');
-Util::addScript('arbeitszeitcheck', 'common/messaging');
-Util::addScript('arbeitszeitcheck', 'common/components');
-Util::addScript('arbeitszeitcheck', 'common/datepicker');
-Util::addScript('arbeitszeitcheck', 'common/validation');
-Util::addScript('arbeitszeitcheck', 'time-entry-form-accessibility');
-Util::addScript('arbeitszeitcheck', 'time-entry-correction');
-Util::addScript('arbeitszeitcheck', 'arbeitszeitcheck-main');
-if (!empty($_['monthClosureEnabled'])) {
-    Util::addScript('arbeitszeitcheck', 'month-closure');
-}
+// Assets registered by PageController / TimeEntryController
 
 $entries = $_['entries'] ?? [];
 $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class);
@@ -53,19 +27,7 @@ $appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitch
 require __DIR__ . '/common/user-display-timezone.php';
 ?>
 
-<?php include __DIR__ . '/common/navigation.php'; ?>
-
-<main id="app-content" role="main" aria-label="<?php p($l->t('Time Entries')); ?>">
-    <div id="app-content-wrapper">
-        <!-- Breadcrumb Navigation -->
-        <div class="breadcrumb-container">
-            <nav class="breadcrumb" aria-label="<?php p($l->t('Breadcrumb')); ?>">
-                <ol>
-                    <li><a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.page.index')); ?>"><?php p($l->t('Dashboard')); ?></a></li>
-                    <li aria-current="page"><?php p($l->t('Time Entries')); ?></li>
-                </ol>
-            </nav>
-        </div>
+<?php include __DIR__ . '/common/page-start.php'; ?>
 
         <?php if ($mode === 'list'): ?>
             <section class="section arbeitszeit-check-tz-context" role="region" aria-labelledby="arbeitszeit-tz-context-title">
@@ -88,59 +50,35 @@ require __DIR__ . '/common/user-display-timezone.php';
             </section>
         <?php endif; ?>
 
-        <!-- Page Header -->
-        <header class="section page-header-section" aria-labelledby="time-entries-page-title">
-            <div class="header-content">
-                <div class="header-text">
-                    <h1 id="time-entries-page-title"><?php
-                        if ($mode === 'create') {
-                            p($l->t('Add Time Entry'));
-                        } elseif ($mode === 'edit') {
-                            p($l->t('Edit Time Entry'));
-                        } else {
-                            p($l->t('Time Entries'));
-                        }
-                        ?></h1>
-                    <p><?php
-                        if ($mode === 'create') {
-                            p($l->t('Record when you worked by entering the start and end times, and any breaks you took.'));
-                        } elseif ($mode === 'edit') {
-                            p($l->t('Edit your time entry. You can edit manual entries, entries with pending approval, or completed automatic entries from the last 2 weeks.'));
-                        } else {
-                            p($l->t('Manage your working time records'));
-                        }
-                        ?></p>
-                </div>
-                <?php if ($mode === 'list'): ?>
-                    <div class="header-actions">
-                        <button id="btn-add-entry"
-                            class="btn btn--primary"
-                            type="button"
-                            aria-label="<?php p($l->t('Add a new time entry to record when you worked')); ?>"
-                            title="<?php p($l->t('Click to add a new time entry. You can record when you started and finished work, and any breaks you took.')); ?>">
-                            <?php p($l->t('Add Time Entry')); ?>
-                        </button>
-                        <button id="btn-filter"
-                            class="btn btn--secondary"
-                            type="button"
-                            aria-label="<?php p($l->t('Filter time entries by date or status')); ?>"
-                            title="<?php p($l->t('Click to show options for filtering your time entries. You can filter by date range or status.')); ?>">
-                            <?php p($l->t('Filter')); ?>
-                        </button>
-                        <button id="btn-export"
-                            class="btn btn--secondary"
-                            type="button"
-                            aria-label="<?php p($l->t('Download your time entries as a CSV file')); ?>"
-                            title="<?php p($l->t('Downloads the last 30 days as CSV (long layout): each row shows start and end times; overnight shifts appear as two rows when your administrator enables midnight split. Use Reports for date range and optional wide layout.')); ?>">
-                            <?php p($l->t('Download CSV')); ?>
-                        </button>
-                    </div>
-                    <p class="form-help header-actions-help" id="time-entries-export-hint">
-                        <?php p($l->t('Quick CSV uses the long layout (columns include start and end times). Overnight entries can appear as two rows after midnight if the administrator enabled split in export settings.')); ?>
-                        <?php p($l->t('All exported timestamps use timezone: %s (MEZ/MESZ).', [$appTimezone])); ?>
-                    </p>
-                <?php endif; ?>
+        <?php if ($mode === 'list'): ?>
+            <div class="header-actions">
+                <button id="btn-add-entry"
+                    class="btn btn--primary"
+                    type="button"
+                    aria-label="<?php p($l->t('Add a new time entry to record when you worked')); ?>"
+                    title="<?php p($l->t('Click to add a new time entry. You can record when you started and finished work, and any breaks you took.')); ?>">
+                    <?php p($l->t('Add Time Entry')); ?>
+                </button>
+                <button id="btn-filter"
+                    class="btn btn--secondary"
+                    type="button"
+                    aria-label="<?php p($l->t('Filter time entries by date or status')); ?>"
+                    title="<?php p($l->t('Click to show options for filtering your time entries. You can filter by date range or status.')); ?>">
+                    <?php p($l->t('Filter')); ?>
+                </button>
+                <button id="btn-export"
+                    class="btn btn--secondary"
+                    type="button"
+                    aria-label="<?php p($l->t('Download your time entries as a CSV file')); ?>"
+                    title="<?php p($l->t('Downloads the last 30 days as CSV (long layout): each row shows start and end times; overnight shifts appear as two rows when your administrator enables midnight split. Use Reports for date range and optional wide layout.')); ?>">
+                    <?php p($l->t('Download CSV')); ?>
+                </button>
             </div>
+            <p class="form-help header-actions-help" id="time-entries-export-hint">
+                <?php p($l->t('Quick CSV uses the long layout (columns include start and end times). Overnight entries can appear as two rows after midnight if the administrator enabled split in export settings.')); ?>
+                <?php p($l->t('All exported timestamps use timezone: %s (MEZ/MESZ).', [$appTimezone])); ?>
+            </p>
+        <?php endif; ?>
 
             <?php if ($mode === 'list' && !empty($stats)): ?>
                 <div class="stats-grid">
@@ -193,12 +131,18 @@ require __DIR__ . '/common/user-display-timezone.php';
                             </div>
                         </div>
 
+                        <div id="month-closure-finalized-notice" class="month-closure-finalized-notice" hidden>
+                            <?php
+                            $_['message'] = $l->t('This calendar month is finalized. Contact an administrator if a correction must be made.');
+                            $_['id'] = 'month-closure-lock-notice';
+                            include __DIR__ . '/common/month-closure-lock.php';
+                            ?>
+                        </div>
                         <p id="month-closure-feedback" class="month-closure-feedback" role="status" aria-live="polite" aria-atomic="true"></p>
                     </div>
                 </section>
                 <?php endif; ?>
             <?php endif; ?>
-        </header>
 
         <?php if ($mode === 'create' || $mode === 'edit'): ?>
             <!-- Create/Edit Form -->
@@ -259,7 +203,7 @@ require __DIR__ . '/common/user-display-timezone.php';
                             <div class="time-entry-form__date">
                                 <div class="form-group">
                                     <label for="entry-date" id="entry-date-label" class="form-label">
-                                        <span class="form-label-icon" aria-hidden="true">📅</span>
+                                        <span class="form-label-icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('calendar', 'form-label-icon__svg')); ?></span>
                                         <?php p($l->t('Date')); ?> 
                                         <span class="form-required" aria-label="<?php p($l->t('required')); ?>">*</span>
                                     </label>
@@ -520,7 +464,7 @@ require __DIR__ . '/common/user-display-timezone.php';
                                         <div class="time-pair-matrix__grid time-pair-matrix__grid--row">
                                             <div class="form-group">
                                                 <label class="form-label" id="break-<?php p((string)$index); ?>-start-label">
-                                                    <span class="form-label-icon" aria-hidden="true">☕</span>
+                                                    <span class="form-label-icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('coffee', 'form-label-icon__svg')); ?></span>
                                                     <?php p($l->t('Break Start Time')); ?>
                                                 </label>
                                                 <?php 
@@ -555,7 +499,7 @@ require __DIR__ . '/common/user-display-timezone.php';
 
                                             <div class="form-group">
                                                 <label class="form-label" id="break-<?php p((string)$index); ?>-end-label">
-                                                    <span class="form-label-icon" aria-hidden="true">☕</span>
+                                                    <span class="form-label-icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('coffee', 'form-label-icon__svg')); ?></span>
                                                     <?php p($l->t('Break End Time')); ?>
                                                 </label>
                                                     <?php 
@@ -934,7 +878,7 @@ require __DIR__ . '/common/user-display-timezone.php';
                                                     title="<?php p($l->t('Complete this paused session now. The end time will be set to when it was paused, and required breaks will be applied automatically.')); ?>"
                                                     type="button"
                                                     aria-label="<?php p($l->t('Complete this paused session')); ?>">
-                                                    <span aria-hidden="true">✓</span>
+                                                    <span class="btn__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('check', 'btn__icon-svg')); ?></span>
                                                     <?php p($l->t('Complete')); ?>
                                                 </button>
                                             <?php endif; ?>
@@ -1163,9 +1107,6 @@ require __DIR__ . '/common/user-display-timezone.php';
             </div>
 
         <?php endif; ?>
-    </div>
-</main>
-</div><!-- /#arbeitszeitcheck-app -->
 
 <?php include __DIR__ . '/common/main-ui-l10n.php'; ?>
 <?php include __DIR__ . '/common/time-entry-correction-l10n.php'; ?>
@@ -1223,6 +1164,7 @@ $__jsEnc = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UN
         create: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.time_entry.apiStore'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
         update: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.time_entry.apiUpdate', ['id' => '__ID__']), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
         delete: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.time_entry.apiDelete', ['id' => '__ID__']), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
+        deletionImpact: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.time_entry.getDeletionImpact', ['id' => '__ID__']), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
         export: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.export.timeEntries'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
         requestCorrection: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.time_entry.requestCorrection', ['id' => '__ID__']), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
         cancelCorrection: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.time_entry.cancelCorrection', ['id' => '__ID__']), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>
@@ -1685,7 +1627,9 @@ $__jsEnc = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UN
                 const startIcon = document.createElement('span');
                 startIcon.className = 'form-label-icon';
                 startIcon.setAttribute('aria-hidden', 'true');
-                startIcon.textContent = '☕';
+                if (typeof window.AzcCatalog !== 'undefined' && typeof window.AzcCatalog.render === 'function') {
+                    startIcon.innerHTML = window.AzcCatalog.render('coffee', 'form-label-icon__svg');
+                }
                 startLabel.appendChild(startIcon);
                 startLabel.appendChild(document.createTextNode(<?php echo json_encode($l->t('Break Start Time'), $__jsEnc); ?>));
 
@@ -1742,7 +1686,9 @@ $__jsEnc = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UN
                 const endIcon = document.createElement('span');
                 endIcon.className = 'form-label-icon';
                 endIcon.setAttribute('aria-hidden', 'true');
-                endIcon.textContent = '☕';
+                if (typeof window.AzcCatalog !== 'undefined' && typeof window.AzcCatalog.render === 'function') {
+                    endIcon.innerHTML = window.AzcCatalog.render('coffee', 'form-label-icon__svg');
+                }
                 endLabel.appendChild(endIcon);
                 endLabel.appendChild(document.createTextNode(<?php echo json_encode($l->t('Break End Time'), $__jsEnc); ?>));
 
@@ -1937,8 +1883,11 @@ $__jsEnc = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UN
                 const errorContainer = document.getElementById('entry-date-error');
                 if (errorContainer) {
                     const safeMessage = _escapeHtml(String(message));
+                    const errorIcon = (window.AzcCatalog && typeof window.AzcCatalog.render === 'function')
+                        ? window.AzcCatalog.render('triangle-alert', 'form-error__icon-svg')
+                        : '';
                     errorContainer.style.display = 'block';
-                    errorContainer.innerHTML = '<div class="form-error" role="alert"><span class="form-error__icon" aria-hidden="true">⚠️</span><div class="form-error__content"><strong>' + safeMessage + '</strong></div></div>';
+                    errorContainer.innerHTML = '<div class="form-error" role="alert"><span class="form-error__icon" aria-hidden="true">' + errorIcon + '</span><div class="form-error__content"><strong>' + safeMessage + '</strong></div></div>';
                 }
                 if (this.dateInput) {
                     this.dateInput.setAttribute('aria-invalid', 'true');
@@ -2174,8 +2123,16 @@ $__jsEnc = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UN
                     }
                 }
 
+                const statusIconMap = { compliant: 'check', warning: 'circle-alert', violation: 'x' };
+                const statusIconName = statusIconMap[statusClass] || 'info';
+                let statusIconHtml = '';
+                if (typeof window.AzcCatalog !== 'undefined' && typeof window.AzcCatalog.render === 'function') {
+                    statusIconHtml = '<span class="compliance-status__icon" aria-hidden="true">'
+                        + window.AzcCatalog.render(statusIconName, 'compliance-status__icon-svg') + '</span>';
+                }
                 this.complianceStatus.className = 'compliance-status ' + statusClass;
-                this.complianceStatus.textContent = statusText;
+                this.complianceStatus.innerHTML = statusIconHtml
+                    + '<span class="compliance-status__text">' + _escapeHtml(String(statusText)) + '</span>';
                 this.complianceStatus.setAttribute('aria-label', statusText);
             }
 
@@ -2837,13 +2794,24 @@ $__jsEnc = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UN
             }
 
             showErrorNotification(message) {
+                if (window.AzcMessaging && typeof window.AzcMessaging.showError === 'function') {
+                    window.AzcMessaging.showError(message);
+                    return;
+                }
+                if (window.ArbeitszeitCheckMessaging && typeof window.ArbeitszeitCheckMessaging.showError === 'function') {
+                    window.ArbeitszeitCheckMessaging.showError(message);
+                    return;
+                }
                 if (window.OC && OC.Notification) {
                     OC.Notification.showTemporary(message, {
                         type: 'error',
                         timeout: 5000
                     });
-                } else {
-                    alert(message);
+                    return;
+                }
+                const region = document.getElementById('azc-alert-region');
+                if (region) {
+                    region.textContent = String(message);
                 }
             }
         }
@@ -2872,3 +2840,4 @@ $__jsEnc = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UN
 
     <?php endif; ?>
 </script>
+<?php include __DIR__ . '/common/page-end.php'; ?>

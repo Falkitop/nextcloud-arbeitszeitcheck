@@ -33,64 +33,56 @@ class Version1007Date20260312000000 extends SimpleMigrationStep
 		/** @var ISchemaWrapper $schema */
 		$schema = $schemaClosure();
 
-		if ($schema->hasTable('at_holidays')) {
-			return $schema;
+		if (!$schema->hasTable('at_holidays')) {
+			$table = $schema->createTable('at_holidays');
+
+			$table->addColumn('id', Types::BIGINT, [
+				'autoincrement' => true,
+				'notnull' => true,
+				'length' => 20,
+			]);
+
+			$table->addColumn('state', Types::STRING, [
+				'notnull' => true,
+				'length' => 8,
+			]);
+
+			$table->addColumn('date', Types::DATE, [
+				'notnull' => true,
+			]);
+
+			$table->addColumn('name', Types::STRING, [
+				'notnull' => true,
+				'length' => 255,
+			]);
+
+			$table->addColumn('kind', Types::STRING, [
+				'notnull' => true,
+				'length' => 16,
+			]);
+
+			$table->addColumn('scope', Types::STRING, [
+				'notnull' => true,
+				'length' => 16,
+			]);
+
+			$table->addColumn('source', Types::STRING, [
+				'notnull' => false,
+				'length' => 16,
+			]);
+
+			$table->addColumn('created_at', Types::DATETIME, [
+				'notnull' => true,
+			]);
+
+			$table->addColumn('updated_at', Types::DATETIME, [
+				'notnull' => true,
+			]);
+
+			$table->setPrimaryKey(['id']);
+			$table->addIndex(['state', 'date'], 'at_holidays_state_date');
+			$table->addIndex(['date'], 'at_holidays_date');
 		}
-
-		$table = $schema->createTable('at_holidays');
-
-		$table->addColumn('id', Types::BIGINT, [
-			'autoincrement' => true,
-			'notnull' => true,
-			'length' => 20,
-		]);
-
-		// Two-letter German state code (e.g. BW, BY, NW)
-		$table->addColumn('state', Types::STRING, [
-			'notnull' => true,
-			'length' => 8,
-		]);
-
-		$table->addColumn('date', Types::DATE, [
-			'notnull' => true,
-		]);
-
-		$table->addColumn('name', Types::STRING, [
-			'notnull' => true,
-			'length' => 255,
-		]);
-
-		// "full" or "half"
-		$table->addColumn('kind', Types::STRING, [
-			'notnull' => true,
-			'length' => 16,
-		]);
-
-		// "statutory", "company", or "custom"
-		$table->addColumn('scope', Types::STRING, [
-			'notnull' => true,
-			'length' => 16,
-		]);
-
-		// "generated" (seeded from base calendar) or "manual"
-		$table->addColumn('source', Types::STRING, [
-			'notnull' => false,
-			'length' => 16,
-		]);
-
-		$table->addColumn('created_at', Types::DATETIME, [
-			'notnull' => true,
-		]);
-
-		$table->addColumn('updated_at', Types::DATETIME, [
-			'notnull' => true,
-		]);
-
-		$table->setPrimaryKey(['id']);
-
-		// Frequently used lookup indices
-		$table->addIndex(['state', 'date'], 'at_holidays_state_date');
-		$table->addIndex(['date'], 'at_holidays_date');
 
 		return $schema;
 	}

@@ -36,74 +36,7 @@
   line-height: 1.5;
 }
 
-/* ===== JUMP NAV ===== */
-.settings-jump-nav {
-  margin-bottom: var(--space-6, 1.5rem);
-  padding: var(--space-4, 1rem);
-  border: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
-  border-radius: var(--border-radius, 8px);
-  background: var(--arbeitszeitcheck-color-main-background, var(--color-main-background));
-}
-
-.settings-jump-nav__title {
-  margin: 0 0 var(--space-2, 0.5rem);
-  font-weight: 600;
-  color: var(--arbeitszeitcheck-color-main-text, var(--color-main-text));
-}
-
-.settings-jump-nav__list {
-  margin: 0;
-  padding-inline-start: 1.25rem;
-  display: grid;
-  gap: var(--space-1, 0.25rem);
-}
-
-@media (min-width: 640px) {
-  .settings-jump-nav__list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    column-gap: var(--space-6, 1.5rem);
-  }
-}
-
-@media (min-width: 1024px) {
-  .settings-jump-nav__list {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-.settings-jump-nav__list a {
-  color: var(--arbeitszeitcheck-color-primary, var(--color-primary));
-  text-decoration: none;
-}
-
-.settings-jump-nav__list a:hover,
-.settings-jump-nav__list a:focus {
-  text-decoration: underline;
-}
-
-/* ===== SECTION CARDS ===== */
-/* Clear visual separation, easy to identify sections, WCAG 2.1 AA */
-.admin-settings-section {
-  margin-bottom: var(--space-8, 2rem);
-  padding: var(--space-6, 1.5rem);
-  background: var(--arbeitszeitcheck-color-background-hover, var(--color-background-hover));
-  border-radius: var(--border-radius, 8px);
-  border: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
-}
-
-
-.admin-settings-section:last-of-type {
-  margin-bottom: var(--space-6, 1.5rem);
-}
-
-.admin-settings-section__title {
-  font-size: 1.125rem;
-  font-weight: 600;
-  margin: 0 0 var(--space-4, 1rem);
-  padding-bottom: var(--space-3, 0.75rem);
-  color: var(--arbeitszeitcheck-color-main-text, var(--color-main-text));
-  border-bottom: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
-}
+/* Jump nav, layout grid, and section cards: see css/app.css (.azc-jump-nav, .azc-settings-layout). */
 
 .admin-settings-subsection__title {
   font-size: 1rem;
@@ -390,23 +323,7 @@
   margin-top: 0.125rem;
 }
 
-/* ===== CARD ACTIONS ===== */
-.admin-settings-form .card-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3, 0.75rem);
-  margin-top: var(--space-6, 1.5rem);
-  padding-top: var(--space-6, 1.5rem);
-  border-top: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
-}
-
-.admin-settings-form .card-actions .btn {
-  min-height: 2.75rem;
-  padding: var(--space-2, 0.5rem) var(--space-4, 1rem);
-  font-weight: 500;
-}
-
-/* Month reopen: single action inside fieldset — no extra top rule */
+/* Inline actions inside a fieldset (month reopen) */
 #admin-settings-form .form-fieldset .card-actions--inline,
 #admin-notifications-form .form-fieldset .card-actions--inline{
   margin-top: var(--space-4, 1rem);
@@ -416,10 +333,6 @@
 
 /* ===== RESPONSIVE ===== */
 @media (max-width: 600px) {
-  .admin-settings-section {
-    padding: var(--space-4, 1rem);
-  }
-
   #admin-settings-form .form-input,
 #admin-notifications-form .form-input,
   #admin-settings-form .form-select,
@@ -427,12 +340,65 @@
     max-width: 100%;
   }
 
-  .admin-settings-form .card-actions {
+}
+
+/* ===== FORM ACTIONS (static footer — see app.css; layout spacing here) ===== */
+#app-content.azc-app--admin-settings .azc-admin-settings-form__actions,
+.azc-nc-admin-settings .azc-admin-settings-form__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 1rem);
+  width: 100%;
+  margin-top: var(--space-2, 0.5rem);
+  padding-top: var(--space-5, 1.25rem);
+  border-top: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
+}
+
+#app-content.azc-app--admin-settings .admin-settings-live,
+.azc-nc-admin-settings .admin-settings-live {
+  margin: 0;
+  min-height: 0;
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  text-align: start;
+}
+
+#app-content.azc-app--admin-settings .admin-settings-live:not(:empty),
+.azc-nc-admin-settings .admin-settings-live:not(:empty) {
+  padding: var(--space-3, 0.75rem) var(--space-4, 1rem);
+  border-radius: var(--border-radius, 6px);
+  border: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
+  background: var(--arbeitszeitcheck-color-background-hover, var(--color-background-hover));
+  font-weight: 600;
+}
+
+#app-content.azc-app--admin-settings .admin-settings-live--error,
+.azc-nc-admin-settings .admin-settings-live--error {
+  border-color: var(--color-error, #cc4646);
+  color: var(--color-error, #cc4646);
+}
+
+#app-content.azc-app--admin-settings .admin-settings-live--success,
+.azc-nc-admin-settings .admin-settings-live--success {
+  border-color: var(--color-success, #46ba61);
+  color: var(--arbeitszeitcheck-color-main-text, var(--color-main-text));
+}
+
+@media (max-width: 767px) {
+  #app-content.azc-app--admin-settings .azc-admin-settings-form__footer,
+  .azc-nc-admin-settings .azc-admin-settings-form__footer,
+  #app-content.azc-app--admin-settings .azc-settings-form__footer,
+  .azc-nc-admin-settings .azc-settings-form__footer {
     flex-direction: column;
+    align-items: stretch;
   }
 
-  .admin-settings-form .card-actions .btn {
+  #app-content.azc-app--admin-settings .azc-admin-settings-form__footer .azc-btn,
+  .azc-nc-admin-settings .azc-admin-settings-form__footer .azc-btn,
+  #app-content.azc-app--admin-settings .azc-settings-form__footer .azc-btn,
+  .azc-nc-admin-settings .azc-settings-form__footer .azc-btn {
     width: 100%;
+    justify-content: center;
   }
 }
 

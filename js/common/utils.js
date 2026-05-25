@@ -306,6 +306,15 @@ const ArbeitszeitCheckUtils = {
   },
 
   /**
+   * Localized message when Nextcloud rejects the request token (session expired).
+   */
+  sessionExpiredMessage() {
+    return window.t
+      ? window.t('arbeitszeitcheck', 'Your session expired — please refresh the page and try again.')
+      : 'Your session expired — please refresh the page and try again.';
+  },
+
+  /**
    * Make AJAX request using Nextcloud's OC.generateUrl
    */
   ajax(url, options = {}) {
@@ -364,6 +373,15 @@ const ArbeitszeitCheckUtils = {
     return fetch(resolvedUrl, config)
       .then(async response => {
         const data = await response.json().catch(() => null);
+        if (response.status === 412 || response.status === 419) {
+          const expired = this.sessionExpiredMessage();
+          window.ArbeitszeitCheckMessaging?.showError?.(expired);
+          const err = new Error(expired);
+          err.error = expired;
+          err.status = response.status;
+          err.data = data;
+          throw err;
+        }
         if (!response.ok) {
           const err = new Error(data?.error || `HTTP error! status: ${response.status}`);
           err.error = data?.error || err.message;
@@ -631,6 +649,66 @@ const ArbeitszeitCheckUtils = {
         setTimeout(() => inThrottle = false, limit);
       }
     };
+  },
+
+  /**
+   * Whether a confirmDialog / showConfirmDialog result counts as accepted.
+   *
+   * @param {boolean|{confirmed?: boolean, reason?: string}|null|undefined} result
+   * @returns {boolean}
+   */
+  isConfirmAccepted(result) {
+    if (result === true) {
+      return true;
+    }
+    return !!(result && typeof result === 'object' && result.confirmed);
+  },
+
+  /**
+   * Reason text from a confirmDialog result, if any.
+   *
+   * @param {boolean|{confirmed?: boolean, reason?: string}|null|undefined} result
+   * @returns {string}
+   */
+  confirmDialogReason(result, fallback = '') {
+    if (result && typeof result === 'object' && typeof result.reason === 'string') {
+      return result.reason.trim();
+    }
+    return fallback;
+  },
+
+  /**
+   * Run confirmDialog; abort (null) when unavailable or cancelled.
+   * Fail-closed: never treat a missing dialog as consent (audit-critical).
+   *
+   * @param {object} options confirmDialog options
+   * @param {string} [unavailableMessage] shown when dialog API is missing
+   * @returns {Promise<null|{confirmed: boolean, reason?: string}>}
+   */
+  async confirmDestructiveAction(options, unavailableMessage) {
+    const confirmFn = (typeof window !== 'undefined')
+      && (window.AzcComponents?.confirmDialog || window.ArbeitszeitCheckComponents?.confirmDialog);
+    const fallbackMsg = (typeof window !== 'undefined' && window.t)
+      ? window.t('arbeitszeitcheck', 'Confirmation dialog is not available. Please refresh the page and try again.')
+      : 'Confirmation dialog is not available. Please refresh the page and try again.';
+    const msg = unavailableMessage || fallbackMsg;
+
+    if (!confirmFn) {
+      if (typeof window !== 'undefined' && window.ArbeitszeitCheckMessaging) {
+        window.ArbeitszeitCheckMessaging.showError?.(msg);
+        window.ArbeitszeitCheckMessaging.announceAssertive?.(msg);
+      }
+      return null;
+    }
+
+    const result = await confirmFn(options);
+    if (!this.isConfirmAccepted(result)) {
+      return null;
+    }
+    if (result === true) {
+      return { confirmed: true, reason: '' };
+    }
+    return result;
   },
 
   // ===== VALIDATION UTILITIES =====

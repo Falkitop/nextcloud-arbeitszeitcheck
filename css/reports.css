@@ -1,10 +1,87 @@
 /**
- * Reports – Clear, accessible, responsive layout
- * Layout: app-layout.css (single source of truth for #app-content-wrapper)
+ * Reports – Clear, accessible, responsive layout (scoped to unified shell).
  *
  * @copyright Copyright (c) 2024, Nextcloud GmbH
  * @license AGPL-3.0-or-later
  */
+
+#app-content.azc-app--reports #azc-main-content {
+	display: flex;
+	flex-direction: column;
+	gap: var(--azc-space-4);
+}
+
+#app-content.azc-app--reports #azc-main-content .section {
+	margin: 0;
+	padding: 0;
+	border: none;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+}
+
+.reports-page {
+	display: flex;
+	flex-direction: column;
+	gap: var(--azc-space-5);
+	width: 100%;
+	max-width: 72rem;
+}
+
+/* ========== Step indicator ========== */
+.azc-reports-stepper {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--azc-space-2) var(--azc-space-4);
+	margin: 0;
+	padding: var(--azc-space-4);
+	list-style: none;
+	border: 1px solid var(--azc-border, var(--color-border));
+	border-radius: var(--azc-radius-md, 8px);
+	background: var(--azc-bg-soft, var(--color-background-hover));
+}
+
+.azc-reports-stepper__item {
+	display: flex;
+	align-items: center;
+	gap: var(--azc-space-2);
+	min-height: 2.75rem;
+	font-size: var(--azc-fs-sm, 0.875rem);
+	color: var(--azc-muted, var(--color-text-maxcontrast));
+}
+
+.azc-reports-stepper__badge {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.75rem;
+	height: 1.75rem;
+	border-radius: 999px;
+	border: 2px solid var(--azc-border, var(--color-border));
+	font-weight: 700;
+	font-size: var(--azc-fs-sm, 0.875rem);
+	background: var(--color-main-background, #fff);
+	color: var(--azc-text, var(--color-main-text));
+}
+
+.azc-reports-stepper__item--current {
+	color: var(--azc-text, var(--color-main-text));
+	font-weight: 600;
+}
+
+.azc-reports-stepper__item--current .azc-reports-stepper__badge {
+	border-color: var(--color-primary-element, #0082c9);
+	background: color-mix(in srgb, var(--color-primary-element, #0082c9) 14%, var(--color-main-background, #fff));
+}
+
+.azc-reports-stepper__item--done .azc-reports-stepper__badge {
+	border-color: var(--color-success, #46ba61);
+	background: color-mix(in srgb, var(--color-success, #46ba61) 18%, var(--color-main-background, #fff));
+}
+
+.reports-step-card + .reports-step-card {
+	margin-top: 0;
+}
 
 /* ========== Sections ========== */
 .reports-section {
@@ -106,13 +183,7 @@
 	color: var(--color-main-text);
 }
 
-.section {
-	background: var(--color-background-dark);
-	border: 1px solid var(--color-border);
-	border-radius: var(--border-radius-large, 10px);
-	padding: var(--space-6, 1.5rem);
-	box-shadow: 0 1px 3px var(--arbeitszeitcheck-color-shadow-light, var(--color-box-shadow));
-}
+/* Legacy .section wrapper neutralized in shell — cards use .azc-card */
 
 .page-header-section {
 	padding: 0;
@@ -220,6 +291,7 @@
 	background: var(--color-background-dark);
 }
 
+.report-type-card__title,
 .report-type-card h4 {
 	margin: 0 0 var(--space-2, 0.5rem);
 	font-size: 1.1rem;
@@ -227,6 +299,7 @@
 	color: var(--color-main-text);
 }
 
+.report-type-card__desc,
 .report-type-card p {
 	margin: 0 0 var(--space-4, 1rem);
 	font-size: 0.9375rem;
@@ -235,36 +308,14 @@
 	flex: 1;
 }
 
-.btn-select-report {
+.report-type-card .btn-select-report {
 	width: 100%;
-	min-height: var(--default-clickable-area, 44px);
-	padding: var(--space-2, 0.5rem) var(--space-4, 1rem);
-	font-size: 1rem;
-	font-weight: 500;
-	color: var(--color-primary-element-text);
-	background: var(--color-primary-element);
-	border: 2px solid transparent;
-	border-radius: var(--border-radius);
-	cursor: pointer;
-	transition: background 0.15s ease, border-color 0.15s ease;
 	margin-top: auto;
-	box-sizing: border-box;
-}
-
-.btn-select-report:hover {
-	background: var(--color-primary-element-hover);
-}
-
-.btn-select-report:focus-visible {
-	outline: 2px solid var(--color-main-text);
-	outline-offset: 2px;
+	justify-content: center;
 }
 
 /* ========== Parameters form ========== */
 .report-parameters-section {
-	border-top: 1px solid var(--color-border);
-	padding-top: var(--space-6, 1.5rem);
-	margin-top: var(--space-6, 1.5rem);
 	width: 100%;
 	min-width: 0;
 	box-sizing: border-box;
@@ -345,56 +396,20 @@
 }
 
 /* ========== Actions ========== */
-.card-actions {
+.reports-form__actions {
 	display: flex;
 	flex-wrap: wrap;
-	gap: var(--space-3, 0.75rem);
+	gap: var(--azc-space-3, var(--space-3, 0.75rem));
 	align-items: center;
-	margin-top: var(--space-2, 0.5rem);
-}
-
-.card-actions .btn {
-	min-height: var(--default-clickable-area, 44px);
-	padding: var(--space-2, 0.5rem) var(--space-4, 1rem);
-	font-size: 1rem;
-	font-weight: 500;
-	border-radius: var(--border-radius);
-	border: 2px solid transparent;
-	cursor: pointer;
-	transition: background 0.15s ease, border-color 0.15s ease;
-	box-sizing: border-box;
-}
-
-.card-actions .btn:focus-visible {
-	outline: 2px solid var(--color-main-text);
-	outline-offset: 2px;
-}
-
-.card-actions .btn--primary {
-	background: var(--color-primary-element);
-	color: var(--color-primary-element-text);
-}
-
-.card-actions .btn--primary:hover {
-	background: var(--color-primary-element-hover);
-}
-
-.card-actions .btn--secondary {
-	background: var(--color-background-dark);
-	color: var(--color-main-text);
-	border-color: var(--color-border);
-}
-
-.card-actions .btn--secondary:hover {
-	background: var(--color-background-hover);
-	border-color: var(--color-main-text);
+	margin-top: var(--azc-space-2, var(--space-2, 0.5rem));
+	padding-top: var(--azc-space-4, var(--space-4, 1rem));
+	border-top: 1px solid var(--azc-border, var(--color-border));
 }
 
 /* ========== Preview ========== */
 .report-preview-section {
-	border-top: 1px solid var(--color-border);
-	padding-top: var(--space-6, 1.5rem);
-	margin-top: var(--space-6, 1.5rem);
+	width: 100%;
+	min-width: 0;
 }
 
 .report-preview-content {
@@ -554,13 +569,19 @@
 		padding: var(--space-4, 1rem);
 	}
 
-	.card-actions {
+	.reports-form__actions {
 		flex-direction: column;
 		align-items: stretch;
 	}
 
-	.card-actions .btn {
+	.reports-form__actions .azc-btn {
 		width: 100%;
+		justify-content: center;
+	}
+
+	.azc-reports-stepper {
+		flex-direction: column;
+		align-items: stretch;
 	}
 }
 

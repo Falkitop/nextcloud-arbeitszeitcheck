@@ -19,6 +19,7 @@ use OCA\ArbeitszeitCheck\Service\OvertimeService;
 use OCA\ArbeitszeitCheck\Service\TimeTrackingService;
 use OCA\ArbeitszeitCheck\Service\AbsenceService;
 use OCA\ArbeitszeitCheck\Service\CSPService;
+use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCA\ArbeitszeitCheck\Service\TeamResolverService;
 use OCA\ArbeitszeitCheck\Service\OvertimeDisplayService;
@@ -43,6 +44,7 @@ use OCP\Util;
 class PageController extends Controller
 {
 	use CSPTrait;
+	use PageShellTrait;
 
 	private TimeTrackingService $timeTrackingService;
 	private OvertimeService $overtimeService;
@@ -59,6 +61,7 @@ class PageController extends Controller
 	private OvertimeDisplayService $overtimeDisplayService;
 	private OvertimeBankService $overtimeBankService;
 	private OvertimePayoutService $overtimePayoutService;
+	private LocaleFormatService $localeFormat;
 	private IL10N $l10n;
 
 	/**
@@ -94,6 +97,7 @@ class PageController extends Controller
 		OvertimeBankService $overtimeBankService,
 		OvertimePayoutService $overtimePayoutService,
 		CSPService $cspService,
+		LocaleFormatService $localeFormat,
 		IL10N $l10n
 	) {
 		parent::__construct($appName, $request);
@@ -112,6 +116,7 @@ class PageController extends Controller
 		$this->overtimeDisplayService = $overtimeDisplayService;
 		$this->overtimeBankService = $overtimeBankService;
 		$this->overtimePayoutService = $overtimePayoutService;
+		$this->localeFormat = $localeFormat;
 		$this->l10n = $l10n;
 		$this->setCspService($cspService);
 	}
@@ -265,6 +270,25 @@ class PageController extends Controller
 	}
 
 	/**
+	 * @return array{showSubstitutionLink: bool, showManagerLink: bool, showReportsLink: bool, showAdminNav: bool, monthClosureEnabled: bool}
+	 */
+	private function getNavigationFlagsForSession(): array
+	{
+		$user = $this->userSession->getUser();
+		if ($user === null) {
+			return [
+				'showSubstitutionLink' => false,
+				'showManagerLink' => false,
+				'showReportsLink' => false,
+				'showAdminNav' => false,
+				'monthClosureEnabled' => $this->config->getAppValue('arbeitszeitcheck', Constants::CONFIG_MONTH_CLOSURE_ENABLED, '0') === '1',
+			];
+		}
+
+		return $this->getNavigationFlags($user->getUID());
+	}
+
+	/**
 	 * Main index page - redirects to dashboard
 	 *
 	 */
@@ -283,7 +307,10 @@ class PageController extends Controller
 	#[NoCSRFRequired]
 	public function dashboard(): TemplateResponse
 	{
-		Util::addTranslations('arbeitszeitcheck');
+		$this->registerFrontEndAssets('arbeitszeitcheck-main', 'dashboard', [
+			'dashboard-overtime-bank',
+			'dashboard-overtime',
+		]);
 
 		try {
 			$userId = $this->getUserId();
@@ -293,7 +320,17 @@ class PageController extends Controller
 			$start = (new \DateTime())->modify('-30 days');
 			$end = new \DateTime();
 			$overtimeData = $this->overtimeService->calculateOvertime($userId, $start, $end);
+			try {
+				$weekOvertime = $this->overtimeService->getWeeklyOvertime($userId);
+			} catch (\Throwable $e) {
+				$weekOvertime = [];
+			}
 			$overtimeExtras = $this->loadDashboardOvertimeExtras($userId);
+			try {
+				$overtimeYtdBalance = $this->overtimeDisplayService->getYearToDateBalanceForTrafficLight($userId);
+			} catch (\Throwable $e) {
+				$overtimeYtdBalance = 0.0;
+			}
 
 			// Get stats for sidebar
 			$timeEntryCount = $this->timeEntryMapper->countByUser($userId);
@@ -318,16 +355,25 @@ class PageController extends Controller
 
 			$currentYear = (int)date('Y');
 			$vacationStats = $this->absenceService->getVacationStats($userId, $currentYear);
+			$workingTimeModelMissing = $this->isWorkingTimeModelMissing($userId);
 
-			$params = [
+			$params = $this->buildShellParams(
+				'dashboard',
+				$this->l10n->t('Dashboard'),
+				$this->l10n->t('See your current work status, today\'s hours, and recent time entries'),
+				array_merge($navFlags, ['pendingCorrectionCount' => $pendingCorrectionCount]),
+			) + [
 				'status' => $status,
 				'overtime' => $overtimeData,
+				'weekOvertime' => $weekOvertime,
+				'overtimeYtdBalance' => $overtimeYtdBalance,
 				'overtimeBank' => $overtimeExtras['overtimeBank'],
 				'overtimeTrafficLight' => $overtimeExtras['overtimeTrafficLight'],
 				'overtimePayoutHistory' => $overtimeExtras['overtimePayoutHistory'],
 				'error' => $overtimeExtras['error'],
 				'recentEntries' => $recentEntries,
 				'isFirstTimeUser' => $isFirstTimeUser,
+				'workingTimeModelMissing' => $workingTimeModelMissing,
 				'stats' => [
 					'total_time_entries' => $timeEntryCount,
 					'total_absences' => $absenceCount,
@@ -343,24 +389,30 @@ class PageController extends Controller
 					'vacation_annual_entitlement' => (float)($vacationStats['entitlement'] ?? 0),
 					'vacation_year' => $currentYear,
 				],
-				'urlGenerator' => $this->urlGenerator,
-				'l' => $this->l10n,
-				'pendingCorrectionCount' => $pendingCorrectionCount,
-			] + $navFlags;
+			];
 
 			$response = new TemplateResponse('arbeitszeitcheck', 'dashboard', $params);
 			return $this->configureCSP($response);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in PageController::dashboard: ' . $e->getMessage(), ["exception" => $e]);
 			$errorMessage = $this->buildSafePageErrorMessage($e);
-			$response = new TemplateResponse('arbeitszeitcheck', 'dashboard', [
+			$navFlags = $this->getNavigationFlagsForSession();
+			$response = new TemplateResponse('arbeitszeitcheck', 'dashboard', $this->buildShellParams(
+				'dashboard',
+				$this->l10n->t('Dashboard'),
+				$this->l10n->t('See your current work status, today\'s hours, and recent time entries'),
+				$navFlags,
+			) + [
 				'status' => [],
 				'overtime' => [],
+				'weekOvertime' => [],
+				'overtimeYtdBalance' => 0.0,
 				'overtimeBank' => ['enabled' => false, 'bank_max_hours' => 100.0, 'banked_hours' => 0.0, 'bank_fill_percent' => 0.0, 'payout_eligible_hours' => 0.0, 'effective_balance' => 0.0, 'bank_state' => 'disabled'],
 				'overtimeTrafficLight' => ['enabled' => false, 'state' => 'green', 'direction' => null, 'level' => null, 'balance' => 0.0],
 				'overtimePayoutHistory' => ['items' => [], 'total' => 0],
 				'recentEntries' => [],
 				'isFirstTimeUser' => true,
+				'workingTimeModelMissing' => false,
 				'stats' => [
 					'total_time_entries' => 0,
 					'total_absences' => 0,
@@ -377,12 +429,6 @@ class PageController extends Controller
 					'vacation_year' => (int)date('Y'),
 				],
 				'error' => $errorMessage,
-				'urlGenerator' => $this->urlGenerator,
-				'l' => $this->l10n,
-				'showSubstitutionLink' => false,
-				'showManagerLink' => false,
-				'showReportsLink' => false,
-				'showAdminNav' => false,
 			]);
 			return $this->configureCSP($response);
 		}
@@ -396,7 +442,17 @@ class PageController extends Controller
 	#[NoCSRFRequired]
 	public function timeEntries(): TemplateResponse
 	{
-		Util::addTranslations('arbeitszeitcheck');
+		$extraScripts = ['time-entry-correction', 'time-entry-form-accessibility'];
+		$extraStyles = ['time-entries', 'time-entry-correction', 'time-entry-form-accessibility'];
+		$this->registerFrontEndAssets('arbeitszeitcheck-main', null, $extraStyles);
+		foreach ($extraScripts as $script) {
+			\OCP\Util::addScript('arbeitszeitcheck', $script);
+		}
+		if ($this->config->getAppValue('arbeitszeitcheck', Constants::CONFIG_MONTH_CLOSURE_ENABLED, '0') === '1') {
+			\OCP\Util::addScript('arbeitszeitcheck', 'month-closure');
+		}
+		\OCP\Util::addScript('arbeitszeitcheck', 'common/datepicker');
+		\OCP\Util::addScript('arbeitszeitcheck', 'common/validation');
 
 		try {
 			$userId = $this->getUserId();
@@ -413,9 +469,11 @@ class PageController extends Controller
 			$complianceStrictMode = $this->config->getAppValue('arbeitszeitcheck', 'compliance_strict_mode', '0') === '1';
 
 			$navFlags = $this->getNavigationFlags($userId);
+			$navFlags['pendingCorrectionCount'] = $pendingCorrectionCount;
 			
-			$params = [
+			$params = $this->buildTimeEntriesShellParams('list', $navFlags) + [
 				'entries' => $entries,
+				'mode' => 'list',
 				'stats' => [
 					'total_time_entries' => $timeEntryCount,
 					'entries_this_month' => count(array_filter($entries, function($entry) {
@@ -428,26 +486,22 @@ class PageController extends Controller
 				'maxDailyHours' => $maxDailyHours,
 				'complianceStrictMode' => $complianceStrictMode,
 				'monthClosureEnabled' => $this->config->getAppValue('arbeitszeitcheck', Constants::CONFIG_MONTH_CLOSURE_ENABLED, '0') === '1',
-				'urlGenerator' => $this->urlGenerator,
-				'l' => $this->l10n,
-				'pendingCorrectionCount' => $pendingCorrectionCount,
-			] + $navFlags;
+			];
 
 			$response = new TemplateResponse('arbeitszeitcheck', 'time-entries', $params);
 			return $this->configureCSP($response);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in PageController::timeEntries: ' . $e->getMessage(), ["exception" => $e]);
 			$errorMessage = $this->buildSafePageErrorMessage($e);
-			$response = new TemplateResponse('arbeitszeitcheck', 'time-entries', [
+			$navFlags = $this->getNavigationFlagsForSession();
+			$response = new TemplateResponse('arbeitszeitcheck', 'time-entries', $this->buildTimeEntriesShellParams('list', $navFlags) + [
 				'entries' => [],
+				'mode' => 'list',
 				'error' => $errorMessage,
 				'stats' => ['total_time_entries' => 0, 'entries_this_month' => 0, 'total_hours' => 0],
-				'urlGenerator' => $this->urlGenerator,
-				'l' => $this->l10n,
-				'showSubstitutionLink' => false,
-				'showManagerLink' => false,
-				'showReportsLink' => false,
-				'showAdminNav' => false,
+				'maxDailyHours' => 10.0,
+				'complianceStrictMode' => false,
+				'monthClosureEnabled' => false,
 			]);
 			return $this->configureCSP($response);
 		}
@@ -461,7 +515,8 @@ class PageController extends Controller
 	#[NoCSRFRequired]
 	public function absences(): TemplateResponse
 	{
-		Util::addTranslations('arbeitszeitcheck');
+		$this->registerFrontEndAssets('arbeitszeitcheck-main', 'absences', ['absences']);
+		Util::addScript('arbeitszeitcheck', 'entitlement-explainer');
 
 		try {
 			$userId = $this->getUserId();
@@ -550,7 +605,12 @@ class PageController extends Controller
 			}
 		}
 
-		$params = [
+		$params = $this->buildShellParams(
+			'absences',
+			$this->l10n->t('Absences'),
+			$this->l10n->t('Request time off, track vacation balance, and manage your absence history'),
+			$navFlags,
+		) + [
 			'absences' => $absences,
 			'computedWorkingDays' => $computedWorkingDays,
 			'hasColleagues' => $hasColleagues,
@@ -574,18 +634,22 @@ class PageController extends Controller
 				'vacation_year' => $currentYear,
 				'pending_requests' => $pendingCount,
 			],
-			'urlGenerator' => $this->urlGenerator,
-			'l' => $this->l10n,
 			'employeeHasAssignableManager' => $employeeHasAssignableManager,
 			'useAppTeams' => $useAppTeams,
-		] + $navFlags;
+		];
 
 			$response = new TemplateResponse('arbeitszeitcheck', 'absences', $params);
 			return $this->configureCSP($response);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in PageController::absences: ' . $e->getMessage(), ["exception" => $e]);
 			$errorMessage = $this->buildSafePageErrorMessage($e);
-			$response = new TemplateResponse('arbeitszeitcheck', 'absences', [
+			$navFlags = $this->getNavigationFlagsForSession();
+			$response = new TemplateResponse('arbeitszeitcheck', 'absences', $this->buildShellParams(
+				'absences',
+				$this->l10n->t('Absences'),
+				$this->l10n->t('Request time off, track vacation balance, and manage your absence history'),
+				$navFlags,
+			) + [
 				'absences' => [],
 				'computedWorkingDays' => [],
 				'hasColleagues' => false,
@@ -595,14 +659,8 @@ class PageController extends Controller
 				'filterStatus' => '',
 				'error' => $errorMessage,
 				'stats' => ['total_time_entries' => 0, 'total_absences' => 0, 'vacation_days_remaining' => 0, 'vacation_days_used_this_year' => 0, 'vacation_carryover_days' => 0, 'vacation_carryover_usable' => 0, 'vacation_carryover_expires_on' => null, 'vacation_carryover_locked_after_deadline' => false, 'vacation_annual_remaining' => 0, 'vacation_carryover_remaining' => 0, 'vacation_carryover_max_cap' => null, 'vacation_annual_entitlement' => 0, 'vacation_year' => (int)date('Y'), 'pending_requests' => 0],
-				'urlGenerator' => $this->urlGenerator,
-				'l' => $this->l10n,
 				'employeeHasAssignableManager' => true,
 				'useAppTeams' => false,
-				'showSubstitutionLink' => false,
-				'showManagerLink' => false,
-				'showReportsLink' => false,
-				'showAdminNav' => false,
 			]);
 			return $this->configureCSP($response);
 		}
@@ -616,7 +674,8 @@ class PageController extends Controller
 	#[NoCSRFRequired]
 	public function reports(): TemplateResponse|RedirectResponse
 	{
-		Util::addTranslations('arbeitszeitcheck');
+		$this->registerFrontEndAssets('reports', 'reports');
+		Util::addScript('arbeitszeitcheck', 'common/datepicker');
 
 		try {
 			$userId = $this->getUserId();
@@ -639,33 +698,36 @@ class PageController extends Controller
 
 			$navFlags = $this->getNavigationFlags($userId);
 
-			$params = [
+			$params = $this->buildShellParams(
+				'reports',
+				$this->l10n->t('Reports'),
+				$this->l10n->t('Generate and export time entries, absences, and compliance reports'),
+				$navFlags,
+			) + [
 				'stats' => [
 					'total_time_entries' => $timeEntryCount,
 					'total_absences' => $absenceCount,
 				],
 				'isAdmin' => $isAdmin,
 				'isManager' => $isManager,
-				'urlGenerator' => $this->urlGenerator,
-				'l' => $this->l10n,
-			] + $navFlags;
+			];
 
 			$response = new TemplateResponse('arbeitszeitcheck', 'reports', $params);
 			return $this->configureCSP($response);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in PageController::reports: ' . $e->getMessage(), ["exception" => $e]);
 			$errorMessage = $this->buildSafePageErrorMessage($e);
-			$response = new TemplateResponse('arbeitszeitcheck', 'reports', [
+			$navFlags = $this->getNavigationFlagsForSession();
+			$response = new TemplateResponse('arbeitszeitcheck', 'reports', $this->buildShellParams(
+				'reports',
+				$this->l10n->t('Reports'),
+				$this->l10n->t('Generate and export time entries, absences, and compliance reports'),
+				$navFlags,
+			) + [
 				'error' => $errorMessage,
 				'stats' => ['total_time_entries' => 0, 'total_absences' => 0],
 				'isAdmin' => false,
 				'isManager' => false,
-				'urlGenerator' => $this->urlGenerator,
-				'l' => $this->l10n,
-				'showSubstitutionLink' => false,
-				'showManagerLink' => false,
-				'showReportsLink' => false,
-				'showAdminNav' => false,
 			]);
 			return $this->configureCSP($response);
 		}
@@ -679,11 +741,12 @@ class PageController extends Controller
 	#[NoCSRFRequired]
 	public function calendar(): TemplateResponse
 	{
-		Util::addTranslations('arbeitszeitcheck');
+		$this->registerFrontEndAssets('arbeitszeitcheck-main', 'calendar', ['calendar']);
+		Util::addScript('arbeitszeitcheck', 'common/datepicker');
 
 		try {
 			$userId = $this->getUserId();
-			
+
 			// Get month from request parameter or use current month
 			$requestMonth = $this->request->getParam('month');
 			if ($requestMonth && preg_match('/^\d{4}-\d{2}$/', $requestMonth)) {
@@ -691,37 +754,39 @@ class PageController extends Controller
 			} else {
 				$currentMonth = date('Y-m');
 			}
-			
-			// Get stats for sidebar
+
 			$timeEntryCount = $this->timeEntryMapper->countByUser($userId);
 			$absenceCount = $this->absenceMapper->countByUser($userId);
-
 			$navFlags = $this->getNavigationFlags($userId);
 
-			$params = [
+			$params = $this->buildShellParams(
+				'calendar',
+				$this->l10n->t('Calendar'),
+				$this->l10n->t('See your working hours, absences, and public holidays in a monthly or weekly view'),
+				$navFlags,
+			) + [
 				'currentMonth' => $currentMonth,
 				'stats' => [
 					'total_time_entries' => $timeEntryCount,
 					'total_absences' => $absenceCount,
 				],
-				'urlGenerator' => $this->urlGenerator,
-				'l' => $this->l10n,
-			] + $navFlags;
+			];
 
 			$response = new TemplateResponse('arbeitszeitcheck', 'calendar', $params);
 			return $this->configureCSP($response);
 		} catch (\Throwable $e) {
-			\OCP\Log\logger('arbeitszeitcheck')->error('Error in PageController::calendar: ' . $e->getMessage(), ["exception" => $e]);
+			\OCP\Log\logger('arbeitszeitcheck')->error('Error in PageController::calendar: ' . $e->getMessage(), ['exception' => $e]);
 			$errorMessage = $this->buildSafePageErrorMessage($e);
-			$response = new TemplateResponse('arbeitszeitcheck', 'calendar', [
+			$navFlags = $this->getNavigationFlagsForSession();
+			$response = new TemplateResponse('arbeitszeitcheck', 'calendar', $this->buildShellParams(
+				'calendar',
+				$this->l10n->t('Calendar'),
+				$this->l10n->t('See your working hours, absences, and public holidays in a monthly or weekly view'),
+				$navFlags,
+			) + [
 				'error' => $errorMessage,
 				'stats' => ['total_time_entries' => 0, 'total_absences' => 0],
-				'urlGenerator' => $this->urlGenerator,
-				'l' => $this->l10n,
-				'showSubstitutionLink' => false,
-				'showManagerLink' => false,
-				'showReportsLink' => false,
-				'showAdminNav' => false,
+				'currentMonth' => date('Y-m'),
 			]);
 			return $this->configureCSP($response);
 		}
@@ -735,40 +800,41 @@ class PageController extends Controller
 	#[NoCSRFRequired]
 	public function timeline(): TemplateResponse
 	{
-		Util::addTranslations('arbeitszeitcheck');
+		$this->registerFrontEndAssets('arbeitszeitcheck-main', 'timeline', ['timeline']);
 
 		try {
 			$userId = $this->getUserId();
-		
-		// Get stats for sidebar
-		$timeEntryCount = $this->timeEntryMapper->countByUser($userId);
-		$absenceCount = $this->absenceMapper->countByUser($userId);
 
-		$navFlags = $this->getNavigationFlags($userId);
+			$timeEntryCount = $this->timeEntryMapper->countByUser($userId);
+			$absenceCount = $this->absenceMapper->countByUser($userId);
+			$navFlags = $this->getNavigationFlags($userId);
 
-		$params = [
-			'stats' => [
-				'total_time_entries' => $timeEntryCount,
-				'total_absences' => $absenceCount,
-			],
-			'urlGenerator' => $this->urlGenerator,
-			'l' => $this->l10n,
-		] + $navFlags;
+			$params = $this->buildShellParams(
+				'timeline',
+				$this->l10n->t('Timeline'),
+				$this->l10n->t('Browse time entries, absences, and holidays in chronological order'),
+				$navFlags,
+			) + [
+				'stats' => [
+					'total_time_entries' => $timeEntryCount,
+					'total_absences' => $absenceCount,
+				],
+			];
 
 			$response = new TemplateResponse('arbeitszeitcheck', 'timeline', $params);
 			return $this->configureCSP($response);
 		} catch (\Throwable $e) {
-			\OCP\Log\logger('arbeitszeitcheck')->error('Error in PageController::timeline: ' . $e->getMessage(), ["exception" => $e]);
+			\OCP\Log\logger('arbeitszeitcheck')->error('Error in PageController::timeline: ' . $e->getMessage(), ['exception' => $e]);
 			$errorMessage = $this->buildSafePageErrorMessage($e);
-			$response = new TemplateResponse('arbeitszeitcheck', 'timeline', [
+			$navFlags = $this->getNavigationFlagsForSession();
+			$response = new TemplateResponse('arbeitszeitcheck', 'timeline', $this->buildShellParams(
+				'timeline',
+				$this->l10n->t('Timeline'),
+				$this->l10n->t('Browse time entries, absences, and holidays in chronological order'),
+				$navFlags,
+			) + [
 				'error' => $errorMessage,
 				'stats' => ['total_time_entries' => 0, 'total_absences' => 0],
-				'urlGenerator' => $this->urlGenerator,
-				'l' => $this->l10n,
-				'showSubstitutionLink' => false,
-				'showManagerLink' => false,
-				'showReportsLink' => false,
-				'showAdminNav' => false,
 			]);
 			return $this->configureCSP($response);
 		}
@@ -782,42 +848,61 @@ class PageController extends Controller
 	#[NoCSRFRequired]
 	public function settings(): TemplateResponse
 	{
-		Util::addTranslations('arbeitszeitcheck');
+		$this->registerFrontEndAssets('settings', 'settings');
 
 		try {
 			$userId = $this->getUserId();
-		
-		// Get stats for sidebar
-		$timeEntryCount = $this->timeEntryMapper->countByUser($userId);
-		$absenceCount = $this->absenceMapper->countByUser($userId);
+			$timeEntryCount = $this->timeEntryMapper->countByUser($userId);
+			$absenceCount = $this->absenceMapper->countByUser($userId);
+			$navFlags = $this->getNavigationFlags($userId);
 
-		$navFlags = $this->getNavigationFlags($userId);
-
-		$params = [
-			'stats' => [
-				'total_time_entries' => $timeEntryCount,
-				'total_absences' => $absenceCount,
-			],
-			'urlGenerator' => $this->urlGenerator,
-			'l' => $this->l10n,
-		] + $navFlags;
+			$params = $this->buildShellParams(
+				'settings',
+				$this->l10n->t('Settings'),
+				$this->l10n->t('Manage your personal preferences and notification settings'),
+				$navFlags,
+			) + [
+				'stats' => [
+					'total_time_entries' => $timeEntryCount,
+					'total_absences' => $absenceCount,
+				],
+			];
 
 			$response = new TemplateResponse('arbeitszeitcheck', 'settings', $params);
 			return $this->configureCSP($response);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in PageController::settings: ' . $e->getMessage(), ["exception" => $e]);
 			$errorMessage = $this->buildSafePageErrorMessage($e);
-			$response = new TemplateResponse('arbeitszeitcheck', 'settings', [
+			$navFlags = $this->getNavigationFlagsForSession();
+			$response = new TemplateResponse('arbeitszeitcheck', 'settings', $this->buildShellParams(
+				'settings',
+				$this->l10n->t('Settings'),
+				$this->l10n->t('Manage your personal preferences and notification settings'),
+				$navFlags,
+			) + [
 				'error' => $errorMessage,
 				'stats' => ['total_time_entries' => 0, 'total_absences' => 0],
-				'urlGenerator' => $this->urlGenerator,
-				'l' => $this->l10n,
-				'showSubstitutionLink' => false,
-				'showManagerLink' => false,
-				'showReportsLink' => false,
-				'showAdminNav' => false,
 			]);
 			return $this->configureCSP($response);
+		}
+	}
+
+	/**
+	 * Whether the user has no active working time model assignment (W9 dashboard callout).
+	 */
+	private function isWorkingTimeModelMissing(string $userId): bool
+	{
+		try {
+			$mapper = \OCP\Server::get(\OCA\ArbeitszeitCheck\Db\UserWorkingTimeModelMapper::class);
+
+			return $mapper->findCurrentByUser($userId) === null;
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->warning(
+				'Could not resolve working time model for user ' . $userId . ': ' . $e->getMessage(),
+				['exception' => $e],
+			);
+
+			return false;
 		}
 	}
 }

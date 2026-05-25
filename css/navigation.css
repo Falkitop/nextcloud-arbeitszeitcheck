@@ -340,12 +340,12 @@
     justify-content: space-between;
 }
 
-.stat-item {
+#app-navigation .quick-stats .stat-item {
     text-align: center;
     flex: 1;
 }
 
-.stat-number {
+#app-navigation .quick-stats .stat-number {
     display: block;
     font-size: 1.25rem;
     font-weight: 600;
@@ -353,13 +353,37 @@
     line-height: 1.2;
 }
 
-.stat-label {
+#app-navigation .quick-stats .stat-label {
     display: block;
     font-size: 0.7rem;
     color: var(--color-text-maxcontrast);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     margin-top: 0.25rem;
+}
+
+/* Sidebar labels stay left-aligned (admin-notifications / NC core must not center nav text) */
+#content.app-arbeitszeitcheck #app-navigation,
+#content.app-arbeitszeitcheck #app-navigation .nav-menu,
+#content.app-arbeitszeitcheck #app-navigation .nav-submenu {
+    text-align: left;
+    align-items: stretch;
+    width: 100%;
+}
+
+#content.app-arbeitszeitcheck #app-navigation .nav-menu a,
+#content.app-arbeitszeitcheck #app-navigation .nav-submenu a,
+#content.app-arbeitszeitcheck #app-navigation .nav-parent-toggle {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    width: 100%;
+    text-align: left;
+}
+
+#content.app-arbeitszeitcheck #app-navigation .nav-menu span:not(.nav-parent-chevron),
+#content.app-arbeitszeitcheck #app-navigation .nav-parent-toggle > span:not(.nav-parent-chevron) {
+    text-align: left;
 }
 
 /* Sidebar scrollbar styling - Scoped to app */

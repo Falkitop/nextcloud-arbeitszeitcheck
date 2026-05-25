@@ -8,6 +8,41 @@
 
 	const Utils = window.ArbeitszeitCheckUtils || {};
 
+	function queryOne(selector) {
+		if (Utils.$) {
+			return Utils.$(selector);
+		}
+		return document.querySelector(selector);
+	}
+
+	function queryAll(selector, root) {
+		const scope = root || document;
+		if (Utils.$$) {
+			return Utils.$$(selector, scope);
+		}
+		return scope.querySelectorAll(selector);
+	}
+
+	function bind(el, event, handler) {
+		if (!el) {
+			return;
+		}
+		if (Utils.on) {
+			Utils.on(el, event, handler);
+			return;
+		}
+		el.addEventListener(event, handler);
+	}
+
+	function escapeText(text) {
+		if (Utils.escapeHtml) {
+			return Utils.escapeHtml(text);
+		}
+		const d = document.createElement('div');
+		d.textContent = String(text);
+		return d.innerHTML;
+	}
+
 	/**
 	 * @param {object} options
 	 * @param {string} options.hiddenSelector Hidden input storing userId
@@ -15,15 +50,17 @@
 	 * @param {string} options.listSelector Listbox container element
 	 * @param {string} options.wrapSelector Container for outside-click close
 	 * @param {string} options.searchUrl Base URL for GET ?search=&limit=
+	 * @param {string} [options.statusSelector] Live region for screen reader updates
 	 * @param {number} [options.limit=15]
 	 * @param {object} [options.l10n]
 	 * @param {function(string): void} [options.onChange] Called when selection cleared or set
 	 */
 	function initAdminUserPicker(options) {
-		const hidden = Utils.$(options.hiddenSelector);
-		const search = Utils.$(options.searchSelector);
-		const list = Utils.$(options.listSelector);
-		const wrap = Utils.$(options.wrapSelector);
+		const hidden = queryOne(options.hiddenSelector);
+		const search = queryOne(options.searchSelector);
+		const list = queryOne(options.listSelector);
+		const wrap = queryOne(options.wrapSelector);
+		const status = options.statusSelector ? queryOne(options.statusSelector) : null;
 		const baseUrl = options.searchUrl || '';
 		const l10n = options.l10n || {};
 		const limit = options.limit || 15;
@@ -36,11 +73,19 @@
 		let debounceTimer = null;
 		let selectedLabel = '';
 		let activeIndex = -1;
+		let requestGeneration = 0;
+
+		function setStatus(message) {
+			if (status) {
+				status.textContent = message || '';
+			}
+		}
 
 		function closeList() {
 			list.hidden = true;
 			list.innerHTML = '';
 			search.setAttribute('aria-expanded', 'false');
+			search.removeAttribute('aria-activedescendant');
 			activeIndex = -1;
 		}
 
@@ -49,10 +94,9 @@
 			search.setAttribute('aria-expanded', 'true');
 		}
 
-		function showLoading() {
-			const msg = l10n.loading || 'Loading…';
-			list.innerHTML = '<li class="user-picker__item user-picker__item--muted" role="presentation">'
-				+ (Utils.escapeHtml ? Utils.escapeHtml(msg) : msg) + '</li>';
+		function showMessage(msg, muted) {
+			const cls = muted ? 'user-picker__item user-picker__item--muted' : 'user-picker__item user-picker__item--muted';
+			list.innerHTML = '<div class="' + cls + '" role="presentation">' + escapeText(msg) + '</div>';
 			openList();
 		}
 
@@ -64,20 +108,50 @@
 			}
 			const sep = baseUrl.indexOf('?') >= 0 ? '&' : '?';
 			const url = baseUrl + sep + params.toString();
-			showLoading();
-			Utils.ajax(url, {
-				method: 'GET',
-				onSuccess: function (data) {
-					if (!data || !data.success || !Array.isArray(data.users)) {
-						closeList();
-						return;
-					}
-					renderUsers(data.users);
-				},
-				onError: function () {
-					closeList();
-				},
-			});
+			const generation = ++requestGeneration;
+
+			showMessage(l10n.loading || 'Loading…', true);
+			setStatus(l10n.loading || 'Loading…');
+
+			const onDone = function (data) {
+				if (generation !== requestGeneration) {
+					return;
+				}
+				if (!data || !data.success || !Array.isArray(data.users)) {
+					const err = l10n.searchError || l10n.error || 'User search failed';
+					showMessage(err, true);
+					setStatus(err);
+					return;
+				}
+				renderUsers(data.users);
+			};
+
+			const onFail = function () {
+				if (generation !== requestGeneration) {
+					return;
+				}
+				const err = l10n.searchError || l10n.error || 'User search failed';
+				showMessage(err, true);
+				setStatus(err);
+			};
+
+			if (Utils.ajax) {
+				Utils.ajax(url, {
+					method: 'GET',
+					onSuccess: onDone,
+					onError: onFail,
+				});
+				return;
+			}
+
+			const token = (typeof OC !== 'undefined' && OC.requestToken) ? OC.requestToken : '';
+			fetch(url, {
+				headers: { requesttoken: token, Accept: 'application/json' },
+				credentials: 'same-origin',
+			})
+				.then(function (res) { return res.json(); })
+				.then(onDone)
+				.catch(onFail);
 		}
 
 		function selectUser(uid, displayName) {
@@ -90,6 +164,9 @@
 			selectedLabel = name + ' (' + id + ')';
 			search.value = selectedLabel;
 			closeList();
+			const selectedMsg = (l10n.employeeSelected || 'Selected %s')
+				.replace('%s', selectedLabel);
+			setStatus(selectedMsg);
 			onChange(id);
 		}
 
@@ -98,35 +175,39 @@
 			selectedLabel = '';
 			search.value = '';
 			closeList();
+			setStatus(l10n.allEmployees || '');
 			onChange('');
 		}
 
 		function renderUsers(users) {
-			const emptyMsg = l10n.noUsersFound || 'No users found';
+			const emptyMsg = l10n.noUsersFound || 'No matching employees found.';
 			if (users.length === 0) {
-				list.innerHTML = '<div class="user-picker__item user-picker__item--muted" role="presentation">'
-					+ (Utils.escapeHtml ? Utils.escapeHtml(emptyMsg) : emptyMsg) + '</div>';
-				openList();
+				list.innerHTML = '';
+				showMessage(emptyMsg, true);
+				setStatus(emptyMsg);
 				return;
 			}
+
 			list.innerHTML = users.map(function (u, index) {
 				const uid = u.userId || u.uid || '';
 				const name = (u.displayName && String(u.displayName).trim()) ? String(u.displayName) : uid;
-				const meta = uid;
 				return '<div role="option" id="user-picker-opt-' + index + '" tabindex="-1" class="user-picker__item" data-user-id="'
-					+ (Utils.escapeHtml ? Utils.escapeHtml(uid) : uid) + '">'
-					+ '<span class="user-picker__name">' + (Utils.escapeHtml ? Utils.escapeHtml(name) : name) + '</span>'
-					+ '<span class="user-picker__meta">' + (Utils.escapeHtml ? Utils.escapeHtml(meta) : meta) + '</span></div>';
+					+ escapeText(uid) + '" aria-selected="false">'
+					+ '<span class="user-picker__name">' + escapeText(name) + '</span>'
+					+ '<span class="user-picker__meta">' + escapeText(uid) + '</span></div>';
 			}).join('');
 			openList();
 			activeIndex = -1;
 
-			const items = Utils.$$ ? Utils.$$('.user-picker__item[data-user-id]', list) : list.querySelectorAll('.user-picker__item[data-user-id]');
-			items.forEach(function (item) {
-				Utils.on(item, 'mousedown', function (e) {
+			const countMsg = (l10n.resultsCount || '%n results')
+				.replace('%n', String(users.length));
+			setStatus(countMsg);
+
+			queryAll('.user-picker__item[data-user-id]', list).forEach(function (item) {
+				bind(item, 'mousedown', function (e) {
 					e.preventDefault();
 				});
-				Utils.on(item, 'click', function () {
+				bind(item, 'click', function () {
 					const uid = item.getAttribute('data-user-id') || '';
 					const nameEl = item.querySelector('.user-picker__name');
 					selectUser(uid, nameEl ? nameEl.textContent : uid);
@@ -136,17 +217,20 @@
 
 		function highlightOption(index) {
 			const items = list.querySelectorAll('.user-picker__item[data-user-id]');
+			if (!items.length) {
+				return;
+			}
 			items.forEach(function (item, i) {
 				const active = i === index;
 				item.setAttribute('aria-selected', active ? 'true' : 'false');
 				if (active) {
-					item.focus();
+					search.setAttribute('aria-activedescendant', item.id || '');
 				}
 			});
 			activeIndex = index;
 		}
 
-		Utils.on(search, 'input', function () {
+		bind(search, 'input', function () {
 			if (search.value !== selectedLabel) {
 				hidden.value = '';
 				selectedLabel = '';
@@ -158,12 +242,12 @@
 			}, 280);
 		});
 
-		Utils.on(search, 'focus', function () {
+		bind(search, 'focus', function () {
 			const q = (hidden.value && search.value === selectedLabel) ? hidden.value : search.value.trim();
 			fetchUsers(q);
 		});
 
-		Utils.on(search, 'keydown', function (e) {
+		bind(search, 'keydown', function (e) {
 			const items = list.querySelectorAll('.user-picker__item[data-user-id]');
 			if (e.key === 'Escape') {
 				closeList();

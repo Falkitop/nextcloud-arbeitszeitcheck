@@ -300,11 +300,11 @@ class OvertimeService
 	public function getWeeklyOvertime(string $userId, ?\DateTime $weekStart = null): array
 	{
 		if ($weekStart === null) {
-			$weekStart = new \DateTime();
-			$dayOfWeek = (int)$weekStart->format('w');
-			$weekStart->modify('-' . $dayOfWeek . ' days');
+			// ISO-style calendar week (Monday–Sunday), aligned with compliance checks and DE practice.
+			$weekStart = new \DateTime('monday this week');
 		}
 
+		$weekStart = clone $weekStart;
 		$weekStart->setTime(0, 0, 0);
 		$weekEnd = clone $weekStart;
 		$weekEnd->modify('+6 days');

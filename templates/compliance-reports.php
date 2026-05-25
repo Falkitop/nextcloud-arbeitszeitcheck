@@ -19,18 +19,12 @@ $startDate = $_['startDate'] ?? date('Y-m-d', strtotime('-30 days'));
 $endDate = $_['endDate'] ?? date('Y-m-d');
 ?>
 
-<?php include __DIR__ . '/common/navigation.php'; ?>
+<?php include __DIR__ . '/common/page-start.php'; ?>
 
-<main id="app-content" role="main" aria-label="<?php p($l->t('Compliance reports content')); ?>">
-    <div id="app-content-wrapper">
-        <?php include __DIR__ . '/common/compliance-tabs.php'; ?>
-        <div class="section">
-            <div class="section-header">
-                <h1><?php p($l->t('Working Time Reports')); ?></h1>
-                <p><?php p($l->t('See statistics about working time problems and how well employees follow the rules')); ?></p>
-            </div>
+                <?php include __DIR__ . '/common/compliance-tabs.php'; ?>
 
-            <!-- Report Summary -->
+<div class="section">
+<!-- Report Summary -->
             <div class="stats-grid">
                 <div class="stat-card"
                      title="<?php p($l->t('Total number of times working time rules were broken')); ?>"
@@ -132,7 +126,5 @@ $endDate = $_['endDate'] ?? date('Y-m-d');
                     </div>
                 </div>
             <?php endif; ?>
-        </div>
-    </div>
-</main>
-</div><!-- /#arbeitszeitcheck-app -->
+
+<?php include __DIR__ . '/common/page-end.php'; ?>

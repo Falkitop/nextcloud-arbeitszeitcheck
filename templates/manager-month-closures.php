@@ -41,33 +41,25 @@ foreach ($l10nKeys as $key) {
 }
 ?>
 
-<?php include __DIR__ . '/common/navigation.php'; ?>
+<?php include __DIR__ . '/common/page-start.php'; ?>
 
-<main id="app-content"
-	role="main"
-	aria-label="<?php p($l->t('Month closures content')); ?>"
-	class="manager-month-closures-page"
-	<?php if (!$error): ?>
-	data-revision-pdf-available-months-url="<?php p($availableMonthsUrl); ?>"
-	data-revision-pdf-users-for-month-url="<?php p($usersForMonthUrl); ?>"
-	data-pdf-url-base="<?php p($pdfUrlBase); ?>"
-	<?php endif; ?>>
-	<?php if (!$error): ?>
-	<script type="application/json" id="manager-mc-l10n-json" nonce="<?php p($_['cspNonce'] ?? ''); ?>">
-	<?php echo json_encode($l10nMap, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>
+        <div class="manager-month-closures-page"
+            <?php if (!$error): ?>
+            data-revision-pdf-available-months-url="<?php p($availableMonthsUrl); ?>"
+            data-revision-pdf-users-for-month-url="<?php p($usersForMonthUrl); ?>"
+            data-pdf-url-base="<?php p($pdfUrlBase); ?>"
+            <?php endif; ?>>
+        <?php if (!$error): ?>
+        <script type="application/json" id="manager-mc-l10n-json" nonce="<?php p($_['cspNonce'] ?? ''); ?>">
+        <?php echo json_encode($l10nMap, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>
+        </script>
+        <?php endif; ?>
+        <div class="section manager-month-closures-page__content">
+            <p class="manager-mc-header__intro form-help" id="manager-month-closures-intro">
+                <?php p($l->t('Pick a month that already has sealed data, then download the same revision-secure PDF for each person you are allowed to access.')); ?>
+            </p>
 
-	</script>
-	<?php endif; ?>
-	<div id="app-content-wrapper">
-		<div class="section manager-month-closures-page__content">
-			<header class="manager-mc-header">
-				<h1 class="manager-mc-header__title"><?php p($l->t('Revision PDFs (month closure)')); ?></h1>
-				<p class="manager-mc-header__intro" id="manager-month-closures-intro">
-					<?php p($l->t('Pick a month that already has sealed data, then download the same revision-secure PDF for each person you are allowed to access.')); ?>
-				</p>
-			</header>
-
-			<?php if ($error): ?>
+            <?php if ($error): ?>
 				<p class="form-help form-help--error" role="alert"><?php p($error); ?></p>
 			<?php else: ?>
 
@@ -117,6 +109,7 @@ foreach ($l10nKeys as $key) {
 				<p id="manager-mc-page-error" class="form-help form-help--error manager-mc-page-error" role="alert" aria-live="assertive" hidden></p>
 			</div>
 			<?php endif; ?>
-		</div>
-	</div>
-</main>
+        </div>
+        </div>
+
+<?php include __DIR__ . '/common/page-end.php'; ?>

@@ -1277,15 +1277,15 @@ body[data-theme-dark-highcontrast] .form-input.form-select option {
 }
 
 .inline-notice--warning {
-  border-left-color: var(--arbeitszeitcheck-color-notification-warning, var(--color-warning));
   background: var(--arbeitszeitcheck-color-notification-warning-background);
   border-color: color-mix(in srgb, var(--arbeitszeitcheck-color-notification-warning, var(--color-warning)) 35%, var(--color-border));
+  border-left-color: var(--arbeitszeitcheck-color-notification-warning, var(--color-warning));
 }
 
 .inline-notice--info {
-  border-left-color: var(--arbeitszeitcheck-color-notification-info, var(--color-primary-element));
   background: var(--arbeitszeitcheck-color-notification-info-background);
   border-color: color-mix(in srgb, var(--arbeitszeitcheck-color-notification-info, var(--color-primary-element)) 28%, var(--color-border));
+  border-left-color: var(--arbeitszeitcheck-color-notification-info, var(--color-primary-element));
 }
 
 .inline-notice__icon {
@@ -2355,35 +2355,12 @@ body[data-theme-dark-highcontrast] .form-input.form-select option {
 }
 
 /* ===== SUBSTITUTION REQUESTS (Vertretungs-Freigabe) ===== */
-.substitution-requests-page .substitution-requests__header {
-  margin-bottom: var(--space-8, 2rem);
-  padding: var(--space-6);
-  background: var(--arbeitszeitcheck-color-background-elevated);
-  border-radius: var(--radius-xl);
-  border: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
+.azc-app--substitution-requests .substitution-requests__list {
+  margin-top: 0;
 }
 
-.substitution-requests-page .substitution-requests__list {
-  padding: var(--space-6);
-}
-
-.substitution-requests__title {
-  font-size: 1.5rem;
-  font-weight: 700;
-  line-height: 1.3;
-  margin: 0 0 var(--space-3);
-  color: var(--arbeitszeitcheck-color-main-text);
-}
-
-.substitution-requests__desc {
-  margin: 0;
-  font-size: 0.9375rem;
-  line-height: 1.5;
-  color: var(--arbeitszeitcheck-color-text-maxcontrast);
-}
-
-.substitution-requests-content {
-  margin-top: var(--space-5);
+.azc-app--substitution-requests .substitution-requests-content {
+  margin-top: var(--azc-space-4, var(--space-5, 1.25rem));
   min-height: 80px;
 }
 
@@ -2475,6 +2452,13 @@ body[data-theme-dark-highcontrast] .form-input.form-select option {
   color: var(--arbeitszeitcheck-color-text-maxcontrast);
 }
 
+.azc-app--substitution-requests .azc-empty-state__title {
+  font-size: var(--azc-fs-lg, 1.125rem);
+  font-weight: 600;
+  margin: 0 0 var(--azc-space-2, 0.5rem);
+  color: var(--azc-text, var(--color-main-text));
+}
+
 @media (min-width: 640px) {
   .substitution-request-card__body {
     flex-direction: row;
@@ -2485,7 +2469,6 @@ body[data-theme-dark-highcontrast] .form-input.form-select option {
   .substitution-request-card__title { flex: 1 1 auto; min-width: 0; }
   .substitution-request-card__meta { flex: 0 0 auto; }
   .substitution-request-card__actions { flex: 0 0 auto; margin-top: 0; }
-  .substitution-requests__title { font-size: 2rem; }
 }
 
 /* ===== HISTORICAL ENTRY HINT =====

@@ -92,6 +92,13 @@ describe('entitlement-explainer', () => {
     expect(window.ArbeitszeitCheckUtils.ajax).toHaveBeenCalled()
   })
 
+  it('is closed on init even when markup had open attribute', () => {
+    const dlg = document.getElementById('entitlement-explain-dialog')
+    expect(dlg.open).toBe(false)
+    expect(dlg.hasAttribute('open')).toBe(false)
+    expect(dlg.parentElement).toBe(document.body)
+  })
+
   it('closes dialog when dismiss is clicked', async () => {
     const dlg = document.getElementById('entitlement-explain-dialog')
     dlg.showModal()

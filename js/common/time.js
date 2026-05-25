@@ -475,12 +475,26 @@
    * Apply bootstrap from InitialState when the init script has not run yet
    * (e.g. script load order edge cases).
    */
+  function loadAppInitialState(appId, key) {
+    try {
+      if (root.OCP?.InitialState && typeof root.OCP.InitialState.loadState === 'function') {
+        return root.OCP.InitialState.loadState(appId, key);
+      }
+      if (root.OC?.initialState && typeof root.OC.initialState.loadState === 'function') {
+        return root.OC.initialState.loadState(appId, key);
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
+  }
+
   function applyBootstrapFromInitialState() {
     try {
-      if (!root.OC || !root.OC.initialState || typeof root.OC.initialState.loadState !== 'function') {
+      const cfg = loadAppInitialState('arbeitszeitcheck', 'time');
+      if (!cfg) {
         return;
       }
-      const cfg = root.OC.initialState.loadState('arbeitszeitcheck', 'time');
       if (!cfg || typeof cfg !== 'object') {
         return;
       }
@@ -497,9 +511,9 @@
   }
 
   // Auto-sync from InitialState or inline bootstrap (`time-init.js` /
-  // legacy template). Ensures the timer never starts against a skewed client clock.
+  // `time-bootstrap.php`). Ensures the timer never starts against a skewed client clock.
   try {
-    if (!root.ArbeitszeitCheck || !root.ArbeitszeitCheck.serverNow) {
+    if (!root.ArbeitszeitCheck?.tz?.storage || !root.ArbeitszeitCheck?.serverNow) {
       applyBootstrapFromInitialState();
     }
     const ns = root.ArbeitszeitCheck;

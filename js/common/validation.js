@@ -189,9 +189,12 @@ const ArbeitszeitCheckValidation = {
         currentDescribedBy ? `${currentDescribedBy} ${errorId}` : errorId);
     }
 
+    const errorIcon = (typeof window !== 'undefined' && window.AzcCatalog && typeof window.AzcCatalog.render === 'function')
+      ? window.AzcCatalog.render('triangle-alert', 'form-error__icon-svg')
+      : '';
     // Create error content with icon and message
     errorElement.innerHTML = `
-      <span class="form-error__icon" aria-hidden="true">⚠️</span>
+      <span class="form-error__icon" aria-hidden="true">${errorIcon}</span>
       <div class="form-error__content">
         <strong class="form-error__title">${this.escapeHtml(message.split('.')[0])}</strong>
         ${message.includes('.') ? `<p class="form-error__description">${this.escapeHtml(message.substring(message.indexOf('.') + 1).trim())}</p>` : ''}

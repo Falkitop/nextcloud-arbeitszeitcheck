@@ -94,12 +94,16 @@
 	const formatHours = (hours) => Number.isFinite(hours) ? hours.toFixed(2) : '0.00';
 
 	const statusIcon = (status) => {
-		switch (status) {
-			case 'active': return '●';
-			case 'break': return '⏸';
-			case 'paused': return '⏸';
-			default: return '○';
+		const map = {
+			active: 'clock',
+			break: 'coffee',
+			paused: 'pause',
+		};
+		const name = map[status] || 'circle';
+		if (typeof window.AzcCatalog !== 'undefined' && typeof window.AzcCatalog.render === 'function') {
+			return window.AzcCatalog.render(name, 'dashboard-widget-status-icon');
 		}
+		return '';
 	};
 
 	const formatTime = (value) => {
@@ -241,7 +245,7 @@
 		}
 
 		if (statusIconEl) {
-			statusIconEl.textContent = statusIcon(status);
+			statusIconEl.innerHTML = statusIcon(status);
 			statusIconEl.setAttribute('aria-hidden', 'true');
 		}
 
@@ -410,12 +414,12 @@
 
 				if (!resp.ok || !json.success) {
 					const errMsg = json.error || l10n.actionFailed || 'Action failed';
-					if (window.OC?.dialogs?.alert) {
-						window.OC.dialogs.alert(errMsg, l10n.errorTitle || 'ArbeitszeitCheck');
+					showError(errMsg);
+					if (window.AzcMessaging?.announceAssertive) {
+						window.AzcMessaging.announceAssertive(errMsg);
 					} else {
-						showError(errMsg);
+						announce(errMsg);
 					}
-					announce(errMsg);
 					updateButtonStates(lastKnown.status);
 					return;
 				}

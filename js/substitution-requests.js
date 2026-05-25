@@ -48,6 +48,8 @@
                     emptyEl.classList.remove('visually-hidden');
                     itemsEl.innerHTML = '';
                     itemsEl.setAttribute('aria-hidden', 'true');
+                    const msg = t('No substitution requests.', 'No substitution requests.');
+                    Messaging.announcePolite?.(msg);
                 } else {
                     emptyEl.classList.add('visually-hidden');
                     itemsEl.setAttribute('aria-hidden', 'false');

@@ -106,27 +106,269 @@
     opacity: 1;
 }
 
-/* Dashboard “at a glance” block: one scannable group (WCAG: section + sr-only h2) */
-.dashboard-key-metrics {
-    scroll-margin-top: var(--space-4, 1rem);
+/* Dashboard “at a glance” — primary employee landing (WCAG: section + heading hierarchy) */
+.dashboard-key-metrics,
+.azc-dashboard-overview {
+    scroll-margin-top: var(--azc-space-4, 1rem);
 }
 
-/* Dashboard Grid - Clear spacing between cards (generous gaps for clarity) */
-.arbeitszeitcheck-dashboard__grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
-    gap: var(--space-10);
-    margin-bottom: 0;
-    margin-top: 0;
-    visibility: visible;
-    opacity: 1;
+#app-content.azc-app--dashboard .azc-dashboard-overview {
+    display: flex;
+    flex-direction: column;
+    gap: var(--azc-space-5, 1.25rem);
     width: 100%;
+    max-width: none;
+    margin: 0 0 var(--azc-space-6, 1.5rem);
+    padding: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+}
+
+#app-content.azc-app--dashboard .dashboard-key-metrics.section {
+    padding: 0;
+    margin-bottom: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+}
+
+/* Inner grid: punch → hours → overtime | vacation */
+#app-content.azc-app--dashboard .azc-dashboard-overview__grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--azc-space-5, 1.25rem);
+    width: 100%;
+    min-width: 0;
+}
+
+/* Alerts + welcome above overview */
+#app-content.azc-app--dashboard .azc-dashboard-alerts {
+    display: flex;
+    flex-direction: column;
+    gap: var(--azc-space-4, 1rem);
+    margin-bottom: var(--azc-space-5, 1.25rem);
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-welcome {
+    margin-bottom: var(--azc-space-6, 1.5rem);
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-welcome__steps {
+    margin: 0;
+    padding-left: 1.35rem;
+    display: flex;
+    flex-direction: column;
+    gap: var(--azc-space-2, 0.5rem);
+    line-height: 1.5;
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-welcome__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--azc-space-3, 0.75rem);
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-overview__intro {
+    grid-column: 1 / -1;
+    margin: 0 0 var(--azc-space-2, 0.5rem);
+    padding: 0;
+    text-align: left;
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-overview__title {
+    margin: 0;
+    font-size: clamp(1.35rem, 2.5vw, 1.65rem);
+    font-weight: 700;
+    line-height: 1.25;
+    color: var(--azc-text, var(--color-main-text));
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-overview__lead {
+    margin: var(--azc-space-2, 0.5rem) 0 0;
+    max-width: 42rem;
+    font-size: var(--azc-fs-md, 1rem);
+    line-height: 1.5;
+    color: var(--azc-muted, var(--color-text-maxcontrast));
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-metrics-panel.azc-card {
+    margin: 0;
+    height: 100%;
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-metrics-panel .azc-card__body {
+    padding-top: var(--azc-space-4, 1rem);
+    padding-bottom: var(--azc-space-4, 1rem);
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-metric__period {
+    font-size: var(--azc-fs-xs, 0.75rem);
+    font-weight: 600;
+    color: var(--azc-muted, var(--color-text-maxcontrast));
+    line-height: 1.35;
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-recent {
+    margin-top: 0;
+}
+
+/* Responsive recent-entries table (stacked cards on narrow viewports) */
+@media (max-width: 767px) {
+    #app-content.azc-app--dashboard .azc-dashboard-recent__table.azc-table--responsive thead {
+        display: none;
+    }
+
+    #app-content.azc-app--dashboard .azc-dashboard-recent__table.azc-table--responsive tbody tr {
+        display: block;
+        margin-bottom: var(--azc-space-4, 1rem);
+        padding: var(--azc-space-3, 0.75rem);
+        border: 1px solid var(--azc-border, var(--color-border));
+        border-radius: var(--azc-radius-md, 8px);
+        background: var(--azc-bg-card, var(--color-main-background));
+    }
+
+    #app-content.azc-app--dashboard .azc-dashboard-recent__table.azc-table--responsive tbody tr:last-child {
+        margin-bottom: 0;
+    }
+
+    #app-content.azc-app--dashboard .azc-dashboard-recent__table.azc-table--responsive td {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: var(--azc-space-3, 0.75rem);
+        padding: var(--azc-space-2, 0.5rem) 0;
+        border: none;
+        text-align: right;
+    }
+
+    #app-content.azc-app--dashboard .azc-dashboard-recent__table.azc-table--responsive td::before {
+        content: attr(data-label);
+        font-weight: 600;
+        font-size: var(--azc-fs-sm, 0.875rem);
+        color: var(--azc-muted, var(--color-text-maxcontrast));
+        text-align: left;
+        flex-shrink: 0;
+    }
+
+    #app-content.azc-app--dashboard .azc-dashboard-recent__table.azc-table--responsive td[colspan] {
+        display: block;
+        text-align: center;
+    }
+
+    #app-content.azc-app--dashboard .azc-dashboard-recent__table.azc-table--responsive td[colspan]::before {
+        display: none;
+    }
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-recent__body {
+    padding-top: 0;
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-recent__table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid var(--azc-border, var(--color-border));
+    border-radius: var(--azc-radius-md, 8px);
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-recent__table {
+    width: 100%;
+    margin: 0;
+    border-collapse: collapse;
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-recent__table th,
+#app-content.azc-app--dashboard .azc-dashboard-recent__table td {
+    padding: var(--azc-space-3, 0.75rem) var(--azc-space-4, 1rem);
+    text-align: left;
+    vertical-align: middle;
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-recent__table thead th {
+    font-size: var(--azc-fs-sm, 0.875rem);
+    font-weight: 700;
+    background: var(--azc-bg-soft, var(--color-background-hover));
+    border-bottom: 2px solid var(--azc-border, var(--color-border));
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-recent__empty {
+    margin: var(--azc-space-4, 1rem) auto;
+    max-width: 28rem;
+    text-align: center;
+}
+
+/* Disable legacy card lift inside dashboard (azc-card is the source of truth) */
+#app-content.azc-app--dashboard .card:not(.azc-card) {
+    transform: none;
+    box-shadow: var(--azc-shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.08));
+}
+
+#app-content.azc-app--dashboard .card:not(.azc-card):hover {
+    transform: none;
+}
+
+@media (min-width: 768px) {
+    #app-content.azc-app--dashboard .azc-dashboard-overview__grid {
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+        grid-template-areas:
+            "punch punch punch punch punch punch punch punch punch punch punch punch"
+            "metrics metrics metrics metrics metrics metrics metrics metrics metrics metrics metrics metrics"
+            "overtime overtime overtime overtime overtime overtime vacation vacation vacation vacation vacation vacation";
+        gap: var(--azc-space-5, 1.25rem);
+        align-items: stretch;
+    }
+
+    #app-content.azc-app--dashboard .azc-dashboard-status {
+        grid-area: punch;
+    }
+
+    #app-content.azc-app--dashboard .azc-dashboard-metrics-panel {
+        grid-area: metrics;
+    }
+
+    #app-content.azc-app--dashboard .azc-dashboard-overtime {
+        grid-area: overtime;
+    }
+
+    #app-content.azc-app--dashboard .azc-dashboard-vacation {
+        grid-area: vacation;
+    }
+
+    /* When overtime card is hidden, vacation spans the full row */
+    #app-content.azc-app--dashboard .azc-dashboard-overview__grid:not(:has(.azc-dashboard-overtime)) {
+        grid-template-areas:
+            "punch punch punch punch punch punch punch punch punch punch punch punch"
+            "metrics metrics metrics metrics metrics metrics metrics metrics metrics metrics metrics metrics"
+            "vacation vacation vacation vacation vacation vacation vacation vacation vacation vacation vacation vacation";
+    }
 }
 
 @media (min-width: 1200px) {
-    .arbeitszeitcheck-dashboard__grid {
-        gap: var(--space-12);
+    #app-content.azc-app--dashboard .azc-dashboard-overview__grid {
+        grid-template-areas:
+            "punch punch punch punch punch punch metrics metrics metrics metrics metrics metrics"
+            "overtime overtime overtime overtime overtime overtime vacation vacation vacation vacation vacation vacation";
+        gap: var(--azc-space-6, 1.5rem);
     }
+
+    #app-content.azc-app--dashboard .azc-dashboard-overview__grid:not(:has(.azc-dashboard-overtime)) {
+        grid-template-areas:
+            "punch punch punch punch punch punch metrics metrics metrics metrics metrics metrics"
+            "vacation vacation vacation vacation vacation vacation vacation vacation vacation vacation vacation vacation";
+    }
+
+    #app-content.azc-app--dashboard .azc-dashboard-metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+/* Legacy grid (index.php fallback) */
+.arbeitszeitcheck-dashboard__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+    gap: var(--azc-space-6, 1.5rem);
+    width: 100%;
 }
 
 /* Primary actions: 2px focus ring for keyboard users (WCAG 2.4.7) */
@@ -215,7 +457,273 @@
     border-color: var(--arbeitszeitcheck-color-info);
 }
 
-/* ===== Current Status Card (Dashboard) ===== */
+/* ===== Metric tiles (hours at a glance) ===== */
+#app-content.azc-app--dashboard .azc-dashboard-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+    gap: var(--azc-space-4, 1rem);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-metric {
+    display: flex;
+    flex-direction: column;
+    gap: var(--azc-space-2, 0.5rem);
+    padding: var(--azc-space-4, 1rem) var(--azc-space-5, 1.25rem);
+    border: 1px solid var(--azc-border, var(--color-border));
+    border-radius: var(--azc-radius-md, 8px);
+    background: var(--azc-bg-card, var(--color-main-background));
+    box-shadow: var(--azc-shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.08));
+    min-height: 5.5rem;
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-metric__label {
+    font-size: var(--azc-fs-sm, 0.875rem);
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--azc-muted, var(--color-text-maxcontrast));
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-metric__value {
+    font-size: clamp(1.35rem, 3vw, 1.75rem);
+    font-weight: 700;
+    line-height: 1.15;
+    color: var(--azc-text, var(--color-main-text));
+    font-variant-numeric: tabular-nums;
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-metric__unit {
+    font-size: var(--azc-fs-sm, 0.875rem);
+    font-weight: 600;
+    color: var(--azc-muted, var(--color-text-maxcontrast));
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-metric__value--positive {
+    color: var(--color-success-text, var(--color-element-success, #2d7b46));
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-metric__value--negative {
+    color: var(--color-error, #cc4646);
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-overtime.azc-card,
+#app-content.azc-app--dashboard .azc-dashboard-vacation.azc-card {
+    margin: 0;
+    height: 100%;
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-overtime .azc-card__body,
+#app-content.azc-app--dashboard .azc-dashboard-vacation .azc-card__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--azc-space-4, 1rem);
+}
+
+#app-content.azc-app--dashboard .dashboard-overtime-card__balance {
+    padding: var(--azc-space-4, 1rem);
+    border-radius: var(--azc-radius-md, 8px);
+    background: var(--azc-bg-soft, var(--color-background-hover));
+    border: 1px solid var(--azc-border, var(--color-border));
+}
+
+/* ===== Punch clock panel (dashboard status) ===== */
+#app-content.azc-app--dashboard .azc-dashboard-status.azc-dashboard-punch {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    justify-self: stretch;
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-punch.azc-card {
+    padding: 0;
+    overflow: hidden;
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-punch__inner {
+    display: flex;
+    flex-direction: column;
+    gap: var(--azc-space-5, 1.25rem);
+    padding: var(--azc-space-6, 1.5rem);
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-punch__hero {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--azc-space-4, 1rem);
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-punch__signal {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 3.75rem;
+    height: 3.75rem;
+    border-radius: 50%;
+    color: var(--status-accent);
+    background: color-mix(in srgb, var(--status-accent) 14%, transparent);
+    border: 2px solid color-mix(in srgb, var(--status-accent) 32%, transparent);
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-punch__signal-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-punch__signal-icon .azc-icon {
+    width: 100%;
+    height: 100%;
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-punch__headline {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-punch__title {
+    margin: 0;
+    font-size: clamp(1.4rem, 2.8vw, 1.85rem);
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--azc-text, var(--color-main-text));
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-punch__subtitle {
+    margin: var(--azc-space-2, 0.5rem) 0 0;
+    max-width: 40rem;
+    font-size: var(--azc-fs-md, 1rem);
+    line-height: 1.5;
+    color: var(--azc-muted, var(--color-text-maxcontrast));
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-punch__timers {
+    display: grid;
+    gap: var(--azc-space-4, 1rem);
+}
+
+@media (min-width: 640px) {
+    #app-content.azc-app--dashboard .dashboard-status-card--break .azc-dashboard-punch__timers {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-punch__timer {
+    margin: 0;
+    padding: var(--azc-space-5, 1.25rem);
+    border-radius: var(--azc-radius-md, 8px);
+    border: 1px solid var(--azc-border, var(--color-border));
+    background: var(--azc-bg-soft, var(--color-background-hover));
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-punch__timer--secondary {
+    opacity: 0.92;
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-punch__meta {
+    margin: var(--azc-space-2, 0.5rem) 0 0;
+    font-size: var(--azc-fs-sm, 0.875rem);
+    color: var(--azc-muted, var(--color-text-maxcontrast));
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-punch__hint {
+    margin: 0;
+    padding: var(--azc-space-3, 0.75rem) var(--azc-space-4, 1rem);
+    border-radius: var(--azc-radius-sm, 6px);
+    background: var(--azc-bg-soft, var(--color-background-hover));
+    border-left: 3px solid var(--status-accent, var(--color-primary-element));
+    font-size: var(--azc-fs-sm, 0.875rem);
+    line-height: 1.45;
+    color: var(--azc-text, var(--color-main-text));
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-punch__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--azc-space-3, 0.75rem);
+    margin: 0;
+    padding: 0;
+    border: none;
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-punch__actions .azc-btn {
+    flex: 1 1 10rem;
+    min-height: 2.75rem;
+    justify-content: center;
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-punch__actions--solo {
+    margin-top: var(--azc-space-2, 0.5rem);
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-punch__cta {
+    flex: 1 1 100%;
+    min-height: 3.25rem;
+    padding-top: var(--azc-space-3, 0.75rem);
+    padding-bottom: var(--azc-space-3, 0.75rem);
+    font-size: var(--azc-fs-lg, 1.125rem);
+    font-weight: 600;
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-punch__tz {
+    margin: 0;
+    padding-top: var(--azc-space-3, 0.75rem);
+    border-top: 1px solid var(--azc-border, var(--color-border));
+    font-size: var(--azc-fs-xs, 0.75rem);
+    line-height: 1.4;
+    color: var(--azc-muted, var(--color-text-maxcontrast));
+    text-align: center;
+}
+
+/* Clocked out: calm, centered punch panel */
+#app-content.azc-app--dashboard .azc-dashboard-punch--clocked_out .azc-dashboard-punch__inner {
+    padding: clamp(1.75rem, 4vw, 2.5rem) var(--azc-space-6, 1.5rem);
+    align-items: stretch;
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-punch--clocked_out .azc-dashboard-punch__hero {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: var(--azc-space-4, 1rem);
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-punch--clocked_out .azc-dashboard-punch__signal {
+    width: 4.5rem;
+    height: 4.5rem;
+    color: var(--azc-muted, var(--color-text-maxcontrast));
+    background: var(--azc-bg-soft, var(--color-background-hover));
+    border-color: var(--azc-border, var(--color-border));
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-punch--clocked_out .azc-dashboard-punch__signal-icon {
+    width: 2rem;
+    height: 2rem;
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-punch--clocked_out .azc-dashboard-punch__subtitle {
+    margin-left: auto;
+    margin-right: auto;
+}
+
+#app-content.azc-app--dashboard .azc-dashboard-punch--clocked_out .azc-dashboard-punch__cta {
+    max-width: none;
+    margin-left: 0;
+    margin-right: 0;
+}
+
+/* ===== Current Status Card (Dashboard) — timers & state accents ===== */
+#app-content.azc-app--dashboard .azc-dashboard-status.dashboard-status-card,
+#app-content.azc-app--dashboard .azc-dashboard-punch.dashboard-status-card {
+    position: relative;
+    overflow: hidden;
+    --status-accent: var(--color-primary-element, var(--arbeitszeitcheck-color-primary));
+}
+
 .dashboard-status-card {
     position: relative;
     overflow: hidden;
@@ -227,6 +735,10 @@
 }
 
 .dashboard-status-card--break {
+    --status-accent: var(--arbeitszeitcheck-color-warning);
+}
+
+.dashboard-status-card--paused {
     --status-accent: var(--arbeitszeitcheck-color-warning);
 }
 
@@ -258,20 +770,21 @@
     margin-bottom: 0.35rem;
 }
 
-.dashboard-status-card__header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--space-4, 1rem);
-    margin-bottom: var(--space-4, 1rem);
+#app-content.azc-app--dashboard .azc-dashboard-punch .timer-value,
+#app-content.azc-app--dashboard .azc-dashboard-status .timer-value {
+    font-size: clamp(1.85rem, 4.5vw, 2.5rem);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
 }
 
-.dashboard-status-card__title {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--space-3, 0.75rem);
-    min-width: 0;
+#app-content.azc-app--dashboard .azc-dashboard-punch .timer-label,
+#app-content.azc-app--dashboard .azc-dashboard-status .timer-label {
+    display: block;
+    margin-bottom: var(--azc-space-2, 0.5rem);
+    font-size: var(--azc-fs-sm, 0.875rem);
+    font-weight: 600;
+    color: var(--azc-muted, var(--color-text-maxcontrast));
 }
 
 .timezone-badge {
@@ -316,37 +829,7 @@
     color: var(--color-primary-element-text);
 }
 
-.dashboard-status-card__quickstats {
-    margin: 0;
-    padding: var(--space-3, 0.75rem);
-    border: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
-    border-radius: var(--radius-lg, 8px);
-    background: var(--arbeitszeitcheck-color-background-dark, var(--color-background-dark));
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-3, 0.75rem);
-}
-
-.dashboard-status-card__quickstat {
-    margin: 0;
-    text-align: center;
-}
-
-.dashboard-status-card__quickstat dt {
-    margin: 0;
-    font-size: var(--arbeitszeitcheck-font-size-xs, 0.75rem);
-    color: var(--arbeitszeitcheck-color-text-maxcontrast);
-    text-align: center;
-}
-
-.dashboard-status-card__quickstat dd {
-    margin: var(--space-1, 0.25rem) 0 0;
-    font-size: var(--arbeitszeitcheck-font-size-base, 1rem);
-    font-weight: 600;
-    color: var(--arbeitszeitcheck-color-main-text, var(--color-main-text));
-    font-variant-numeric: tabular-nums;
-    text-align: center;
-}
+/* Legacy quickstats removed from template — metrics use .azc-dashboard-metric */
 
 /* Session Timer */
 .dashboard-status-card__timer {
@@ -432,16 +915,9 @@
     color: var(--arbeitszeitcheck-color-text-maxcontrast);
 }
 
-.dashboard-status-card .card-actions {
-    justify-content: flex-start;
-    gap: var(--space-3);
-    flex-wrap: wrap;
-}
-
-/* Touch targets: buttons at least 44px (WCAG 2.5.5) */
-.dashboard-status-card .card-actions .btn {
-    flex: 1 1 160px;
-    min-height: 44px;
+.dashboard-status-card__timer--secondary {
+    opacity: 0.75;
+    margin-top: var(--azc-space-4, 1rem);
 }
 
 /* Stat Items - clear label/value pairs, easy to scan */
@@ -578,8 +1054,25 @@
     font-size: var(--arbeitszeitcheck-font-size-base);
 }
 
+/* Vacation summary card (dashboard overview) */
+#app-content.azc-app--dashboard .dashboard-vacation-card__row {
+    padding: var(--azc-space-4, 1rem);
+    border-radius: var(--azc-radius-md, 8px);
+    background: var(--azc-bg-soft, var(--color-background-hover));
+    border: 1px solid var(--azc-border, var(--color-border));
+}
+
+#app-content.azc-app--dashboard .dashboard-vacation-card__value {
+    font-size: clamp(1.5rem, 4vw, 2rem);
+    font-variant-numeric: tabular-nums;
+}
+
+#app-content.azc-app--dashboard .dashboard-vacation-card__actions {
+    margin-top: auto;
+    padding-top: var(--azc-space-3, 0.75rem);
+}
+
 /* Responsive - Clear layout on small screens (100% width, no overflow) */
-/* Vacation summary card */
 .dashboard-vacation-card .card-body {
     display: flex;
     flex-direction: column;
@@ -661,9 +1154,25 @@
         margin-bottom: var(--space-8);
     }
 
-    .arbeitszeitcheck-dashboard__grid {
+    .arbeitszeitcheck-dashboard__grid,
+    #app-content.azc-app--dashboard .azc-dashboard-overview__grid {
         grid-template-columns: 1fr;
-        gap: var(--space-6);
+        gap: var(--azc-space-5, 1.25rem);
+    }
+
+    #app-content.azc-app--dashboard .azc-dashboard-metrics {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    #app-content.azc-app--dashboard .azc-dashboard-punch__actions,
+    #app-content.azc-app--dashboard .azc-dashboard-status__actions {
+        flex-direction: column;
+    }
+
+    #app-content.azc-app--dashboard .azc-dashboard-punch__actions .azc-btn,
+    #app-content.azc-app--dashboard .azc-dashboard-status__actions .azc-btn {
+        width: 100%;
+        flex: 1 1 auto;
     }
 
     .section-header {
@@ -754,16 +1263,16 @@
     }
 }
 
-/* ------------------------------------------------------------------------- */
-/* Paused-session recovery on the dashboard                                  */
-/*                                                                            */
-/* When a working session is left in the "paused" state we surface a direct  */
-/* "Complete session" button next to "Resume after break" so users can       */
-/* finalise the entry in a single click. The button must:                    */
-/*   - be readable (WCAG 1.4.3 contrast),                                    */
-/*   - have a comfortable touch target (WCAG 2.5.5 AAA / 2.5.8 AA: 24x24),  */
-/*   - render predictably next to the primary action.                        */
-/* ------------------------------------------------------------------------- */
+/*
+ * Paused-session recovery on the dashboard
+ *
+ * When a working session is left in the "paused" state we surface a direct
+ * "Complete session" button next to "Resume after break" so users can
+ * finalise the entry in a single click. The button must:
+ *   - be readable (WCAG 1.4.3 contrast),
+ *   - have a comfortable touch target (WCAG 2.5.5 AAA / 2.5.8 AA: 24x24),
+ *   - render predictably next to the primary action.
+ */
 
 .btn-complete-entry {
     display: inline-flex;

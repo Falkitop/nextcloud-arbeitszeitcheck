@@ -15,38 +15,25 @@
     const baseUrl = '/apps/arbeitszeitcheck';
 
     /**
-     * Compatibility wrapper for Nextcloud's destructive confirmation dialog.
-     * Supports both the modern Promise-based API and the older callback-based API.
+     * Destructive confirmation via AzcComponents.confirmDialog.
      *
      * @param {string} message
      * @param {string} title
-     * @param {object} options
+     * @param {string} confirmLabel
      * @param {Function} onConfirm - called only when the user explicitly confirms
      */
-    function confirmDestructiveCompat(message, title, options, onConfirm) {
-        if (typeof OC !== 'undefined' && OC.dialogs && typeof OC.dialogs.confirmDestructive === 'function') {
-            // Try promise-based API first
-            var result;
-            try {
-                result = OC.dialogs.confirmDestructive(message, title, options, function(confirmed) {
-                    // If the implementation is callback-based (old API), this callback will be used.
-                    if (confirmed) {
-                        onConfirm();
-                    }
-                });
-            } catch (e) {
-                result = undefined;
-            }
-
-            // If a thenable is returned, use the modern Promise API
-            if (result && typeof result.then === 'function') {
-                result.then(function(confirmed) {
-                    if (confirmed) {
-                        onConfirm();
-                    }
-                });
-            }
-        } else if (window.confirm(message)) {
+    async function confirmDestructiveCompat(message, title, confirmLabel, onConfirm) {
+        const Utils = window.ArbeitszeitCheckUtils;
+        if (!Utils?.confirmDestructiveAction) {
+            return;
+        }
+        const confirmed = await Utils.confirmDestructiveAction({
+            title: title || '',
+            message: message,
+            confirmLabel: confirmLabel || t('Confirm', 'Confirm'),
+            variant: 'destructive',
+        });
+        if (confirmed) {
             onConfirm();
         }
     }
@@ -388,12 +375,7 @@
         confirmDestructiveCompat(
             message,
             t('Delete unit', 'Delete unit'),
-            {
-                type: OC.dialogs && OC.dialogs.YES_NO_BUTTONS,
-                confirm: t('Delete', 'Delete'),
-                confirmClasses: 'error',
-                cancel: t('Cancel', 'Cancel')
-            },
+            t('Delete', 'Delete'),
             function() { deleteTeam(id); }
         );
     }
@@ -787,12 +769,7 @@
         confirmDestructiveCompat(
             message,
             t('Remove member', 'Remove member'),
-            {
-                type: OC.dialogs && OC.dialogs.YES_NO_BUTTONS,
-                confirm: t('Remove', 'Remove'),
-                confirmClasses: 'error',
-                cancel: t('Cancel', 'Cancel')
-            },
+            t('Remove', 'Remove'),
             function() { removeMember(teamId, userId); }
         );
     }
@@ -816,12 +793,7 @@
         confirmDestructiveCompat(
             message,
             t('Remove manager', 'Remove manager'),
-            {
-                type: OC.dialogs && OC.dialogs.YES_NO_BUTTONS,
-                confirm: t('Remove', 'Remove'),
-                confirmClasses: 'error',
-                cancel: t('Cancel', 'Cancel')
-            },
+            t('Remove', 'Remove'),
             function() { removeManager(teamId, userId); }
         );
     }

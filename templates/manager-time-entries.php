@@ -7,19 +7,11 @@ declare(strict_types=1);
 $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 ?>
 
-<?php include __DIR__ . '/common/navigation.php'; ?>
+<?php include __DIR__ . '/common/page-start.php'; ?>
 
-<main id="app-content" role="main" aria-label="<?php p($l->t('Employee time entries content')); ?>" class="manager-time-entries-page">
-	<div id="app-content-wrapper">
-		<div class="section manager-time-entries-page__content">
-			<header class="section-header manager-time-entries-page__header">
-				<h1><?php p($l->t('Employee time entries')); ?></h1>
-				<p class="section__desc">
-					<?php p($l->t('View your employees\' time entries directly in the app. Start by selecting a date range and optionally one person.')); ?>
-				</p>
-			</header>
 
-			<section class="section manager-time-entries-page__filters" aria-labelledby="employee-time-entries-filters-title">
+        <div class="section manager-time-entries-page__content">
+<section class="section manager-time-entries-page__filters" aria-labelledby="employee-time-entries-filters-title">
 				<header class="manager-time-entries-page__filters-head">
 					<h2 id="employee-time-entries-filters-title"><?php p($l->t('Filter')); ?></h2>
 					<p class="manager-time-entries-page__filters-intro">
@@ -154,11 +146,10 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 					<button type="button" id="employee-time-entries-next" class="btn btn--secondary" disabled><?php p($l->t('Next')); ?></button>
 				</div>
 			</section>
-		</div>
-	</div>
-</main>
 </div>
 
 <?php include __DIR__ . '/common/manager-correction-l10n.php'; ?>
 
 <?php include __DIR__ . '/common/manager-employee-list-l10n.php'; ?>
+
+<?php include __DIR__ . '/common/page-end.php'; ?>

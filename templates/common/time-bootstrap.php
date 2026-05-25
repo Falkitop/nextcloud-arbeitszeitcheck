@@ -41,3 +41,27 @@ if (!isset($arbeitszeitCheckServerNowIso) || !is_string($arbeitszeitCheckServerN
 }
 
 $bootstrap->registerConfig();
+
+$storageTzName = $arbeitszeitCheckStorageTimeZone->getName();
+$displayTzName = $arbeitszeitCheckUserDisplayTz->getName();
+$serverNowJs = json_encode(
+	$arbeitszeitCheckServerNowIso,
+	JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR,
+);
+$storageTzJs = json_encode($storageTzName, JSON_THROW_ON_ERROR);
+$displayTzJs = json_encode($displayTzName, JSON_THROW_ON_ERROR);
+?>
+<script nonce="<?php p($_['cspNonce'] ?? ''); ?>">
+(function (w) {
+	'use strict';
+	w.ArbeitszeitCheck = w.ArbeitszeitCheck || {};
+	w.ArbeitszeitCheck.tz = Object.assign(
+		{ storage: <?php print_unescaped($storageTzJs); ?>, display: <?php print_unescaped($displayTzJs); ?> },
+		w.ArbeitszeitCheck.tz || {},
+	);
+	if (!w.ArbeitszeitCheck.serverNow) {
+		w.ArbeitszeitCheck.serverNow = <?php print_unescaped($serverNowJs); ?>;
+	}
+})(window);
+</script>
+<?php

@@ -40,6 +40,8 @@ use OCA\ArbeitszeitCheck\Service\LayeredVacationValidationException;
 use OCA\ArbeitszeitCheck\Service\VacationAllocationService;
 use OCA\ArbeitszeitCheck\Service\VacationEntitlementEngine;
 use OCA\ArbeitszeitCheck\Service\UserOvertimeSettingsService;
+use OCA\ArbeitszeitCheck\Service\PermissionService;
+use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
 use OCA\ArbeitszeitCheck\Support\OpeningBalanceYearValidator;
 use OCA\ArbeitszeitCheck\Support\StrictYmdDates;
 use OCP\App\IAppManager;
@@ -70,6 +72,7 @@ use OCP\Util;
 class AdminController extends Controller
 {
 	use CSPTrait;
+	use PageShellTrait;
 	private const MAX_NOTIFICATION_RECIPIENTS = 20;
 	private const MAX_NOTIFICATION_RECIPIENT_LENGTH = 254;
 	private const MAX_NOTIFICATION_RECIPIENTS_RAW_LENGTH = 4000;
@@ -88,15 +91,17 @@ class AdminController extends Controller
 	private AuditLogMapper $auditLogMapper;
 	private IUserManager $userManager;
 	private IAppConfig $appConfig;
-	private IL10N $l10n;
+	protected IL10N $l10n;
 	private UserSettingsMapper $userSettingsMapper;
 	private TeamMapper $teamMapper;
 	private TeamMemberMapper $teamMemberMapper;
 	private TeamManagerMapper $teamManagerMapper;
 	private IGroupManager $groupManager;
 	private IAppManager $appManager;
-	private IUserSession $userSession;
-	private IURLGenerator $urlGenerator;
+	protected IUserSession $userSession;
+	protected IURLGenerator $urlGenerator;
+	protected PermissionService $permissionService;
+	protected LocaleFormatService $localeFormat;
 	private HolidayMapper $holidayMapper;
 	private HolidayService $holidayCalendarService;
 	private VacationYearBalanceMapper $vacationYearBalanceMapper;
@@ -137,7 +142,9 @@ class AdminController extends Controller
 		UserVacationPolicyAssignmentMapper $userVacationPolicyAssignmentMapper,
 		VacationEntitlementEngine $vacationEntitlementEngine,
 		LayeredVacationDefaultsService $layeredVacationDefaultsService,
-		UserOvertimeSettingsService $userOvertimeSettingsService
+		UserOvertimeSettingsService $userOvertimeSettingsService,
+		PermissionService $permissionService,
+		LocaleFormatService $localeFormat,
 	) {
 		parent::__construct($appName, $request);
 		$this->timeEntryMapper = $timeEntryMapper;
@@ -166,7 +173,30 @@ class AdminController extends Controller
 		$this->vacationEntitlementEngine = $vacationEntitlementEngine;
 		$this->layeredVacationDefaultsService = $layeredVacationDefaultsService;
 		$this->userOvertimeSettingsService = $userOvertimeSettingsService;
+		$this->permissionService = $permissionService;
+		$this->localeFormat = $localeFormat;
 		$this->setCspService($cspService);
+	}
+
+	/**
+	 * @return array{showSubstitutionLink: bool, showManagerLink: bool, showReportsLink: bool, showAdminNav: bool}
+	 */
+	private function buildAdminNavFlags(): array
+	{
+		return [
+			'showSubstitutionLink' => false,
+			'showManagerLink' => true,
+			'showReportsLink' => true,
+			'showAdminNav' => true,
+		];
+	}
+
+	/**
+	 * @return array<string, mixed>
+	 */
+	private function buildAdminShellParams(string $pageId, string $title, string $help): array
+	{
+		return $this->buildShellParams($pageId, $title, $help, $this->buildAdminNavFlags(), $this->l10n->t('Administration'));
 	}
 
 	/**
@@ -177,6 +207,31 @@ class AdminController extends Controller
 	{
 		$user = $this->userSession->getUser();
 		return $user !== null ? $user->getUID() : 'system';
+	}
+
+	/**
+	 * Build a JSON-serializable audit snapshot of a TariffRuleSet so that
+	 * mutations (create/update/activate/retire/delete) leave a deterministic
+	 * trail for compliance reviewers.
+	 *
+	 * @return array<string,mixed>
+	 */
+	private function tariffRuleSetToAuditValues(TariffRuleSet $ruleSet): array
+	{
+		$validFrom = $ruleSet->getValidFrom();
+		$validTo = $ruleSet->getValidTo();
+		$updatedAt = $ruleSet->getUpdatedAt();
+		return [
+			'id' => $ruleSet->getId(),
+			'tariffCode' => $ruleSet->getTariffCode(),
+			'version' => $ruleSet->getVersion(),
+			'jurisdiction' => $ruleSet->getJurisdiction(),
+			'status' => $ruleSet->getStatus(),
+			'activationMode' => $ruleSet->getActivationMode(),
+			'validFrom' => $validFrom ? $validFrom->format('Y-m-d') : null,
+			'validTo' => $validTo ? $validTo->format('Y-m-d') : null,
+			'updatedAt' => $updatedAt ? $updatedAt->format('c') : null,
+		];
 	}
 
 	/**
@@ -325,28 +380,7 @@ class AdminController extends Controller
 	#[NoCSRFRequired]
 	public function dashboard(): TemplateResponse
 	{
-		Util::addTranslations('arbeitszeitcheck');
-
-		// Add common CSS files (including colors, typography for consistent fonts)
-		Util::addStyle('arbeitszeitcheck', 'common/colors');
-		Util::addStyle('arbeitszeitcheck', 'common/typography');
-		Util::addStyle('arbeitszeitcheck', 'common/base');
-		Util::addStyle('arbeitszeitcheck', 'common/components');
-		Util::addStyle('arbeitszeitcheck', 'common/layout');
-		Util::addStyle('arbeitszeitcheck', 'common/utilities');
-		Util::addStyle('arbeitszeitcheck', 'common/accessibility');
-		Util::addStyle('arbeitszeitcheck', 'common/app-layout');
-		Util::addStyle('arbeitszeitcheck', 'common/responsive');
-		Util::addStyle('arbeitszeitcheck', 'navigation');
-		Util::addStyle('arbeitszeitcheck', 'arbeitszeitcheck-main');
-		Util::addStyle('arbeitszeitcheck', 'admin-dashboard');
-
-		// Add common JavaScript files
-		Util::addScript('arbeitszeitcheck', 'common/utils');
-		Util::addScript('arbeitszeitcheck', 'common/time');
-		Util::addScript('arbeitszeitcheck', 'common/messaging');
-		Util::addScript('arbeitszeitcheck', 'common/components');
-		Util::addScript('arbeitszeitcheck', 'admin-dashboard');
+		$this->registerFrontEndAssets('admin-dashboard', 'admin-dashboard');
 
 		try {
 			// Get statistics
@@ -391,7 +425,11 @@ class AdminController extends Controller
 				'threshold_red_under' => (float)$this->appConfig->getAppValueString(Constants::CONFIG_OVERTIME_THRESHOLD_RED_UNDER, '-40'),
 			];
 
-			$response = new TemplateResponse('arbeitszeitcheck', 'admin-dashboard', [
+			$response = new TemplateResponse('arbeitszeitcheck', 'admin-dashboard', $this->buildAdminShellParams(
+				'admin-dashboard',
+				$this->l10n->t('Administration - Status'),
+				$this->l10n->t('Current key metrics and open working-time compliance issues. Detailed settings are available in the left navigation.'),
+			) + [
 				'statistics' => [
 					'total_users' => $totalUsers,
 					'active_users_today' => $activeUsersToday,
@@ -405,16 +443,14 @@ class AdminController extends Controller
 				],
 				'overtime_policy' => $overtimePolicy,
 				'recent_violations' => $violationsData,
-				'urlGenerator' => $this->urlGenerator,
-				'l' => $this->l10n,
-				'showSubstitutionLink' => false,
-				'showManagerLink' => true,
-				'showReportsLink' => true,
-				'showAdminNav' => true,
 			]);
 			return $this->configureCSP($response, 'admin');
 		} catch (\Throwable $e) {
-			$response = new TemplateResponse('arbeitszeitcheck', 'admin-dashboard', [
+			$response = new TemplateResponse('arbeitszeitcheck', 'admin-dashboard', $this->buildAdminShellParams(
+				'admin-dashboard',
+				$this->l10n->t('Administration - Status'),
+				$this->l10n->t('Current key metrics and open working-time compliance issues. Detailed settings are available in the left navigation.'),
+			) + [
 				'statistics' => [
 					'total_users' => 0,
 					'active_users_today' => 0,
@@ -422,12 +458,6 @@ class AdminController extends Controller
 				],
 				'recent_violations' => [],
 				'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.'),
-				'urlGenerator' => $this->urlGenerator,
-				'l' => $this->l10n,
-				'showSubstitutionLink' => false,
-				'showManagerLink' => true,
-				'showReportsLink' => true,
-				'showAdminNav' => true,
 			]);
 			return $this->configureCSP($response, 'admin');
 		}
@@ -440,29 +470,9 @@ class AdminController extends Controller
 	#[NoCSRFRequired]
 	public function users(): TemplateResponse
 	{
-		Util::addTranslations('arbeitszeitcheck');
+		$this->registerFrontEndAssets('admin-users', 'admin-users', ['common/datepicker']);
 
-		// Add common CSS files (including colors, typography for consistent fonts)
-		Util::addStyle('arbeitszeitcheck', 'common/colors');
-		Util::addStyle('arbeitszeitcheck', 'common/typography');
-		Util::addStyle('arbeitszeitcheck', 'common/base');
-		Util::addStyle('arbeitszeitcheck', 'common/components');
-		Util::addStyle('arbeitszeitcheck', 'common/layout');
-		Util::addStyle('arbeitszeitcheck', 'common/utilities');
-		Util::addStyle('arbeitszeitcheck', 'common/accessibility');
-		Util::addStyle('arbeitszeitcheck', 'common/app-layout');
-		Util::addStyle('arbeitszeitcheck', 'common/responsive');
-		Util::addStyle('arbeitszeitcheck', 'navigation');
-		Util::addStyle('arbeitszeitcheck', 'arbeitszeitcheck-main');
-		Util::addStyle('arbeitszeitcheck', 'admin-users');
 
-		// Add common JavaScript files
-		Util::addScript('arbeitszeitcheck', 'common/utils');
-		Util::addScript('arbeitszeitcheck', 'common/time');
-		Util::addScript('arbeitszeitcheck', 'common/datepicker');
-		Util::addScript('arbeitszeitcheck', 'common/components');
-		Util::addScript('arbeitszeitcheck', 'common/messaging');
-		Util::addScript('arbeitszeitcheck', 'admin-users');
 
 		// Get initial users list (first 50)
 		$users = $this->userManager->search('', 50, 0);
@@ -522,29 +532,9 @@ class AdminController extends Controller
 	#[NoCSRFRequired]
 	public function settings(): TemplateResponse
 	{
-		Util::addTranslations('arbeitszeitcheck');
+		$this->registerFrontEndAssets('admin-settings', 'admin-settings', [], ['common/settings-jump-nav']);
 
-		// Add common CSS files (including colors, typography for consistent fonts)
-		Util::addStyle('arbeitszeitcheck', 'common/colors');
-		Util::addStyle('arbeitszeitcheck', 'common/typography');
-		Util::addStyle('arbeitszeitcheck', 'common/base');
-		Util::addStyle('arbeitszeitcheck', 'common/components');
-		Util::addStyle('arbeitszeitcheck', 'common/layout');
-		Util::addStyle('arbeitszeitcheck', 'common/utilities');
-		Util::addStyle('arbeitszeitcheck', 'common/accessibility');
-		Util::addStyle('arbeitszeitcheck', 'common/app-layout');
-		Util::addStyle('arbeitszeitcheck', 'common/responsive');
-		Util::addStyle('arbeitszeitcheck', 'navigation');
-		Util::addStyle('arbeitszeitcheck', 'arbeitszeitcheck-main');
-		Util::addStyle('arbeitszeitcheck', 'admin-settings');
 
-		// Add common JavaScript files
-		Util::addScript('arbeitszeitcheck', 'common/utils');
-		Util::addScript('arbeitszeitcheck', 'common/time');
-		Util::addScript('arbeitszeitcheck', 'common/components');
-		Util::addScript('arbeitszeitcheck', 'common/messaging');
-		Util::addScript('arbeitszeitcheck', 'common/validation');
-		Util::addScript('arbeitszeitcheck', 'admin-settings');
 
 		$requireSubstituteJson = $this->appConfig->getAppValueString('require_substitute_types', '[]');
 		$requireSubstituteTypes = json_decode($requireSubstituteJson, true);
@@ -588,17 +578,22 @@ class AdminController extends Controller
 			'appAdminUserIds' => $this->getConfiguredAppAdminUserIds(),
 		];
 
-		$response = new TemplateResponse('arbeitszeitcheck', 'admin-settings', [
-			'settings' => $settings,
-			'availableGroups' => $this->getAvailableGroupsForAccessControl(),
-			'availableAppAdmins' => $this->getAvailableAppAdminsForAccessControl(),
-			'urlGenerator' => $this->urlGenerator,
-			'l' => $this->l10n,
-			'showSubstitutionLink' => false,
-			'showManagerLink' => true,
-			'showReportsLink' => true,
-			'showAdminNav' => true,
-		]);
+		$response = new TemplateResponse('arbeitszeitcheck', 'admin-settings', array_merge(
+			$this->buildAdminShellParams(
+				'admin-settings',
+				$this->l10n->t('Global settings'),
+				$this->l10n->t('Manage global rules, access control, and compliance settings'),
+			),
+			[
+				'settings' => $settings,
+				'availableGroups' => $this->getAvailableGroupsForAccessControl(),
+				'availableAppAdmins' => $this->getAvailableAppAdminsForAccessControl(),
+				'urlGenerator' => $this->urlGenerator,
+				'settingsShell' => 'app',
+				'inAppAdminSettingsUrl' => $this->urlGenerator->linkToRoute('arbeitszeitcheck.admin.settings'),
+				'requesttoken' => Util::callRegister(),
+			],
+		));
 		return $this->configureCSP($response, 'admin');
 	}
 
@@ -608,38 +603,23 @@ class AdminController extends Controller
 	#[NoCSRFRequired]
 	public function notifications(): TemplateResponse
 	{
-		Util::addTranslations('arbeitszeitcheck');
+		$this->registerFrontEndAssets('admin-notifications', 'admin-notifications', ['admin-settings'], ['common/settings-jump-nav']);
 
-		Util::addStyle('arbeitszeitcheck', 'common/colors');
-		Util::addStyle('arbeitszeitcheck', 'common/typography');
-		Util::addStyle('arbeitszeitcheck', 'common/base');
-		Util::addStyle('arbeitszeitcheck', 'common/components');
-		Util::addStyle('arbeitszeitcheck', 'common/layout');
-		Util::addStyle('arbeitszeitcheck', 'common/app-layout');
-		Util::addStyle('arbeitszeitcheck', 'common/utilities');
-		Util::addStyle('arbeitszeitcheck', 'common/responsive');
-		Util::addStyle('arbeitszeitcheck', 'common/accessibility');
-		Util::addStyle('arbeitszeitcheck', 'navigation');
-		Util::addStyle('arbeitszeitcheck', 'arbeitszeitcheck-main');
-		Util::addStyle('arbeitszeitcheck', 'admin-settings');
-		Util::addStyle('arbeitszeitcheck', 'admin-notifications');
-
-		Util::addScript('arbeitszeitcheck', 'common/utils');
-		Util::addScript('arbeitszeitcheck', 'common/time');
-		Util::addScript('arbeitszeitcheck', 'common/messaging');
-		Util::addScript('arbeitszeitcheck', 'admin-notifications');
-
-		$response = new TemplateResponse('arbeitszeitcheck', 'admin-notifications', [
-			'settings' => $this->buildNotificationSettingsPayload(),
-			'absenceTypes' => $this->getNotificationAbsenceTypes(),
-			'eventTypes' => $this->getNotificationEventTypes(),
-			'urlGenerator' => $this->urlGenerator,
-			'l' => $this->l10n,
-			'showSubstitutionLink' => false,
-			'showManagerLink' => true,
-			'showReportsLink' => true,
-			'showAdminNav' => true,
-		]);
+		$response = new TemplateResponse('arbeitszeitcheck', 'admin-notifications', array_merge(
+			$this->buildAdminShellParams(
+				'admin-notifications',
+				$this->l10n->t('Notifications'),
+				$this->l10n->t('Configure notification rules for absences, overtime alerts, and HR mailbox delivery.'),
+			),
+			[
+				'settings' => $this->buildNotificationSettingsPayload(),
+				'absenceTypes' => $this->getNotificationAbsenceTypes(),
+				'eventTypes' => $this->getNotificationEventTypes(),
+				'urlGenerator' => $this->urlGenerator,
+				'l' => $this->l10n,
+				'requesttoken' => Util::callRegister(),
+			],
+		));
 
 		return $this->configureCSP($response, 'admin');
 	}
@@ -655,41 +635,22 @@ class AdminController extends Controller
 		// One-time legacy migration: import old company_holidays JSON into at_holidays
 		$this->migrateLegacyCompanyHolidaysIfNeeded();
 
-		Util::addTranslations('arbeitszeitcheck');
-
-		Util::addStyle('arbeitszeitcheck', 'common/colors');
-		Util::addStyle('arbeitszeitcheck', 'common/typography');
-		Util::addStyle('arbeitszeitcheck', 'common/base');
-		Util::addStyle('arbeitszeitcheck', 'common/components');
-		Util::addStyle('arbeitszeitcheck', 'common/layout');
-		Util::addStyle('arbeitszeitcheck', 'common/utilities');
-		Util::addStyle('arbeitszeitcheck', 'common/accessibility');
-		Util::addStyle('arbeitszeitcheck', 'common/app-layout');
-		Util::addStyle('arbeitszeitcheck', 'common/responsive');
-		Util::addStyle('arbeitszeitcheck', 'navigation');
-		Util::addStyle('arbeitszeitcheck', 'arbeitszeitcheck-main');
-		Util::addStyle('arbeitszeitcheck', 'admin-holidays');
-
-		Util::addScript('arbeitszeitcheck', 'common/utils');
-		Util::addScript('arbeitszeitcheck', 'common/time');
-		Util::addScript('arbeitszeitcheck', 'common/datepicker');
-		Util::addScript('arbeitszeitcheck', 'common/components');
-		Util::addScript('arbeitszeitcheck', 'common/messaging');
-		Util::addScript('arbeitszeitcheck', 'admin-holidays');
+		$this->registerFrontEndAssets('admin-holidays', 'admin-holidays', ['common/datepicker']);
 
 		$defaultState = $this->appConfig->getAppValueString('german_state', 'NW');
 
-		$urlGenerator = $this->urlGenerator;
-
-		$response = new TemplateResponse('arbeitszeitcheck', 'admin-holidays', [
-			'defaultState' => $defaultState,
-			'urlGenerator' => $urlGenerator,
-			'l' => $this->l10n,
-			'showSubstitutionLink' => false,
-			'showManagerLink' => true,
-			'showReportsLink' => true,
-			'showAdminNav' => true,
-		]);
+		$response = new TemplateResponse('arbeitszeitcheck', 'admin-holidays', array_merge(
+			$this->buildAdminShellParams(
+				'admin-holidays',
+				$this->l10n->t('Holidays and calendars'),
+				$this->l10n->t('Manage state holiday calendars and the organisation default calendar.'),
+			),
+			[
+				'defaultState' => $defaultState,
+				'urlGenerator' => $this->urlGenerator,
+				'l' => $this->l10n,
+			],
+		));
 
 		return $this->configureCSP($response, 'admin');
 	}
@@ -1254,28 +1215,9 @@ class AdminController extends Controller
 	#[NoCSRFRequired]
 	public function workingTimeModels(): TemplateResponse
 	{
-		Util::addTranslations('arbeitszeitcheck');
+		$this->registerFrontEndAssets('working-time-models', 'None');
 
-		// Add common CSS files (including colors, typography for consistent fonts)
-		Util::addStyle('arbeitszeitcheck', 'common/colors');
-		Util::addStyle('arbeitszeitcheck', 'common/typography');
-		Util::addStyle('arbeitszeitcheck', 'common/base');
-		Util::addStyle('arbeitszeitcheck', 'common/components');
-		Util::addStyle('arbeitszeitcheck', 'common/layout');
-		Util::addStyle('arbeitszeitcheck', 'common/utilities');
-		Util::addStyle('arbeitszeitcheck', 'common/accessibility');
-		Util::addStyle('arbeitszeitcheck', 'common/app-layout');
-		Util::addStyle('arbeitszeitcheck', 'common/responsive');
-		Util::addStyle('arbeitszeitcheck', 'navigation');
-		Util::addStyle('arbeitszeitcheck', 'arbeitszeitcheck-main');
 
-		// Add common JavaScript files
-		Util::addScript('arbeitszeitcheck', 'common/utils');
-		Util::addScript('arbeitszeitcheck', 'common/time');
-		Util::addScript('arbeitszeitcheck', 'common/components');
-		Util::addScript('arbeitszeitcheck', 'common/messaging');
-		Util::addScript('arbeitszeitcheck', 'common/validation');
-		Util::addScript('arbeitszeitcheck', 'working-time-models');
 
 		$models = $this->workingTimeModelMapper->findAll();
 		$modelsData = [];
@@ -1305,35 +1247,43 @@ class AdminController extends Controller
 	}
 
 	/**
+	 * Tariff rule sets admin CRUD page.
+	 *
+	 * Provides an auditable UI for the existing
+	 * GET/POST/PUT/DELETE /api/admin/tariff-rule-sets API surface so that
+	 * payroll auditors can review and manage tariff rule sets without
+	 * resorting to direct API calls or DB edits. Existing assignment
+	 * dropdowns (admin-users → vacation policy) are unaffected.
+	 */
+	#[NoCSRFRequired]
+	public function tariffRuleSets(): TemplateResponse
+	{
+		$this->registerFrontEndAssets('admin-tariff-rules', 'admin-tariff-rules', ['common/datepicker']);
+
+		$response = new TemplateResponse('arbeitszeitcheck', 'admin-tariff-rules', array_merge(
+			$this->buildAdminShellParams(
+				'admin-tariff-rules',
+				$this->l10n->t('Tariff rule sets'),
+				$this->l10n->t('Manage tariff rule sets used for vacation entitlement calculations.'),
+			),
+			[
+				'urlGenerator' => $this->urlGenerator,
+				'l' => $this->l10n,
+			],
+		));
+		return $this->configureCSP($response, 'admin');
+	}
+
+	/**
 	 * Admin audit log viewer page (admin-only by default)
 	 *
 	 */
 	#[NoCSRFRequired]
 	public function auditLog(): TemplateResponse
 	{
-		Util::addTranslations('arbeitszeitcheck');
+		$this->registerFrontEndAssets('audit-log-viewer', 'audit-log', ['common/datepicker']);
 
-		// Add common CSS files (including colors, typography for consistent fonts)
-		Util::addStyle('arbeitszeitcheck', 'common/colors');
-		Util::addStyle('arbeitszeitcheck', 'common/typography');
-		Util::addStyle('arbeitszeitcheck', 'common/base');
-		Util::addStyle('arbeitszeitcheck', 'common/components');
-		Util::addStyle('arbeitszeitcheck', 'common/layout');
-		Util::addStyle('arbeitszeitcheck', 'common/utilities');
-		Util::addStyle('arbeitszeitcheck', 'common/accessibility');
-		Util::addStyle('arbeitszeitcheck', 'common/app-layout');
-		Util::addStyle('arbeitszeitcheck', 'common/responsive');
-		Util::addStyle('arbeitszeitcheck', 'navigation');
-		Util::addStyle('arbeitszeitcheck', 'arbeitszeitcheck-main');
-		Util::addStyle('arbeitszeitcheck', 'audit-log');
 
-		// Add common JavaScript files
-		Util::addScript('arbeitszeitcheck', 'common/utils');
-		Util::addScript('arbeitszeitcheck', 'common/time');
-		Util::addScript('arbeitszeitcheck', 'common/datepicker');
-		Util::addScript('arbeitszeitcheck', 'common/components');
-		Util::addScript('arbeitszeitcheck', 'common/messaging');
-		Util::addScript('arbeitszeitcheck', 'audit-log-viewer');
 
 		// Get recent audit logs (last 30 days, first 50)
 		$endDate = new \DateTime();
@@ -1363,18 +1313,21 @@ class AdminController extends Controller
 			];
 		}
 
-		$response = new TemplateResponse('arbeitszeitcheck', 'audit-log', [
-			'logs' => $logsData,
-			'total' => count($logs),
-			'startDate' => $startDate->format('d.m.Y'),
-			'endDate' => $endDate->format('d.m.Y'),
-			'urlGenerator' => $this->urlGenerator,
-			'l' => $this->l10n,
-			'showSubstitutionLink' => false,
-			'showManagerLink' => true,
-			'showReportsLink' => true,
-			'showAdminNav' => true,
-		]);
+		$response = new TemplateResponse('arbeitszeitcheck', 'audit-log', array_merge(
+			$this->buildAdminShellParams(
+				'admin-audit-log',
+				$this->l10n->t('Audit log'),
+				$this->l10n->t('Search, filter, and export administrative actions for compliance and accountability.'),
+			),
+			[
+				'logs' => $logsData,
+				'total' => count($logs),
+				'startDate' => $startDate->format('d.m.Y'),
+				'endDate' => $endDate->format('d.m.Y'),
+				'urlGenerator' => $this->urlGenerator,
+				'l' => $this->l10n,
+			],
+		));
 		return $this->configureCSP($response, 'admin');
 	}
 
@@ -3242,11 +3195,106 @@ class AdminController extends Controller
 					'statusLabel' => $this->formatTariffRuleSetStatusLabel($ruleSet->getStatus()),
 					'activationMode' => $ruleSet->getActivationMode(),
 					'referenceModel' => $ruleSet->getReferenceModel(),
+					'modulesCount' => count($this->tariffRuleModuleMapper->findByRuleSetId($ruleSet->getId())),
 				];
 			}
 			return new JSONResponse(['success' => true, 'ruleSets' => $all]);
 		} catch (\Throwable $e) {
 			return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Failed to load tariff rule sets')], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	/**
+	 * Fetch a single tariff rule set with its modules for the edit modal.
+	 */
+	#[NoCSRFRequired]
+	public function getTariffRuleSet(int $id): JSONResponse
+	{
+		try {
+			$ruleSet = $this->tariffRuleSetMapper->find($id);
+		} catch (DoesNotExistException $e) {
+			return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Tariff rule set not found')], Http::STATUS_NOT_FOUND);
+		} catch (\Throwable $e) {
+			return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Failed to load tariff rule set')], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+
+		$modules = [];
+		try {
+			foreach ($this->tariffRuleModuleMapper->findByRuleSetId($ruleSet->getId()) as $module) {
+				$modules[] = [
+					'id' => $module->getId(),
+					'moduleType' => $module->getModuleType(),
+					'config' => $module->getConfig(),
+					'sortOrder' => $module->getSortOrder(),
+				];
+			}
+		} catch (\Throwable $e) {
+			// Modules are auxiliary; an empty list is a safe fallback so the modal can still open.
+			$modules = [];
+		}
+
+		$displayName = trim(sprintf(
+			'%s %s%s',
+			(string)$ruleSet->getTariffCode(),
+			(string)$ruleSet->getVersion(),
+			$ruleSet->getJurisdiction() ? ' - ' . (string)$ruleSet->getJurisdiction() : ''
+		));
+
+		return new JSONResponse(['success' => true, 'ruleSet' => [
+			'id' => $ruleSet->getId(),
+			'tariffCode' => $ruleSet->getTariffCode(),
+			'version' => $ruleSet->getVersion(),
+			'jurisdiction' => $ruleSet->getJurisdiction(),
+			'displayName' => $displayName,
+			'validFrom' => $ruleSet->getValidFrom()?->format('Y-m-d'),
+			'validTo' => $ruleSet->getValidTo()?->format('Y-m-d'),
+			'status' => $ruleSet->getStatus(),
+			'statusLabel' => $this->formatTariffRuleSetStatusLabel($ruleSet->getStatus()),
+			'activationMode' => $ruleSet->getActivationMode(),
+			'modules' => $modules,
+		]]);
+	}
+
+	/**
+	 * Delete a tariff rule set. Only DRAFT rule sets may be removed.
+	 * Once a set has been activated the audit trail requires it to be retired,
+	 * not deleted.
+	 */
+	public function deleteTariffRuleSet(int $id): JSONResponse
+	{
+		try {
+			$ruleSet = $this->tariffRuleSetMapper->find($id);
+		} catch (DoesNotExistException $e) {
+			return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Tariff rule set not found')], Http::STATUS_NOT_FOUND);
+		} catch (\Throwable $e) {
+			return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Failed to delete tariff rule set')], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+
+		if ($ruleSet->getStatus() !== Constants::TARIFF_RULE_SET_STATUS_DRAFT) {
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('Only draft tariff rule sets can be deleted. Active or retired sets must remain for audit purposes.'),
+			], Http::STATUS_CONFLICT);
+		}
+
+		try {
+			$oldValues = $this->tariffRuleSetToAuditValues($ruleSet);
+			$this->tariffRuleModuleMapper->deleteByRuleSetId($ruleSet->getId());
+			$this->tariffRuleSetMapper->delete($ruleSet);
+			$performedBy = $this->getPerformedBy();
+			$this->auditLogMapper->logAction(
+				$performedBy,
+				'tariff_rule_set_deleted',
+				'tariff_rule_set',
+				$id,
+				$oldValues,
+				null,
+				$performedBy
+			);
+			return new JSONResponse(['success' => true]);
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error('Error in AdminController::deleteTariffRuleSet: ' . $e->getMessage(), ['exception' => $e]);
+			return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Failed to delete tariff rule set')], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}
 
@@ -3279,6 +3327,7 @@ class AdminController extends Controller
 			$saved = $this->tariffRuleSetMapper->insert($ruleSet);
 
 			$modules = is_array($params['modules'] ?? null) ? $params['modules'] : [];
+			$moduleSnapshot = [];
 			$sort = 0;
 			foreach ($modules as $module) {
 				if (!is_array($module) || empty($module['moduleType'])) {
@@ -3292,10 +3341,26 @@ class AdminController extends Controller
 				$entity->setCreatedAt(new \DateTime());
 				$entity->setUpdatedAt(new \DateTime());
 				$this->tariffRuleModuleMapper->insert($entity);
+				$moduleSnapshot[] = [
+					'moduleType' => $entity->getModuleType(),
+					'sortOrder' => $entity->getSortOrder(),
+				];
 			}
+
+			$performedBy = $this->getPerformedBy();
+			$this->auditLogMapper->logAction(
+				$performedBy,
+				'tariff_rule_set_created',
+				'tariff_rule_set',
+				$saved->getId(),
+				null,
+				$this->tariffRuleSetToAuditValues($saved) + ['modules' => $moduleSnapshot],
+				$performedBy
+			);
 
 			return new JSONResponse(['success' => true, 'ruleSetId' => $saved->getId()], Http::STATUS_CREATED);
 		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error('Error in AdminController::createTariffRuleSet: ' . $e->getMessage(), ['exception' => $e]);
 			return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Failed to create tariff rule set')], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}
@@ -3304,9 +3369,13 @@ class AdminController extends Controller
 	{
 		try {
 			$ruleSet = $this->tariffRuleSetMapper->find($id);
-			if ($ruleSet->getStatus() === Constants::TARIFF_RULE_SET_STATUS_ACTIVE) {
-				return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Active rule sets are immutable. Create a new version instead.')], Http::STATUS_BAD_REQUEST);
+			if ($ruleSet->getStatus() !== Constants::TARIFF_RULE_SET_STATUS_DRAFT) {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('Only draft tariff rule sets can be edited. Active or retired sets are kept unchanged for audit purposes.'),
+				], Http::STATUS_BAD_REQUEST);
 			}
+			$oldValues = $this->tariffRuleSetToAuditValues($ruleSet);
 			$params = $this->request->getParams();
 			if (isset($params['jurisdiction'])) {
 				$ruleSet->setJurisdiction(trim((string)$params['jurisdiction']));
@@ -3336,6 +3405,7 @@ class AdminController extends Controller
 				return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Validation failed'), 'errors' => $translatedErrors], Http::STATUS_BAD_REQUEST);
 			}
 			$this->tariffRuleSetMapper->update($ruleSet);
+			$moduleSnapshot = [];
 			if (isset($params['modules']) && is_array($params['modules'])) {
 				$this->tariffRuleModuleMapper->deleteByRuleSetId($ruleSet->getId());
 				$sort = 0;
@@ -3351,12 +3421,27 @@ class AdminController extends Controller
 					$entity->setCreatedAt(new \DateTime());
 					$entity->setUpdatedAt(new \DateTime());
 					$this->tariffRuleModuleMapper->insert($entity);
+					$moduleSnapshot[] = [
+						'moduleType' => $entity->getModuleType(),
+						'sortOrder' => $entity->getSortOrder(),
+					];
 				}
 			}
+			$performedBy = $this->getPerformedBy();
+			$this->auditLogMapper->logAction(
+				$performedBy,
+				'tariff_rule_set_updated',
+				'tariff_rule_set',
+				$ruleSet->getId(),
+				$oldValues,
+				$this->tariffRuleSetToAuditValues($ruleSet) + ($moduleSnapshot ? ['modules' => $moduleSnapshot] : []),
+				$performedBy
+			);
 			return new JSONResponse(['success' => true]);
 		} catch (\OCP\AppFramework\Db\DoesNotExistException $e) {
 			return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Tariff rule set not found')], Http::STATUS_NOT_FOUND);
 		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error('Error in AdminController::updateTariffRuleSet: ' . $e->getMessage(), ['exception' => $e]);
 			return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Failed to update tariff rule set')], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}
@@ -3365,6 +3450,12 @@ class AdminController extends Controller
 	{
 		try {
 			$ruleSet = $this->tariffRuleSetMapper->find($id);
+			if ($ruleSet->getStatus() !== Constants::TARIFF_RULE_SET_STATUS_DRAFT) {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('Only draft tariff rule sets can be activated.'),
+				], Http::STATUS_CONFLICT);
+			}
 			$now = new \DateTimeImmutable('today');
 			$activationStartDate = $this->resolveActivationStartDate($ruleSet->getActivationMode(), $now);
 			$validFrom = $ruleSet->getValidFrom();
@@ -3397,11 +3488,23 @@ class AdminController extends Controller
 				}
 			}
 
+			$oldValues = $this->tariffRuleSetToAuditValues($ruleSet);
 			$ruleSet->setStatus(Constants::TARIFF_RULE_SET_STATUS_ACTIVE);
 			$ruleSet->setUpdatedAt(new \DateTime());
 			$this->tariffRuleSetMapper->update($ruleSet);
+			$performedBy = $this->getPerformedBy();
+			$this->auditLogMapper->logAction(
+				$performedBy,
+				'tariff_rule_set_activated',
+				'tariff_rule_set',
+				$ruleSet->getId(),
+				$oldValues,
+				$this->tariffRuleSetToAuditValues($ruleSet),
+				$performedBy
+			);
 			return new JSONResponse(['success' => true]);
 		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error('Error in AdminController::activateTariffRuleSet: ' . $e->getMessage(), ['exception' => $e]);
 			return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Failed to activate tariff rule set')], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}
@@ -3410,11 +3513,29 @@ class AdminController extends Controller
 	{
 		try {
 			$ruleSet = $this->tariffRuleSetMapper->find($id);
+			if ($ruleSet->getStatus() !== Constants::TARIFF_RULE_SET_STATUS_ACTIVE) {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('Only active tariff rule sets can be retired.'),
+				], Http::STATUS_CONFLICT);
+			}
+			$oldValues = $this->tariffRuleSetToAuditValues($ruleSet);
 			$ruleSet->setStatus(Constants::TARIFF_RULE_SET_STATUS_RETIRED);
 			$ruleSet->setUpdatedAt(new \DateTime());
 			$this->tariffRuleSetMapper->update($ruleSet);
+			$performedBy = $this->getPerformedBy();
+			$this->auditLogMapper->logAction(
+				$performedBy,
+				'tariff_rule_set_retired',
+				'tariff_rule_set',
+				$ruleSet->getId(),
+				$oldValues,
+				$this->tariffRuleSetToAuditValues($ruleSet),
+				$performedBy
+			);
 			return new JSONResponse(['success' => true]);
 		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error('Error in AdminController::retireTariffRuleSet: ' . $e->getMessage(), ['exception' => $e]);
 			return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Failed to retire tariff rule set')], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}
@@ -4018,39 +4139,20 @@ class AdminController extends Controller
 	#[NoCSRFRequired]
 	public function vacationLayers(): TemplateResponse
 	{
-		Util::addTranslations('arbeitszeitcheck');
+		$this->registerFrontEndAssets('admin-vacation-layers', 'admin-vacation-layers');
 
-		// Load the same common bundle every other admin page loads, so the
-		// shared theme (colours, focus rings, `.visually-hidden`, app layout,
-		// responsive grid, …) is available here too. Without this the page
-		// rendered correctly only because it is theme-safe by accident; with
-		// it we also pick up future common updates for free.
-		Util::addStyle('arbeitszeitcheck', 'common/colors');
-		Util::addStyle('arbeitszeitcheck', 'common/typography');
-		Util::addStyle('arbeitszeitcheck', 'common/base');
-		Util::addStyle('arbeitszeitcheck', 'common/components');
-		Util::addStyle('arbeitszeitcheck', 'common/layout');
-		Util::addStyle('arbeitszeitcheck', 'common/utilities');
-		Util::addStyle('arbeitszeitcheck', 'common/accessibility');
-		Util::addStyle('arbeitszeitcheck', 'common/app-layout');
-		Util::addStyle('arbeitszeitcheck', 'common/responsive');
-		Util::addStyle('arbeitszeitcheck', 'navigation');
-		Util::addStyle('arbeitszeitcheck', 'arbeitszeitcheck-main');
-		Util::addStyle('arbeitszeitcheck', 'admin-vacation-layers');
-		Util::addScript('arbeitszeitcheck', 'common/utils');
-		Util::addScript('arbeitszeitcheck', 'common/time');
-		Util::addScript('arbeitszeitcheck', 'common/components');
-		Util::addScript('arbeitszeitcheck', 'common/messaging');
-		Util::addScript('arbeitszeitcheck', 'admin-vacation-layers');
-		$response = new TemplateResponse('arbeitszeitcheck', 'admin-vacation-layers', [
-			'l' => $this->l10n,
-			'urlGenerator' => $this->urlGenerator,
-			'layeredEnabled' => $this->vacationEntitlementEngine->isLayeredEnabled(),
-			'showSubstitutionLink' => false,
-			'showManagerLink' => true,
-			'showReportsLink' => true,
-			'showAdminNav' => true,
-		]);
+		$response = new TemplateResponse('arbeitszeitcheck', 'admin-vacation-layers', array_merge(
+			$this->buildAdminShellParams(
+				'admin-vacation-layers',
+				$this->l10n->t('Vacation entitlement'),
+				$this->l10n->t('Configure layered vacation entitlement defaults for organisation, working time models, and teams.'),
+			),
+			[
+				'l' => $this->l10n,
+				'urlGenerator' => $this->urlGenerator,
+				'layeredEnabled' => $this->vacationEntitlementEngine->isLayeredEnabled(),
+			],
+		));
 		return $this->configureCSP($response, 'admin');
 	}
 
@@ -4407,26 +4509,9 @@ class AdminController extends Controller
 	#[NoCSRFRequired]
 	public function teams(): TemplateResponse
 	{
-		Util::addTranslations('arbeitszeitcheck');
-		Util::addStyle('arbeitszeitcheck', 'common/colors');
-		Util::addStyle('arbeitszeitcheck', 'common/typography');
-		Util::addStyle('arbeitszeitcheck', 'common/base');
-		Util::addStyle('arbeitszeitcheck', 'common/components');
-		Util::addStyle('arbeitszeitcheck', 'common/layout');
-		Util::addStyle('arbeitszeitcheck', 'common/utilities');
-		Util::addStyle('arbeitszeitcheck', 'common/accessibility');
-		Util::addStyle('arbeitszeitcheck', 'common/app-layout');
-		Util::addStyle('arbeitszeitcheck', 'common/responsive');
-		Util::addStyle('arbeitszeitcheck', 'navigation');
-		Util::addStyle('arbeitszeitcheck', 'arbeitszeitcheck-main');
-		Util::addStyle('arbeitszeitcheck', 'admin-teams');
-		Util::addScript('arbeitszeitcheck', 'common/utils');
-		Util::addScript('arbeitszeitcheck', 'common/time');
-		Util::addScript('arbeitszeitcheck', 'common/components');
-		Util::addScript('arbeitszeitcheck', 'common/messaging');
-		Util::addScript('arbeitszeitcheck', 'admin-teams');
+		$this->registerFrontEndAssets('admin-teams', 'admin-teams');
 
-		return new TemplateResponse('arbeitszeitcheck', 'admin-teams', [
+		$response = new TemplateResponse('arbeitszeitcheck', 'admin-teams', [
 			'urlGenerator' => $this->urlGenerator,
 			'l' => $this->l10n,
 			'showSubstitutionLink' => false,
@@ -4434,6 +4519,7 @@ class AdminController extends Controller
 			'showReportsLink' => true,
 			'showAdminNav' => true,
 		]);
+		return $this->configureCSP($response, 'admin');
 	}
 
 	#[NoCSRFRequired]

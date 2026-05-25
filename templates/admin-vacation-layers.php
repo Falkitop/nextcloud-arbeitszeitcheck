@@ -29,15 +29,10 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
 $layeredEnabled = (bool)($_['layeredEnabled'] ?? true);
 ?>
 
-<?php include __DIR__ . '/common/navigation.php'; ?>
+<?php include __DIR__ . '/common/page-start.php'; ?>
 
-<main id="app-content" role="main" aria-labelledby="azc-vacation-layers-title">
-    <div id="app-content-wrapper" class="admin-vacation-layers">
-
-        <header class="vacation-layers__header" role="banner">
-            <h1 id="azc-vacation-layers-title" class="vacation-layers__title">
-                <?php p($l->t('Vacation entitlement layers')); ?>
-            </h1>
+<div class="admin-vacation-layers">
+<div class="vacation-layers__intro">
             <p class="vacation-layers__lede">
                 <?php p($l->t('Define how many vacation days an employee is entitled to. Rules are evaluated top-down: a higher layer always wins. This page lets you see, edit, and simulate the full precedence chain.')); ?>
             </p>
@@ -48,7 +43,7 @@ $layeredEnabled = (bool)($_['layeredEnabled'] ?? true);
                     <span class="badge badge--warn" aria-label="<?php p($l->t('Layered resolution is disabled — only individual L3 rules and the legacy fallback are evaluated')); ?>"><?php p($l->t('Layered resolution disabled — only L3 + legacy fallback active')); ?></span>
                 <?php endif; ?>
             </div>
-        </header>
+        </div>
 
         <!-- Stepper / precedence overview -->
         <nav class="vacation-layers__stepper" aria-label="<?php p($l->t('Layer precedence overview')); ?>">
@@ -268,17 +263,13 @@ $layeredEnabled = (bool)($_['layeredEnabled'] ?? true);
         </section>
 
     </div>
-</main>
-</div><!-- /#arbeitszeitcheck-app -->
-
 <!-- Hidden form drawers -->
-<dialog id="layer-dialog" class="layer-dialog"
-        role="dialog"
+<dialog id="layer-dialog" class="layer-dialog azc-native-dialog"
         aria-modal="true"
         aria-labelledby="layer-dialog-title"
         aria-describedby="layer-dialog-intro">
-    <form id="layer-dialog-form" class="layer-dialog__form" method="dialog" novalidate>
-        <h2 id="layer-dialog-title" class="layer-dialog__title"><?php p($l->t('Edit layer')); ?></h2>
+    <form id="layer-dialog-form" class="layer-dialog__form" novalidate>
+        <h2 id="layer-dialog-title" class="layer-dialog__title"></h2>
         <p id="layer-dialog-intro" class="layer-dialog__intro"></p>
         <div id="layer-dialog-body" class="layer-dialog__body"></div>
         <div id="layer-dialog-impact" class="layer-dialog__impact" role="status" aria-live="polite" hidden>
@@ -289,10 +280,10 @@ $layeredEnabled = (bool)($_['layeredEnabled'] ?? true);
         </div>
         <p id="layer-dialog-feedback" class="layer-dialog__feedback" role="alert" aria-live="assertive"></p>
         <div class="layer-dialog__actions">
-            <button type="button" id="layer-dialog-cancel" class="btn btn--secondary">
+            <button type="button" id="layer-dialog-cancel" class="azc-btn azc-btn--secondary">
                 <?php p($l->t('Cancel')); ?>
             </button>
-            <button type="submit" id="layer-dialog-save" class="btn btn--primary">
+            <button type="submit" id="layer-dialog-save" class="azc-btn azc-btn--primary">
                 <?php p($l->t('Save')); ?>
             </button>
         </div>
@@ -320,3 +311,5 @@ echo json_encode([
 ], JSON_THROW_ON_ERROR | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 ?>
 </script>
+
+<?php include __DIR__ . '/common/page-end.php'; ?>

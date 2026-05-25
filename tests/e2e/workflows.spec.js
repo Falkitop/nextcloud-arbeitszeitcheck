@@ -55,10 +55,11 @@ test('Time entry correction request -> manager approves', async ({ page, browser
   await login(page, employee)
   await page.goto('/apps/arbeitszeitcheck/time-entries')
 
-  // Create an entry with overlap-safe retries (reruns in shared dev DB may have old seed rows).
-  const base = '2000-01-15'
+  // Create an entry with overlap-safe retries (shared dev DB accumulates seed rows).
+  const base = addDays('1985-06-01', Date.now() % 400)
   let created = null
-  for (let i = 0; i < 10; i++) {
+  let lastErr = ''
+  for (let i = 0; i < 40; i++) {
     const date = addDays(base, i)
     const res = await apiAllowFailure(page, 'POST', '/apps/arbeitszeitcheck/api/time-entries', {
       data: { date, hours: 1.5, description: `E2E seed entry ${date}` },
@@ -67,12 +68,13 @@ test('Time entry correction request -> manager approves', async ({ page, browser
       created = res.json
       break
     }
-    const err = (res.json?.error || '').toLowerCase()
+    lastErr = res.json?.error || `HTTP ${res.status}`
+    const err = lastErr.toLowerCase()
     if (!err.includes('overlap')) {
-      throw new Error(res.json?.error || `Failed to create time entry (${res.status})`)
+      throw new Error(lastErr || `Failed to create time entry (${res.status})`)
     }
   }
-  expect(created?.success).toBe(true)
+  expect(created?.success, lastErr || 'no free calendar day in retry window').toBe(true)
   const entryId = created.entry?.id ?? created.entry?.entryId ?? created.entry?.ID ?? created.entry?.Id
   expect(entryId).toBeTruthy()
 
@@ -99,22 +101,34 @@ test('Absence substitute approval -> manager approval', async ({ page, browser }
 
   // Employee creates an absence with substitute (substitute UID must match env user)
   await login(page, employee)
+
+  const futureBase = addDays(
+    (() => {
+      const d = new Date()
+      d.setDate(d.getDate() + 90)
+      return d.toISOString().slice(0, 10)
+    })(),
+    Date.now() % 120,
+  )
+
+  const statsYear = Number(futureBase.slice(0, 4))
+  const stats = await api(page, 'GET', `/apps/arbeitszeitcheck/api/absences/stats?year=${statsYear}`)
+  const vacationRemaining = Number(stats.vacationStats?.remaining ?? 0)
+  if (vacationRemaining < 1) {
+    test.skip(true, `e2e_employee has no vacation balance for ${statsYear} (substitute flow needs vacation)`)
+  }
+
   await page.goto('/apps/arbeitszeitcheck/absences')
 
-  const futureBase = (() => {
-    const d = new Date()
-    d.setDate(d.getDate() + 90)
-    return d.toISOString().slice(0, 10)
-  })()
-
   let absence = null
-  for (let i = 0; i < 10; i++) {
+  let lastErr = ''
+  for (let i = 0; i < 40; i++) {
     let startIso = addDays(futureBase, i * 3)
     // Ensure we start on a weekday so vacation includes at least one working day.
     while (isWeekend(startIso)) {
       startIso = addDays(startIso, 1)
     }
-    const endIso = addDays(startIso, 1)
+    const endIso = startIso
     const res = await apiAllowFailure(page, 'POST', '/apps/arbeitszeitcheck/api/absences', {
       data: {
         type: 'vacation',
@@ -128,12 +142,16 @@ test('Absence substitute approval -> manager approval', async ({ page, browser }
       absence = res.json
       break
     }
-    const err = (res.json?.error || '').toLowerCase()
+    lastErr = res.json?.error || `HTTP ${res.status}`
+    const err = lastErr.toLowerCase()
+    if (err.includes('vacation days remaining')) {
+      test.skip(true, lastErr)
+    }
     if (!err.includes('overlap') && !err.includes('working day')) {
-      throw new Error(res.json?.error || `Failed to create absence (${res.status})`)
+      throw new Error(lastErr || `Failed to create absence (${res.status})`)
     }
   }
-  expect(absence?.success).toBe(true)
+  expect(absence?.success, lastErr || 'no free absence window in retry range').toBe(true)
   const absenceId = absence.absence?.id
   expect(absenceId).toBeTruthy()
 

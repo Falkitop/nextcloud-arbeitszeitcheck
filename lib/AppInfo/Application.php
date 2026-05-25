@@ -19,6 +19,7 @@ use OCA\ArbeitszeitCheck\Listener\CSPListener;
 use OCA\ArbeitszeitCheck\Listener\TimeClientBootstrapListener;
 use OCA\ArbeitszeitCheck\Listener\LoadUsersSettingsArbeitszeitListener;
 use OCA\ArbeitszeitCheck\Listener\UserDeletedListener;
+use OCA\ArbeitszeitCheck\Middleware\AppAccessMiddleware;
 use OCA\ArbeitszeitCheck\Middleware\AppAdminMiddleware;
 use OCA\ArbeitszeitCheck\Notification\Notifier;
 use OCA\ArbeitszeitCheck\Service\TimeTrackingService;
@@ -76,6 +77,17 @@ class Application extends App implements IBootstrap {
 		// Register notification provider
 		$context->registerNotifierService(Notifier::class);
 		$context->registerMiddleware(AppAdminMiddleware::class);
+		$context->registerService(AppAccessMiddleware::class, function ($c): AppAccessMiddleware {
+			return new AppAccessMiddleware(
+				$c->query(\OCP\IUserSession::class),
+				$c->query(PermissionService::class),
+				$c->query(\OCP\IRequest::class),
+				$c->query(\OCP\IURLGenerator::class),
+				$c->query(\OCP\L10N\IFactory::class),
+				$c->query(\Psr\Log\LoggerInterface::class),
+			);
+		});
+		$context->registerMiddleware(AppAccessMiddleware::class);
 
 		// Register event listeners
 		$context->registerEventListener(LoadSidebar::class, LoadSidebarScripts::class);
@@ -605,6 +617,16 @@ class Application extends App implements IBootstrap {
 			);
 		});
 
+		$context->registerService(\OCA\ArbeitszeitCheck\Service\LocaleFormatService::class, function ($c) {
+			return new \OCA\ArbeitszeitCheck\Service\LocaleFormatService(
+				$c->query(\OCP\L10N\IFactory::class),
+				$c->query(\OCP\IDateTimeFormatter::class),
+				$c->query(\OCP\IUserSession::class),
+				$c->query(\OCP\IDateTimeZone::class),
+				$c->query(\OCA\ArbeitszeitCheck\Service\TimeZoneService::class),
+			);
+		});
+
 		$context->registerDashboardWidget(EmployeeStatusWidget::class);
 		$context->registerDashboardWidget(ManagerTeamStatusWidget::class);
 		$context->registerDashboardWidget(AdminGlobalStatusWidget::class);
@@ -612,46 +634,15 @@ class Application extends App implements IBootstrap {
 
 	/**
 	 * @inheritDoc
+	 *
+	 * Asset registration is owned by the central FrontEndAssetService and is
+	 * invoked from every entry point that renders a template (PageShellTrait,
+	 * AdminSettings, the access-denied template, and personal-settings).
+	 * We deliberately keep boot() empty so other apps cannot accidentally
+	 * inherit our CSS/JS, and so the loader cannot drift out of sync with
+	 * the FrontEndAssetService bundle (which is the single source of truth).
 	 */
 	public function boot(IBootContext $context): void {
-		// Load CSS and JS files ONLY on arbeitszeitcheck routes to avoid leaking into other apps
-		// Use a safer approach that doesn't fail if IRequest is not available (e.g., during migrations)
-		try {
-			$container = $this->getContainer();
-			
-			// Try to get IRequest - if it fails, we're likely in CLI or migration context
-			try {
-				$request = $container->get(\OCP\IRequest::class);
-			} catch (\Throwable $e) {
-				// Request not available (e.g., during CLI operations or migrations)
-				return;
-			}
-			
-			if ($request === null) {
-				return;
-			}
-			
-			$path = $request->getPathInfo();
-			if ($path === null || $path === '') {
-				return;
-			}
-			
-			if (strpos($path, '/apps/arbeitszeitcheck') === 0 || strpos($path, '/index.php/apps/arbeitszeitcheck') === 0) {
-				\OCP\Util::addStyle(self::APP_ID, 'common/base');
-				\OCP\Util::addStyle(self::APP_ID, 'common/components');
-				\OCP\Util::addStyle(self::APP_ID, 'common/layout');
-				\OCP\Util::addStyle(self::APP_ID, 'common/utilities');
-				\OCP\Util::addStyle(self::APP_ID, 'navigation');
-				\OCP\Util::addStyle(self::APP_ID, 'app-vanilla');
-				\OCP\Util::addScript(self::APP_ID, 'common/utils');
-				\OCP\Util::addScript(self::APP_ID, 'common/time');
-				\OCP\Util::addScript(self::APP_ID, 'common/components');
-				\OCP\Util::addScript(self::APP_ID, 'common/messaging');
-				\OCP\Util::addScript(self::APP_ID, 'common/validation');
-			}
-		} catch (\Throwable $e) {
-			// If request is unavailable or any error occurs, do nothing to keep other apps safe
-			// This is expected during migrations, CLI operations, etc.
-		}
+		// Intentionally empty — see FrontEndAssetService::registerCore().
 	}
 }

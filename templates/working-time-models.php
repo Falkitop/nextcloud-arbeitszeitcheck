@@ -17,17 +17,11 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 $models = $_['models'] ?? [];
 ?>
 
-<?php include __DIR__ . '/common/navigation.php'; ?>
+<?php include __DIR__ . '/common/page-start.php'; ?>
 
-<main id="app-content" role="main" aria-label="<?php p($l->t('Working time models content')); ?>">
-    <div id="app-content-wrapper">
+
         <div class="section">
-            <div class="section-header">
-                <h1><?php p($l->t('Working time models')); ?></h1>
-                <p><?php p($l->t('Create different working-time models (e.g., full-time, part-time) and assign them to employees.')); ?></p>
-            </div>
-
-            <div class="section-content mb-3">
+<div class="section-content mb-3">
                 <button type="button" 
                         id="create-model" 
                         class="btn btn--primary"
@@ -118,11 +112,6 @@ $models = $_['models'] ?? [];
                 </tbody>
             </table>
             </div>
-        </div>
-    </div>
-</main>
-</div><!-- /#arbeitszeitcheck-app -->
-
 <!-- Initialize JavaScript -->
 <script nonce="<?php p($_['cspNonce'] ?? ''); ?>">
     window.ArbeitszeitCheck = window.ArbeitszeitCheck || {};
@@ -170,3 +159,5 @@ $models = $_['models'] ?? [];
     window.ArbeitszeitCheck.l10n.delete = <?php echo json_encode($l->t('Delete'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.thisWorkSchedule = <?php echo json_encode($l->t('this work schedule'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 </script>
+
+<?php include __DIR__ . '/common/page-end.php'; ?>

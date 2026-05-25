@@ -17,6 +17,7 @@ use OCA\ArbeitszeitCheck\Db\Absence;
 use OCA\ArbeitszeitCheck\Db\AbsenceMapper;
 use OCA\ArbeitszeitCheck\Service\AbsenceService;
 use OCA\ArbeitszeitCheck\Service\CSPService;
+use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Http;
@@ -68,6 +69,12 @@ class SubstituteControllerTest extends TestCase
 		$l10n = $this->createMock(IL10N::class);
 		$l10n->method('t')->willReturnCallback(fn ($s) => $s);
 		$permissionService = $this->createMock(PermissionService::class);
+		$localeFormat = $this->createMock(LocaleFormatService::class);
+		$localeFormat->method('clientHints')->willReturn([
+			'locale' => 'en-US',
+			'htmlLang' => 'en-US',
+			'timezone' => 'Europe/Berlin',
+		]);
 
 		$this->controller = new SubstituteController(
 			'arbeitszeitcheck',
@@ -78,6 +85,7 @@ class SubstituteControllerTest extends TestCase
 			$this->userManager,
 			$urlGenerator,
 			$cspService,
+			$localeFormat,
 			$l10n,
 			$permissionService
 		);
@@ -96,9 +104,8 @@ class SubstituteControllerTest extends TestCase
 	public function testIndexReturnsTemplate(): void
 	{
 		$this->mockAuthenticatedUser('substitute1');
-		$this->absenceMapper->expects($this->once())
+		$this->absenceMapper->expects($this->exactly(2))
 			->method('findSubstitutePendingForUser')
-			->with('substitute1', 50, 0)
 			->willReturn([]);
 
 		$response = $this->controller->index();

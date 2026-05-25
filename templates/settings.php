@@ -13,56 +13,19 @@ use OCP\Util;
 /** @var array $_ */
 /** @var \OCP\IL10N $l */
 
-// Add common + page-specific styles and scripts
-Util::addTranslations('arbeitszeitcheck');
-Util::addStyle('arbeitszeitcheck', 'common/colors');
-Util::addStyle('arbeitszeitcheck', 'common/typography');
-Util::addStyle('arbeitszeitcheck', 'common/base');
-Util::addStyle('arbeitszeitcheck', 'common/components');
-Util::addStyle('arbeitszeitcheck', 'common/layout');
-Util::addStyle('arbeitszeitcheck', 'common/app-layout');
-Util::addStyle('arbeitszeitcheck', 'common/utilities');
-Util::addStyle('arbeitszeitcheck', 'common/responsive');
-Util::addStyle('arbeitszeitcheck', 'common/accessibility');
-Util::addStyle('arbeitszeitcheck', 'navigation');
-Util::addStyle('arbeitszeitcheck', 'settings');
-Util::addScript('arbeitszeitcheck', 'common/utils');
-Util::addScript('arbeitszeitcheck', 'common/time');
-Util::addScript('arbeitszeitcheck', 'settings');
+// Assets registered by PageController::registerFrontEndAssets
 
 $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class);
+$urls = $_['urls'] ?? [];
 ?>
 
-<?php include __DIR__ . '/common/navigation.php'; ?>
+<?php include __DIR__ . '/common/page-start.php'; ?>
 
-<main id="app-content" role="main" aria-label="<?php p($l->t('Settings content')); ?>">
-    <div id="app-content-wrapper">
-        <!-- Breadcrumb Navigation -->
-        <div class="breadcrumb-container">
-            <nav class="breadcrumb" aria-label="<?php p($l->t('Breadcrumb')); ?>">
-                <ol>
-                    <li><a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.page.index')); ?>"><?php p($l->t('Dashboard')); ?></a></li>
-                    <li aria-current="page"><?php p($l->t('Settings')); ?></li>
-                </ol>
-            </nav>
-        </div>
-
-        <!-- Page Header -->
-        <header class="section page-header-section" aria-labelledby="settings-page-title">
-            <div class="header-content">
-                <div class="header-text">
-                    <h1 id="settings-page-title"><?php p($l->t('Settings')); ?></h1>
-                    <p><?php p($l->t('Manage your personal preferences and notification settings')); ?></p>
-                </div>
-            </div>
-        </header>
-
-        <!-- Settings Sections -->
         <section class="section" aria-labelledby="settings-sections-heading" aria-label="<?php p($l->t('Settings options')); ?>">
             <div class="settings-container">
                 <!-- Working Time Preferences -->
-                <div class="settings-section">
-                    <h3 id="settings-sections-heading" class="section-title"><?php p($l->t('Working Time Preferences')); ?></h3>
+                <div class="settings-section azc-card">
+                    <h3 id="settings-sections-heading" class="section-title azc-card__title"><?php p($l->t('Working Time Preferences')); ?></h3>
                     <form id="working-time-settings-form" class="form">
                         <div class="form-group">
                             <div class="form-checkbox">
@@ -82,13 +45,13 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
 
                         <div class="card-actions">
                             <button type="submit" 
-                                    class="btn btn--primary"
+                                    class="azc-btn azc-btn--primary"
                                     aria-label="<?php p($l->t('Save your preferences')); ?>"
                                     title="<?php p($l->t('Click to save your preferences')); ?>">
                                 <?php p($l->t('Save Settings')); ?>
                             </button>
                             <a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.page.index')); ?>"
-                               class="btn btn--secondary"
+                               class="azc-btn azc-btn--secondary"
                                aria-label="<?php p($l->t('Cancel and go back to dashboard')); ?>"
                                title="<?php p($l->t('Click to cancel and go back without saving changes')); ?>">
                                 <?php p($l->t('Cancel')); ?>
@@ -98,8 +61,8 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
                 </div>
 
                 <!-- Notifications -->
-                <div class="settings-section">
-                    <h3 class="section-title"><?php p($l->t('Notifications')); ?></h3>
+                <div class="settings-section azc-card">
+                    <h3 class="section-title azc-card__title"><?php p($l->t('Notifications')); ?></h3>
                     <form id="notification-settings-form" class="form">
                         <div class="form-group">
                             <div class="form-checkbox">
@@ -147,13 +110,13 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
 
                         <div class="card-actions">
                             <button type="submit" 
-                                    class="btn btn--primary"
+                                    class="azc-btn azc-btn--primary"
                                     aria-label="<?php p($l->t('Save your working time settings')); ?>"
                                     title="<?php p($l->t('Click to save your working time preferences')); ?>">
                                 <?php p($l->t('Save Settings')); ?>
                             </button>
                             <a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.page.index')); ?>"
-                               class="btn btn--secondary"
+                               class="azc-btn azc-btn--secondary"
                                aria-label="<?php p($l->t('Cancel and go back to dashboard')); ?>"
                                title="<?php p($l->t('Click to cancel and go back without saving changes')); ?>">
                                 <?php p($l->t('Cancel')); ?>
@@ -163,16 +126,16 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
                 </div>
 
                 <!-- Working Time Model -->
-                <div class="settings-section">
-                    <h3 class="section-title"><?php p($l->t('Working Time Model')); ?></h3>
+                <div class="settings-section azc-card">
+                    <h3 class="section-title azc-card__title"><?php p($l->t('Working Time Model')); ?></h3>
                     <div id="working-time-model-info" class="info-box">
                         <p><?php p($l->t('Your working time model, vacation days, and working hours are assigned by your administrator. Contact your administrator if you have questions or need changes.')); ?></p>
                     </div>
                 </div>
 
                 <!-- Compliance Information -->
-                <div class="settings-section">
-                    <h3 class="section-title"><?php p($l->t('Compliance Information')); ?></h3>
+                <div class="settings-section azc-card">
+                    <h3 class="section-title azc-card__title"><?php p($l->t('Compliance Information')); ?></h3>
                     <div class="info-box">
                         <h4><?php p($l->t('German Labor Law (Arbeitszeitgesetz - ArbZG)')); ?></h4>
                         <ul>
@@ -184,21 +147,31 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
                     </div>
                 </div>
 
-                <!-- Data Export -->
-                <div class="settings-section">
-                    <h3 class="section-title"><?php p($l->t('Data Export')); ?></h3>
-                    <p><?php p($l->t('Export your personal data in accordance with GDPR')); ?></p>
-                    <div class="form-actions">
-                        <a href="<?php print_unescaped($urlGenerator->linkToRoute('arbeitszeitcheck.gdpr.export')); ?>" 
-                           class="button secondary">
+                <!-- Data and privacy -->
+                <div class="settings-section azc-card" id="settings-data-privacy">
+                    <h3 class="section-title azc-card__title"><?php p($l->t('Data and privacy')); ?></h3>
+                    <p><?php p($l->t('Export or permanently delete your personal ArbeitszeitCheck data in accordance with GDPR.')); ?></p>
+                    <div class="card-actions">
+                        <a href="<?php print_unescaped((string)($urls['gdprExport'] ?? $urlGenerator->linkToRoute('arbeitszeitcheck.gdpr.export'))); ?>"
+                           class="azc-btn azc-btn--secondary"
+                           download>
                             <?php p($l->t('Export My Data')); ?>
                         </a>
+                        <button type="button"
+                                id="btn-gdpr-delete"
+                                class="azc-btn azc-btn--danger"
+                                data-delete-url="<?php p((string)($urls['gdprDelete'] ?? $urlGenerator->linkToRoute('arbeitszeitcheck.gdpr.delete'))); ?>">
+                            <?php p($l->t('Delete my ArbeitszeitCheck data')); ?>
+                        </button>
                     </div>
+                    <p class="form-help" id="gdpr-delete-help">
+                        <?php p($l->t('Deleting your data permanently removes time entries, absences, and settings stored by this app. This cannot be undone.')); ?>
+                    </p>
                 </div>
 
                 <!-- Version Information -->
-                <div class="settings-section">
-                    <h3 class="section-title"><?php p($l->t('Version Information')); ?></h3>
+                <div class="settings-section azc-card">
+                    <h3 class="section-title azc-card__title"><?php p($l->t('Version Information')); ?></h3>
                     <div class="info-box">
                         <p>
                             <strong><?php p($l->t('ArbeitszeitCheck')); ?></strong>
@@ -209,11 +182,7 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
                 </div>
             </div>
         </section>
-    </div>
-</main>
-</div><!-- /#arbeitszeitcheck-app -->
 
-<!-- Initialize JavaScript -->
 <script nonce="<?php p($_['cspNonce'] ?? ''); ?>">
     window.ArbeitszeitCheck = window.ArbeitszeitCheck || {};
     window.ArbeitszeitCheck.page = 'settings';
@@ -225,6 +194,8 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
     window.ArbeitszeitCheck.l10n.failedToSaveSettings = <?php echo json_encode($l->t('Failed to save settings'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     
     window.ArbeitszeitCheck.apiUrl = {
-        updateSettings: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.settings.update'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>
+        updateSettings: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.settings.update'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
+        gdprDelete: <?php echo json_encode((string)($urls['gdprDelete'] ?? $urlGenerator->linkToRoute('arbeitszeitcheck.gdpr.delete')), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>
     };
 </script>
+<?php include __DIR__ . '/common/page-end.php'; ?>

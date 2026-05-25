@@ -1,0 +1,850 @@
+/*
+ * ArbeitszeitCheck design system + page shell.
+ * Feature CSS remains in page-specific files during transition.
+ */
+@import url('common/tokens.css');
+@import url('common/colors.css');
+@import url('common/typography.css');
+@import url('common/base.css');
+@import url('common/components.css');
+@import url('common/layout.css');
+@import url('common/app-layout.css');
+@import url('common/page-patterns.css');
+@import url('common/utilities.css');
+@import url('common/responsive.css');
+@import url('common/accessibility.css');
+@import url('navigation.css');
+@import url('app-vanilla.css');
+
+/* ── Skip link / live regions ─────────────────────────────── */
+.azc-skip-link {
+	position: absolute;
+	left: -9999px;
+	top: var(--azc-space-2);
+	padding: var(--azc-space-2) var(--azc-space-4);
+	background: var(--color-primary-element, #0082c9);
+	color: var(--color-primary-element-text, #fff);
+	border-radius: var(--azc-radius-sm);
+	z-index: 1000;
+	font-weight: 600;
+	text-decoration: none;
+}
+.azc-skip-link:focus,
+.azc-skip-link:focus-visible {
+	left: var(--azc-space-3);
+	outline: 3px solid var(--color-primary-element-text, #fff);
+	outline-offset: 2px;
+}
+.azc-sr-only {
+	position: absolute !important;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	border: 0;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+/* ── App shell ─────────────────────────────────────────────── */
+/* Sidebar alignment: see navigation.css (canonical); keep minimal guard here too */
+#content.app-arbeitszeitcheck #app-navigation .nav-menu a,
+#content.app-arbeitszeitcheck #app-navigation .nav-submenu a,
+#content.app-arbeitszeitcheck #app-navigation .nav-parent-toggle {
+	justify-content: flex-start;
+	text-align: left;
+}
+
+#app-content.azc-app {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	text-align: left;
+	min-height: 100%;
+	background: var(--azc-bg-soft);
+}
+#app-content.azc-app #app-content-wrapper.azc-shell {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	text-align: left;
+	width: 100%;
+	max-width: 72rem;
+	margin: 0 auto;
+	padding: var(--azc-space-5) var(--azc-space-5) var(--azc-space-7);
+	box-sizing: border-box;
+}
+#app-content.azc-app--dashboard .azc-dashboard-alerts .azc-callout {
+	margin: 0 0 var(--azc-space-5);
+	padding: 0;
+	border: none;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+}
+#app-content.azc-app #azc-main-content.azc-main {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	text-align: left;
+	gap: var(--azc-space-5);
+	outline: none;
+}
+#app-content.azc-app--admin-notifications #azc-main-content,
+#app-content.azc-app--admin-settings #azc-main-content {
+	gap: var(--azc-space-4);
+}
+#azc-main-content.azc-main:focus-visible {
+	outline: 3px solid color-mix(in srgb, var(--color-primary-element, #0082c9) 60%, transparent);
+	outline-offset: 2px;
+}
+
+/* Heading contrast in all NC themes */
+#app-content.azc-app h1,
+#app-content.azc-app h2,
+#app-content.azc-app h3 {
+	color: var(--azc-text) !important;
+	opacity: 1 !important;
+}
+
+/* ── Header / breadcrumb ───────────────────────────────────── */
+.azc-page-header {
+	display: flex;
+	flex-direction: column;
+	gap: var(--azc-space-3);
+	margin-bottom: var(--azc-space-5);
+}
+#app-content.azc-app .azc-breadcrumb {
+	font-size: var(--azc-fs-sm);
+	line-height: var(--azc-line-tight);
+	color: var(--azc-muted);
+}
+#app-content.azc-app .azc-breadcrumb__list {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+#app-content.azc-app .azc-breadcrumb__item {
+	display: inline-flex;
+	align-items: center;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	max-width: 100%;
+}
+#app-content.azc-app .azc-breadcrumb__item:not(:last-child)::after {
+	content: '/';
+	margin-inline: var(--azc-space-2);
+	color: var(--azc-muted);
+	font-weight: 400;
+	opacity: 0.65;
+	pointer-events: none;
+	user-select: none;
+}
+#app-content.azc-app .azc-breadcrumb__link {
+	color: var(--color-primary-element, #0082c9);
+	font-weight: 600;
+	text-decoration: none;
+	border-radius: var(--azc-radius-sm);
+	padding-block: 2px;
+}
+#app-content.azc-app .azc-breadcrumb__link:hover {
+	text-decoration: underline;
+}
+#app-content.azc-app .azc-breadcrumb__link:focus-visible {
+	outline: 3px solid color-mix(in srgb, var(--color-primary-element, #0082c9) 55%, transparent);
+	outline-offset: 2px;
+}
+#app-content.azc-app .azc-breadcrumb__text {
+	color: var(--azc-muted);
+	font-weight: 500;
+}
+#app-content.azc-app .azc-breadcrumb__item--current {
+	color: var(--azc-text);
+	min-width: 0;
+}
+#app-content.azc-app .azc-breadcrumb__current {
+	font-weight: 600;
+	color: var(--azc-text);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: min(100%, 28rem);
+}
+.azc-page-header__main {
+	display: grid;
+	grid-template-columns: 56px 1fr auto;
+	gap: var(--azc-space-4);
+	align-items: start;
+}
+.azc-page-header__icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 56px;
+	height: 56px;
+	border-radius: var(--azc-radius-md);
+	background: var(--azc-tint-info);
+	color: var(--color-primary-element, #0082c9);
+}
+.azc-page-header__icon-svg {
+	width: 28px;
+	height: 28px;
+}
+.azc-page-header__text h1 {
+	margin: 0 0 var(--azc-space-1);
+	font-size: var(--azc-fs-2xl);
+	line-height: var(--azc-line-tight);
+}
+.azc-page-header__lead {
+	margin: 0;
+	color: var(--azc-muted);
+	font-size: var(--azc-fs-md);
+	line-height: var(--azc-line-base);
+	max-width: 60ch;
+}
+.azc-page-header__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--azc-space-2);
+	align-items: center;
+	justify-content: flex-end;
+}
+
+/* ── Scope strip ───────────────────────────────────────────── */
+.azc-scope-strip {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--azc-space-2);
+	padding: var(--azc-space-2) var(--azc-space-3);
+	border: 1px solid var(--azc-border);
+	border-radius: var(--azc-radius-sm);
+	background: var(--azc-bg-card);
+	font-size: var(--azc-fs-sm);
+}
+.azc-scope-strip__label {
+	color: var(--azc-muted);
+	font-weight: 500;
+}
+.azc-scope-strip__value {
+	font-weight: 600;
+	color: var(--azc-text);
+}
+.azc-scope-strip__sep {
+	color: var(--azc-muted);
+}
+.azc-scope-strip__chip {
+	text-decoration: none;
+}
+
+/* ── Buttons (azc-btn taxonomy) ──────────────────────────────── */
+.azc-btn,
+.azc-app .btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--azc-space-2);
+	min-height: 44px;
+	min-width: 44px;
+	padding: var(--azc-space-2) var(--azc-space-4);
+	border-radius: var(--azc-radius-sm);
+	font-size: var(--azc-fs-md);
+	font-weight: 600;
+	line-height: 1.2;
+	text-decoration: none;
+	cursor: pointer;
+	border: 1px solid transparent;
+	transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.azc-btn:focus-visible,
+.azc-app .btn:focus-visible {
+	outline: 3px solid var(--color-primary-element, #0082c9);
+	outline-offset: 2px;
+}
+.azc-btn--primary,
+.azc-app .btn--primary {
+	background: var(--color-primary-element, #0082c9);
+	color: var(--color-primary-element-text, #fff);
+}
+.azc-btn--secondary,
+.azc-app .btn--secondary {
+	background: var(--color-background-dark, #f5f5f5);
+	color: var(--azc-text);
+	border-color: var(--azc-border);
+}
+.azc-btn--danger,
+.azc-app .btn--danger {
+	background: var(--color-error, #cc4646);
+	color: var(--color-primary-text, #fff);
+}
+.azc-btn--ghost {
+	background: transparent;
+	color: var(--azc-text);
+	border-color: transparent;
+}
+.azc-btn--sm {
+	min-height: 36px;
+	padding: var(--azc-space-1) var(--azc-space-3);
+	font-size: var(--azc-fs-sm);
+}
+.azc-btn[aria-busy="true"] {
+	opacity: 0.7;
+	pointer-events: none;
+}
+
+/* ── Badges ────────────────────────────────────────────────── */
+.azc-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--azc-space-1);
+	padding: 2px var(--azc-space-2);
+	border-radius: 999px;
+	font-size: var(--azc-fs-xs);
+	font-weight: 600;
+	line-height: 1.4;
+	border: 1px solid transparent;
+}
+.azc-badge--success { background: var(--azc-tint-success); color: var(--azc-text); border-color: var(--color-success, #46ba61); }
+.azc-badge--warning { background: var(--azc-tint-warning); color: var(--azc-text); border-color: var(--color-warning, #c98600); }
+.azc-badge--danger { background: var(--azc-tint-danger); color: var(--azc-text); border-color: var(--color-error, #cc4646); }
+.azc-badge--neutral { background: var(--azc-bg-soft); color: var(--azc-text); border-color: var(--azc-border); }
+
+/* ── Cards / callouts ──────────────────────────────────────── */
+.azc-card {
+	background: var(--azc-bg-card);
+	border: 1px solid var(--azc-border);
+	border-radius: var(--azc-radius-md);
+	padding: var(--azc-space-5);
+	box-shadow: var(--azc-shadow-sm);
+}
+#app-content.azc-app .azc-card:has(.azc-card__header),
+#app-content.azc-app .azc-card:has(.azc-card__body) {
+	padding: 0;
+}
+#app-content.azc-app .azc-card__header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--azc-space-3) var(--azc-space-4);
+	padding: var(--azc-space-5);
+	border-bottom: 1px solid var(--azc-border);
+	background: var(--azc-bg-soft);
+}
+#app-content.azc-app .azc-card__header-text {
+	flex: 1 1 14rem;
+	min-width: 0;
+}
+#app-content.azc-app .azc-card__header-actions {
+	flex: 0 0 auto;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--azc-space-2);
+}
+#app-content.azc-app .azc-card__title {
+	margin: 0;
+	font-size: var(--azc-fs-lg);
+	font-weight: 600;
+	line-height: var(--azc-line-tight);
+	color: var(--azc-text);
+}
+#app-content.azc-app .azc-card__lead {
+	margin: var(--azc-space-2) 0 0;
+	max-width: 52rem;
+	font-size: var(--azc-fs-sm);
+	line-height: var(--azc-line-base);
+	color: var(--azc-muted);
+}
+#app-content.azc-app .azc-card__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--azc-space-4);
+	padding: var(--azc-space-5);
+}
+#app-content.azc-app .azc-btn .azc-btn__icon,
+#app-content.azc-app .azc-btn .azc-icon {
+	width: 1.125rem;
+	height: 1.125rem;
+	flex-shrink: 0;
+}
+#app-content.azc-app .azc-btn--sm .azc-btn__icon,
+#app-content.azc-app .azc-btn--sm .azc-icon {
+	width: 1rem;
+	height: 1rem;
+}
+/* Legacy card header shim (compliance/dashboard until fully migrated) */
+#app-content.azc-app .card-header--with-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--azc-space-3) var(--azc-space-4);
+	padding: var(--azc-space-4) var(--azc-space-5);
+	margin-bottom: 0;
+	border-bottom: 1px solid var(--azc-border);
+	background: var(--azc-bg-soft);
+}
+#app-content.azc-app .card-header--with-actions .card-title {
+	margin: 0;
+	font-size: var(--azc-fs-lg);
+	font-weight: 600;
+	color: var(--azc-text);
+}
+#app-content.azc-app .card-header--with-actions .azc-btn {
+	flex-shrink: 0;
+	white-space: nowrap;
+}
+#app-content.azc-app .azc-card + .azc-card {
+	margin-top: var(--azc-space-5);
+}
+#app-content.azc-app .compliance-dashboard__score {
+	margin: 0;
+	font-size: var(--azc-fs-md);
+	line-height: var(--azc-line-base);
+}
+#app-content.azc-app .compliance-dashboard__score-hint {
+	display: block;
+	margin-top: var(--azc-space-2);
+}
+#app-content.azc-app .azc-callout {
+	display: flex;
+	flex-direction: column;
+	gap: var(--azc-space-3);
+	padding: var(--azc-space-4) var(--azc-space-5);
+	border: 1px solid var(--azc-border);
+	border-radius: var(--azc-radius-md);
+	background: var(--azc-tint-info);
+	box-shadow: var(--azc-shadow-sm);
+}
+#app-content.azc-app .azc-callout--info {
+	border-left: 4px solid var(--color-primary-element, #0082c9);
+}
+#app-content.azc-app .azc-callout--warning {
+	background: var(--azc-tint-warning);
+	border-left: 4px solid var(--color-warning, #c98600);
+}
+#app-content.azc-app .azc-callout--success {
+	background: var(--azc-tint-success);
+	border-left: 4px solid var(--color-success, #46ba61);
+}
+#app-content.azc-app .azc-callout--danger {
+	background: var(--azc-tint-danger);
+	border-left: 4px solid var(--color-error, #cc4646);
+}
+#app-content.azc-app .azc-callout__title {
+	margin: 0;
+	font-size: var(--azc-fs-lg);
+	font-weight: 600;
+	line-height: var(--azc-line-tight);
+	color: var(--azc-text);
+}
+#app-content.azc-app .azc-callout__text {
+	margin: 0;
+	font-size: var(--azc-fs-md);
+	line-height: var(--azc-line-base);
+	color: var(--azc-text);
+	max-width: 65ch;
+}
+#app-content.azc-app .azc-callout__actions {
+	margin: 0;
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--azc-space-2);
+}
+#app-content.azc-app .azc-callout__hint {
+	margin: 0;
+	color: var(--azc-muted);
+	font-size: var(--azc-fs-sm);
+	line-height: var(--azc-line-base);
+}
+
+/* ── Long settings forms: sidebar jump nav + sections ──────── */
+#app-content.azc-app .azc-settings-layout,
+#app-content.azc-app .admin-settings-layout,
+.azc-nc-admin-settings .azc-settings-layout {
+	display: grid;
+	grid-template-columns: minmax(12.5rem, 16rem) minmax(0, 1fr);
+	gap: var(--azc-space-5);
+	align-items: start;
+	width: 100%;
+	text-align: left;
+}
+
+#app-content.azc-app .azc-jump-nav,
+.azc-nc-admin-settings .azc-jump-nav {
+	position: sticky;
+	top: var(--azc-space-2);
+	margin: 0;
+	padding: var(--azc-space-4);
+	border: 1px solid var(--azc-border);
+	border-radius: var(--azc-radius-md);
+	background: var(--azc-bg-card);
+	box-shadow: var(--azc-shadow-sm);
+}
+
+#app-content.azc-app .azc-jump-nav__title,
+.azc-nc-admin-settings .azc-jump-nav__title {
+	margin: 0 0 var(--azc-space-3);
+	font-size: var(--azc-fs-sm);
+	font-weight: 600;
+	line-height: var(--azc-line-tight);
+	color: var(--azc-text);
+}
+
+#app-content.azc-app .azc-jump-nav__list,
+.azc-nc-admin-settings .azc-jump-nav__list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: var(--azc-space-1);
+}
+
+#app-content.azc-app .azc-jump-nav__item,
+.azc-nc-admin-settings .azc-jump-nav__item {
+	margin: 0;
+	padding: 0;
+}
+
+#app-content.azc-app .azc-jump-nav__link,
+.azc-nc-admin-settings .azc-jump-nav__link {
+	display: flex;
+	align-items: center;
+	min-height: 2.75rem;
+	padding: var(--azc-space-2) var(--azc-space-3);
+	border: 1px solid transparent;
+	border-radius: var(--azc-radius-sm);
+	color: var(--color-primary-element, #0082c9);
+	font-size: var(--azc-fs-sm);
+	font-weight: 500;
+	line-height: 1.35;
+	text-decoration: none;
+	transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+#app-content.azc-app .azc-jump-nav__link:hover,
+.azc-nc-admin-settings .azc-jump-nav__link:hover {
+	background: var(--azc-bg-soft);
+	text-decoration: none;
+}
+
+#app-content.azc-app .azc-jump-nav__link:focus-visible,
+.azc-nc-admin-settings .azc-jump-nav__link:focus-visible {
+	outline: 3px solid var(--color-primary-element, #0082c9);
+	outline-offset: 2px;
+	background: var(--azc-bg-soft);
+	text-decoration: none;
+}
+
+#app-content.azc-app .azc-jump-nav__link[aria-current="location"],
+.azc-nc-admin-settings .azc-jump-nav__link[aria-current="location"] {
+	border-color: var(--color-primary-element, #0082c9);
+	background: color-mix(in srgb, var(--color-primary-element, #0082c9) 12%, var(--azc-bg-card));
+	color: var(--azc-text);
+	font-weight: 600;
+}
+
+#app-content.azc-app .azc-settings-layout > form,
+#app-content.azc-app .admin-settings-layout > form {
+	display: flex;
+	flex-direction: column;
+	gap: var(--azc-space-4);
+	min-width: 0;
+	width: 100%;
+}
+
+#app-content.azc-app .admin-settings-section,
+#app-content.azc-app .azc-settings-section,
+.azc-nc-admin-settings .admin-settings-section {
+	margin: 0 0 var(--azc-space-5);
+	padding: var(--azc-space-5);
+	background: var(--azc-bg-card);
+	border: 1px solid var(--azc-border);
+	border-radius: var(--azc-radius-md);
+	box-shadow: var(--azc-shadow-sm);
+	scroll-margin-top: calc(var(--azc-space-6) + 3rem);
+}
+
+#app-content.azc-app .admin-settings-section:last-of-type,
+#app-content.azc-app .azc-settings-section:last-of-type,
+.azc-nc-admin-settings .admin-settings-section:last-of-type {
+	margin-bottom: var(--azc-space-4);
+}
+
+#app-content.azc-app .admin-settings-section__title,
+#app-content.azc-app .azc-settings-section__title,
+.azc-nc-admin-settings .admin-settings-section__title {
+	margin: 0 0 var(--azc-space-3);
+	padding-bottom: var(--azc-space-3);
+	font-size: var(--azc-fs-lg);
+	font-weight: 600;
+	line-height: var(--azc-line-tight);
+	color: var(--azc-text);
+	border-bottom: 1px solid var(--azc-border);
+}
+
+/* Fieldsets: UA `legend { display: table }` must not shrink/center the form column */
+#app-content.azc-app--admin-notifications .admin-notifications-form .form-fieldset,
+#app-content.azc-app--admin-notifications .admin-notifications-form .azc-settings-subsection,
+#app-content.azc-app--admin-settings .admin-settings-form .form-fieldset,
+#app-content.azc-app--admin-settings .admin-settings-form .azc-settings-subsection {
+	display: block;
+	width: 100%;
+	min-width: 0;
+	margin: var(--azc-space-5) 0 0;
+	padding: var(--azc-space-4);
+	border: 1px solid var(--azc-border);
+	border-radius: var(--azc-radius-md);
+	background: var(--azc-bg-soft);
+	text-align: start;
+	box-sizing: border-box;
+}
+
+#app-content.azc-app--admin-notifications .admin-notifications-form .form-legend,
+#app-content.azc-app--admin-settings .admin-settings-form .form-legend {
+	display: block;
+	width: 100%;
+	max-width: none;
+	margin: 0 0 var(--azc-space-3);
+	padding: 0;
+	float: none;
+	text-align: start;
+	white-space: normal;
+}
+
+#app-content.azc-app--admin-notifications .admin-notifications-form .form-group,
+#app-content.azc-app--admin-notifications .admin-notifications-form .form-row,
+#app-content.azc-app--admin-settings .admin-settings-form .form-group,
+#app-content.azc-app--admin-settings .admin-settings-form .form-row {
+	width: 100%;
+	max-width: none;
+	text-align: start;
+}
+
+/* Form actions: static card at end of form (not sticky — avoids floating over scrollable content) */
+#app-content.azc-app .azc-settings-form__footer,
+#app-content.azc-app .admin-settings-form__footer,
+.azc-nc-admin-settings .azc-settings-form__footer,
+.azc-nc-admin-settings .azc-admin-settings-form__footer {
+	position: static;
+	inset: auto;
+	z-index: auto;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--azc-space-3);
+	width: 100%;
+	margin: 0;
+	padding: var(--azc-space-5);
+	border: 1px solid var(--azc-border);
+	border-radius: var(--azc-radius-md);
+	background: var(--azc-bg-card);
+	box-shadow: var(--azc-shadow-sm);
+	box-sizing: border-box;
+}
+
+@media (max-width: 1023px) {
+	#app-content.azc-app .azc-settings-layout,
+	#app-content.azc-app .admin-settings-layout,
+	.azc-nc-admin-settings .azc-settings-layout {
+		grid-template-columns: 1fr;
+	}
+
+	#app-content.azc-app .azc-jump-nav,
+	.azc-nc-admin-settings .azc-jump-nav {
+		position: static;
+	}
+
+	#app-content.azc-app .azc-jump-nav__list,
+	.azc-nc-admin-settings .azc-jump-nav__list {
+		flex-direction: row;
+		flex-wrap: wrap;
+		gap: var(--azc-space-2);
+	}
+
+	#app-content.azc-app .azc-jump-nav__link,
+	.azc-nc-admin-settings .azc-jump-nav__link {
+		min-height: 2.5rem;
+	}
+}
+
+@media (max-width: 767px) {
+	#app-content.azc-app .azc-settings-form__footer,
+	#app-content.azc-app .admin-settings-form__footer,
+	#app-content.azc-app .azc-admin-settings-form__footer,
+	.azc-nc-admin-settings .azc-settings-form__footer,
+	.azc-nc-admin-settings .azc-admin-settings-form__footer {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	#app-content.azc-app .azc-settings-form__footer .azc-btn,
+	#app-content.azc-app .admin-settings-form__footer .azc-btn,
+	#app-content.azc-app .azc-admin-settings-form__footer .azc-btn,
+	.azc-nc-admin-settings .azc-settings-form__footer .azc-btn,
+	.azc-nc-admin-settings .azc-admin-settings-form__footer .azc-btn {
+		width: 100%;
+		justify-content: center;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	#app-content.azc-app .azc-jump-nav__link,
+	.azc-nc-admin-settings .azc-jump-nav__link {
+		transition: none;
+	}
+}
+
+@media (forced-colors: active) {
+	#app-content.azc-app .azc-jump-nav,
+	#app-content.azc-app .admin-settings-section,
+	.azc-nc-admin-settings .azc-jump-nav,
+	.azc-nc-admin-settings .admin-settings-section {
+		border-color: CanvasText;
+	}
+
+	#app-content.azc-app .azc-jump-nav__link[aria-current="location"],
+	.azc-nc-admin-settings .azc-jump-nav__link[aria-current="location"] {
+		border: 2px solid Highlight;
+	}
+}
+
+/* ── Empty state ───────────────────────────────────────────── */
+.azc-empty-state {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	text-align: center;
+	gap: var(--azc-space-3);
+	padding: var(--azc-space-7) var(--azc-space-5);
+}
+.azc-empty-state__icon {
+	width: 48px;
+	height: 48px;
+	color: var(--azc-muted);
+}
+.azc-empty-state__title {
+	margin: 0;
+	font-size: var(--azc-fs-lg);
+}
+.azc-empty-state__lead {
+	margin: 0;
+	max-width: 40ch;
+	color: var(--azc-muted);
+}
+
+/* ── Access denied ─────────────────────────────────────────── */
+.azc-denied {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 60vh;
+	padding: var(--azc-space-5);
+}
+.azc-denied__card {
+	max-width: 480px;
+	text-align: center;
+}
+.azc-denied__icon {
+	margin: 0 auto var(--azc-space-4);
+}
+
+/* ── Responsive tables → cards ─────────────────────────────── */
+@media (max-width: 767px) {
+	.azc-page-header__main {
+		grid-template-columns: 48px 1fr;
+	}
+	.azc-page-header__actions {
+		grid-column: 1 / -1;
+		justify-content: flex-start;
+	}
+	#app-content.azc-app .azc-card__header-actions {
+		width: 100%;
+		justify-content: flex-start;
+	}
+	#app-content.azc-app .azc-card__header-actions .azc-btn {
+		flex: 1 1 auto;
+		min-width: min(100%, 10rem);
+	}
+	.azc-table--responsive thead { display: none; }
+	.azc-table--responsive tr {
+		display: block;
+		margin-bottom: var(--azc-space-4);
+		border: 1px solid var(--azc-border);
+		border-radius: var(--azc-radius-sm);
+		padding: var(--azc-space-3);
+		background: var(--azc-bg-card);
+	}
+	.azc-table--responsive td {
+		display: flex;
+		justify-content: space-between;
+		gap: var(--azc-space-3);
+		padding: var(--azc-space-2) 0;
+		border: none;
+	}
+	.azc-table--responsive td::before {
+		content: attr(data-label);
+		font-weight: 600;
+		color: var(--azc-muted);
+		flex-shrink: 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.azc-btn { transition: none; }
+}
+
+@media (forced-colors: active) {
+	.azc-card,
+	.azc-scope-strip,
+	.azc-badge {
+		border: 1px solid CanvasText;
+	}
+	#app-content.azc-app .azc-breadcrumb__link:focus-visible {
+		outline: 3px solid Highlight;
+	}
+	#app-content.azc-app .azc-breadcrumb__item:not(:last-child)::after {
+		color: CanvasText;
+		opacity: 1;
+	}
+	.azc-btn:focus-visible {
+		outline: 3px solid Highlight;
+	}
+}
+
+/* Nextcloud personal settings panel (no in-app sidebar) */
+.azc-nc-settings-panel .settings-hint {
+	margin-block: var(--azc-space-3);
+	max-width: 42rem;
+	line-height: 1.5;
+}
+.azc-nc-settings-panel .settings-subheading {
+	margin-block: var(--azc-space-5) var(--azc-space-2);
+	font-size: var(--azc-fs-md, 1rem);
+}
+.azc-nc-settings-panel .btn + .btn {
+	margin-inline-start: var(--azc-space-2);
+}
+
+/* Nextcloud Administration → ArbeitszeitCheck (no in-app sidebar) */
+.azc-nc-admin-settings {
+	max-width: 52rem;
+	margin-block: var(--azc-space-4);
+}
+.azc-nc-admin-settings__banner {
+	margin-block-end: var(--azc-space-5);
+}
+.azc-nc-admin-settings__form .azc-settings-layout {
+	max-width: none;
+}

@@ -34,8 +34,12 @@ use OCP\AppFramework\Db\Entity;
  * @method void setInheritLowerLayers(bool $inheritLowerLayers)
  */
 class UserVacationPolicyAssignment extends Entity {
+	// Do not default vacationMode (or other NOT NULL columns) here — Entity::setter()
+	// skips dirty marking when the new value equals the PHP default, which omits
+	// columns from INSERT and breaks on strict SQL modes (see Developer-Documentation).
 	protected string $userId = '';
-	protected string $vacationMode = Constants::VACATION_MODE_MANUAL_FIXED;
+	/** @var string|null */
+	protected ?string $vacationMode = null;
 	protected ?float $manualDays = null;
 	protected ?int $tariffRuleSetId = null;
 	protected ?string $overrideReason = null;
@@ -88,7 +92,7 @@ class UserVacationPolicyAssignment extends Entity {
 		if ($this->inheritLowerLayers === true || $this->inheritLowerLayers === 1) {
 			return true;
 		}
-		return $this->vacationMode === Constants::VACATION_MODE_INHERIT;
+		return $this->vacationMode !== null && $this->vacationMode === Constants::VACATION_MODE_INHERIT;
 	}
 
 	public function validate(): array {
@@ -100,7 +104,7 @@ class UserVacationPolicyAssignment extends Entity {
 			Constants::VACATION_MODE_MANUAL_EXCEPTION,
 			Constants::VACATION_MODE_INHERIT,
 		];
-		if (!in_array($this->vacationMode, $validModes, true)) {
+		if ($this->vacationMode === null || !in_array($this->vacationMode, $validModes, true)) {
 			$errors['vacationMode'] = 'Invalid vacation mode';
 		}
 

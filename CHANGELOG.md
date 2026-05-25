@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Breadcrumb trail**: simplified shell markup (no separator `<li>` nodes) and scoped styles so the trail reads as one line — primary link, muted section, bold current page — with CSS `/` dividers and ellipsis on long titles.
+- **Compliance dashboard cards**: migrated status and violations blocks to `azc-card` header/body layout (title + help left, actions right, sized button icons); removed broken `card-header--with-actions` stacking.
+- **Admin dashboard layout**: fixed styles targeting wrong `.admin-dashboard` class (shell uses `azc-app--admin-dashboard`); removed extra `.section` padding; `azc-callout` warning banner; stat cards grid; issues block in `azc-card`.
+- **Confirm dialog typed phrase (client)**: if the translated label still contains `%s` after `t()` (e.g. test stubs or missing substitution), the requested phrase (`DELETE`, `REMOVE`, …) is applied so destructive prompts never show a raw placeholder.
+- **GDPR delete UX**: when `confirmDialog` is unavailable, settings now surfaces an assertive error instead of failing silently; confirmation results use shared `isConfirmAccepted` / `confirmDialogReason` helpers.
+- **Fail-closed destructive confirms**: `Utils.confirmDestructiveAction()` blocks month finalization, month reopen, correction withdraw, and overtime payout (single/bulk) when the dialog API is missing or the user cancels — no silent proceed (audit-critical). All admin delete paths (holidays, teams, vacation layers, tariff retire) now use the same helper.
+- **Month closure lock notice (W7)**: shared `templates/common/month-closure-lock.php` with lock icon; shown on time entries when the selected month is finalized.
+- **Settings UX**: sections use `azc-card` spacing and `azc-btn` controls for clearer visual hierarchy (WCAG-friendly grouping unchanged).
+- **Substitution requests page**: removed duplicate `<h1>` and orphan `</div>` (invalid HTML); styles now target `.azc-app--substitution-requests` so the shell layout applies; empty state uses `azc-empty-state` pattern.
+- **Dashboard clock double-submit (W11)**: `setLoadingState()` sets `aria-busy="true"` on clock/break buttons while API calls are in flight (with disabled state and loading label).
+- **Reports DATEV discoverability (W23)**: administrators see help text under file format pointing to Global settings → Exports and reporting (CSV/JSON remain on this page).
+- **Admin notifications (W13)**: sticky save footer, `beforeunload` when the form has unsaved changes, and `aria-busy` on save while the request is in flight.
+- **E2E vacation seed (`ensure-e2e-vacation`)**: `UserVacationPolicyAssignment` no longer pre-initialises `vacation_mode`, so `INSERT` always persists the column (fixes SQL 1364 on strict MariaDB).
+- **Clock status API (ArbZG calendar-day)**: `at_daily_maximum` and `session_hours_on_calendar_today` are now always returned (including when clocked out) so clients can block clock-in without an active session; overnight E2E asserts the contract when daily max is reached.
+- **E2E clock seed (`ensure-e2e-clock`)**: dev/CI-only OCC command for `e2e_*` users clears active sessions and backdates the last completed entry when ArbZG §5 rest would block Playwright clock-in; wired into `run-e2e-docker.sh`.
+
+### Added
+
+- **Vitest**: `js/common/components.test.js` (focus trap / aria-hidden / typed-confirm label) and `isConfirmAccepted` coverage in `utils.test.js`.
+
+### Fixed
+
+- **Production-grade audit hardening pass** (UX-parity follow-up):
+  - **Manager dashboard** (`js/manager-dashboard.js`): fixed an unbalanced paren on the team-overtime “Payout eligible: %s h” line that prevented the file from parsing, hiding the entire team status panel.
+  - **Admin users** (`js/admin-users.js`): the two opening-balance year validation messages were calling an undefined `t()` helper; they now use the page-local `auMsg()` so the German/English text is announced correctly via the messaging live region.
+  - **Icon catalog** (`js/common/catalog.js`): removed a duplicate `calendar-off` entry that produced silent overrides on load.
+  - **Confirm dialog typed phrase** (`js/common/components.js`): when callers passed a non-default `typedConfirmPhrase` (e.g. `REMOVE`), the label still said `Type DELETE to confirm` because the translation already substituted `%s`. The label is now resolved with the *requested* phrase so destructive prompts are honest.
+  - **Stylesheets**: replaced the deprecated `clip: rect(...)` screen-reader pattern with `clip-path: inset(50%)` in `css/app.css` and `css/manager-time-entries.css`; reordered `border-color` before `border-left-color` on `.inline-notice--warning/--info` so the longhand override actually wins; replaced two empty `/* */` block comments that tripped stylelint.
+- **GDPR data deletion now persists the user-supplied reason**: `GdprController::delete()` reads the `reason` parameter posted by the destructive confirm dialog (`js/settings.js` already sent it), trims/clamps it to 500 chars, and writes it into the `gdpr_data_deletion_request` audit log entry alongside the existing IP/user-agent stamp. Retention-period enforcement is unchanged.
+- **Tariff rule sets now produce a complete audit trail**: `AdminController::createTariffRuleSet/updateTariffRuleSet/activateTariffRuleSet/retireTariffRuleSet/deleteTariffRuleSet` each write a structured `tariff_rule_set_*` entry with old/new snapshots (code, version, jurisdiction, status, activation mode, validity window, module list). Previously these admin mutations went through unnoticed.
+- **Admin authorization now returns JSON for API/AJAX callers**: `AppAdminMiddleware` no longer serves an HTML 403 page when an unauthorized admin endpoint is hit via `fetch`/XHR or `/api/...` URLs. AJAX consumers now receive `{ ok: false, error: { code: 'admin_required' } }` with HTTP 403, while browser page loads still get the standard `core/403` template. Defensive guards keep the path safe under CLI/test runners. Covered by `AppAdminMiddlewareTest` (HTML, `/api/` path, `XMLHttpRequest` header) and `AppAdminAuthorizationIntegrationTest`.
+- **Single source of truth for front-end assets**: removed the duplicate CSS/JS list from `Application::boot()` — every page entry point now goes through `FrontEndAssetService::register{Core,Page}()`, including `app-vanilla.css` which is now imported by `css/app.css`. This eliminates load-order surprises and silent drift between the bootstrap loader and the central asset bundle.
+
 - **Night / overnight shifts (Wachdienst):** ArbZG §3 daily maximum and automatic clock-out now use a single `DailyWorkingHoursCalculator` (calendar-day clipping at midnight). All enforcement paths aligned: live sessions, clock-in, compliance checks, manual entries, automatic breaks, break reminders. Fixes false auto clock-out shortly after midnight. Frontend auto clock-out only when `at_daily_maximum` is true (never client extrapolation alone). User stats and manager week/month totals now use `getWorkingHoursForPeriod()` (same calculator). Compliance “excessive working hours” violations now use `findAllCalendarDaysExceedingMaximum()` (no false positives on legal 22:00–08:00 rows). Audit reference: `docs/DAILY-HOURS-AUDIT.md`. E2E: `tests/e2e/overnight-daily-maximum.spec.js`.
 
 ## 1.3.8 - 2026-05-20

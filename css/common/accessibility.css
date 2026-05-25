@@ -359,6 +359,23 @@ th[scope] {
   /* Decorative elements should be hidden */
 }
 
+/* ===== NATIVE <dialog> (Nextcloud core sets dialog { display: block }) ===== */
+
+dialog.azc-native-dialog:not([open]),
+dialog.layer-dialog:not([open]),
+dialog.entitlement-explain-dialog:not([open]) {
+	display: none !important;
+	pointer-events: none;
+}
+
+dialog.azc-native-dialog[open],
+dialog.layer-dialog[open],
+dialog.entitlement-explain-dialog[open] {
+	margin: auto;
+	max-width: calc(100vw - 2rem);
+	max-height: min(90dvh, calc(100vh - 2rem));
+}
+
 /* ===== RESPONSIVE ACCESSIBILITY ===== */
 
 @media (max-width: 768px) {

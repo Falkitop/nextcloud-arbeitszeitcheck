@@ -45,6 +45,7 @@
                 if (document.getElementById('notification-settings-form')) {
                     this.setupNotificationForm();
                 }
+                this.setupGdprDelete();
                 this.loadWorkingTimeModelInfo();
             });
         },
@@ -120,6 +121,66 @@
             form.addEventListener('submit', (e) => {
                 e.preventDefault();
                 this.saveNotificationSettings(form);
+            });
+        },
+
+        setupGdprDelete: function() {
+            const btn = document.getElementById('btn-gdpr-delete');
+            if (!btn) return;
+
+            btn.addEventListener('click', async () => {
+                const Utils = window.ArbeitszeitCheckUtils;
+                const title = window.t ? window.t('arbeitszeitcheck', 'Delete my ArbeitszeitCheck data') : 'Delete my ArbeitszeitCheck data';
+                const message = window.t
+                    ? window.t('arbeitszeitcheck', 'This permanently removes your time entries, absences, and settings from ArbeitszeitCheck.')
+                    : 'This permanently removes your time entries, absences, and settings from ArbeitszeitCheck.';
+                const confirmResult = Utils?.confirmDestructiveAction
+                    ? await Utils.confirmDestructiveAction({
+                        title,
+                        message,
+                        confirmLabel: window.t ? window.t('arbeitszeitcheck', 'Delete permanently') : 'Delete permanently',
+                        variant: 'danger',
+                        requireTypedConfirm: true,
+                        typedConfirmPhrase: 'DELETE',
+                        requireReason: true,
+                    })
+                    : null;
+                if (!confirmResult) {
+                    return;
+                }
+
+                const url = btn.getAttribute('data-delete-url')
+                    || window.ArbeitszeitCheck?.apiUrl?.gdprDelete;
+                if (!url) {
+                    return;
+                }
+
+                btn.setAttribute('aria-busy', 'true');
+                btn.disabled = true;
+
+                const reason = Utils?.confirmDialogReason?.(confirmResult, 'user_request') || 'user_request';
+
+                const api = window.AzcApi;
+                const result = api
+                    ? await api.fetch(url, { method: 'POST', json: { reason: reason || 'user_request' } })
+                    : null;
+
+                btn.removeAttribute('aria-busy');
+                btn.disabled = false;
+
+                if (result && result.ok) {
+                    const msg = window.t
+                        ? window.t('arbeitszeitcheck', 'Your ArbeitszeitCheck data has been deleted.')
+                        : 'Your ArbeitszeitCheck data has been deleted.';
+                    window.ArbeitszeitCheckMessaging?.showSuccess?.(msg);
+                    window.setTimeout(() => {
+                        window.location.href = window.OC?.generateUrl?.('/') || '/';
+                    }, 1500);
+                } else {
+                    const err = (result && result.error)
+                        || (window.t ? window.t('arbeitszeitcheck', 'Could not delete your data. Please try again or contact your administrator.') : 'Could not delete your data.');
+                    window.ArbeitszeitCheckMessaging?.showError?.(err);
+                }
             });
         },
 

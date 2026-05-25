@@ -56,4 +56,13 @@ class UserVacationPolicyAssignmentTest extends TestCase
 		]);
 		self::assertFalse($p->isInherit());
 	}
+
+	public function testValidateRequiresExplicitVacationMode(): void
+	{
+		$p = new UserVacationPolicyAssignment();
+		$p->setUserId('alice');
+		$p->setManualDays(30.0);
+		$errors = $p->validate();
+		self::assertArrayHasKey('vacationMode', $errors);
+	}
 }

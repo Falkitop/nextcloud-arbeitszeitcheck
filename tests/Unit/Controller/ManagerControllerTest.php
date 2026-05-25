@@ -187,6 +187,12 @@ class ManagerControllerTest extends TestCase
 		$tzUserSession = $this->createMock(IUserSession::class);
 		$tzUserSession->method('getUser')->willReturn(null);
 		$timeZoneService = new TimeZoneService($tzConfig, $tzDateTime, $tzUserSession, new NullLogger());
+		$localeFormat = $this->createMock(\OCA\ArbeitszeitCheck\Service\LocaleFormatService::class);
+		$localeFormat->method('clientHints')->willReturn([
+			'locale' => 'en-US',
+			'htmlLang' => 'en-US',
+			'timezone' => 'Europe/Berlin',
+		]);
 
 		$this->controller = new ManagerController(
 			'arbeitszeitcheck',
@@ -215,7 +221,8 @@ class ManagerControllerTest extends TestCase
 			$this->monthClosureGuard,
 			$this->monthClosureService,
 			$timeZoneService,
-			$this->correctionService
+			$this->correctionService,
+			$localeFormat,
 		);
 	}
 

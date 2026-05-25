@@ -392,12 +392,18 @@
 /* -------------------------------------------------------------------------
    Dialog (form drawer)
    ------------------------------------------------------------------------- */
-.layer-dialog {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  margin: 0;
+/*
+ * Nextcloud core reset sets `dialog { display: block }` (see core/css/server.css),
+ * which overrides the UA rule that hides closed <dialog> elements. Without the
+ * guard below, the drawer appears on every page load with the static PHP title
+ * and cannot be dismissed because dialog.close() does not change display.
+ */
+dialog.layer-dialog:not([open]) {
+  display: none !important;
+  pointer-events: none;
+}
+dialog.layer-dialog {
+  margin: auto;
   box-sizing: border-box;
   border: 1px solid var(--color-border);
   border-radius: var(--border-radius-large, 8px);
@@ -410,7 +416,7 @@
   color: var(--color-main-text);
   box-shadow: var(--arbeitszeitcheck-shadow-xl, 0 10px 30px rgba(0,0,0,.15));
 }
-.layer-dialog::backdrop {
+dialog.layer-dialog::backdrop {
   background: color-mix(in srgb, var(--color-main-text) 50%, transparent);
 }
 .layer-dialog__form {

@@ -7,22 +7,119 @@
  */
 
 const ArbeitszeitCheckComponents = {
+  _modalLockDepth: 0,
+  _modalEscHandlerBound: false,
+
   /**
    * Initialize all components
    */
   init() {
     this.initModals();
     this.initToasts();
+    this.relocatePageActions();
   },
 
   // ===== MODAL COMPONENTS =====
+
+  _getAppContent() {
+    return document.getElementById('app-content');
+  },
+
+  _lockPageBehindModal() {
+    if (++this._modalLockDepth === 1) {
+      document.body.style.overflow = 'hidden';
+      const appContent = this._getAppContent();
+      if (appContent) {
+        appContent.setAttribute('aria-hidden', 'true');
+      }
+    }
+  },
+
+  _unlockPageBehindModal() {
+    if (this._modalLockDepth <= 0) {
+      this._modalLockDepth = 0;
+      return;
+    }
+    if (--this._modalLockDepth === 0) {
+      document.body.style.overflow = '';
+      const appContent = this._getAppContent();
+      if (appContent) {
+        appContent.removeAttribute('aria-hidden');
+      }
+    }
+  },
+
+  _getVisibleModalBackdrops() {
+    return Array.from(document.querySelectorAll('.modal-backdrop')).filter((backdrop) => {
+      if (backdrop.style.display === 'flex') {
+        return true;
+      }
+      const modal = backdrop.querySelector('.modal');
+      if (modal && modal.getAttribute('aria-hidden') === 'false') {
+        return true;
+      }
+      const style = window.getComputedStyle(backdrop);
+      return style.display !== 'none' && style.visibility !== 'hidden';
+    });
+  },
+
+  _getTopmostBackdropModal() {
+    const backdrops = this._getVisibleModalBackdrops();
+    if (backdrops.length === 0) {
+      return null;
+    }
+    const topBackdrop = backdrops[backdrops.length - 1];
+    return topBackdrop.querySelector('.modal');
+  },
+
+  _bindFocusTrap(modal) {
+    if (!modal || modal.dataset.azcFocusTrapBound === '1') {
+      return;
+    }
+    const handler = (e) => {
+      if (e.key !== 'Tab' || !modal.closest('.modal-backdrop')) {
+        return;
+      }
+      const focusable = Array.from(
+        modal.querySelectorAll(
+          'button:not([disabled]), [href], input:not([disabled]):not([hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+      if (focusable.length === 0) {
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first || !modal.contains(document.activeElement)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (document.activeElement === last || !modal.contains(document.activeElement)) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    modal.addEventListener('keydown', handler);
+    modal.dataset.azcFocusTrapBound = '1';
+    modal._azcFocusTrapHandler = handler;
+  },
+
+  _unbindFocusTrap(modal) {
+    if (!modal || modal.dataset.azcFocusTrapBound !== '1' || !modal._azcFocusTrapHandler) {
+      return;
+    }
+    modal.removeEventListener('keydown', modal._azcFocusTrapHandler);
+    delete modal._azcFocusTrapHandler;
+    delete modal.dataset.azcFocusTrapBound;
+  },
 
   /**
    * Initialize modal functionality
    */
   initModals() {
     const modalTriggers = document.querySelectorAll('[data-modal]');
-    
+
     modalTriggers.forEach(trigger => {
       trigger.addEventListener('click', (e) => {
         e.preventDefault();
@@ -31,35 +128,50 @@ const ArbeitszeitCheckComponents = {
       });
     });
 
-    // Close modals on backdrop click
+    // Close modals on backdrop click (topmost only)
     document.addEventListener('click', (e) => {
-      if (e.target.classList.contains('modal-backdrop')) {
-        const modal = e.target.querySelector('.modal');
-        if (modal) {
-          this.closeModal(modal);
-        }
+      if (!e.target.classList.contains('modal-backdrop')) {
+        return;
+      }
+      const backdrops = this._getVisibleModalBackdrops();
+      if (backdrops.length === 0 || e.target !== backdrops[backdrops.length - 1]) {
+        return;
+      }
+      const modal = e.target.querySelector('.modal');
+      if (modal && modal.dataset.azcModalDismiss !== 'false') {
+        this.closeModal(modal);
       }
     });
 
-    // Close modals on escape key
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        const openModal = document.querySelector('.modal-backdrop .modal');
-        if (openModal) {
-          this.closeModal(openModal);
+    if (!this._modalEscHandlerBound) {
+      this._modalEscHandlerBound = true;
+      document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') {
+          return;
         }
-      }
-    });
-
-    // Close buttons
-    document.querySelectorAll('.modal-close').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.preventDefault();
-        const modal = btn.closest('.modal');
-        if (modal) {
+        // Native <dialog> handles Escape via the `cancel` event.
+        if (document.querySelector('dialog[open]')) {
+          return;
+        }
+        const modal = this._getTopmostBackdropModal();
+        if (modal && modal.dataset.azcModalDismiss !== 'false') {
+          e.preventDefault();
           this.closeModal(modal);
         }
       });
+    }
+
+    // Close buttons (including dynamically created modals)
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('.modal-close');
+      if (!btn) {
+        return;
+      }
+      e.preventDefault();
+      const modal = btn.closest('.modal');
+      if (modal) {
+        this.closeModal(modal);
+      }
     });
   },
 
@@ -73,35 +185,36 @@ const ArbeitszeitCheckComponents = {
       return;
     }
 
+    if (!modal._azcReturnFocus && document.activeElement instanceof HTMLElement) {
+      modal._azcReturnFocus = document.activeElement;
+    }
+
     // Create backdrop if it doesn't exist
     let backdrop = modal.closest('.modal-backdrop');
     if (!backdrop) {
       backdrop = document.createElement('div');
-      backdrop.className = 'modal-backdrop';
-      backdrop.setAttribute('aria-hidden', 'true');
+      backdrop.className = 'modal-backdrop azc-modal-backdrop';
+      backdrop.setAttribute('role', 'presentation');
       document.body.appendChild(backdrop);
-      // Move modal into backdrop (if it's already in the DOM)
       if (modal.parentNode) {
         modal.parentNode.removeChild(modal);
       }
       backdrop.appendChild(modal);
     }
 
-    // Show modal
     backdrop.style.display = 'flex';
     modal.style.display = 'flex';
     modal.setAttribute('aria-hidden', 'false');
-    backdrop.setAttribute('aria-hidden', 'false');
+    modal.removeAttribute('inert');
 
-    // Lock body scroll
-    document.body.style.overflow = 'hidden';
+    this._lockPageBehindModal();
+    this._bindFocusTrap(modal);
 
-    // Focus first focusable element (with slight delay to ensure modal is visible)
     setTimeout(() => {
-      this.focusFirstElement(modal);
+      const closeBtn = modal.querySelector('.modal-close');
+      this.focusFirstElement(modal, closeBtn ? null : undefined);
     }, 50);
 
-    // Dispatch event
     window.dispatchEvent(new CustomEvent('modal-open', {
       detail: { modalId: modal.id || modalId, modal }
     }));
@@ -113,46 +226,71 @@ const ArbeitszeitCheckComponents = {
   closeModal(modal) {
     if (!modal) return;
 
-    // Handle both ID string and element
     const modalElement = typeof modal === 'string' ? document.getElementById(modal) : modal;
     if (!modalElement) {
       console.warn('Modal element not found:', modal);
       return;
     }
 
+    const returnFocus = modalElement._azcReturnFocus;
+    delete modalElement._azcReturnFocus;
+
+    this._unbindFocusTrap(modalElement);
+
     const backdrop = modalElement.closest('.modal-backdrop');
+    const persist = modalElement.dataset.azcModalPersist === 'true';
+
     if (!backdrop) {
-      // If no backdrop, just hide the modal
       modalElement.style.display = 'none';
       modalElement.setAttribute('aria-hidden', 'true');
-      document.body.style.overflow = '';
+      this._unlockPageBehindModal();
+      this._restoreModalFocus(returnFocus);
+      window.dispatchEvent(new CustomEvent('modal-close', {
+        detail: { modalId: modalElement.id, modal: modalElement }
+      }));
       return;
     }
 
-    // Hide modal
     modalElement.style.display = 'none';
     modalElement.setAttribute('aria-hidden', 'true');
     backdrop.style.display = 'none';
-    backdrop.setAttribute('aria-hidden', 'true');
+    this._unlockPageBehindModal();
 
-    // Unlock body scroll
-    document.body.style.overflow = '';
-
-    // Remove backdrop and modal
-    setTimeout(() => {
+    const removeFromDom = () => {
+      if (persist) {
+        document.body.appendChild(modalElement);
+        return;
+      }
       if (backdrop.parentNode) {
         backdrop.remove();
-      }
-      // Also remove modal if it's still in the DOM
-      if (modalElement.parentNode) {
+      } else if (modalElement.parentNode) {
         modalElement.parentNode.removeChild(modalElement);
       }
-    }, 300); // Wait for animation
+    };
 
-    // Dispatch event
+    setTimeout(removeFromDom, 300);
+
+    this._restoreModalFocus(returnFocus);
+
     window.dispatchEvent(new CustomEvent('modal-close', {
       detail: { modalId: modalElement.id, modal: modalElement }
     }));
+  },
+
+  _restoreModalFocus(returnFocus) {
+    if (returnFocus && document.body.contains(returnFocus) && typeof returnFocus.focus === 'function') {
+      try {
+        returnFocus.focus();
+        return;
+      } catch (e) { /* noop */ }
+    }
+    const main = document.getElementById('azc-main-content');
+    if (main && typeof main.focus === 'function') {
+      try {
+        main.setAttribute('tabindex', '-1');
+        main.focus({ preventScroll: false });
+      } catch (e) { /* noop */ }
+    }
   },
 
   /**
@@ -165,6 +303,8 @@ const ArbeitszeitCheckComponents = {
       content = '',
       size = 'md',
       closable = true,
+      persist = false,
+      dismissOnBackdrop = true,
       onClose = null
     } = options;
 
@@ -175,6 +315,12 @@ const ArbeitszeitCheckComponents = {
     modal.setAttribute('aria-modal', 'true');
     modal.setAttribute('aria-hidden', 'true');
     modal.style.display = 'none';
+    if (persist) {
+      modal.dataset.azcModalPersist = 'true';
+    }
+    if (!dismissOnBackdrop) {
+      modal.dataset.azcModalDismiss = 'false';
+    }
 
     const closeLabel = (typeof window !== 'undefined' && window.t) 
       ? window.t('arbeitszeitcheck', 'Close') 
@@ -287,13 +433,17 @@ const ArbeitszeitCheckComponents = {
    * Get toast icon
    */
   getToastIcon(type) {
-    const icons = {
-      success: '✓',
-      error: '✗',
-      warning: '⚠',
-      info: 'ℹ'
+    const map = {
+      success: 'check',
+      error: 'x',
+      warning: 'circle-alert',
+      info: 'info',
     };
-    return icons[type] || icons.info;
+    const name = map[type] || map.info;
+    if (typeof window.AzcCatalog !== 'undefined' && typeof window.AzcCatalog.render === 'function') {
+      return window.AzcCatalog.render(name, 'toast__icon-svg');
+    }
+    return '';
   },
 
   // ===== CONFIRM DIALOG =====
@@ -313,45 +463,101 @@ const ArbeitszeitCheckComponents = {
    * @param {string} [options.variant]      - "danger" | "warning" | "info" (default: "info")
    * @returns {Promise<boolean>}
    */
+  /**
+   * Alias matching sibling check-apps API.
+   */
+  confirmDialog(options = {}) {
+    return this.showConfirmDialog(options);
+  },
+
   showConfirmDialog(options = {}) {
     const {
       title = '',
       message = '',
       confirmLabel = (window.t ? window.t('arbeitszeitcheck', 'Confirm') : 'Confirm'),
       cancelLabel  = (window.t ? window.t('arbeitszeitcheck', 'Cancel') : 'Cancel'),
-      variant = 'info'
+      variant = 'info',
+      requireCheckbox = false,
+      checkboxLabel = (window.t ? window.t('arbeitszeitcheck', 'I understand this action cannot be undone') : 'I understand this action cannot be undone'),
+      requireReason = false,
+      reasonLabel = (window.t ? window.t('arbeitszeitcheck', 'Reason (required)') : 'Reason (required)'),
+      requireTypedConfirm = false,
+      typedConfirmPhrase = 'DELETE',
+      typedConfirmLabel,
     } = options;
+
+    // Resolve the typed-confirmation label with the *actual* phrase the caller
+    // requested. We keep `%s` as the placeholder for the translation system so
+    // the substitution happens exactly once and reflects custom phrases too.
+    let resolvedTypedConfirmLabel = typedConfirmLabel
+      ? String(typedConfirmLabel)
+      : (window.t
+        ? window.t('arbeitszeitcheck', 'Type %s to confirm', [typedConfirmPhrase])
+        : `Type ${typedConfirmPhrase} to confirm`);
+    if (resolvedTypedConfirmLabel.includes('%s')) {
+      resolvedTypedConfirmLabel = resolvedTypedConfirmLabel.replace('%s', typedConfirmPhrase);
+    }
+
+    const isDestructive = variant === 'danger' || variant === 'destructive';
 
     return new Promise((resolve) => {
       const dialogId = `confirm-dialog-${Date.now()}`;
+      const htmlLang = document.querySelector('[data-azc-html-lang]')?.getAttribute('data-azc-html-lang')
+        || document.documentElement.lang
+        || 'en';
 
-      // Build dialog element
       const backdrop = document.createElement('div');
-      backdrop.className = 'modal-backdrop';
-      backdrop.setAttribute('role', 'none');
+      backdrop.className = 'modal-backdrop azc-modal-backdrop';
+      backdrop.setAttribute('role', 'presentation');
 
       const dialog = document.createElement('div');
-      dialog.className = 'modal modal--sm confirm-dialog';
+      dialog.className = 'modal modal--sm confirm-dialog azc-dialog';
       dialog.id = dialogId;
       dialog.setAttribute('role', 'alertdialog');
       dialog.setAttribute('aria-modal', 'true');
       dialog.setAttribute('aria-labelledby', `${dialogId}-title`);
-      dialog.setAttribute('aria-describedby', `${dialogId}-message`);
+      dialog.setAttribute('lang', htmlLang);
 
-      const variantIconMap = { danger: '⚠️', warning: '⚠️', info: 'ℹ️' };
-      const icon = variantIconMap[variant] || variantIconMap.info;
+      const iconName = isDestructive ? 'alert-triangle' : (variant === 'warning' ? 'circle-alert' : 'info');
+      const iconHtml = (window.AzcCatalog && window.AzcCatalog.render)
+        ? window.AzcCatalog.render(iconName, 'confirm-dialog__icon-svg')
+        : '';
+
+      let extraFields = '';
+      if (requireCheckbox) {
+        extraFields += `
+          <div class="form-checkbox confirm-dialog__checkbox-row">
+            <input type="checkbox" id="${dialogId}-ack" class="confirm-dialog__ack">
+            <label for="${dialogId}-ack">${this._escapeHtml(checkboxLabel)}</label>
+          </div>`;
+      }
+      if (requireReason) {
+        extraFields += `
+          <label for="${dialogId}-reason" class="form-label">${this._escapeHtml(reasonLabel)}</label>
+          <textarea id="${dialogId}-reason" class="form-textarea confirm-dialog__reason" rows="3" required minlength="3"></textarea>`;
+      }
+      if (requireTypedConfirm) {
+        extraFields += `
+          <label for="${dialogId}-typed" class="form-label">${this._escapeHtml(resolvedTypedConfirmLabel)}</label>
+          <input type="text" id="${dialogId}-typed" class="form-input confirm-dialog__typed" autocomplete="off" spellcheck="false">`;
+      }
+
+      const describedBy = [`${dialogId}-message`];
+      if (requireReason) describedBy.push(`${dialogId}-reason`);
+      dialog.setAttribute('aria-describedby', describedBy.join(' '));
 
       dialog.innerHTML = `
         <div class="modal-header">
-          <span class="confirm-dialog__icon" aria-hidden="true">${icon}</span>
+          <span class="confirm-dialog__icon" aria-hidden="true">${iconHtml}</span>
           <h2 class="modal-title" id="${dialogId}-title">${this._escapeHtml(title)}</h2>
         </div>
         <div class="modal-body">
           <p class="confirm-dialog__message" id="${dialogId}-message">${this._escapeHtml(message)}</p>
+          ${extraFields}
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn--secondary confirm-dialog__cancel">${this._escapeHtml(cancelLabel)}</button>
-          <button type="button" class="btn btn--${variant === 'danger' ? 'danger' : 'primary'} confirm-dialog__confirm">${this._escapeHtml(confirmLabel)}</button>
+          <button type="button" class="btn btn--${isDestructive ? 'danger' : 'primary'} confirm-dialog__confirm" ${isDestructive ? 'disabled' : ''}>${this._escapeHtml(confirmLabel)}</button>
         </div>
       `;
 
@@ -360,48 +566,69 @@ const ArbeitszeitCheckComponents = {
       backdrop.style.display = 'flex';
       dialog.style.display = 'flex';
 
-      // Lock scroll
-      document.body.style.overflow = 'hidden';
+      this._lockPageBehindModal();
+      this._bindFocusTrap(dialog);
 
-      // Store element that had focus before the dialog opened
       const previouslyFocused = document.activeElement;
+      const confirmBtn = dialog.querySelector('.confirm-dialog__confirm');
+      const ackBox = dialog.querySelector('.confirm-dialog__ack');
+      const reasonField = dialog.querySelector('.confirm-dialog__reason');
+      const typedField = dialog.querySelector('.confirm-dialog__typed');
 
-      // Focus the cancel button by default (safer: default action is "do nothing")
+      const validateConfirmEnabled = () => {
+        let ok = true;
+        if (requireCheckbox && ackBox && !ackBox.checked) ok = false;
+        if (requireReason && reasonField && reasonField.value.trim().length < 3) ok = false;
+        if (requireTypedConfirm && typedField && typedField.value.trim() !== typedConfirmPhrase) ok = false;
+        if (confirmBtn) confirmBtn.disabled = !ok;
+      };
+
+      ackBox?.addEventListener('change', validateConfirmEnabled);
+      reasonField?.addEventListener('input', validateConfirmEnabled);
+      typedField?.addEventListener('input', validateConfirmEnabled);
+      validateConfirmEnabled();
+
       setTimeout(() => {
         const cancelBtn = dialog.querySelector('.confirm-dialog__cancel');
         if (cancelBtn) cancelBtn.focus();
       }, 50);
 
       const cleanup = (result) => {
+        this._unbindFocusTrap(dialog);
         backdrop.remove();
-        document.body.style.overflow = '';
+        this._unlockPageBehindModal();
         if (previouslyFocused && previouslyFocused.focus) {
           previouslyFocused.focus();
         }
         resolve(result);
       };
 
-      dialog.querySelector('.confirm-dialog__confirm').addEventListener('click', () => cleanup(true));
+      confirmBtn.addEventListener('click', () => {
+        if (confirmBtn.disabled) return;
+        cleanup({
+          confirmed: true,
+          reason: reasonField ? reasonField.value.trim() : '',
+        });
+      });
       dialog.querySelector('.confirm-dialog__cancel').addEventListener('click', () => cleanup(false));
 
-      // Escape key cancels
       const keyHandler = (e) => {
-        if (e.key === 'Escape') {
+        if (e.key === 'Escape' && !isDestructive) {
           document.removeEventListener('keydown', keyHandler);
           cleanup(false);
         }
       };
       document.addEventListener('keydown', keyHandler);
 
-      // Backdrop click cancels
-      backdrop.addEventListener('click', (e) => {
-        if (e.target === backdrop) {
-          document.removeEventListener('keydown', keyHandler);
-          cleanup(false);
-        }
-      });
+      if (!isDestructive) {
+        backdrop.addEventListener('click', (e) => {
+          if (e.target === backdrop) {
+            document.removeEventListener('keydown', keyHandler);
+            cleanup(false);
+          }
+        });
+      }
 
-      // Trap focus inside dialog
       dialog.addEventListener('keydown', (e) => {
         if (e.key !== 'Tab') return;
         const focusable = Array.from(
@@ -416,6 +643,11 @@ const ArbeitszeitCheckComponents = {
           if (document.activeElement === last) { e.preventDefault(); first.focus(); }
         }
       });
+    }).then((result) => {
+      if (result && typeof result === 'object' && result.confirmed) {
+        return result;
+      }
+      return result === true;
     });
   },
 
@@ -433,20 +665,43 @@ const ArbeitszeitCheckComponents = {
   /**
    * Focus first focusable element
    */
-  focusFirstElement(container) {
+  focusFirstElement(container, preferred) {
+    if (preferred && typeof preferred.focus === 'function') {
+      try {
+        preferred.focus();
+        return;
+      } catch (e) { /* noop */ }
+    }
     const focusableElements = container.querySelectorAll(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      'button:not([disabled]), [href], input:not([disabled]):not([hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
     );
-    
+
     if (focusableElements.length > 0) {
       focusableElements[0].focus();
     }
+  },
+
+  /**
+   * Move legacy .header-actions / .azc-page-actions-source buttons into #azc-page-actions.
+   */
+  relocatePageActions() {
+    const target = document.getElementById('azc-page-actions');
+    if (!target) {
+      return;
+    }
+    document.querySelectorAll('.azc-page-actions-source, .header-actions').forEach((source) => {
+      while (source.firstChild) {
+        target.appendChild(source.firstChild);
+      }
+      source.remove();
+    });
   }
 };
 
 // Export for use in other modules
 if (typeof window !== 'undefined') {
   window.ArbeitszeitCheckComponents = ArbeitszeitCheckComponents;
+  window.AzcComponents = ArbeitszeitCheckComponents;
 }
 
 // Initialize on DOM ready

@@ -9,13 +9,27 @@ use OCA\ArbeitszeitCheck\Exception\NotAppAdminException;
 use OCA\ArbeitszeitCheck\Middleware\AppAdminMiddleware;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCP\AppFramework\Http;
+use OCP\AppFramework\Http\JSONResponse;
+use OCP\AppFramework\Http\TemplateResponse;
 use OCP\IL10N;
+use OCP\IRequest;
 use OCP\IUser;
 use OCP\IUserSession;
 use PHPUnit\Framework\TestCase;
 
 class AppAdminMiddlewareTest extends TestCase
 {
+	private function makeRequest(string $path = '/apps/arbeitszeitcheck/admin', string $method = 'GET', array $headers = []): IRequest
+	{
+		$request = $this->createMock(IRequest::class);
+		$request->method('getPathInfo')->willReturn($path);
+		$request->method('getMethod')->willReturn($method);
+		$request->method('getHeader')->willReturnCallback(static function (string $name) use ($headers): string {
+			return (string)($headers[$name] ?? '');
+		});
+		return $request;
+	}
+
 	public function testBeforeControllerSkipsNonAdminController(): void
 	{
 		$userSession = $this->createMock(IUserSession::class);
@@ -23,7 +37,7 @@ class AppAdminMiddlewareTest extends TestCase
 		$permissionService = $this->createMock(PermissionService::class);
 		$permissionService->expects($this->never())->method('isAdmin');
 		$l10n = $this->createMock(IL10N::class);
-		$middleware = new AppAdminMiddleware($userSession, $permissionService, $l10n);
+		$middleware = new AppAdminMiddleware($userSession, $permissionService, $l10n, $this->makeRequest());
 
 		$middleware->beforeController(new \stdClass(), 'anyMethod');
 
@@ -39,7 +53,7 @@ class AppAdminMiddlewareTest extends TestCase
 		$permissionService = $this->createMock(PermissionService::class);
 		$permissionService->expects($this->once())->method('isAdmin')->with('hr_admin')->willReturn(true);
 		$l10n = $this->createMock(IL10N::class);
-		$middleware = new AppAdminMiddleware($userSession, $permissionService, $l10n);
+		$middleware = new AppAdminMiddleware($userSession, $permissionService, $l10n, $this->makeRequest());
 		$controller = $this->getMockBuilder(AdminController::class)->disableOriginalConstructor()->getMock();
 
 		$middleware->beforeController($controller, 'dashboard');
@@ -54,7 +68,7 @@ class AppAdminMiddlewareTest extends TestCase
 		$permissionService = $this->createMock(PermissionService::class);
 		$l10n = $this->createMock(IL10N::class);
 		$l10n->method('t')->willReturn('Access denied');
-		$middleware = new AppAdminMiddleware($userSession, $permissionService, $l10n);
+		$middleware = new AppAdminMiddleware($userSession, $permissionService, $l10n, $this->makeRequest());
 		$controller = $this->getMockBuilder(AdminController::class)->disableOriginalConstructor()->getMock();
 
 		$this->expectException(NotAppAdminException::class);
@@ -71,25 +85,73 @@ class AppAdminMiddlewareTest extends TestCase
 		$permissionService->method('isAdmin')->with('other_admin')->willReturn(false);
 		$l10n = $this->createMock(IL10N::class);
 		$l10n->method('t')->willReturn('Access denied');
-		$middleware = new AppAdminMiddleware($userSession, $permissionService, $l10n);
+		$middleware = new AppAdminMiddleware($userSession, $permissionService, $l10n, $this->makeRequest());
 		$controller = $this->getMockBuilder(AdminController::class)->disableOriginalConstructor()->getMock();
 
 		$this->expectException(NotAppAdminException::class);
 		$middleware->beforeController($controller, 'dashboard');
 	}
 
-	public function testAfterExceptionReturns403ForNotAppAdminException(): void
+	public function testAfterExceptionReturnsHtml403ForBrowserPageLoads(): void
 	{
 		$userSession = $this->createMock(IUserSession::class);
 		$permissionService = $this->createMock(PermissionService::class);
 		$l10n = $this->createMock(IL10N::class);
-		$middleware = new AppAdminMiddleware($userSession, $permissionService, $l10n);
+		$middleware = new AppAdminMiddleware(
+			$userSession,
+			$permissionService,
+			$l10n,
+			$this->makeRequest('/apps/arbeitszeitcheck/admin', 'GET', ['Accept' => 'text/html'])
+		);
 		$exception = new NotAppAdminException('Access denied');
 
 		$response = $middleware->afterException(new \stdClass(), 'dashboard', $exception);
 
+		$this->assertInstanceOf(TemplateResponse::class, $response);
 		$this->assertSame(Http::STATUS_FORBIDDEN, $response->getStatus());
 		$this->assertSame('403', $response->getTemplateName());
+	}
+
+	public function testAfterExceptionReturnsJsonForApiPaths(): void
+	{
+		$userSession = $this->createMock(IUserSession::class);
+		$permissionService = $this->createMock(PermissionService::class);
+		$l10n = $this->createMock(IL10N::class);
+		$middleware = new AppAdminMiddleware(
+			$userSession,
+			$permissionService,
+			$l10n,
+			$this->makeRequest('/apps/arbeitszeitcheck/api/admin/settings', 'GET')
+		);
+		$exception = new NotAppAdminException('Access denied');
+
+		$response = $middleware->afterException(new \stdClass(), 'getAdminSettings', $exception);
+
+		$this->assertInstanceOf(JSONResponse::class, $response);
+		$this->assertSame(Http::STATUS_FORBIDDEN, $response->getStatus());
+		$data = $response->getData();
+		$this->assertIsArray($data);
+		$this->assertFalse($data['ok']);
+		$this->assertSame('admin_required', $data['error']['code']);
+	}
+
+	public function testAfterExceptionReturnsJsonForXmlHttpRequest(): void
+	{
+		$userSession = $this->createMock(IUserSession::class);
+		$permissionService = $this->createMock(PermissionService::class);
+		$l10n = $this->createMock(IL10N::class);
+		$middleware = new AppAdminMiddleware(
+			$userSession,
+			$permissionService,
+			$l10n,
+			$this->makeRequest('/apps/arbeitszeitcheck/admin', 'GET', ['X-Requested-With' => 'XMLHttpRequest'])
+		);
+		$exception = new NotAppAdminException('Access denied');
+
+		$response = $middleware->afterException(new \stdClass(), 'dashboard', $exception);
+
+		$this->assertInstanceOf(JSONResponse::class, $response);
+		$this->assertSame(Http::STATUS_FORBIDDEN, $response->getStatus());
 	}
 
 	public function testAfterExceptionRethrowsUnknownException(): void
@@ -97,7 +159,7 @@ class AppAdminMiddlewareTest extends TestCase
 		$userSession = $this->createMock(IUserSession::class);
 		$permissionService = $this->createMock(PermissionService::class);
 		$l10n = $this->createMock(IL10N::class);
-		$middleware = new AppAdminMiddleware($userSession, $permissionService, $l10n);
+		$middleware = new AppAdminMiddleware($userSession, $permissionService, $l10n, $this->makeRequest());
 
 		$this->expectException(\RuntimeException::class);
 		$middleware->afterException(new \stdClass(), 'dashboard', new \RuntimeException('boom'));

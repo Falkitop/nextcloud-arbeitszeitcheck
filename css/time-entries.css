@@ -1008,15 +1008,15 @@
     --status-accent: var(--color-primary-element, var(--arbeitszeitcheck-color-primary));
 }
 
-/* ------------------------------------------------------------------------- */
-/* Paused-entry recovery affordances                                          */
-/*                                                                            */
-/* The "Complete" button is the primary recovery action for an unfinished     */
-/* (paused) session and must be visually unambiguous. The complementary       */
-/* banner above the table explains the state in plain language so users do    */
-/* not have to deduce it from a badge alone (WCAG 1.4.1 - colour is not the   */
-/* only indicator; WCAG 3.3.3 - error suggestion).                            */
-/* ------------------------------------------------------------------------- */
+/*
+ * Paused-entry recovery affordances
+ *
+ * The "Complete" button is the primary recovery action for an unfinished
+ * (paused) session and must be visually unambiguous. The complementary
+ * banner above the table explains the state in plain language so users do
+ * not have to deduce it from a badge alone (WCAG 1.4.1 - colour is not the
+ * only indicator; WCAG 3.3.3 - error suggestion).
+ */
 
 #paused-entries-banner {
     margin-bottom: var(--space-4, 1rem);

@@ -20,16 +20,10 @@ $startDate = $_['startDate'] ?? '';
 $endDate = $_['endDate'] ?? '';
 ?>
 
-<?php include __DIR__ . '/common/navigation.php'; ?>
+<?php include __DIR__ . '/common/page-start.php'; ?>
 
-<main id="app-content" role="main" aria-label="<?php p($l->t('Activity log')); ?>" class="audit-log-page">
-    <div id="app-content-wrapper">
-        <div class="audit-log-main">
-            <header class="audit-log-header">
-                <h1 class="audit-log-title"><?php p($l->t('Activity log')); ?></h1>
-                <p class="audit-log-subtitle"><?php p($l->t('Log of all actions in the time tracking system (who changed what and when).')); ?></p>
-            </header>
 
+        <div class="audit-log-main audit-log-page">
             <section class="audit-log-filters" aria-labelledby="audit-filters-heading">
                 <h2 id="audit-filters-heading" class="visually-hidden"><?php p($l->t('Filter options')); ?></h2>
                 <div class="audit-log-filters__grid">
@@ -109,11 +103,6 @@ $endDate = $_['endDate'] ?? '';
                     <?php p($l->t('Showing %1$d of %2$d entries', [count($logs ?? []), $total ?? 0])); ?>
                 </p>
             </section>
-        </div>
-    </div>
-</main>
-</div><!-- /#arbeitszeitcheck-app -->
-
 <?php
 $auditLogViewerL10n = [
 	'Loading…' => $l->t('Loading…'),
@@ -126,3 +115,5 @@ $auditLogViewerL10n = [
 window.ArbeitszeitCheck = window.ArbeitszeitCheck || {};
 window.ArbeitszeitCheck.auditLogViewerL10n = <?php echo json_encode($auditLogViewerL10n, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;
 </script>
+
+<?php include __DIR__ . '/common/page-end.php'; ?>

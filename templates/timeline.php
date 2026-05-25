@@ -8,59 +8,21 @@ declare(strict_types=1);
  * @license AGPL-3.0-or-later
  */
 
-use OCP\Util;
-
 /** @var array $_ */
 /** @var \OCP\IL10N $l */
 
-// Add common + page-specific styles and scripts
-Util::addTranslations('arbeitszeitcheck');
-Util::addStyle('arbeitszeitcheck', 'common/colors');
-Util::addStyle('arbeitszeitcheck', 'common/typography');
-Util::addStyle('arbeitszeitcheck', 'common/base');
-Util::addStyle('arbeitszeitcheck', 'common/components');
-Util::addStyle('arbeitszeitcheck', 'common/layout');
-Util::addStyle('arbeitszeitcheck', 'common/app-layout');
-Util::addStyle('arbeitszeitcheck', 'common/utilities');
-Util::addStyle('arbeitszeitcheck', 'common/responsive');
-Util::addStyle('arbeitszeitcheck', 'common/accessibility');
-Util::addStyle('arbeitszeitcheck', 'navigation');
-Util::addStyle('arbeitszeitcheck', 'timeline');
-Util::addScript('arbeitszeitcheck', 'common/utils', 'core');
-Util::addScript('arbeitszeitcheck', 'common/time', 'core');
-Util::addScript('arbeitszeitcheck', 'arbeitszeitcheck-main', 'core');
+// Assets registered by PageController::registerFrontEndAssets
 
 $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class);
 ?>
 
-<?php include __DIR__ . '/common/navigation.php'; ?>
+<?php include __DIR__ . '/common/page-start.php'; ?>
 
-<main id="app-content" role="main" aria-label="<?php p($l->t('Timeline content')); ?>">
-    <div id="app-content-wrapper">
-        <!-- Breadcrumb Navigation -->
-        <div class="breadcrumb-container">
-            <nav class="breadcrumb" aria-label="<?php p($l->t('Breadcrumb')); ?>">
-                <ol>
-                    <li><a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.page.index')); ?>"><?php p($l->t('Dashboard')); ?></a></li>
-                    <li aria-current="page"><?php p($l->t('Timeline')); ?></li>
-                </ol>
-            </nav>
+        <div class="header-actions">
+            <button id="btn-refresh-timeline" class="btn btn--secondary" type="button" aria-label="<?php p($l->t('Refresh timeline data')); ?>">
+                <?php p($l->t('Refresh')); ?>
+            </button>
         </div>
-
-        <!-- Page Header -->
-        <header class="section page-header-section" aria-labelledby="timeline-page-title">
-            <div class="header-content">
-                <div class="header-text">
-                    <h1 id="timeline-page-title"><?php p($l->t('Timeline')); ?></h1>
-                    <p><?php p($l->t('View your working time history in chronological order')); ?></p>
-                </div>
-                <div class="header-actions">
-                    <button id="btn-refresh-timeline" class="btn btn--secondary" type="button" aria-label="<?php p($l->t('Refresh timeline data')); ?>">
-                        <?php p($l->t('Refresh')); ?>
-                    </button>
-                </div>
-            </div>
-        </header>
 
         <!-- Timeline Content -->
         <section class="section" aria-label="<?php p($l->t('Timeline of working time')); ?>">
@@ -88,9 +50,6 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
                 </div>
             </div>
         </section>
-    </div>
-</main>
-</div><!-- /#arbeitszeitcheck-app -->
 
 <?php include __DIR__ . '/common/main-ui-l10n.php'; ?>
 
@@ -156,3 +115,4 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
         business_trip: <?php echo json_encode($l->t('Business Trip'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>
     };
 </script>
+<?php include __DIR__ . '/common/page-end.php'; ?>

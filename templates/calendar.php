@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+use OCA\ArbeitszeitCheck\Service\IconCatalog;
+
 /**
  * Calendar template for arbeitszeitcheck app
  *
@@ -8,74 +10,37 @@ declare(strict_types=1);
  * @license AGPL-3.0-or-later
  */
 
-use OCP\Util;
-
 /** @var array $_ */
 /** @var \OCP\IL10N $l */
 
-// Add common + page-specific styles and scripts
-Util::addTranslations('arbeitszeitcheck');
-Util::addStyle('arbeitszeitcheck', 'common/colors');
-Util::addStyle('arbeitszeitcheck', 'common/typography');
-Util::addStyle('arbeitszeitcheck', 'common/base');
-Util::addStyle('arbeitszeitcheck', 'common/components');
-Util::addStyle('arbeitszeitcheck', 'common/layout');
-Util::addStyle('arbeitszeitcheck', 'common/app-layout');
-Util::addStyle('arbeitszeitcheck', 'common/utilities');
-Util::addStyle('arbeitszeitcheck', 'common/responsive');
-Util::addStyle('arbeitszeitcheck', 'common/accessibility');
-Util::addStyle('arbeitszeitcheck', 'navigation');
-Util::addStyle('arbeitszeitcheck', 'calendar');
-Util::addScript('arbeitszeitcheck', 'common/utils', 'core');
-Util::addScript('arbeitszeitcheck', 'common/time', 'core');
-Util::addScript('arbeitszeitcheck', 'arbeitszeitcheck-main', 'core');
+// Assets registered by PageController::registerFrontEndAssets
 
 $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class);
 $currentMonth = $_['currentMonth'] ?? date('Y-m');
 ?>
 
-<?php include __DIR__ . '/common/navigation.php'; ?>
+<?php include __DIR__ . '/common/page-start.php'; ?>
 
-<main id="app-content" role="main" aria-label="<?php p($l->t('Calendar content')); ?>">
-    <div id="app-content-wrapper">
-        <!-- Breadcrumb Navigation -->
-        <div class="breadcrumb-container">
-            <nav class="breadcrumb" aria-label="<?php p($l->t('Breadcrumb')); ?>">
-                <ol>
-                    <li><a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.page.index')); ?>"><?php p($l->t('Dashboard')); ?></a></li>
-                    <li aria-current="page"><?php p($l->t('Calendar')); ?></li>
-                </ol>
-            </nav>
-        </div>
-
-        <!-- Page Header -->
-        <header class="section page-header-section" aria-labelledby="calendar-page-title calendar-page-desc">
-            <div class="header-content">
-                <div class="header-text">
-                    <h1 id="calendar-page-title"><?php p($l->t('Calendar')); ?></h1>
-                    <p id="calendar-page-desc" class="page-description"><?php p($l->t('See your working hours and absences at a glance. Click a day for details.')); ?></p>
-                </div>
-                <div class="header-actions">
-                    <div class="view-toggle" role="group" aria-label="<?php p($l->t('View')); ?>">
-                        <button id="btn-month-view" class="btn btn--secondary active" type="button" data-view="month" aria-pressed="true">
-                            <?php p($l->t('Month')); ?>
-                        </button>
-                        <button id="btn-week-view" class="btn btn--secondary" type="button" data-view="week" aria-pressed="false">
-                            <?php p($l->t('Week')); ?>
-                        </button>
-                    </div>
-                    <button id="btn-today" class="btn btn--secondary" type="button" aria-label="<?php p($l->t('Go to today')); ?>">
-                        <?php p($l->t('Today')); ?>
-                    </button>
-                </div>
+        <div class="header-actions">
+            <div class="view-toggle" role="group" aria-label="<?php p($l->t('View')); ?>">
+                <button id="btn-month-view" class="btn btn--secondary active" type="button" data-view="month" aria-pressed="true">
+                    <?php p($l->t('Month')); ?>
+                </button>
+                <button id="btn-week-view" class="btn btn--secondary" type="button" data-view="week" aria-pressed="false">
+                    <?php p($l->t('Week')); ?>
+                </button>
             </div>
-        </header>
+            <button id="btn-today" class="btn btn--secondary" type="button" aria-label="<?php p($l->t('Go to today')); ?>">
+                <?php p($l->t('Today')); ?>
+            </button>
+        </div>
 
         <!-- Calendar Navigation -->
         <section class="section calendar-section" aria-labelledby="current-period-label" aria-label="<?php p($l->t('Calendar view')); ?>">
             <div class="calendar-nav">
                 <button id="btn-prev-period" class="btn-nav" type="button" aria-label="<?php p($l->t('Previous month')); ?>" title="<?php p($l->t('Previous month')); ?>">
-                    ◀ <?php p($l->t('Previous')); ?>
+                    <span class="btn-nav__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('chevron-left', 'btn-nav__icon-svg')); ?></span>
+                    <span class="btn-nav__label"><?php p($l->t('Previous')); ?></span>
                 </button>
                 <h3 id="current-period-label" class="period-label">
                     <?php 
@@ -89,7 +54,8 @@ $currentMonth = $_['currentMonth'] ?? date('Y-m');
                     ?>
                 </h3>
                 <button id="btn-next-period" class="btn-nav" type="button" aria-label="<?php p($l->t('Next month')); ?>" title="<?php p($l->t('Next month')); ?>">
-                    <?php p($l->t('Next')); ?> ▶
+                    <span class="btn-nav__label"><?php p($l->t('Next')); ?></span>
+                    <span class="btn-nav__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('chevron-right', 'btn-nav__icon-svg')); ?></span>
                 </button>
             </div>
 
@@ -151,16 +117,15 @@ $currentMonth = $_['currentMonth'] ?? date('Y-m');
             <div id="day-details-panel" class="day-details-panel" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="selected-date-label" aria-label="<?php p($l->t('Day details')); ?>">
                 <div class="panel-header">
                     <h3 id="selected-date-label"></h3>
-                    <button id="btn-close-panel" class="btn-close" type="button" aria-label="<?php p($l->t('Close')); ?>">✕</button>
+                    <button id="btn-close-panel" class="btn-close" type="button" aria-label="<?php p($l->t('Close')); ?>">
+                        <span aria-hidden="true"><?php print_unescaped(IconCatalog::render('x', 'btn-close__icon')); ?></span>
+                    </button>
                 </div>
                 <div class="panel-content" id="day-details-content">
                     <!-- Day details will be loaded here -->
                 </div>
             </div>
         </section>
-    </div>
-</main>
-</div><!-- /#arbeitszeitcheck-app -->
 
 <?php include __DIR__ . '/common/main-ui-l10n.php'; ?>
 
@@ -223,3 +188,4 @@ $currentMonth = $_['currentMonth'] ?? date('Y-m');
         absenceCreate: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.absence.create'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>
     };
 </script>
+<?php include __DIR__ . '/common/page-end.php'; ?>

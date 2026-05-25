@@ -18,17 +18,11 @@ $users = $_['users'] ?? [];
 $total = $_['total'] ?? 0;
 ?>
 
-<?php include __DIR__ . '/common/navigation.php'; ?>
+<?php include __DIR__ . '/common/page-start.php'; ?>
 
-<main id="app-content" role="main" aria-label="<?php p($l->t('Admin users content')); ?>">
-    <div id="app-content-wrapper">
+
         <div class="section">
-            <div class="section-header">
-                <h1><?php p($l->t('Manage employees')); ?></h1>
-                <p><?php p($l->t('Set up employees for time tracking and assign working-time models.')); ?></p>
-            </div>
-
-            <!-- Search and Filters -->
+<!-- Search and Filters -->
             <div class="section-content">
                 <div class="flex flex--between flex--gap mb-3">
                     <label for="user-search" class="visually-hidden"><?php p($l->t('Search employees')); ?></label>
@@ -135,11 +129,6 @@ $total = $_['total'] ?? 0;
                     <p><?php p($l->t('Showing %d of %d employees', [count($users), $total])); ?></p>
                 </div>
             </div>
-        </div>
-    </div>
-</main>
-</div><!-- /#arbeitszeitcheck-app -->
-
 <?php
 // Prepare holiday / Bundesland states for use in the edit-user modal
 $holidayStates = [
@@ -258,3 +247,5 @@ foreach ($holidayStates as $code => $name) {
     window.ArbeitszeitCheck.l10n.sourceTariff = <?php echo json_encode($l->t('Tariff'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.states = <?php echo json_encode($holidayStatesForJs, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 </script>
+
+<?php include __DIR__ . '/common/page-end.php'; ?>

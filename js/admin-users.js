@@ -809,12 +809,12 @@
                             }
                             const openingYearRaw = (document.getElementById('user-overtime-opening-year')?.value || String(new Date().getFullYear())).trim();
                             if (!/^\d{4}$/.test(openingYearRaw)) {
-                                Messaging.showError(t('yearFourDigitsHelp', 'Enter a four-digit year (e.g. 2026).'));
+                                Messaging.showError(auMsg('yearFourDigitsHelp', 'Enter a four-digit year (e.g. 2026).'));
                                 return;
                             }
                             const openingYear = parseInt(openingYearRaw, 10);
                             if (openingYear < 2000 || openingYear > 2100) {
-                                Messaging.showError(t('openingBalanceYearRange', 'Opening balance year must be between 2000 and 2100.'));
+                                Messaging.showError(auMsg('openingBalanceYearRange', 'Opening balance year must be between 2000 and 2100.'));
                                 return;
                             }
                             const overtimePayload = {

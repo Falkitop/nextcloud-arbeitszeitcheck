@@ -33,6 +33,25 @@
 		const previewBtn = document.getElementById('btn-preview-report');
 		const generateBtn = document.getElementById('btn-generate-report');
 		const scopeForm = document.getElementById('report-scope-form');
+		const stepperItems = document.querySelectorAll('.azc-reports-stepper__item');
+
+		function setSectionVisible(section, visible) {
+			if (!section) {
+				return;
+			}
+			section.hidden = !visible;
+		}
+
+		function updateReportsStepper(activeStep) {
+			if (!stepperItems.length) {
+				return;
+			}
+			stepperItems.forEach((item, index) => {
+				const stepNum = index + 1;
+				item.classList.toggle('azc-reports-stepper__item--current', stepNum === activeStep);
+				item.classList.toggle('azc-reports-stepper__item--done', stepNum < activeStep);
+			});
+		}
 
 		// Helper: get request token safely
 		function getRequestToken() {
@@ -76,7 +95,7 @@
 			const previewContent = document.getElementById('report-preview-content');
 			if (previewSection && previewContent) {
 				previewContent.innerHTML = `<p class="report-error" role="alert">${esc(message)}</p>`;
-				previewSection.style.display = 'block';
+				setSectionVisible(previewSection, true);
 				previewSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 			}
 			announceToScreenReader(message);
@@ -267,9 +286,10 @@
 				updateScopeFromForm();
 				applyReportTypeRestrictionsForScope(reportScopeInput ? reportScopeInput.value : '');
 				updateExportOptionVisibility();
+				updateReportsStepper(2);
 		}
 
-		if (scopeForm) {
+			if (scopeForm) {
 			scopeForm.addEventListener('change', handleScopeChange);
 			scopeForm.addEventListener('input', handleScopeChange);
 
@@ -282,6 +302,7 @@
 				loadManagerTeamsIfNeeded();
 			}
 			updateExportOptionVisibility();
+			updateReportsStepper(1);
 		}
 
 		// Handle report card clicks
@@ -326,7 +347,8 @@
 
 					// Show parameters section
 					if (reportParameters) {
-						reportParameters.style.display = 'block';
+						setSectionVisible(reportParameters, true);
+						updateReportsStepper(3);
 						reportParameters.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 					}
 
@@ -676,7 +698,7 @@
 					'Please fill in report type, start date and end date.';
 				announceToScreenReader(errMsg);
 				previewContent.innerHTML = `<p class="report-error" role="alert">${esc(errMsg)}</p>`;
-				previewSection.style.display = 'block';
+				setSectionVisible(previewSection, true);
 				previewSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 				const h = document.getElementById('report-preview-heading');
 				if (h) h.focus();
@@ -690,7 +712,7 @@
 					'Start date must be before or equal to end date.';
 				announceToScreenReader(dateMsg);
 				previewContent.innerHTML = `<p class="report-error" role="alert">${esc(dateMsg)}</p>`;
-				previewSection.style.display = 'block';
+				setSectionVisible(previewSection, true);
 				previewSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 				return Promise.resolve({ success: false });
 			}
@@ -703,7 +725,7 @@
 					'Please choose who should be included in the report.';
 				announceToScreenReader(scopeMsg);
 				previewContent.innerHTML = `<p class="report-error" role="alert">${esc(scopeMsg)}</p>`;
-				previewSection.style.display = 'block';
+				setSectionVisible(previewSection, true);
 				previewSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 				return Promise.resolve({ success: false });
 			}
@@ -715,7 +737,7 @@
 					(A.l10n && A.l10n.error) ||
 					'Invalid report type.';
 				previewContent.innerHTML = `<p class="report-error" role="alert">${esc(typeMsg)}</p>`;
-				previewSection.style.display = 'block';
+				setSectionVisible(previewSection, true);
 				previewSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 				return Promise.resolve({ success: false });
 			}
@@ -729,7 +751,7 @@
 					const teamMsg = (A.l10n && A.l10n.teamRequired) || 'Please select a team.';
 					announceToScreenReader(teamMsg);
 					previewContent.innerHTML = `<p class="report-error" role="alert">${esc(teamMsg)}</p>`;
-					previewSection.style.display = 'block';
+					setSectionVisible(previewSection, true);
 					previewSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 					return Promise.resolve({ success: false });
 				}
@@ -740,7 +762,7 @@
 					const teamMsg = (A.l10n && A.l10n.teamRequired) || 'Please select a team.';
 					announceToScreenReader(teamMsg);
 					previewContent.innerHTML = `<p class="report-error" role="alert">${esc(teamMsg)}</p>`;
-					previewSection.style.display = 'block';
+					setSectionVisible(previewSection, true);
 					previewSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 					return Promise.resolve({ success: false });
 				}
@@ -782,7 +804,7 @@
 			previewContent.innerHTML = `<p class="report-loading" aria-busy="true">${esc(
 				(A.l10n && A.l10n.generating) || 'Generating report...',
 			)}</p>`;
-			previewSection.style.display = 'block';
+			setSectionVisible(previewSection, true);
 			announceToScreenReader((A.l10n && A.l10n.generating) || 'Generating report...');
 			return fetch(url, { method: 'GET', headers: { requesttoken: requestToken } })
 				.then((res) =>
@@ -915,7 +937,6 @@
 			if (!report || !Array.isArray(report.users)) {
 				return;
 			}
-			const L = A.l10n || {};
 			const bankOn = report.bank_enabled === true;
 			if (format === 'json') {
 				downloadBlob(JSON.stringify(report, null, 2), 'application/json', 'overtime-report-' + startIso + '_' + endIso + '.json');

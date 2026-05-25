@@ -21,21 +21,35 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
 $apiSettingsUrl = $urlGenerator->linkToRoute('arbeitszeitcheck.admin.updateAdminSettings');
 $monthClosureReopenUrl = $urlGenerator->linkToRoute('arbeitszeitcheck.month_closure.reopen');
 $adminUsersListUrl = $urlGenerator->linkToRoute('arbeitszeitcheck.admin.getUsers');
+$settingsShell = (string)($_['settingsShell'] ?? 'app');
+$isNcAdminShell = $settingsShell === 'nextcloud';
+$inAppAdminSettingsUrl = (string)($_['inAppAdminSettingsUrl'] ?? $urlGenerator->linkToRoute('arbeitszeitcheck.admin.settings'));
+$cancelUrl = $isNcAdminShell
+	? $inAppAdminSettingsUrl
+	: $urlGenerator->linkToRoute('arbeitszeitcheck.page.index');
 ?>
 
-<?php include __DIR__ . '/common/navigation.php'; ?>
+<?php if (!$isNcAdminShell): ?>
+<?php include __DIR__ . '/common/page-start.php'; ?>
+<?php else: ?>
+<div class="azc-nc-admin-settings" id="arbeitszeitcheck-nc-admin-settings">
+	<div id="azc-live-region" class="azc-sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+	<div id="azc-alert-region" class="azc-sr-only" role="alert" aria-live="assertive" aria-atomic="true"></div>
+	<aside class="azc-callout azc-callout--info azc-nc-admin-settings__banner" role="note" aria-labelledby="azc-nc-admin-settings-note-title">
+		<h3 id="azc-nc-admin-settings-note-title" class="azc-callout__title"><?php p($l->t('Nextcloud administration view')); ?></h3>
+		<p class="azc-callout__text"><?php p($l->t('These settings are the same as in the ArbeitszeitCheck app. Use the full app view for navigation to all admin tools (employees, holidays, audit log, and more).')); ?></p>
+		<p class="azc-callout__actions">
+			<a class="azc-btn azc-btn--primary" href="<?php p($inAppAdminSettingsUrl); ?>">
+				<?php p($l->t('Open full settings in app')); ?>
+			</a>
+		</p>
+	</aside>
+<?php endif; ?>
 
-<main id="app-content" role="main" aria-label="<?php p($l->t('Settings')); ?>">
-    <div id="app-content-wrapper">
-        <div class="section">
-            <div class="section-header">
-                <h1><?php p($l->t('Settings for ArbeitszeitCheck')); ?></h1>
-                <p><?php p($l->t('Configure how time tracking and compliance checks work for all employees.')); ?></p>
-            </div>
-
-            <?php if (isset($_['error']) && !empty($_['error'])): ?>
+        <div class="section<?php echo $isNcAdminShell ? ' azc-nc-admin-settings__form' : ''; ?>">
+<?php if (isset($_['error']) && !empty($_['error'])): ?>
                 <div class="alert alert--error" role="alert">
-                    <span class="alert-icon" aria-hidden="true">⚠️</span>
+                    <span class="alert-icon" aria-hidden="true"><?php print_unescaped(\OCA\ArbeitszeitCheck\Service\IconCatalog::render('triangle-alert', 'alert-icon-svg')); ?></span>
                     <div class="alert-content">
                         <strong class="alert-title"><?php p($l->t('An error occurred')); ?></strong>
                         <p class="alert-message">
@@ -53,20 +67,22 @@ $adminUsersListUrl = $urlGenerator->linkToRoute('arbeitszeitcheck.admin.getUsers
                 </div>
             <?php endif; ?>
 
+            <div class="azc-settings-layout">
+                <?php
+                $jumpNavAriaLabel = $l->t('Jump to settings sections');
+                $jumpNavItems = [
+                    ['href' => '#section-access-heading', 'label' => $l->t('Access control')],
+                    ['href' => '#section-compliance-heading', 'label' => $l->t('Compliance and working time rules')],
+                    ['href' => '#section-export-heading', 'label' => $l->t('Exports and reporting')],
+                    ['href' => '#section-month-closure-heading', 'label' => $l->t('Month closure (revision-safe)')],
+                    ['href' => '#section-hours-heading', 'label' => $l->t('Daily hours and rest periods')],
+                    ['href' => '#section-regional-heading', 'label' => $l->t('Region and holidays')],
+                    ['href' => '#section-retention-heading', 'label' => $l->t('Data retention')],
+                ];
+                include __DIR__ . '/common/azc-jump-nav.php';
+                ?>
             <form id="admin-settings-form" class="form admin-settings-form" method="post" action="#" novalidate>
                 <input type="hidden" name="requesttoken" value="<?php p($_['requesttoken'] ?? ''); ?>">
-                <nav class="settings-jump-nav" aria-label="<?php p($l->t('Jump to settings sections')); ?>">
-                    <p class="settings-jump-nav__title"><?php p($l->t('Quick navigation')); ?></p>
-                    <ul class="settings-jump-nav__list">
-                        <li><a href="#section-access-heading"><?php p($l->t('Access control')); ?></a></li>
-                        <li><a href="#section-compliance-heading"><?php p($l->t('Compliance and working time rules')); ?></a></li>
-                        <li><a href="#section-export-heading"><?php p($l->t('Exports and reporting')); ?></a></li>
-                        <li><a href="#section-month-closure-heading"><?php p($l->t('Month closure (revision-safe)')); ?></a></li>
-                        <li><a href="#section-hours-heading"><?php p($l->t('Daily hours and rest periods')); ?></a></li>
-                        <li><a href="#section-regional-heading"><?php p($l->t('Region and holidays')); ?></a></li>
-                        <li><a href="#section-retention-heading"><?php p($l->t('Data retention')); ?></a></li>
-                    </ul>
-                </nav>
                 <section class="admin-settings-section" aria-labelledby="section-access-heading">
                     <h3 id="section-access-heading" class="admin-settings-section__title"><?php p($l->t('Access control')); ?></h3>
                     <div class="form-group">
@@ -645,26 +661,27 @@ $adminUsersListUrl = $urlGenerator->linkToRoute('arbeitszeitcheck.admin.getUsers
                 </div>
                 </section>
 
-                <div class="card-actions">
-                    <button type="submit" 
-                            class="btn btn--primary"
+                <div class="azc-admin-settings-form__actions" role="group" aria-labelledby="admin-settings-actions-heading">
+                    <h2 id="admin-settings-actions-heading" class="visually-hidden"><?php p($l->t('Save and leave')); ?></h2>
+                    <div id="admin-settings-live" class="admin-settings-live" role="status" aria-live="polite" aria-atomic="true"></div>
+                    <div class="azc-admin-settings-form__footer">
+                        <button type="submit"
+                            class="azc-btn azc-btn--primary"
+                            id="admin-settings-save"
                             aria-label="<?php p($l->t('Save all settings')); ?>"
                             title="<?php p($l->t('Save changes and apply to all users')); ?>">
-                        <?php p($l->t('Save all settings')); ?>
-                    </button>
-                    <a href="<?php p(\OCP\Server::get(\OCP\IURLGenerator::class)->linkToRoute('arbeitszeitcheck.page.index')); ?>"
-                       class="btn btn--secondary"
-                       aria-label="<?php p($l->t('Cancel and return to overview')); ?>"
-                       title="<?php p($l->t('Go back without saving changes')); ?>">
-                        <?php p($l->t('Cancel')); ?>
-                    </a>
+                            <?php p($l->t('Save all settings')); ?>
+                        </button>
+                        <a href="<?php p($cancelUrl); ?>"
+                            class="azc-btn azc-btn--secondary"
+                            aria-label="<?php p($isNcAdminShell ? $l->t('Open full settings in the app without saving') : $l->t('Cancel and return to overview')); ?>"
+                            title="<?php p($isNcAdminShell ? $l->t('Open the full ArbeitszeitCheck admin settings in the app') : $l->t('Go back without saving changes')); ?>">
+                            <?php p($isNcAdminShell ? $l->t('Open in app') : $l->t('Cancel')); ?>
+                        </a>
+                    </div>
                 </div>
             </form>
-        </div>
-    </div>
-</main>
-</div><!-- /#arbeitszeitcheck-app -->
-
+            </div>
 <script nonce="<?php p($_['cspNonce'] ?? ''); ?>">
 window.ArbeitszeitCheck = window.ArbeitszeitCheck || {};
 window.ArbeitszeitCheck.adminSettingsApiUrl = <?php echo json_encode($apiSettingsUrl, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
@@ -692,3 +709,9 @@ window.ArbeitszeitCheck.l10n.accessGroupsAllUsers = <?php echo json_encode($l->t
 window.ArbeitszeitCheck.l10n.appAdminsSelected = <?php echo json_encode($l->t('%s app admin(s) selected', ['%s']), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 window.ArbeitszeitCheck.l10n.appAdminsAllAdmins = <?php echo json_encode($l->t('No app admins selected (all Nextcloud admins are allowed).'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 </script>
+
+<?php if (!$isNcAdminShell): ?>
+<?php include __DIR__ . '/common/page-end.php'; ?>
+<?php else: ?>
+</div>
+<?php endif; ?>

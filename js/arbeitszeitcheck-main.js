@@ -95,6 +95,40 @@
         return formatLocalDateYmd(new Date());
     }
 
+    function azcIcon(name, extraClass) {
+        if (typeof window.AzcCatalog !== 'undefined' && typeof window.AzcCatalog.render === 'function') {
+            return window.AzcCatalog.render(name, extraClass || '');
+        }
+        return '';
+    }
+
+    function calendarAbsenceIndicator(absence) {
+        const type = absence.type || 'absence';
+        const status = absence.status || 'pending';
+        const isCoverage = absence.role === 'substitute';
+        let iconName = 'calendar-off';
+        if (isCoverage) {
+            iconName = 'user-check';
+        } else if (type === 'vacation' || type === 'holiday') {
+            iconName = 'calendar-heart';
+        } else if (type === 'sick' || type === 'sick_leave') {
+            iconName = 'circle-alert';
+        }
+        let statusLabel = '';
+        if (status === 'pending' || status === 'substitute_pending') {
+            statusLabel = mainT('Pending');
+        } else if (status === 'approved') {
+            statusLabel = mainT('Approved');
+        } else if (status === 'rejected' || status === 'substitute_declined') {
+            statusLabel = mainT('Rejected');
+        }
+        const statusIcon = status === 'approved' ? 'check' : (status === 'rejected' || status === 'substitute_declined' ? 'x' : 'clock');
+        const statusHtml = statusLabel
+            ? `<span class="calendar-day-status" title="${escapeHtml(statusLabel)}">${azcIcon(statusIcon, 'calendar-day-status-icon')}<span class="azc-sr-only">${escapeHtml(statusLabel)}</span></span>`
+            : '';
+        return `<span class="calendar-day-absence-icons" aria-hidden="true">${azcIcon(iconName, 'calendar-day-type-icon')}${statusHtml}</span>`;
+    }
+
     // Main application object
     const ArbeitszeitCheck = {
         config: window.ArbeitszeitCheck || {},
@@ -435,11 +469,9 @@
                                 String(minutes).padStart(2, '0') + ':' +
                                 String(seconds).padStart(2, '0');
                             
-                            // Warning for maximum working hours (ArbZG §3: max 10 hours)
-                            // Show visual warning when approaching/exceeding 10 hours
-                            // IMPORTANT: Check TOTAL daily working hours (previous entries + current session)
-                            // not just the current session hours
-                            const currentSessionHours = workingSeconds / 3600;
+                            // Warning for maximum working hours (ArbZG §3: max 10 hours).
+                            // We compare TOTAL daily working hours (previous entries + current session
+                            // attributed to the calendar day), not just the running session length.
 
                             // Total hours on today's calendar day (never the full overnight session length).
                             let totalDailyHours = workingTodayHours;
@@ -576,9 +608,15 @@
                     e.preventDefault();
                     const confirmMsg = mainT('Clock out and end your working day?') + '\n\n' +
                         mainT('Your time entry will be finalized. To pause and continue working, use "Start Break" instead.');
-                    if (window.confirm(confirmMsg)) {
-                        this.clockOut();
-                    }
+                    const confirmTitle = mainT('Clock out?');
+                    const dialogOpts = (typeof OC !== 'undefined' && OC.dialogs)
+                        ? { type: OC.dialogs.YES_NO_BUTTONS, modal: true }
+                        : {};
+                    this.confirmDestructiveMain(confirmMsg, confirmTitle, dialogOpts).then((confirmed) => {
+                        if (confirmed) {
+                            this.clockOut();
+                        }
+                    });
                 }.bind(this));
             }.bind(this));
 
@@ -619,10 +657,14 @@
             deleteButtons.forEach(button => {
                 button.addEventListener('click', (e) => {
                     e.preventDefault();
-                    if (confirm(this.config.l10n?.confirmDelete || mainT('Are you sure you want to delete this item?'))) {
-                        const endpoint = button.dataset.deleteEndpoint;
-                        this.callApi(endpoint, 'DELETE');
-                    }
+                    const confirmMsg = this.config.l10n?.confirmDelete || mainT('Are you sure you want to delete this item?');
+                    const confirmTitle = mainT('Delete?');
+                    this.confirmDestructiveMain(confirmMsg, confirmTitle, {}).then((confirmed) => {
+                        if (confirmed) {
+                            const endpoint = button.dataset.deleteEndpoint;
+                            this.callApi(endpoint, 'DELETE');
+                        }
+                    });
                 });
             });
 
@@ -830,9 +872,11 @@
                 button.addEventListener('click', (e) => {
                     e.preventDefault();
                     const entryId = button.dataset.entryId;
-                    if (!entryId) return;
+                    if (!entryId) {
+                        return;
+                    }
 
-                    const confirmMsg = this.config.l10n?.confirmDeleteTimeEntry ||
+                    const baseConfirmMsg = this.config.l10n?.confirmDeleteTimeEntry ||
                                      this.config.l10n?.confirmDelete ||
                                      mainT('Are you sure you want to delete this time entry?');
                     const confirmTitle = this.config.l10n?.confirmDeleteTimeEntryTitle ||
@@ -841,42 +885,81 @@
                         ? { type: OC.dialogs.YES_NO_BUTTONS, modal: true }
                         : {};
 
-                    this.confirmDestructiveMain(confirmMsg, confirmTitle, dialogOpts).then((confirmed) => {
-                        if (!confirmed) {
-                            return;
-                        }
-                        // Build delete URL using the API URL pattern or fallback
-                        let deleteUrl = this.config.apiUrl?.delete || '';
-                        if (deleteUrl && deleteUrl.includes('__ID__')) {
-                            deleteUrl = deleteUrl.replace('__ID__', entryId);
-                        } else if (!deleteUrl) {
-                            deleteUrl = OC.generateUrl('/apps/arbeitszeitcheck/api/time-entries/' + entryId);
-                        } else {
-                            // If API URL doesn't have __ID__ placeholder, append ID
-                            deleteUrl = deleteUrl.replace(/\/$/, '') + '/' + entryId;
-                        }
+                    button.disabled = true;
+                    button.setAttribute('aria-busy', 'true');
 
-                        button.disabled = true;
-                        button.setAttribute('aria-busy', 'true');
-                        this.callApi(deleteUrl, 'DELETE', null, false)
-                            .then(() => {
-                                const row = button.closest('tr');
-                                if (row) {
-                                    row.remove();
+                    const resolveImpactUrl = () => {
+                        let impactUrl = this.config.apiUrl?.deletionImpact || '';
+                        if (impactUrl && impactUrl.includes('__ID__')) {
+                            return impactUrl.replace('__ID__', entryId);
+                        }
+                        if (typeof OC !== 'undefined' && OC.generateUrl) {
+                            return OC.generateUrl('/apps/arbeitszeitcheck/api/time-entries/' + encodeURIComponent(entryId) + '/deletion-impact');
+                        }
+                        return '/apps/arbeitszeitcheck/api/time-entries/' + encodeURIComponent(entryId) + '/deletion-impact';
+                    };
+
+                    const loadDeletionConfirmMessage = () => {
+                        return this.callApi(resolveImpactUrl(), 'GET', null, false)
+                            .then((response) => {
+                                const impact = response && response.impact ? response.impact : null;
+                                if (!impact) {
+                                    return baseConfirmMsg;
                                 }
-                                const successMsg = this.config.l10n?.deleted ||
-                                    mainT('Time entry deleted successfully');
-                                this.showSuccess(successMsg);
+                                if (impact.canDelete === false) {
+                                    const blockMsg = (impact.warnings && impact.warnings.length)
+                                        ? impact.warnings.join(' ')
+                                        : mainT('This time entry cannot be deleted.');
+                                    throw new Error(blockMsg);
+                                }
+                                const warnings = Array.isArray(impact.warnings) ? impact.warnings.filter(Boolean) : [];
+                                if (warnings.length === 0) {
+                                    return baseConfirmMsg;
+                                }
+                                return baseConfirmMsg + '\n\n' + warnings.join('\n');
                             })
-                            .catch((error) => {
-                                console.error('Error deleting time entry:', error);
-                                this.showError(error && error.message ? error.message : (this.config.l10n?.error || mainT('An error occurred')));
-                            })
-                            .finally(() => {
-                                button.disabled = false;
-                                button.removeAttribute('aria-busy');
+                            .catch((err) => {
+                                if (err && err.message && err.message !== mainT('An error occurred')) {
+                                    throw err;
+                                }
+                                return baseConfirmMsg;
                             });
-                    });
+                    };
+
+                    loadDeletionConfirmMessage()
+                        .then((confirmMsg) => this.confirmDestructiveMain(confirmMsg, confirmTitle, dialogOpts))
+                        .then((confirmed) => {
+                            if (!confirmed) {
+                                return;
+                            }
+                            let deleteUrl = this.config.apiUrl?.delete || '';
+                            if (deleteUrl && deleteUrl.includes('__ID__')) {
+                                deleteUrl = deleteUrl.replace('__ID__', entryId);
+                            } else if (!deleteUrl) {
+                                deleteUrl = OC.generateUrl('/apps/arbeitszeitcheck/api/time-entries/' + entryId);
+                            } else {
+                                deleteUrl = deleteUrl.replace(/\/$/, '') + '/' + entryId;
+                            }
+
+                            return this.callApi(deleteUrl, 'DELETE', null, false)
+                                .then(() => {
+                                    const row = button.closest('tr');
+                                    if (row) {
+                                        row.remove();
+                                    }
+                                    const successMsg = this.config.l10n?.deleted ||
+                                        mainT('Time entry deleted successfully');
+                                    this.showSuccess(successMsg);
+                                });
+                        })
+                        .catch((error) => {
+                            console.error('Error deleting time entry:', error);
+                            this.showError(error && error.message ? error.message : (this.config.l10n?.error || mainT('An error occurred')));
+                        })
+                        .finally(() => {
+                            button.disabled = false;
+                            button.removeAttribute('aria-busy');
+                        });
                 });
             });
 
@@ -1325,7 +1408,10 @@
         },
 
         /**
-         * Destructive confirmation: Nextcloud dialog when available (WCAG-friendly), else window.confirm.
+         * Destructive confirmation. Preference order:
+         *   1. AzcComponents.confirmDialog — focus trap, aria-hidden on
+         *      #app-content, return focus, parity with sibling check-apps.
+         *   2. OC.dialogs.confirmDestructive — Nextcloud modal, theme-aware.
          *
          * @param {string} message
          * @param {string} title
@@ -1334,6 +1420,25 @@
          */
         confirmDestructiveMain: function(message, title, options) {
             const opts = options || {};
+            const azc = (typeof window !== 'undefined') &&
+                (window.AzcComponents || window.ArbeitszeitCheckComponents);
+            if (azc && typeof azc.confirmDialog === 'function') {
+                const confirmLabel = mainT('Confirm');
+                const cancelLabel = mainT('Cancel');
+                return azc.confirmDialog({
+                    title: title || '',
+                    message: message,
+                    confirmLabel: confirmLabel,
+                    cancelLabel: cancelLabel,
+                    variant: 'danger',
+                }).then((res) => {
+                    // confirmDialog resolves true | false | { confirmed: true }
+                    if (res && typeof res === 'object') {
+                        return !!res.confirmed;
+                    }
+                    return !!res;
+                });
+            }
             return new Promise((resolve) => {
                 let settled = false;
                 const once = function(v) {
@@ -1366,14 +1471,14 @@
                             }
                         );
                     } catch (e) {
-                        once(window.confirm(message));
+                        once(false);
                         return;
                     }
                     if (ret && typeof ret.then === 'function') {
                         ret.then(() => once(false)).catch(() => once(false));
                     }
                 } else {
-                    once(window.confirm(message));
+                    once(false);
                 }
             });
         },
@@ -1521,10 +1626,12 @@
             buttons.forEach(button => {
                 if (loading) {
                     button.disabled = true;
+                    button.setAttribute('aria-busy', 'true');
                     button.dataset.originalText = button.textContent;
                     button.textContent = this.config.l10n?.loading || 'Loading...';
                 } else {
                     button.disabled = false;
+                    button.removeAttribute('aria-busy');
                     if (button.dataset.originalText) {
                         button.textContent = button.dataset.originalText;
                         delete button.dataset.originalText;
@@ -1537,24 +1644,26 @@
          * Show error message to user
          */
         showError: function(message) {
-            // Ensure message is a string
-            let errorMessage = typeof message === 'string' ? message : String(message || 'An error occurred');
-            
-            // Try to use Nextcloud's notification system if available
-            if (window.OC && OC.Notification) {
+            const errorMessage = typeof message === 'string' ? message : String(message || mainT('An error occurred'));
+            if (window.AzcMessaging && typeof window.AzcMessaging.showError === 'function') {
+                window.AzcMessaging.showError(errorMessage);
+                return;
+            }
+            if (window.ArbeitszeitCheckMessaging && typeof window.ArbeitszeitCheckMessaging.showError === 'function') {
+                window.ArbeitszeitCheckMessaging.showError(errorMessage);
+                return;
+            }
+            if (window.OC && OC.Notification && typeof OC.Notification.showTemporary === 'function') {
                 try {
-                    // showTemporary displays messages as-is without translation
-                    // Wrap in try-catch to handle any edge cases
                     OC.Notification.showTemporary(errorMessage);
+                    return;
                 } catch (e) {
-                    // If notification fails (e.g., translation error), use alert as fallback
                     console.warn('Failed to show notification:', e);
-                    const translatedError = (window.t && window.t('arbeitszeitcheck', errorMessage)) || errorMessage;
-                    alert(translatedError);
                 }
-            } else {
-                // Fallback to alert
-                alert(errorMessage);
+            }
+            const region = document.getElementById('azc-alert-region');
+            if (region) {
+                region.textContent = errorMessage;
             }
         },
 
@@ -1562,8 +1671,17 @@
          * Show success message to user
          */
         showSuccess: function(message) {
-            if (window.OC && OC.Notification) {
-                OC.Notification.showTemporary(message, { type: 'success' });
+            const successMessage = typeof message === 'string' ? message : String(message || '');
+            if (window.AzcMessaging && typeof window.AzcMessaging.showSuccess === 'function') {
+                window.AzcMessaging.showSuccess(successMessage);
+                return;
+            }
+            if (window.ArbeitszeitCheckMessaging && typeof window.ArbeitszeitCheckMessaging.showSuccess === 'function') {
+                window.ArbeitszeitCheckMessaging.showSuccess(successMessage);
+                return;
+            }
+            if (window.OC && OC.Notification && typeof OC.Notification.showTemporary === 'function') {
+                OC.Notification.showTemporary(successMessage, { type: 'success' });
             }
         },
 
@@ -2070,7 +2188,7 @@
 
             return `
                 <div class="timeline-item timeline-item--time-entry">
-                    <div class="timeline-item-icon">⏱</div>
+                    <div class="timeline-item-icon">${azcIcon('clock', 'timeline-item-icon-svg')}</div>
                     <div class="timeline-item-content">
                         <div class="timeline-item-header">
                             <span class="timeline-item-time">${escapeHtml(startTimeStr)} - ${escapeHtml(endTimeStr)}</span>
@@ -2181,9 +2299,10 @@
 
             const badgeClass = status === 'approved' ? 'success' : status === 'rejected' || status === 'substitute_declined' ? 'error' : 'warning';
 
+            const absenceIconName = isCoverage ? 'user-check' : 'calendar-off';
             return `
                 <div class="timeline-item timeline-item--absence${isCoverage ? ' timeline-item--coverage' : ''}">
-                    <div class="timeline-item-icon">${isCoverage ? '👤' : '📅'}</div>
+                    <div class="timeline-item-icon">${azcIcon(absenceIconName, 'timeline-item-icon-svg')}</div>
                     <div class="timeline-item-content">
                         <div class="timeline-item-header">
                             <span class="timeline-item-type">${escapeHtml(translatedType)}</span>
@@ -2219,7 +2338,7 @@
 
             return `
                 <div class="timeline-item timeline-item--holiday" aria-label="${escapeHtml(ariaLabel)}">
-                    <div class="timeline-item-icon">🎉</div>
+                    <div class="timeline-item-icon">${azcIcon('calendar-heart', 'timeline-item-icon-svg')}</div>
                     <div class="timeline-item-content">
                         <div class="timeline-item-header">
                             <span class="timeline-item-type">${escapeHtml(scopeLabel)}</span>
@@ -2473,29 +2592,8 @@
                 // Show absence type with icon/indicator
                 if (dayData.hasAbsence && dayData.absences.length > 0) {
                     const absence = dayData.absences[0];
-                    const type = absence.type || 'absence';
-                    const status = absence.status || 'pending';
-                    const isCoverage = absence.role === 'substitute';
 
-                    // Use emoji or text indicator: 👤 for coverage (substitute), else absence type
-                    let absenceIndicator = '';
-                    if (isCoverage) {
-                        absenceIndicator = '👤';
-                    } else if (type === 'vacation' || type === 'holiday') {
-                        absenceIndicator = '🏖️';
-                    } else if (type === 'sick' || type === 'sick_leave') {
-                        absenceIndicator = '🏥';
-                    } else {
-                        absenceIndicator = '📅';
-                    }
-
-                    if (status === 'pending' || status === 'substitute_pending') {
-                        absenceIndicator += ' ⏳';
-                    } else if (status === 'approved') {
-                        absenceIndicator += ' ✓';
-                    } else if (status === 'rejected' || status === 'substitute_declined') {
-                        absenceIndicator += ' ✗';
-                    }
+                    const absenceIndicator = calendarAbsenceIndicator(absence);
 
                     const displayLabel = this.getAbsenceDisplayLabel(absence);
                     if (this.isPastAbsenceRecord(absence)) {

@@ -11,6 +11,8 @@
 /** @var array $_ */
 /** @var \OCP\IL10N $l */
 
+use OCA\ArbeitszeitCheck\Service\IconCatalog;
+
 // Get error data
 $fieldName = $fieldName ?? '';
 $errorMessage = $errorMessage ?? '';
@@ -36,7 +38,7 @@ if (empty($errorMessage)) {
          class="form-error" 
          role="alert" 
          aria-live="polite">
-        <span class="form-error__icon" aria-hidden="true">⚠️</span>
+        <span class="form-error__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('triangle-alert', 'form-error__icon-svg')); ?></span>
         <div class="form-error__content">
             <?php 
             // Split error message into title and description if it contains a period

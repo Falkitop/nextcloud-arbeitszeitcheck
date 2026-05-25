@@ -483,6 +483,22 @@ class OvertimeServiceTest extends TestCase
 	}
 
 	/**
+	 * Default week window starts on Monday (ISO-style calendar week).
+	 */
+	public function testGetWeeklyOvertimeDefaultWeekStartsOnMonday(): void
+	{
+		$userId = 'testuser';
+
+		$this->userWorkingTimeModelMapper->method('findCurrentByUser')->willReturn(null);
+		$this->timeEntryMapper->method('findByUserAndDateRange')->willReturn([]);
+
+		$result = $this->service->getWeeklyOvertime($userId);
+
+		$expectedMonday = new \DateTime('monday this week');
+		$this->assertSame($expectedMonday->format('Y-m-d'), $result['period_start']);
+	}
+
+	/**
 	 * When overtime tracking_from is set, the anchor calendar day must not
 	 * contribute standalone target hours (avoids “−8 h” before first clock-in).
 	 */

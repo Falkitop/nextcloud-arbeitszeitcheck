@@ -12,12 +12,15 @@ declare(strict_types=1);
 namespace OCA\ArbeitszeitCheck\Settings;
 
 use OCA\ArbeitszeitCheck\Constants;
+use OCA\ArbeitszeitCheck\Service\FrontEndAssetService;
 use OCP\App\IAppManager;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\AppFramework\Services\IAppConfig;
 use OCP\IGroupManager;
 use OCP\IL10N;
+use OCP\IURLGenerator;
 use OCP\Settings\ISettings;
+use OCP\Util;
 
 class AdminSettings implements ISettings
 {
@@ -25,13 +28,20 @@ class AdminSettings implements ISettings
 	private IL10N $l10n;
 	private IGroupManager $groupManager;
 	private IAppManager $appManager;
+	private IURLGenerator $urlGenerator;
 
-	public function __construct(IAppConfig $appConfig, IL10N $l10n, IGroupManager $groupManager, IAppManager $appManager)
-	{
+	public function __construct(
+		IAppConfig $appConfig,
+		IL10N $l10n,
+		IGroupManager $groupManager,
+		IAppManager $appManager,
+		IURLGenerator $urlGenerator,
+	) {
 		$this->appConfig = $appConfig;
 		$this->l10n = $l10n;
 		$this->groupManager = $groupManager;
 		$this->appManager = $appManager;
+		$this->urlGenerator = $urlGenerator;
 	}
 
 	/**
@@ -44,6 +54,8 @@ class AdminSettings implements ISettings
 	 */
 	public function getForm(): TemplateResponse
 	{
+		FrontEndAssetService::registerPage('admin-settings', 'admin-settings');
+
 		$requireSubstituteJson = $this->appConfig->getAppValueString('require_substitute_types', '[]');
 		$requireSubstituteTypes = json_decode($requireSubstituteJson, true);
 		if (!is_array($requireSubstituteTypes)) {
@@ -80,6 +92,10 @@ class AdminSettings implements ISettings
 			'availableGroups' => $this->getAvailableGroups(),
 			'availableAppAdmins' => $this->getAvailableAppAdmins(),
 			'l' => $this->l10n,
+			'urlGenerator' => $this->urlGenerator,
+			'settingsShell' => 'nextcloud',
+			'inAppAdminSettingsUrl' => $this->urlGenerator->linkToRoute('arbeitszeitcheck.admin.settings'),
+			'requesttoken' => Util::callRegister(),
 		]);
 	}
 

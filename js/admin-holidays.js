@@ -8,7 +8,29 @@
     'use strict';
 
     const Utils = window.ArbeitszeitCheckUtils || {};
-    const Messaging = window.ArbeitszeitCheckMessaging || {};
+    const Messaging = window.ArbeitszeitCheckMessaging || window.AzcMessaging || {};
+
+    function showUserError(message) {
+        if (Messaging && typeof Messaging.showError === 'function') {
+            Messaging.showError(message);
+            return;
+        }
+        const region = document.getElementById('azc-alert-region');
+        if (region) {
+            region.textContent = String(message);
+        }
+    }
+
+    function showUserSuccess(message) {
+        if (Messaging && typeof Messaging.showSuccess === 'function') {
+            Messaging.showSuccess(message);
+            return;
+        }
+        const region = document.getElementById('azc-live-region');
+        if (region) {
+            region.textContent = String(message);
+        }
+    }
 
     const HOLIDAYS_UI_JSON_ID = 'arbeitszeitcheck-admin-holidays-ui-strings';
 
@@ -200,11 +222,7 @@
 
         if (!dateInput || !nameInput || !typeSelect || !scopeSelect) {
             const msg = tAzc('Technical error: Required fields for the holiday could not be found.');
-            if (Messaging && Messaging.showError) {
-                Messaging.showError(msg);
-            } else {
-                alert(msg);
-            }
+            showUserError(msg);
             return;
         }
 
@@ -223,11 +241,7 @@
 
         if (!payload.date || !payload.name) {
             const msg = tAzc('Please specify date and name of the holiday.');
-            if (Messaging && Messaging.showError) {
-                Messaging.showError(msg);
-            } else {
-                alert(msg);
-            }
+            showUserError(msg);
             return;
         }
 
@@ -248,25 +262,13 @@
                     tbodyEl.innerHTML = '';
                 }
                 loadExistingHolidays();
-                if (Messaging && Messaging.showSuccess) {
-                    const msg = tAzc('Holiday was saved.');
-                    Messaging.showSuccess(msg);
-                }
+                showUserSuccess(tAzc('Holiday was saved.'));
             } else {
                 const errorMsg = (data && data.error) || tAzc('Holiday could not be saved.');
-                if (Messaging && Messaging.showError) {
-                    Messaging.showError(errorMsg);
-                } else {
-                    alert(errorMsg);
-                }
+                showUserError(errorMsg);
             }
         }).catch(function() {
-            const msg = tAzc('An error occurred while saving the holiday.');
-            if (Messaging && Messaging.showError) {
-                Messaging.showError(msg);
-            } else {
-                alert(msg);
-            }
+            showUserError(tAzc('An error occurred while saving the holiday.'));
         });
     }
 
@@ -372,7 +374,7 @@
                 .replace('{name}', item.name || '')
                 .replace('{date}', displayDate || '');
             deleteBtn.setAttribute('aria-label', ariaLabel);
-            Utils.on(deleteBtn, 'click', function() {
+            Utils.on(deleteBtn, 'click', async function() {
                 const name = item.name || '';
                 const title = tAzc('Remove holiday');
 
@@ -445,12 +447,19 @@
                         confirmBtn.focus();
                     }
                 } else {
-                    // Fallback to native confirm if modal components are not available
                     const confirmMsg = body.replace(/<br\s*\/?>/gi, '\n\n');
-                    if (!window.confirm(confirmMsg)) {
-                        return;
+                    const Utils = window.ArbeitszeitCheckUtils;
+                    const confirmed = Utils?.confirmDestructiveAction
+                        ? await Utils.confirmDestructiveAction({
+                            title: title,
+                            message: confirmMsg,
+                            confirmLabel: tAzc('Remove'),
+                            variant: 'destructive',
+                        })
+                        : null;
+                    if (confirmed) {
+                        deleteHoliday(item.id, row);
                     }
-                    deleteHoliday(item.id, row);
                 }
             });
             actionsCell.appendChild(deleteBtn);

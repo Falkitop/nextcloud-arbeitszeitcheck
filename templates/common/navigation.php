@@ -52,6 +52,7 @@ $isAdmin = strpos($currentPage, '/admin') !== false;
 $isAdminDashboard = strpos($currentPage, '/admin/dashboard') !== false || ($isAdmin && strpos($currentPage, '/admin/') === false);
 $isAdminUsers = strpos($currentPage, '/admin/users') !== false;
 $isAdminWorkingTimeModels = strpos($currentPage, '/admin/working-time-models') !== false;
+$isAdminTariffRules = strpos($currentPage, '/admin/tariff-rules') !== false;
 $isAdminHolidays = strpos($currentPage, '/admin/holidays') !== false;
 $isAdminTeams = strpos($currentPage, '/admin/teams') !== false;
 $isAdminVacationLayers = strpos($currentPage, '/admin/vacation-layers') !== false;
@@ -228,6 +229,13 @@ $monthClosureEnabledNav = array_key_exists('monthClosureEnabled', $_)
                                 title="<?php p($l->t('Configure working time models')); ?>"
                                 aria-label="<?php p($l->t('Manage working time models')); ?>">
                                 <span><?php p($l->t('Working time models')); ?></span>
+                            </a>
+                        </li>
+                        <li class="<?php p($isAdminTariffRules ? 'active' : ''); ?>" <?php p($isAdminTariffRules ? 'aria-current="page"' : ''); ?>>
+                            <a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.admin.tariffRuleSets')); ?>"
+                                title="<?php p($l->t('Manage tariff rule sets used for vacation entitlement calculations')); ?>"
+                                aria-label="<?php p($l->t('Manage tariff rule sets')); ?>">
+                                <span><?php p($l->t('Tariff rule sets')); ?></span>
                             </a>
                         </li>
                         <li class="<?php p($isAdminHolidays ? 'active' : ''); ?>" <?php p($isAdminHolidays ? 'aria-current="page"' : ''); ?>>

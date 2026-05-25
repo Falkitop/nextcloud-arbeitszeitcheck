@@ -99,14 +99,7 @@
   border-width: 2px;
 }
 
-#time-entry-form .form-input--error::before {
-  content: "⚠ ";
-  color: var(--color-error);
-  font-weight: bold;
-  margin-right: 4px;
-}
-
-/* Status indicators with icons and text */
+/* Status indicators with icons and text (icons injected via JS AzcCatalog) */
 #time-entry-form .compliance-status {
   display: flex;
   align-items: center;
@@ -116,19 +109,15 @@
   font-weight: 500;
 }
 
-#time-entry-form .compliance-status.compliant::before {
-  content: "✓ ";
-  font-weight: bold;
+#time-entry-form .compliance-status__icon {
+  display: inline-flex;
+  flex-shrink: 0;
 }
 
-#time-entry-form .compliance-status.warning::before {
-  content: "⚠ ";
-  font-weight: bold;
-}
-
-#time-entry-form .compliance-status.violation::before {
-  content: "✗ ";
-  font-weight: bold;
+#time-entry-form .compliance-status__icon-svg,
+#time-entry-form .compliance-status__icon .azc-icon {
+  width: 1.125rem;
+  height: 1.125rem;
 }
 
 /* ===== TEXT RESIZING (WCAG 2.1 AAA: must work at 200% zoom) ===== */

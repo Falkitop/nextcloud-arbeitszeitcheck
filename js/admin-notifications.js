@@ -66,6 +66,10 @@
 		} else if (type === 'success') {
 			liveRegion.classList.add('admin-notifications-live--success');
 		}
+		if (message) {
+			const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+			liveRegion.scrollIntoView({ block: 'nearest', behavior: prefersReduced ? 'auto' : 'smooth' });
+		}
 	}
 
 	function bindDependentBlock(toggle, blockId) {
@@ -99,10 +103,26 @@
 		const apiUrl = window.ArbeitszeitCheck && window.ArbeitszeitCheck.adminNotificationsApiUrl;
 		const l10n = (window.ArbeitszeitCheck && window.ArbeitszeitCheck.l10n) || {};
 		const matrixMeta = (window.ArbeitszeitCheck && window.ArbeitszeitCheck.notificationMatrixMeta) || { absenceTypes: [], eventTypes: [] };
+		let formDirty = false;
+		let saving = false;
 
 		if (!form || !apiUrl) {
 			return;
 		}
+
+		const markDirty = function () {
+			if (!saving) {
+				formDirty = true;
+			}
+		};
+		form.addEventListener('input', markDirty);
+		form.addEventListener('change', markDirty);
+		window.addEventListener('beforeunload', function (event) {
+			if (formDirty && !saving) {
+				event.preventDefault();
+				event.returnValue = '';
+			}
+		});
 
 		bindDependentBlock($('#hrNotificationsEnabled'), 'hr-notification-settings');
 		bindDependentBlock($('#overtimeTrafficLightEnabled'), 'overtime-trafficlight-settings');
@@ -158,12 +178,26 @@
 				const msg = l10n.invalidThresholdValues || 'Threshold values must be valid numbers.';
 				Messaging.showError(msg);
 				setLiveMessage(liveRegion, msg, 'error');
+				const firstBad = ['#overtimeYellowOver', '#overtimeRedOver', '#overtimeYellowUnder', '#overtimeRedUnder'].find((sel) => {
+					const el = form.querySelector(sel);
+					const n = Number(String(el?.value || '').replace(',', '.'));
+					return !Number.isFinite(n);
+				});
+				const focusEl = firstBad ? form.querySelector(firstBad) : null;
+				if (focusEl) {
+					focusEl.focus();
+				}
 				return;
 			}
 			if (overtimeYellowOver > overtimeRedOver || overtimeYellowUnder > overtimeRedUnder) {
 				const msg = l10n.invalidThresholdOrder || 'Yellow thresholds must be less than or equal to red thresholds.';
 				Messaging.showError(msg);
 				setLiveMessage(liveRegion, msg, 'error');
+				if (overtimeYellowOver > overtimeRedOver) {
+					form.querySelector('#overtimeYellowOver')?.focus();
+				} else {
+					form.querySelector('#overtimeYellowUnder')?.focus();
+				}
 				return;
 			}
 			const bankYellowPct = parseInt(String(formData.get('overtimeBankYellowPercent') || '80'), 10);
@@ -184,12 +218,18 @@
 					const msg = l10n.invalidCarryoverMaxDays || 'Maximum carryover days must be empty (unlimited) or between 0 and 366';
 					Messaging.showError(msg);
 					setLiveMessage(liveRegion, msg, 'error');
+					const maxDaysEl = form.querySelector('#vacationCarryoverMaxDays');
+					if (maxDaysEl) {
+						maxDaysEl.focus();
+					}
 					return;
 				}
 			}
 
+			saving = true;
 			if (saveButton) {
 				saveButton.disabled = true;
+				saveButton.setAttribute('aria-busy', 'true');
 			}
 			setLiveMessage(liveRegion, '', null);
 
@@ -227,10 +267,13 @@
 					sendEmailSubstituteApprovedToManager: isChecked(formData.get('sendEmailSubstituteApprovedToManager')),
 				},
 				onSuccess: function (response) {
+					saving = false;
 					if (saveButton) {
 						saveButton.disabled = false;
+						saveButton.removeAttribute('aria-busy');
 					}
 					if (response && response.success) {
+						formDirty = false;
 						const msg = response.message || l10n.notificationsSaved || 'Notification settings updated successfully';
 						Messaging.showSuccess(msg);
 						if (recipientsField) {
@@ -247,8 +290,10 @@
 					setLiveMessage(liveRegion, errorMessage, 'error');
 				},
 				onError: function (error) {
+					saving = false;
 					if (saveButton) {
 						saveButton.disabled = false;
+						saveButton.removeAttribute('aria-busy');
 					}
 					const errorMessage = (error && error.error) || l10n.failedToSaveNotifications || 'Failed to save notification settings';
 					Messaging.showError(errorMessage);

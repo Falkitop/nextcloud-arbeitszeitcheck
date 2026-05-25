@@ -38,26 +38,10 @@ $teamMembers = $_['teamMembers'] ?? [];
 })();
 </script>
 
-<?php include __DIR__ . '/common/navigation.php'; ?>
+<?php include __DIR__ . '/common/page-start.php'; ?>
 
-<main id="app-content" role="main" aria-label="<?php p($l->t('Manager dashboard content')); ?>" class="manager-dashboard">
-    <div id="app-content-wrapper">
-        <!-- Breadcrumb Navigation -->
-        <div class="breadcrumb-container">
-            <nav class="breadcrumb" aria-label="<?php p($l->t('Breadcrumb')); ?>">
-                <ol>
-                    <li><a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.page.index')); ?>"><?php p($l->t('Dashboard')); ?></a></li>
-                    <li aria-current="page"><?php p($l->t('Manager Dashboard')); ?></li>
-                </ol>
-            </nav>
-        </div>
         <div class="section manager-dashboard__content">
-            <header class="manager-dashboard__header section-header">
-                <h1 class="manager-dashboard__title"><?php p($l->t('Manager Dashboard')); ?></h1>
-                <p class="manager-dashboard__subtitle"><?php p($l->t('See how your team is doing with time tracking and check for any problems')); ?></p>
-            </header>
-
-            <!-- Team Statistics -->
+<!-- Team Statistics -->
             <section class="manager-dashboard__stats section" aria-labelledby="stats-heading">
                 <h2 id="stats-heading" class="visually-hidden"><?php p($l->t('Team statistics')); ?></h2>
                 <div class="stats-grid manager-stats-grid">
@@ -194,9 +178,6 @@ $teamMembers = $_['teamMembers'] ?? [];
                 <?php endif; ?>
             </section>
         </div>
-    </div>
-</main>
-</div><!-- /#arbeitszeitcheck-app -->
 
 <?php include __DIR__ . '/common/manager-correction-l10n.php'; ?>
 
@@ -250,3 +231,5 @@ $teamMembers = $_['teamMembers'] ?? [];
         "Business trip": <?php echo json_encode($l->t('Business trip'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>
     });
 </script>
+
+<?php include __DIR__ . '/common/page-end.php'; ?>

@@ -47,22 +47,13 @@ $holidaysUiStrings = [
 ];
 ?>
 
-<?php include __DIR__ . '/common/navigation.php'; ?>
+<?php include __DIR__ . '/common/page-start.php'; ?>
 
-<main id="app-content" role="main" aria-label="<?php p($l->t('Holidays administration content')); ?>" class="admin-holidays-page">
 <script type="application/json" nonce="<?php p($_['cspNonce'] ?? ''); ?>" id="arbeitszeitcheck-admin-holidays-ui-strings">
 <?php echo json_encode($holidaysUiStrings, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>
 </script>
-    <div id="app-content-wrapper">
-            <div class="section admin-holidays-section">
-                <header class="section-header admin-holidays-section__header">
-                    <h1><?php p($l->t('Holidays and calendars')); ?></h1>
-                    <p class="section-intro">
-                        <?php p($l->t('Manage statutory and additional holidays per federal state. These calendars are used for vacation, working-time calculations, and compliance checks.')); ?>
-                    </p>
-                </header>
-
-                <div class="section-content admin-holidays-section__content">
+<div class="section admin-holidays-section">
+<div class="section-content admin-holidays-section__content">
                     <section class="admin-holidays-card" aria-labelledby="holiday-default-state-heading">
                         <header class="admin-holidays-card__header">
                             <h3 id="holiday-default-state-heading" class="admin-holidays-card__title">
@@ -210,8 +201,5 @@ $holidaysUiStrings = [
                     </div>
                     </section>
             </div>
-        </div>
-    </div>
-</main>
-</div><!-- /#arbeitszeitcheck-app -->
 
+<?php include __DIR__ . '/common/page-end.php'; ?>

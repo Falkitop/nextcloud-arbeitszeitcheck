@@ -1,0 +1,48 @@
+/*
+ * ArbeitszeitCheck design tokens (--azc-*).
+ * Colors derive from Nextcloud theme variables; no raw hex in feature CSS.
+ */
+:root {
+	--azc-space-1: 4px;
+	--azc-space-2: 8px;
+	--azc-space-3: 12px;
+	--azc-space-4: 16px;
+	--azc-space-5: 24px;
+	--azc-space-6: 32px;
+	--azc-space-7: 48px;
+	--azc-space-8: 64px;
+
+	--azc-radius-sm: 6px;
+	--azc-radius-md: 12px;
+	--azc-radius-lg: 16px;
+
+	--azc-fs-xs: 0.75rem;
+	--azc-fs-sm: 0.875rem;
+	--azc-fs-md: 1rem;
+	--azc-fs-lg: 1.125rem;
+	--azc-fs-xl: 1.5rem;
+	--azc-fs-2xl: 1.875rem;
+
+	--azc-line-tight: 1.2;
+	--azc-line-base: 1.45;
+
+	--azc-breakpoint-sm: 480px;
+	--azc-breakpoint-md: 768px;
+	--azc-breakpoint-lg: 1024px;
+
+	--azc-bg-soft: color-mix(in srgb, var(--color-main-background, #fff) 96%, var(--color-main-text, #1d1d1d) 4%);
+	--azc-bg-card: var(--color-main-background, #fff);
+	--azc-text: var(--color-main-text, #1d1d1d);
+	--azc-muted: var(--color-text-maxcontrast, color-mix(in srgb, var(--color-main-text, #1d1d1d) 60%, transparent));
+	--azc-border: color-mix(in srgb, var(--color-main-text, #1d1d1d) 12%, transparent);
+	--azc-border-strong: color-mix(in srgb, var(--color-main-text, #1d1d1d) 24%, transparent);
+
+	--azc-tint-success: color-mix(in srgb, var(--color-success, #46ba61) 18%, transparent);
+	--azc-tint-warning: color-mix(in srgb, var(--color-warning, #c98600) 18%, transparent);
+	--azc-tint-danger: color-mix(in srgb, var(--color-error, #cc4646) 18%, transparent);
+	--azc-tint-info: color-mix(in srgb, var(--color-primary-element, #0082c9) 14%, transparent);
+
+	--azc-tab-num: tabular-nums;
+	--azc-shadow-sm: 0 1px 2px color-mix(in srgb, var(--color-main-text, #1d1d1d) 8%, transparent);
+	--azc-shadow-md: 0 8px 24px color-mix(in srgb, var(--color-main-text, #1d1d1d) 12%, transparent);
+}

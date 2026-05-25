@@ -462,6 +462,22 @@
   // to tab back from the very top).
   let dialogReturnFocus = null;
 
+  // Nextcloud core sets `dialog { display: block }`; mount on <body> and
+  // force a closed state so a stale [open] or in-flow placement cannot leak
+  // the drawer on first paint.
+  if (dialog && dialog.parentElement !== document.body) {
+    document.body.appendChild(dialog);
+  }
+
+  function finishDialogClosed() {
+    if (dialog) dialog.removeAttribute('open');
+    dialogContext = null;
+    dialogSaveInFlight = false;
+    setSaveButtonBusy(false);
+    resetImpactPreview();
+    restoreReturnFocus();
+  }
+
   function openDialog(context) {
     dialogReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     dialogContext = context;
@@ -495,14 +511,16 @@
   }
 
   function closeDialog() {
-    if (dialog && typeof dialog.close === 'function') {
-      try { dialog.close(); } catch (e) { /* noop */ }
+    if (!dialog) return;
+    if (typeof dialog.close === 'function') {
+      try {
+        if (dialog.open) {
+          dialog.close();
+          return;
+        }
+      } catch (e) { /* noop */ }
     }
-    if (dialog) dialog.removeAttribute('open');
-    dialogContext = null;
-    dialogSaveInFlight = false;
-    setSaveButtonBusy(false);
-    restoreReturnFocus();
+    finishDialogClosed();
   }
 
   function restoreReturnFocus() {
@@ -521,16 +539,13 @@
     }
   }
 
-  // Native <dialog>'s ESC closes via "cancel" — wire focus return there too.
   if (dialog) {
-    dialog.addEventListener('cancel', () => {
-      // The browser will close the dialog automatically; we only need to
-      // restore focus and clear our state.
-      dialogContext = null;
-      dialogSaveInFlight = false;
-      setSaveButtonBusy(false);
-      restoreReturnFocus();
-    });
+    dialog.addEventListener('close', finishDialogClosed);
+    if (dialog.open) {
+      try { dialog.close(); } catch (e) { /* noop */ }
+    }
+    dialog.removeAttribute('open');
+    if (dialogTitle) dialogTitle.textContent = '';
   }
 
   const dialogCancelBtn = document.getElementById('layer-dialog-cancel');
@@ -1307,40 +1322,14 @@
    * OC.dialogs uses core copy/styling and is not guaranteed to match the user locale.
    */
   async function confirmDelete(message, onConfirm) {
-    if (typeof Components.showConfirmDialog === 'function') {
-      try {
-        const confirmed = await Components.showConfirmDialog({
-          title: t('Confirm deletion', 'Confirm deletion'),
-          message,
-          variant: 'danger',
-          confirmLabel: t('Delete', 'Delete'),
-          cancelLabel: t('Cancel', 'Cancel'),
-        });
-        if (confirmed) {
-          onConfirm();
-        }
-      } catch (e) {
-        /* noop */
-      }
-      return;
-    }
-    if (typeof OC !== 'undefined' && OC.dialogs && typeof OC.dialogs.confirmDestructive === 'function') {
-      let result;
-      try {
-        result = OC.dialogs.confirmDestructive(message, t('Confirm deletion', 'Confirm deletion'), {
-          type: OC.dialogs.YES_NO_BUTTONS,
-          confirm: t('Delete', 'Delete'),
-          cancel: t('Cancel', 'Cancel'),
-        }, (confirmed) => { if (confirmed) onConfirm(); });
-      } catch (e) {
-        result = undefined;
-      }
-      if (result && typeof result.then === 'function') {
-        result.then((confirmed) => { if (confirmed) onConfirm(); });
-      }
-      return;
-    }
-    if (window.confirm(message)) {
+    const confirmed = await Utils.confirmDestructiveAction({
+      title: t('Confirm deletion', 'Confirm deletion'),
+      message,
+      confirmLabel: t('Delete', 'Delete'),
+      cancelLabel: t('Cancel', 'Cancel'),
+      variant: 'destructive',
+    });
+    if (confirmed) {
       onConfirm();
     }
   }

@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use OCA\ArbeitszeitCheck\Service\IconCatalog;
+
 /**
  * Dashboard template for arbeitszeitcheck app
  *
@@ -14,27 +16,12 @@ use OCP\Util;
 /** @var array $_ */
 /** @var \OCP\IL10N $l */
 
-// Add common + page-specific styles and scripts
-Util::addTranslations('arbeitszeitcheck');
-Util::addStyle('arbeitszeitcheck', 'common/colors');
-Util::addStyle('arbeitszeitcheck', 'common/typography');
-Util::addStyle('arbeitszeitcheck', 'common/base');
-Util::addStyle('arbeitszeitcheck', 'common/components');
-Util::addStyle('arbeitszeitcheck', 'common/layout');
-Util::addStyle('arbeitszeitcheck', 'common/app-layout');
-Util::addStyle('arbeitszeitcheck', 'common/utilities');
-Util::addStyle('arbeitszeitcheck', 'common/responsive');
-Util::addStyle('arbeitszeitcheck', 'common/accessibility');
-Util::addStyle('arbeitszeitcheck', 'navigation');
-Util::addStyle('arbeitszeitcheck', 'dashboard');
-Util::addStyle('arbeitszeitcheck', 'dashboard-overtime-bank');
-Util::addStyle('arbeitszeitcheck', 'dashboard-overtime');
-Util::addScript('arbeitszeitcheck', 'common/utils');
-Util::addScript('arbeitszeitcheck', 'common/time');
-Util::addScript('arbeitszeitcheck', 'arbeitszeitcheck-main');
+// Add page-specific styles handled by PageController::registerFrontEndAssets
 
 $status = $_['status'] ?? [];
 $overtime = $_['overtime'] ?? [];
+$weekOvertime = is_array($_['weekOvertime'] ?? null) ? $_['weekOvertime'] : [];
+$overtimeBank = is_array($_['overtimeBank'] ?? null) ? $_['overtimeBank'] : ['enabled' => false];
 $overtimeTrafficLight = is_array($_['overtimeTrafficLight'] ?? null) ? $_['overtimeTrafficLight'] : ['enabled' => false, 'state' => 'green'];
 $maxDailyHours = (float)\OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitcheck', 'max_daily_hours', '10');
 $recentEntries = $_['recentEntries'] ?? [];
@@ -88,36 +75,28 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
         $breakStartTime = null;
     }
 }
+
+$arbeitszeitCheckFormatHours = static function (float $hours): string {
+    return number_format($hours, 2, '.', '');
+};
 ?>
 
-<?php include __DIR__ . '/common/navigation.php'; ?>
+<?php include __DIR__ . '/common/page-start.php'; ?>
 
-<main id="app-content" role="main" aria-label="<?php p($l->t('Dashboard content')); ?>">
-    <div id="app-content-wrapper">
-        <!-- Breadcrumb Navigation -->
-        <div class="breadcrumb-container">
-            <nav class="breadcrumb" aria-label="<?php p($l->t('Breadcrumb')); ?>">
-                <ol>
-                    <li aria-current="page"><?php p($l->t('Dashboard')); ?></li>
-                </ol>
-            </nav>
-        </div>
-
-        <!-- Page Header -->
-        <div class="section page-header-section">
-            <div class="header-content">
-                <div class="header-text">
-                    <h1><?php p($l->t('Dashboard')); ?></h1>
-                    <p><?php p($l->t('See your current work status, today\'s hours, and recent time entries')); ?></p>
-                </div>
-            </div>
-        </div>
+        <div class="azc-dashboard-alerts">
         <?php if ($dashboardError !== ''): ?>
-            <div class="section dashboard-error-section">
-                <div class="alert alert--error" role="alert" aria-live="assertive">
-                    <strong><?php p($l->t('Some dashboard data could not be loaded.')); ?></strong>
-                    <p><?php p($dashboardError); ?></p>
-                </div>
+            <div class="azc-callout azc-callout--danger" role="alert" aria-live="assertive">
+                <p class="azc-callout__title"><?php p($l->t('Some dashboard data could not be loaded.')); ?></p>
+                <p class="azc-callout__text"><?php p($dashboardError); ?></p>
+            </div>
+        <?php endif; ?>
+
+        <?php if (!empty($_['workingTimeModelMissing'])): ?>
+            <div class="azc-callout azc-callout--warning" role="status" aria-labelledby="dashboard-wtm-missing-title">
+                <p id="dashboard-wtm-missing-title" class="azc-callout__title"><?php p($l->t('Working time model missing')); ?></p>
+                <p class="azc-callout__text">
+                    <?php p($l->t('No working time model is assigned to your account. Ask your administrator to assign one in employee settings. Until then, break rules and compliance checks may use default values only.')); ?>
+                </p>
             </div>
         <?php endif; ?>
 
@@ -126,102 +105,84 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
         if ($pendingCorrectionCount > 0):
             $timeEntriesUrl = $urlGenerator->linkToRoute('arbeitszeitcheck.page.timeEntries');
         ?>
-            <div class="section inline-notice-section pending-correction-banner" role="region" aria-labelledby="dashboard-pending-correction-title">
-                <div class="inline-notice inline-notice--warning" role="status">
-                    <span class="inline-notice__icon"><?php include __DIR__ . '/common/inline-notice-pending-correction-icon.php'; ?></span>
-                    <div class="inline-notice__content">
-                        <p id="dashboard-pending-correction-title" class="inline-notice__title">
-                            <?php p($l->n(
-                                '%n of your time entries is waiting for manager approval.',
-                                '%n of your time entries are waiting for manager approval.',
-                                $pendingCorrectionCount
-                            )); ?>
-                        </p>
-                        <p class="inline-notice__text">
-                            <?php p($l->t('Open your time entries to see proposed times or withdraw the request.')); ?>
-                        </p>
-                    </div>
-                    <div class="inline-notice__actions">
-                        <a href="<?php p($timeEntriesUrl); ?>" class="btn btn--secondary btn--sm"><?php p($l->t('View time entries')); ?></a>
-                    </div>
+            <div class="azc-callout azc-callout--warning" role="status" aria-labelledby="dashboard-pending-correction-title">
+                <p id="dashboard-pending-correction-title" class="azc-callout__title">
+                    <?php p($l->n(
+                        '%n of your time entries is waiting for manager approval.',
+                        '%n of your time entries are waiting for manager approval.',
+                        $pendingCorrectionCount
+                    )); ?>
+                </p>
+                <p class="azc-callout__text">
+                    <?php p($l->t('Open your time entries to see proposed times or withdraw the request.')); ?>
+                </p>
+                <div class="azc-callout__actions">
+                    <a href="<?php p($timeEntriesUrl); ?>" class="azc-btn azc-btn--secondary azc-btn--sm"><?php p($l->t('View time entries')); ?></a>
                 </div>
             </div>
         <?php endif; ?>
+        </div>
 
-        <!-- Welcome Message for First-Time Users -->
         <?php if (($_['isFirstTimeUser'] ?? false) === true): ?>
-            <div class="section">
-                <div class="card alert alert--info" role="region" aria-labelledby="welcome-title">
-                    <div class="card-header">
-                        <h3 id="welcome-title" class="card-title">
-                            <span class="alert-icon" aria-hidden="true">👋</span>
-                            <?php p($l->t('Welcome to Time Tracking!')); ?>
-                        </h3>
+            <article class="azc-card azc-dashboard-welcome" role="region" aria-labelledby="welcome-title">
+                <header class="azc-card__header">
+                    <div class="azc-card__header-text">
+                        <h2 id="welcome-title" class="azc-card__title"><?php p($l->t('Welcome to Time Tracking!')); ?></h2>
+                        <p class="azc-card__lead"><?php p($l->t('This app helps you record your work time and follow German labor law. Here\'s how to get started:')); ?></p>
                     </div>
-                    <div class="card-body">
-                        <p class="alert-message">
-                            <?php p($l->t('This app helps you record your work time and follow German labor law. Here\'s how to get started:')); ?>
-                        </p>
-                        <ol class="welcome-steps">
-                            <li>
-                                <?php p($l->t('Click the "Clock In" button below when you start work')); ?>
-                            </li>
-                            <li>
-                                <?php p($l->t('Click "Clock Out" when you finish work')); ?>
-                            </li>
-                            <li>
-                                <?php p($l->t('The system will automatically track your hours and remind you to take breaks')); ?>
-                            </li>
-                            <li>
-                                <?php p($l->t('You can also add time entries manually or request vacation days in the "Absences" section')); ?>
-                            </li>
-                        </ol>
-                        <div class="card-actions">
-                            <a href="<?php print_unescaped($urlGenerator->linkToRoute('arbeitszeitcheck.page.timeEntries')); ?>"
-                                class="btn btn--primary"
-                                aria-label="<?php p($l->t('Go to time entries to see how to add entries manually')); ?>"
-                                title="<?php p($l->t('Click to learn more about adding time entries manually')); ?>">
-                                <?php p($l->t('Learn More About Time Entries')); ?>
-                            </a>
-                            <button type="button"
-                                class="btn btn--secondary"
-                                id="dismiss-welcome"
-                                aria-label="<?php p($l->t('Dismiss this welcome message')); ?>"
-                                title="<?php p($l->t('Click to hide this welcome message')); ?>">
-                                <?php p($l->t('Got it, thanks!')); ?>
-                            </button>
-                        </div>
+                </header>
+                <div class="azc-card__body">
+                    <ol class="azc-dashboard-welcome__steps">
+                        <li><?php p($l->t('Click the "Clock In" button below when you start work')); ?></li>
+                        <li><?php p($l->t('Click "Clock Out" when you finish work')); ?></li>
+                        <li><?php p($l->t('The system will automatically track your hours and remind you to take breaks')); ?></li>
+                        <li><?php p($l->t('You can also add time entries manually or request vacation days in the "Absences" section')); ?></li>
+                    </ol>
+                    <div class="azc-dashboard-welcome__actions">
+                        <a href="<?php print_unescaped($urlGenerator->linkToRoute('arbeitszeitcheck.page.timeEntries')); ?>"
+                            class="azc-btn azc-btn--primary"
+                            aria-label="<?php p($l->t('Go to time entries to see how to add entries manually')); ?>">
+                            <?php p($l->t('Learn More About Time Entries')); ?>
+                        </a>
+                        <button type="button" class="azc-btn azc-btn--secondary" id="dismiss-welcome"
+                            aria-label="<?php p($l->t('Dismiss this welcome message')); ?>">
+                            <?php p($l->t('Got it, thanks!')); ?>
+                        </button>
                     </div>
                 </div>
-            </div>
+            </article>
         <?php endif; ?>
 
-        <!-- Dashboard Grid -->
-        <section class="section dashboard-key-metrics" aria-labelledby="dashboard-overview-title" aria-label="<?php p($l->t('Work status, hours, and vacation at a glance')); ?>">
-            <h2 id="dashboard-overview-title" class="sr-only"><?php p($l->t('At a glance')); ?></h2>
-            <div class="arbeitszeitcheck-dashboard__grid">
-                <!-- Status Card -->
+        <section class="azc-dashboard-overview dashboard-key-metrics" aria-labelledby="dashboard-overview-title">
+            <header class="azc-dashboard-overview__intro">
+                <h2 id="dashboard-overview-title" class="azc-dashboard-overview__title"><?php p($l->t('At a glance')); ?></h2>
+                <p class="azc-dashboard-overview__lead"><?php p($l->t('Clock in and out here, then check your hours, overtime, and vacation below.')); ?></p>
+            </header>
+
+            <div class="azc-dashboard-overview__grid">
+                <!-- Status / punch clock -->
                 <?php
 			$statusKey = $status['status'] ?? 'clocked_out';
 			$statusKeySafe = in_array($statusKey, ['active', 'break', 'clocked_out', 'paused'], true) ? $statusKey : 'clocked_out';
-			$statusBadgeVariant = match ($statusKeySafe) {
-				'active' => 'success',
-				'break' => 'warning',
-				'paused' => 'warning',
-				default => 'secondary',
-			};
 			$statusLabel = match ($statusKeySafe) {
 				'active' => $l->t('Clocked In'),
 				'break' => $l->t('On Break'),
 				'paused' => $l->t('Paused'),
 				default => $l->t('Clocked Out'),
 			};
-			$statusIcon = match ($statusKeySafe) {
-				'active' => '⏱',
-				'break' => '☕',
-				'paused' => '⏸',
-				default => '⏸',
+			$statusIconName = match ($statusKeySafe) {
+				'active' => 'clock',
+				'break' => 'coffee',
+				'paused' => 'pause',
+				default => 'circle',
 			};
+			$statusSubtitle = match ($statusKeySafe) {
+				'active' => $l->t('Your working time is being recorded.'),
+				'break' => $l->t('You are on a break. End the break or clock out when you are done.'),
+				'paused' => $l->t('Your session is paused. Resume work or complete the session.'),
+				default => $l->t('You are not clocked in. Press the button below when you start work.'),
+			};
+			$showNextHint = in_array($statusKeySafe, ['active', 'break'], true);
                 $startedAt = null;
                 $isOvernightSession = false;
                 if (!empty($status['current_entry']['startTime'])) {
@@ -238,110 +199,85 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                     }
                 }
                 ?>
-                <div class="card dashboard-status-card dashboard-status-card--<?php p($statusKeySafe); ?>">
-                    <div class="dashboard-status-card__header">
-                        <div class="dashboard-status-card__title">
-                            <span class="dashboard-status-card__icon" aria-hidden="true"><?php p($statusIcon); ?></span>
-                            <h3 id="dashboard-status-heading" class="card-title"><?php p($l->t('Current Status')); ?></h3>
-                            <div class="timezone-badge"
-                                 aria-label="<?php p($l->t('Times are shown in your timezone (%s).', [$arbeitszeitCheckUserDisplayTz->getName()])); ?>"
-                                 title="<?php p($l->t('Times are shown in your personal timezone (%1$s). The organisation stores them in %2$s — exports follow the export settings.', [$arbeitszeitCheckUserDisplayTz->getName(), $appTimezone])); ?>">
-                                <span class="timezone-badge__label"><?php p($arbeitszeitCheckUserDisplayTz->getName()); ?></span>
+                <article class="azc-card azc-dashboard-punch azc-dashboard-punch--<?php p($statusKeySafe); ?> azc-dashboard-status dashboard-status-card dashboard-status-card--<?php p($statusKeySafe); ?>"
+                    role="region"
+                    aria-labelledby="dashboard-status-heading"
+                    aria-describedby="dashboard-status-subtitle">
+                    <div class="azc-dashboard-punch__inner">
+                        <div class="azc-dashboard-punch__hero">
+                            <div class="azc-dashboard-punch__signal" aria-hidden="true">
+                                <span class="azc-dashboard-punch__signal-icon"><?php print_unescaped(IconCatalog::render($statusIconName, 'azc-dashboard-punch__icon-svg')); ?></span>
+                            </div>
+                            <div class="azc-dashboard-punch__headline">
+                                <h3 id="dashboard-status-heading" class="azc-dashboard-punch__title"><?php p($statusLabel); ?></h3>
+                                <p id="dashboard-status-subtitle" class="azc-dashboard-punch__subtitle"><?php p($statusSubtitle); ?></p>
                             </div>
                         </div>
-                        <div class="badge badge--<?php p($statusBadgeVariant); ?>">
-                            <?php p($statusLabel); ?>
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <dl class="dashboard-status-card__quickstats" aria-label="<?php p($l->t('Status quick overview')); ?>">
-                            <div class="dashboard-status-card__quickstat">
-                                <dt><?php p($l->t('Worked Today:')); ?></dt>
-                                <dd><?php p(round((float)($status['working_today_hours'] ?? 0), 2)); ?> <?php p($l->t('hours')); ?></dd>
-                            </div>
-                            <div class="dashboard-status-card__quickstat">
-                                <dt><?php p($l->t('Overtime Balance:')); ?></dt>
-                                <dd><?php p(round((float)($overtime['cumulative_balance'] ?? 0), 2)); ?> <?php p($l->t('hours')); ?></dd>
-                            </div>
-                            <div class="dashboard-status-card__quickstat">
-                                <dt><?php p($l->t('This Week:')); ?></dt>
-                                <dd><?php p(round((float)($overtime['total_hours_worked'] ?? 0), 2)); ?> <?php p($l->t('hours')); ?></dd>
-                            </div>
-                            <div class="dashboard-status-card__quickstat">
-                                <dt><?php p($l->t('Next action')); ?></dt>
-                                <dd>
-                                    <?php p(match ($statusKeySafe) {
-                                        'active' => $l->t('Pause or Clock Out'),
-                                        'break' => $l->t('End Break or Clock Out'),
-                                        'paused' => $l->t('Resume work'),
-                                        default => $l->t('Clock In'),
-                                    }); ?>
-                                </dd>
-                            </div>
-                        </dl>
 
                         <?php if ($statusKeySafe !== 'clocked_out'): ?>
+                        <div class="azc-dashboard-punch__timers">
                             <?php if ($statusKeySafe === 'break'): ?>
-                                <!-- Break Timer (shown when on break) -->
-                                <div class="break-timer dashboard-status-card__timer" data-break-start-time="<?php p($status['current_entry']['breakStartTime'] ?? ''); ?>" role="status" aria-live="polite">
-                                    <span class="timer-label"><?php p($l->t('Break Time:')); ?></span>
+                                <div class="break-timer azc-dashboard-punch__timer dashboard-status-card__timer" data-break-start-time="<?php p($status['current_entry']['breakStartTime'] ?? ''); ?>" role="status" aria-live="polite">
+                                    <span class="timer-label"><?php p($l->t('Break Time')); ?></span>
                                     <span class="timer-value" id="break-timer-value"><?php p($breakDurationFormatted); ?></span>
                                     <?php if ($breakStartTime !== null): ?>
-                                        <div class="dashboard-status-card__meta">
+                                        <p class="azc-dashboard-punch__meta dashboard-status-card__meta">
                                             <?php
                                             try {
                                                 $breakStartTime->setTimezone($arbeitszeitCheckUserDisplayTz);
                                                 p($l->t('Break started at')); ?> <?php p($breakStartTime->format('H:i'));
-                                                                                } catch (\Throwable $e) {
-                                                                                    p($l->t('Break started at')); ?> <?php p($breakStartTime->format('H:i'));
-                                                                                }
-                                                                                    ?>
-                                        </div>
+                                            } catch (\Throwable $e) {
+                                                p($l->t('Break started at')); ?> <?php p($breakStartTime->format('H:i'));
+                                            }
+                                            ?>
+                                        </p>
                                     <?php endif; ?>
                                 </div>
-                                <!-- Frozen working-time counter below the break timer -->
-                                <div class="session-timer dashboard-status-card__timer dashboard-status-card__timer--paused" data-start-time="<?php p($status['current_entry']['startTime'] ?? ''); ?>" style="opacity: 0.6; margin-top: 1rem;" role="status" aria-live="polite">
-                                    <span class="timer-label"><?php p($l->t('Working Time:')); ?></span>
+                                <div class="session-timer azc-dashboard-punch__timer azc-dashboard-punch__timer--secondary dashboard-status-card__timer dashboard-status-card__timer--paused dashboard-status-card__timer--secondary" data-start-time="<?php p($status['current_entry']['startTime'] ?? ''); ?>" role="status" aria-live="polite">
+                                    <span class="timer-label"><?php p($l->t('Working Time')); ?></span>
                                     <span class="timer-value" id="session-timer-value"><?php p($durationFormatted); ?></span>
                                 </div>
                             <?php elseif ($statusKeySafe === 'paused'): ?>
-                                <!-- Paused: frozen working-time display (no live counter) -->
-                                <div class="session-timer dashboard-status-card__timer dashboard-status-card__timer--paused" data-start-time="<?php p($status['current_entry']['startTime'] ?? ''); ?>" role="status" aria-live="polite">
-                                    <span class="timer-label"><?php p($l->t('Working Time:')); ?></span>
-                                    <span class="timer-value" id="session-timer-value"><?php p($durationFormatted); ?></span>
-                                </div>
-                                <?php if ($startedAt !== null): ?>
-                                    <div class="dashboard-status-card__meta">
-                                        <?php p($l->t('Started at')); ?> <?php p($startedAt); ?>
-                                    </div>
-                                <?php endif; ?>
-                            <?php else: ?>
-                                <!-- Working Timer (shown when active) -->
-                                <div class="session-timer dashboard-status-card__timer" data-start-time="<?php p($status['current_entry']['startTime'] ?? ''); ?>" role="status" aria-live="polite">
-                                    <span class="timer-label"><?php p($l->t('Current Session:')); ?></span>
+                                <div class="session-timer azc-dashboard-punch__timer dashboard-status-card__timer dashboard-status-card__timer--paused" data-start-time="<?php p($status['current_entry']['startTime'] ?? ''); ?>" role="status" aria-live="polite">
+                                    <span class="timer-label"><?php p($l->t('Working Time')); ?></span>
                                     <span class="timer-value" id="session-timer-value"><?php p($durationFormatted); ?></span>
                                     <?php if ($startedAt !== null): ?>
-                                        <div class="dashboard-status-card__meta">
-                                            <?php p($l->t('Started at')); ?> <?php p($startedAt); ?>
-                                        </div>
+                                        <p class="azc-dashboard-punch__meta dashboard-status-card__meta"><?php p($l->t('Started at')); ?> <?php p($startedAt); ?></p>
+                                    <?php endif; ?>
+                                </div>
+                            <?php else: ?>
+                                <div class="session-timer azc-dashboard-punch__timer dashboard-status-card__timer" data-start-time="<?php p($status['current_entry']['startTime'] ?? ''); ?>" role="status" aria-live="polite">
+                                    <span class="timer-label"><?php p($l->t('Current session')); ?></span>
+                                    <span class="timer-value" id="session-timer-value"><?php p($durationFormatted); ?></span>
+                                    <?php if ($startedAt !== null): ?>
+                                        <p class="azc-dashboard-punch__meta dashboard-status-card__meta"><?php p($l->t('Started at')); ?> <?php p($startedAt); ?></p>
                                     <?php endif; ?>
                                 </div>
                             <?php endif; ?>
+                        </div>
                         <?php endif; ?>
 
                         <?php if ($isOvernightSession): ?>
-                            <div class="dashboard-overnight-hint alert alert--info" role="status">
-                                <p class="alert__text">
-                                    <strong><?php p($l->t('Night shift across midnight')); ?></strong>
-                                    <?php p($l->t('Your session continues from yesterday. “Worked today” counts only the hours since midnight on the current calendar day (German labor law, ArbZG §3). The session timer shows your total working time since clock-in.')); ?>
-                                </p>
+                            <div class="azc-callout azc-callout--info azc-dashboard-overnight" role="status">
+                                <p class="azc-callout__title"><?php p($l->t('Night shift across midnight')); ?></p>
+                                <p class="azc-callout__text"><?php p($l->t('Your session continues from yesterday. “Worked today” counts only the hours since midnight on the current calendar day (German labor law, ArbZG §3). The session timer shows your total working time since clock-in.')); ?></p>
                             </div>
                         <?php endif; ?>
 
-                        <div class="card-actions" role="group" aria-label="<?php p($l->t('Time tracking actions')); ?>">
+                        <?php if ($showNextHint): ?>
+                        <p class="azc-dashboard-punch__hint" id="dashboard-next-action-hint">
+                            <?php p(match ($statusKeySafe) {
+                                'active' => $l->t('Take a break when required, or clock out when you finish.'),
+                                'break' => $l->t('End your break to continue working, or clock out for the day.'),
+                                default => '',
+                            }); ?>
+                        </p>
+                        <?php endif; ?>
+
+                        <div class="azc-dashboard-punch__actions azc-dashboard-status__actions<?php echo $statusKeySafe === 'clocked_out' ? ' azc-dashboard-punch__actions--solo' : ''; ?>" role="group" aria-label="<?php p($l->t('Time tracking actions')); ?>">
                             <?php if ($statusKeySafe === 'clocked_out' || $statusKeySafe === 'paused'): ?>
                                 <button id="btn-clock-in"
-                                    class="btn btn--primary"
+                                    class="azc-btn azc-btn--primary azc-dashboard-punch__cta"
                                     type="button"
                                     aria-label="<?php p($statusKeySafe === 'paused' ? $l->t('Resume working – continues your paused time entry') : $l->t('Clock in to start tracking your working time')); ?>"
                                     title="<?php p($statusKeySafe === 'paused' ? $l->t('Resume working – continues your paused time entry') : $l->t('Click to clock in and start tracking your working time')); ?>">
@@ -351,38 +287,38 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                                 $pausedEntryId = $statusKeySafe === 'paused' ? ($status['current_entry']['id'] ?? null) : null;
                                 if ($pausedEntryId !== null):
                                 ?>
-                                    <button class="btn btn--secondary btn-complete-entry"
+                                    <button class="azc-btn azc-btn--secondary btn-complete-entry"
                                         type="button"
                                         data-entry-id="<?php p((string)$pausedEntryId); ?>"
                                         aria-label="<?php p($l->t('Complete the paused session and record the time you stopped working')); ?>"
                                         title="<?php p($l->t('Already done for today? Complete this session – the end time is the moment it was paused, required breaks are added automatically.')); ?>">
-                                        <span aria-hidden="true">✓</span>
+                                        <span class="btn__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('check', 'btn__icon-svg')); ?></span>
                                         <?php p($l->t('Complete session')); ?>
                                     </button>
                                 <?php endif; ?>
-                            <?php elseif (($status['status'] ?? 'clocked_out') === 'active'): ?>
+                            <?php elseif ($statusKeySafe === 'active'): ?>
                                 <button id="btn-start-break"
-                                    class="btn btn--secondary"
+                                    class="azc-btn azc-btn--secondary"
                                     type="button"
                                     aria-label="<?php p($l->t('Start a break from work')); ?>"
                                     title="<?php p($l->t('Click to start a break. You must take breaks according to German labor law.')); ?>">
                                     <?php p($l->t('Start Break')); ?>
                                 </button>
-                                <button class="btn btn--danger btn-clock-out"
+                                <button class="azc-btn azc-btn--danger btn-clock-out"
                                     type="button"
                                     aria-label="<?php p($l->t('Clock out to end your working day')); ?>"
                                     title="<?php p($l->t('Click to clock out and end your working time for today')); ?>">
                                     <?php p($l->t('Clock Out')); ?>
                                 </button>
-                            <?php elseif (($status['status'] ?? 'clocked_out') === 'break'): ?>
+                            <?php elseif ($statusKeySafe === 'break'): ?>
                                 <button id="btn-end-break"
-                                    class="btn btn--primary"
+                                    class="azc-btn azc-btn--primary"
                                     type="button"
                                     aria-label="<?php p($l->t('End your break and return to work')); ?>"
                                     title="<?php p($l->t('Click to end your break and continue working')); ?>">
                                     <?php p($l->t('End Break')); ?>
                                 </button>
-                                <button class="btn btn--danger btn-clock-out"
+                                <button class="azc-btn azc-btn--danger btn-clock-out"
                                     type="button"
                                     aria-label="<?php p($l->t('Clock out to end your working day')); ?>"
                                     title="<?php p($l->t('Click to clock out and end your working time for today')); ?>">
@@ -390,14 +326,69 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                                 </button>
                             <?php endif; ?>
                         </div>
+
+                        <p class="azc-dashboard-punch__tz"
+                           aria-label="<?php p($l->t('Times are shown in your timezone (%s).', [$arbeitszeitCheckUserDisplayTz->getName()])); ?>">
+                            <?php p($l->t('All times in %s', [$arbeitszeitCheckUserDisplayTz->getName()])); ?>
+                        </p>
                     </div>
-                </div>
+                </article>
 
                 <?php
-                    $bankEnabled = ($overtimeBank['enabled'] ?? false) === true;
-                    $displayBalance = $bankEnabled
-                        ? (float)($overtimeBank['effective_balance'] ?? 0)
-                        : (float)($overtime['cumulative_balance'] ?? 0);
+                $metricWorkedToday = round((float)($status['working_today_hours'] ?? 0), 2);
+                $metricWeekHours = round((float)($weekOvertime['total_hours_worked'] ?? 0), 2);
+                $metricOvertimeBalance = round((float)($_['overtimeYtdBalance'] ?? $overtimeTrafficLight['balance'] ?? 0), 2);
+                $weekPeriodLabel = '';
+                if (!empty($weekOvertime['period_start']) && !empty($weekOvertime['period_end'])) {
+                    $weekPeriodLabel = (string)$weekOvertime['period_start'] . ' – ' . (string)$weekOvertime['period_end'];
+                }
+                $metricDailyNorm = isset($weekOvertime['implied_daily_hours']) || isset($overtime['implied_daily_hours'])
+                    ? round((float)($weekOvertime['implied_daily_hours'] ?? $overtime['implied_daily_hours'] ?? 0), 2)
+                    : null;
+                $bankEnabled = ($overtimeBank['enabled'] ?? false) === true;
+                $displayBalancePreview = $bankEnabled
+                    ? (float)($overtimeBank['effective_balance'] ?? 0)
+                    : (float)($_['overtimeYtdBalance'] ?? $metricOvertimeBalance);
+                $trafficEnabledPreview = ($overtimeTrafficLight['enabled'] ?? false) === true;
+                $showOvertimeSection = $bankEnabled || $trafficEnabledPreview || abs($displayBalancePreview) >= 0.01;
+                ?>
+                <article class="azc-card azc-dashboard-metrics-panel" aria-labelledby="dashboard-metrics-heading">
+                    <header class="azc-card__header">
+                        <div class="azc-card__header-text">
+                            <h3 id="dashboard-metrics-heading" class="azc-card__title"><?php p($l->t('Hours at a glance')); ?></h3>
+                        </div>
+                    </header>
+                    <div class="azc-card__body">
+                    <div class="azc-dashboard-metrics" role="list" aria-label="<?php p($l->t('Hours at a glance')); ?>">
+                    <div class="azc-dashboard-metric" role="listitem">
+                        <span class="azc-dashboard-metric__label"><?php p($l->t('Worked today')); ?></span>
+                        <span class="azc-dashboard-metric__value"><?php p($arbeitszeitCheckFormatHours($metricWorkedToday)); ?> <span class="azc-dashboard-metric__unit"><?php p($l->t('hours')); ?></span></span>
+                    </div>
+                    <div class="azc-dashboard-metric" role="listitem">
+                        <span class="azc-dashboard-metric__label" id="dashboard-metric-week-label"><?php p($l->t('This week')); ?></span>
+                        <?php if ($weekPeriodLabel !== '') { ?>
+                        <span class="azc-dashboard-metric__period" id="dashboard-metric-week-period"><?php p($weekPeriodLabel); ?></span>
+                        <?php } ?>
+                        <span class="azc-dashboard-metric__value" aria-labelledby="dashboard-metric-week-label<?php echo $weekPeriodLabel !== '' ? ' dashboard-metric-week-period' : ''; ?>"><?php p($arbeitszeitCheckFormatHours($metricWeekHours)); ?> <span class="azc-dashboard-metric__unit"><?php p($l->t('hours')); ?></span></span>
+                    </div>
+                    <?php if (!$showOvertimeSection): ?>
+                    <div class="azc-dashboard-metric" role="listitem">
+                        <span class="azc-dashboard-metric__label"><?php p($l->t('Overtime balance')); ?></span>
+                        <span class="azc-dashboard-metric__value azc-dashboard-metric__value--<?php echo $metricOvertimeBalance >= 0 ? 'positive' : 'negative'; ?>"><?php p($arbeitszeitCheckFormatHours($metricOvertimeBalance)); ?> <span class="azc-dashboard-metric__unit"><?php p($l->t('hours')); ?></span></span>
+                    </div>
+                    <?php endif; ?>
+                    <?php if ($metricDailyNorm !== null && $metricDailyNorm > 0): ?>
+                    <div class="azc-dashboard-metric" role="listitem">
+                        <span class="azc-dashboard-metric__label"><?php p($l->t('Daily target (contract)')); ?></span>
+                        <span class="azc-dashboard-metric__value"><?php p($arbeitszeitCheckFormatHours($metricDailyNorm)); ?> <span class="azc-dashboard-metric__unit"><?php p($l->t('hours')); ?></span></span>
+                    </div>
+                    <?php endif; ?>
+                    </div>
+                    </div>
+                </article>
+
+                <?php
+                    $displayBalance = $displayBalancePreview;
                     $lightState = (string)($overtimeTrafficLight['state'] ?? 'green');
                     $lightBadge = 'success';
                     $lightText = $l->t('Green — balance in target range');
@@ -420,21 +411,25 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                         $semaphoreClass = 'red';
                     }
                     $thresholds = is_array($overtimeTrafficLight['thresholds'] ?? null) ? $overtimeTrafficLight['thresholds'] : [];
-                    $showOvertimeSection = $bankEnabled || (($overtimeTrafficLight['enabled'] ?? false) === true);
+                    $trafficEnabled = $trafficEnabledPreview;
                 ?>
                 <?php if ($showOvertimeSection): ?>
-                <section class="dashboard-overtime-section" aria-labelledby="dashboard-overtime-heading">
-                    <h2 id="dashboard-overtime-heading" class="dashboard-overtime-section__title"><?php p($l->t('Your overtime')); ?></h2>
-                    <div class="card dashboard-overtime-card">
-                        <div class="card-body">
+                <article class="azc-card azc-dashboard-overtime dashboard-overtime-card" aria-labelledby="dashboard-overtime-heading">
+                    <header class="azc-card__header">
+                        <div class="azc-card__header-text">
+                            <h3 id="dashboard-overtime-heading" class="azc-card__title"><?php p($l->t('Your overtime')); ?></h3>
+                        </div>
+                    </header>
+                    <div class="azc-card__body">
                             <div class="dashboard-overtime-card__balance" role="group" aria-label="<?php p($l->t('Year-to-date overtime balance')); ?>">
                                 <span class="dashboard-overtime-card__balance-label"><?php p($bankEnabled ? $l->t('Balance (after payouts)') : $l->t('Balance (year to date)')); ?></span>
-                                <span class="dashboard-overtime-card__balance-value <?php echo $displayBalance >= 0 ? 'positive' : 'negative'; ?>">
+                                <span class="dashboard-overtime-card__balance-value <?php echo $displayBalance >= 0 ? 'positive' : 'negative'; ?>"
+                                    aria-label="<?php p($l->t('Balance: %s hours', [number_format($displayBalance, 2)])); ?>">
                                     <?php p(number_format($displayBalance, 2)); ?> <?php p($l->t('h')); ?>
                                 </span>
                             </div>
 
-                            <?php if (($overtimeTrafficLight['enabled'] ?? false) === true): ?>
+                            <?php if ($trafficEnabled): ?>
                             <div class="dashboard-overtime-card__traffic" role="status" aria-live="polite" aria-labelledby="dashboard-ot-traffic-label">
                                 <span id="dashboard-ot-traffic-label" class="dashboard-overtime-card__traffic-label"><?php p($l->t('Balance alert')); ?></span>
                                 <div class="ot-semaphore ot-semaphore--<?php p($semaphoreClass); ?>" aria-hidden="true">
@@ -454,6 +449,10 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                                 </p>
                                 <?php endif; ?>
                             </div>
+                            <?php else: ?>
+                            <p class="dashboard-overtime-card__traffic-disabled form-help" role="status">
+                                <?php p($l->t('Overtime balance alerts are disabled by your administrator. Your balance above is still updated.')); ?>
+                            </p>
                             <?php endif; ?>
 
                             <?php if ($bankEnabled): ?>
@@ -479,7 +478,7 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                                 }
                             ?>
                             <div class="dashboard-overtime-card__bank" role="region" aria-labelledby="dashboard-overtime-bank-subheading">
-                                <h3 id="dashboard-overtime-bank-subheading" class="dashboard-overtime-card__bank-title"><?php p($l->t('Overtime bank')); ?></h3>
+                                <h4 id="dashboard-overtime-bank-subheading" class="dashboard-overtime-card__bank-title"><?php p($l->t('Overtime bank')); ?></h4>
                                 <p class="form-help"><?php p($l->t('Save up to %s hours; payroll can pay out anything above the cap at month end.', [number_format($bankMax, 0)])); ?></p>
                                 <div class="dashboard-overtime-bank-card__meter-wrap">
                                     <div
@@ -541,40 +540,18 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                                 <?php endif; ?>
                             </div>
                             <?php endif; ?>
-                        </div>
                     </div>
-                </section>
+                </article>
                 <?php endif; ?>
 
-                <!-- Stats Card -->
-                <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title"><?php p($l->t('Today\'s Stats')); ?></h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="stat-item">
-                            <span class="stat-label"><?php p($l->t('Worked Today:')); ?></span>
-                            <span class="stat-value"><?php p(round($status['working_today_hours'] ?? 0, 2)); ?> <?php p($l->t('hours')); ?></span>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-label"><?php p($l->t('This Week:')); ?></span>
-                            <span class="stat-value"><?php p(round($overtime['total_hours_worked'] ?? 0, 2)); ?> <?php p($l->t('hours')); ?></span>
-                        </div>
-                        <?php if (isset($overtime['implied_daily_hours'])): ?>
-                        <div class="stat-item">
-                            <span class="stat-label"><?php p($l->t('Contract daily norm (weekly hours ÷ 5)')); ?></span>
-                            <span class="stat-value"><?php p(round((float)($overtime['implied_daily_hours'] ?? 0), 2)); ?> <?php p($l->t('hours')); ?></span>
-                        </div>
-                        <?php endif; ?>
-                    </div>
-                </div>
-
                 <!-- Vacation summary -->
-                <div class="card dashboard-vacation-card" role="region" aria-labelledby="dashboard-vacation-heading">
-                    <div class="card-header">
-                        <h3 id="dashboard-vacation-heading" class="card-title"><?php p($l->t('Vacation')); ?> <?php p((string)($dashStats['vacation_year'] ?? date('Y'))); ?></h3>
-                    </div>
-                    <div class="card-body">
+                <article class="azc-card azc-dashboard-vacation dashboard-vacation-card" aria-labelledby="dashboard-vacation-heading">
+                    <header class="azc-card__header">
+                        <div class="azc-card__header-text">
+                            <h3 id="dashboard-vacation-heading" class="azc-card__title"><?php p($l->t('Vacation')); ?> <?php p((string)($dashStats['vacation_year'] ?? date('Y'))); ?></h3>
+                        </div>
+                    </header>
+                    <div class="azc-card__body">
                         <div class="dashboard-vacation-card__row">
                             <span class="dashboard-vacation-card__label"><?php p($l->t('Remaining vacation days')); ?></span>
                             <span class="dashboard-vacation-card__value" aria-describedby="dashboard-vacation-heading"><?php p((string)round((float)($dashStats['vacation_days_remaining'] ?? 0), 1)); ?></span>
@@ -622,25 +599,30 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                         <?php } ?>
                         <div class="dashboard-vacation-card__actions">
                             <a href="<?php print_unescaped($urlGenerator->linkToRoute('arbeitszeitcheck.page.absences')); ?>"
-                               class="btn btn--secondary"><?php p($l->t('Open absences')); ?></a>
+                               class="azc-btn azc-btn--secondary"><?php p($l->t('Open absences')); ?></a>
                         </div>
                     </div>
-                </div>
-            </div>
+                </article>
+            </div><!-- /.azc-dashboard-overview__grid -->
         </section>
 
-        <!-- Recent Entries Section -->
-        <section class="section" aria-labelledby="recent-entries-heading">
-            <div class="section-header">
-                <h3 id="recent-entries-heading"><?php p($l->t('Recent Entries')); ?></h3>
-                <a href="<?php print_unescaped($urlGenerator->linkToRoute('arbeitszeitcheck.page.timeEntries')); ?>"
-                    class="btn btn--secondary">
-                    <?php p($l->t('View All')); ?>
-                </a>
-            </div>
+        <section class="azc-card azc-dashboard-recent" aria-labelledby="recent-entries-heading">
+            <header class="azc-card__header">
+                <div class="azc-card__header-text">
+                    <h2 id="recent-entries-heading" class="azc-card__title"><?php p($l->t('Recent Entries')); ?></h2>
+                    <p class="azc-card__lead"><?php p($l->t('Your last recorded working days. Open the full list to edit or correct entries.')); ?></p>
+                </div>
+                <div class="azc-card__header-actions">
+                    <a href="<?php print_unescaped($urlGenerator->linkToRoute('arbeitszeitcheck.page.timeEntries')); ?>"
+                        class="azc-btn azc-btn--secondary">
+                        <?php p($l->t('View All')); ?>
+                    </a>
+                </div>
+            </header>
 
-            <div class="table-container" role="region" aria-label="<?php p($l->t('Recent time entries')); ?>">
-                <table class="table table--hover" role="table" aria-label="<?php p($l->t('Recent time entries')); ?>">
+            <div class="azc-card__body azc-dashboard-recent__body">
+            <div class="azc-table-wrap azc-dashboard-recent__table-wrap" role="region" aria-label="<?php p($l->t('Recent time entries')); ?>">
+                <table class="table table--hover azc-table--responsive azc-dashboard-recent__table" role="table" aria-label="<?php p($l->t('Recent time entries')); ?>">
                     <caption class="sr-only"><?php p($l->t('Recent time entries with date, start, end, duration, break, status and actions')); ?></caption>
                     <thead>
                         <tr>
@@ -665,9 +647,9 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                                 }
                             ?>
                                 <tr>
-                                    <td><?php p($startTime->format('d.m.Y')); ?></td>
-                                    <td><?php p($startTime->format('H:i')); ?></td>
-                                    <td><?php
+                                    <td data-label="<?php p($l->t('Date')); ?>"><?php p($startTime->format('d.m.Y')); ?></td>
+                                    <td data-label="<?php p($l->t('Start')); ?>"><?php p($startTime->format('H:i')); ?></td>
+                                    <td data-label="<?php p($l->t('End')); ?>"><?php
                                         if ($endTime) {
                                             $startDate = $startTime->format('Y-m-d');
                                             $endDate = $endTime->format('Y-m-d');
@@ -681,7 +663,7 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                                             p('-');
                                         }
                                         ?></td>
-                                    <td>
+                                    <td data-label="<?php p($l->t('Duration')); ?>">
                                         <?php
                                         // For active/paused entries, calculate duration manually
                                         if (!$entry->getEndTime() && $entry->getStartTime()) {
@@ -719,7 +701,7 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                                             p(round($workingHours, 2)); ?> h
                                         <?php } ?>
                                     </td>
-                                    <td>
+                                    <td data-label="<?php p($l->t('Break')); ?>">
                                         <?php
                                         // Display break times (start and end) if available
                                         $breakTimes = [];
@@ -775,7 +757,7 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                                         }
                                         ?>
                                     </td>
-                                    <td>
+                                    <td data-label="<?php p($l->t('Status')); ?>">
                                         <span class="badge badge--<?php
                                                                     p(match ($entry->getStatus()) {
                                                                         'completed' => 'success',
@@ -799,7 +781,7 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                                             ?>
                                         </span>
                                     </td>
-                                    <td>
+                                    <td data-label="<?php p($l->t('Actions')); ?>">
                                         <?php
                                         $canEdit = $entry->canEdit(\OCA\ArbeitszeitCheck\Constants::EDIT_WINDOW_DAYS);
                                         if ($canEdit):
@@ -817,14 +799,14 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                             <?php endforeach; ?>
                         <?php else: ?>
                             <tr>
-                                <td colspan="7" class="empty-state">
-                                    <div class="empty-state">
-                                        <p><?php p($l->t('No recent entries found')); ?></p>
-                                        <p class="empty-state-description">
+                                <td colspan="7">
+                                    <div class="azc-empty-state azc-dashboard-recent__empty">
+                                        <p class="azc-empty-state__title"><?php p($l->t('No recent entries found')); ?></p>
+                                        <p class="azc-empty-state__lead">
                                             <?php p($l->t('Your recent time entries will appear here. Start by clocking in to track your working time.')); ?>
                                         </p>
                                         <a href="<?php print_unescaped($urlGenerator->linkToRoute('arbeitszeitcheck.page.timeEntries')); ?>"
-                                            class="btn btn--primary">
+                                            class="azc-btn azc-btn--primary">
                                             <?php p($l->t('View All Time Entries')); ?>
                                         </a>
                                     </div>
@@ -834,10 +816,8 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
                     </tbody>
                 </table>
             </div>
+            </div>
         </section>
-    </div>
-</main>
-</div><!-- /#arbeitszeitcheck-app -->
 
 <?php include __DIR__ . '/common/main-ui-l10n.php'; ?>
 
@@ -872,7 +852,7 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
     const dismissWelcomeBtn = document.getElementById('dismiss-welcome');
     if (dismissWelcomeBtn) {
         dismissWelcomeBtn.addEventListener('click', function() {
-            const welcomeCard = this.closest('.card');
+            const welcomeCard = this.closest('.azc-dashboard-welcome');
             if (welcomeCard) {
                 welcomeCard.style.display = 'none';
                 const completeUrl = (window.ArbeitszeitCheck.apiUrl && window.ArbeitszeitCheck.apiUrl.onboardingComplete)
@@ -888,3 +868,4 @@ if (($status['status'] ?? 'clocked_out') === 'break' && !empty($status['current_
         });
     }
 </script>
+<?php include __DIR__ . '/common/page-end.php'; ?>

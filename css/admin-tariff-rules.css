@@ -1,0 +1,182 @@
+/**
+ * Admin tariff rule sets — scoped to unified shell.
+ *
+ * @license AGPL-3.0-or-later
+ */
+
+#app-content.azc-app--admin-tariff-rules #azc-main-content {
+	gap: var(--azc-space-4);
+	text-align: left;
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules {
+	display: flex;
+	flex-direction: column;
+	gap: var(--azc-space-4);
+	width: 100%;
+	text-align: left;
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__intro {
+	margin: 0;
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--azc-space-3);
+	justify-content: flex-end;
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__table-wrap {
+	inline-size: 100%;
+	max-inline-size: 100%;
+	overflow-x: auto;
+	border: 1px solid var(--azc-border);
+	border-radius: var(--azc-radius-sm);
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__table {
+	inline-size: max-content;
+	min-inline-size: 100%;
+	margin: 0;
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__table th,
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__table td {
+	vertical-align: middle;
+	text-align: left;
+	padding: var(--azc-space-2) var(--azc-space-3);
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__row-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--azc-space-2);
+	justify-content: flex-end;
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__empty {
+	text-align: center;
+	color: var(--azc-muted);
+	padding: var(--azc-space-6) var(--azc-space-4);
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__empty .azc-empty-state {
+	margin: 0 auto;
+	max-width: 36rem;
+}
+
+/* Modal */
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__modal,
+.modal-backdrop .admin-tariff-rules__modal {
+	max-width: 48rem;
+	width: min(48rem, calc(100vw - 2rem));
+	max-height: calc(100vh - 2rem);
+	display: flex;
+	flex-direction: column;
+	text-align: left;
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__modal .modal-body,
+.modal-backdrop .admin-tariff-rules__modal .modal-body {
+	overflow-y: auto;
+	padding-right: var(--azc-space-3);
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__form-grid,
+.modal-backdrop .admin-tariff-rules__form-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+	gap: var(--azc-space-4);
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__section-title,
+.modal-backdrop .admin-tariff-rules__section-title {
+	margin: var(--azc-space-5) 0 var(--azc-space-2);
+	font-size: var(--azc-fs-lg);
+	font-weight: 600;
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__module,
+.modal-backdrop .admin-tariff-rules__module {
+	border: 1px solid var(--azc-border);
+	border-radius: var(--azc-radius-md);
+	padding: var(--azc-space-4);
+	margin-bottom: var(--azc-space-3);
+	background: var(--azc-bg-soft);
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__module legend,
+.modal-backdrop .admin-tariff-rules__module legend {
+	font-weight: 600;
+	padding: 0 var(--azc-space-2);
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__module-fields,
+.modal-backdrop .admin-tariff-rules__module-fields {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+	gap: var(--azc-space-3);
+	margin: var(--azc-space-3) 0;
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__module-field,
+.modal-backdrop .admin-tariff-rules__module-field {
+	margin: 0;
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__form-error,
+.modal-backdrop .admin-tariff-rules__form-error {
+	margin-top: var(--azc-space-4);
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__modal[aria-readonly='true'] .admin-tariff-rules__module-fields input,
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__modal[aria-readonly='true'] .admin-tariff-rules__module-fields select,
+.modal-backdrop .admin-tariff-rules__modal[aria-readonly='true'] .admin-tariff-rules__module-fields input,
+.modal-backdrop .admin-tariff-rules__modal[aria-readonly='true'] .admin-tariff-rules__module-fields select {
+	pointer-events: none;
+	opacity: 0.85;
+}
+
+@media (max-width: 767px) {
+	#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__toolbar {
+		width: 100%;
+		justify-content: stretch;
+	}
+
+	#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__toolbar .azc-btn {
+		flex: 1 1 auto;
+		justify-content: center;
+	}
+
+	#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__table {
+		min-inline-size: 52rem;
+	}
+
+	#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__row-actions {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__row-actions .azc-btn {
+		width: 100%;
+		justify-content: center;
+	}
+
+	#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__modal,
+	.modal-backdrop .admin-tariff-rules__modal {
+		width: 100%;
+		max-width: 100%;
+		max-height: 100%;
+		border-radius: 0;
+	}
+}
+
+@media (forced-colors: active) {
+	#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__table-wrap,
+	#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__module,
+	.modal-backdrop .admin-tariff-rules__module {
+		border-color: CanvasText;
+	}
+}

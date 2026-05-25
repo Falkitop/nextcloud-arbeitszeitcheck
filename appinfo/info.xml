@@ -83,6 +83,8 @@ gehosteten Nextcloud.
 		<command>OCA\ArbeitszeitCheck\Command\ImportVacationBalanceCommand</command>
 		<command>OCA\ArbeitszeitCheck\Command\VacationRolloverCommand</command>
 		<command>OCA\ArbeitszeitCheck\Command\SetOvertimeTrackingCommand</command>
+		<command>OCA\ArbeitszeitCheck\Command\EnsureE2eVacationEntitlementCommand</command>
+		<command>OCA\ArbeitszeitCheck\Command\EnsureE2eClockReadyCommand</command>
 	</commands>
 
 	<screenshot small-thumbnail="https://raw.githubusercontent.com/aSoftwareByDesignRepository/nextcloud-arbeitszeitcheck/refs/heads/master/screenshots/arbeitszeitcheck-screenshot-01.png">
@@ -146,7 +148,10 @@ gehosteten Nextcloud.
 			<step>OCA\ArbeitszeitCheck\Repair\ReleaseStuckPendingAbsences</step>
 			<step>OCA\ArbeitszeitCheck\Repair\RepairOrphanedPausedEntries</step>
 		</post-migration>
-	</repair-steps>
+		<uninstall>
+			<step>OCA\ArbeitszeitCheck\Repair\UninstallDropTables</step>
+		</uninstall>
+</repair-steps>
 	<background-jobs>
 		<job>OCA\ArbeitszeitCheck\BackgroundJob\DailyComplianceCheckJob</job>
 		<job>OCA\ArbeitszeitCheck\BackgroundJob\ClockOutReminderJob</job>

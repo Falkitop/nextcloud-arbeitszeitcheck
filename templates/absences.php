@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+use OCA\ArbeitszeitCheck\Service\IconCatalog;
+
 /**
  * Absences template for arbeitszeitcheck app
  *
@@ -8,30 +10,10 @@ declare(strict_types=1);
  * @license AGPL-3.0-or-later
  */
 
-use OCP\Util;
-
 /** @var array $_ */
 /** @var \OCP\IL10N $l */
 
-// Add common + page-specific styles and scripts
-Util::addTranslations('arbeitszeitcheck');
-Util::addStyle('arbeitszeitcheck', 'common/colors');
-Util::addStyle('arbeitszeitcheck', 'common/typography');
-Util::addStyle('arbeitszeitcheck', 'common/base');
-Util::addStyle('arbeitszeitcheck', 'common/components');
-Util::addStyle('arbeitszeitcheck', 'common/layout');
-Util::addStyle('arbeitszeitcheck', 'common/app-layout');
-Util::addStyle('arbeitszeitcheck', 'common/utilities');
-Util::addStyle('arbeitszeitcheck', 'common/responsive');
-Util::addStyle('arbeitszeitcheck', 'common/accessibility');
-Util::addStyle('arbeitszeitcheck', 'navigation');
-Util::addStyle('arbeitszeitcheck', 'absences');
-Util::addScript('arbeitszeitcheck', 'common/utils');
-Util::addScript('arbeitszeitcheck', 'common/time');
-Util::addScript('arbeitszeitcheck', 'common/datepicker');
-Util::addScript('arbeitszeitcheck', 'common/components');
-Util::addScript('arbeitszeitcheck', 'arbeitszeitcheck-main');
-Util::addScript('arbeitszeitcheck', 'entitlement-explainer');
+// Assets registered by PageController / AbsenceController
 
 $absences = $_['absences'] ?? [];
 $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class);
@@ -61,80 +43,26 @@ $absenceFormEndDisplay = ($mode === 'create')
 	: (($absence && $absence->getEndDate()) ? $absence->getEndDate()->format('d.m.Y') : '');
 ?>
 
-<?php include __DIR__ . '/common/navigation.php'; ?>
+<?php include __DIR__ . '/common/page-start.php'; ?>
 
-<main id="app-content" role="main" aria-label="<?php p($l->t('Absences')); ?>">
-    <div id="app-content-wrapper">
-        <!-- Breadcrumb Navigation -->
-        <div class="breadcrumb-container">
-            <nav class="breadcrumb" aria-label="<?php p($l->t('Breadcrumb')); ?>">
-                <ol>
-                    <li><a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.page.index')); ?>"><?php p($l->t('Dashboard')); ?></a></li>
-                    <li><a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.page.absences')); ?>"><?php p($l->t('Absences')); ?></a></li>
-                    <?php if ($mode === 'view' && $absence): ?>
-                    <li aria-current="page"><?php p($l->t('Absence details')); ?></li>
-                    <?php elseif ($mode === 'create'): ?>
-                    <li aria-current="page"><?php p($l->t('Request Time Off')); ?></li>
-                    <?php elseif ($mode === 'edit' && $absence): ?>
-                    <li aria-current="page"><?php p($l->t('Edit Absence Request')); ?></li>
-                    <?php else: ?>
-                    <li aria-current="page"><?php p($l->t('Absences')); ?></li>
-                    <?php endif; ?>
-                </ol>
-            </nav>
+        <?php if ($mode === 'list'): ?>
+        <div class="header-actions">
+            <button id="btn-request-absence"
+                    class="btn btn--primary"
+                    type="button"
+                    aria-label="<?php p($l->t('Request time off for vacation or sick leave')); ?>"
+                    title="<?php p($l->t('Click to request time off. You can request vacation days, sick leave, or other types of absences.')); ?>">
+                <?php p($l->t('Request Time Off')); ?>
+            </button>
+            <button id="btn-filter"
+                    class="btn btn--secondary"
+                    type="button"
+                    aria-label="<?php p($l->t('Filter absence requests by date or status')); ?>"
+                    title="<?php p($l->t('Click to show options for filtering your absence requests. You can filter by date range or approval status.')); ?>">
+                <?php p($l->t('Filter')); ?>
+            </button>
         </div>
-
-        <!-- Page Header -->
-        <header class="section page-header-section" aria-labelledby="page-title">
-            <div class="header-content">
-                <div class="header-text">
-                    <h1 id="page-title" class="page-title"><?php 
-                        if ($mode === 'create') {
-                            p($l->t('Request Time Off'));
-                        } elseif ($mode === 'edit') {
-                            p($l->t('Edit Absence Request'));
-                        } elseif ($mode === 'view') {
-                            p($l->t('Absence Details'));
-                        } else {
-                            p($l->t('Absences'));
-                        }
-                    ?></h1>
-                    <p><?php 
-                        if ($mode === 'create') {
-                            if ($useAppTeams && !$employeeHasAssignableManager) {
-                                p($l->t('Request a new absence. If you do not select a substitute, your request is approved automatically when you submit it.'));
-                            } else {
-                                p($l->t('Request a new absence. Your manager will review and approve or reject your request.'));
-                            }
-                        } elseif ($mode === 'edit') {
-                            p($l->t('Edit your absence request. You can only edit pending requests.'));
-                        } elseif ($mode === 'view') {
-                            p($l->t('See all important details for this absence in one simple overview.'));
-                        } else {
-                            p($l->t('Manage vacation, sick leave, and other absences'));
-                        }
-                    ?></p>
-                </div>
-                <?php if ($mode === 'list'): ?>
-                <div class="header-actions">
-                    <button id="btn-request-absence" 
-                            class="btn btn--primary" 
-                            type="button"
-                            aria-label="<?php p($l->t('Request time off for vacation or sick leave')); ?>"
-                            title="<?php p($l->t('Click to request time off. You can request vacation days, sick leave, or other types of absences.')); ?>">
-                        <?php p($l->t('Request Time Off')); ?>
-                    </button>
-                    <button id="btn-filter" 
-                            class="btn btn--secondary" 
-                            type="button"
-                            aria-label="<?php p($l->t('Filter absence requests by date or status')); ?>"
-                            title="<?php p($l->t('Click to show options for filtering your absence requests. You can filter by date range or approval status.')); ?>">
-                        <?php p($l->t('Filter')); ?>
-                    </button>
-                </div>
-                <?php endif; ?>
-            </div>
-        </header>
+        <?php endif; ?>
 
         <?php if ($useAppTeams && !$employeeHasAssignableManager && in_array($mode, ['list', 'create', 'edit'], true)): ?>
             <div class="section section--approval-hint" role="region" aria-labelledby="approval-hint-title">
@@ -256,7 +184,7 @@ $absenceFormEndDisplay = ($mode === 'create')
                          role="status"
                          aria-live="polite"
                          hidden>
-                        <span class="absence-historical-hint__icon" aria-hidden="true">⏱</span>
+                        <span class="absence-historical-hint__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('clock', 'absence-historical-hint__icon-svg')); ?></span>
                         <div class="absence-historical-hint__body">
                             <strong class="absence-historical-hint__title"><?php p($l->t('Historical entry – the dates you selected are in the past')); ?></strong>
                             <p class="absence-historical-hint__text" id="absence-historical-hint-default-text"><?php p($l->t('You can submit this as a regular request. Your manager will still review and approve or reject it like any other request, and the substitute workflow does not apply to dates that already passed.')); ?></p>
@@ -787,16 +715,15 @@ $absenceFormEndDisplay = ($mode === 'create')
                 </div>
             </section>
         <?php endif; ?>
-    </div>
-</main>
-</div><!-- /#arbeitszeitcheck-app -->
+
+<?php include __DIR__ . '/common/page-end.php'; ?>
 
 <!--
     Employee-facing entitlement explainer dialog (REQ-UX-04).
     Built as a native <dialog> so focus is trapped, ESC closes,
     and screen readers read the title + content as a modal.
 -->
-<dialog id="entitlement-explain-dialog" class="entitlement-explain-dialog"
+<dialog id="entitlement-explain-dialog" class="entitlement-explain-dialog azc-native-dialog"
         aria-modal="true"
         aria-labelledby="entitlement-explain-title"
         aria-describedby="entitlement-explain-intro">
@@ -1210,13 +1137,13 @@ $absenceFormEndDisplay = ($mode === 'create')
                             const successMsg = isCreate
                                 ? ((window.t && window.t('arbeitszeitcheck', 'Absence request submitted successfully')) || 'Absence request submitted successfully')
                                 : ((window.t && window.t('arbeitszeitcheck', 'Absence request updated')) || 'Absence request updated');
-                            if (window.OC && window.OC.Notification && window.OC.Notification.showTemporary) {
+                            if (window.AzcMessaging && typeof window.AzcMessaging.showSuccess === 'function') {
+                                window.AzcMessaging.showSuccess(successMsg);
+                            } else if (window.OC && window.OC.Notification && window.OC.Notification.showTemporary) {
                                 window.OC.Notification.showTemporary(successMsg, { type: 'success' });
                             } else {
-                                // Fallback so users always get feedback, even if Nextcloud notifications are unavailable
-                                try {
-                                    alert(successMsg);
-                                } catch (e) {}
+                                const live = document.getElementById('azc-live-region');
+                                if (live) { live.textContent = successMsg; }
                             }
                             window.location.href = response.redirected ? response.url : listUrl;
                             return;
@@ -1234,10 +1161,13 @@ $absenceFormEndDisplay = ($mode === 'create')
                                 errEl.style.display = 'block';
                                 errEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                             }
-                            if (window.OC && window.OC.Notification && window.OC.Notification.showTemporary) {
+                            if (window.AzcMessaging && typeof window.AzcMessaging.showError === 'function') {
+                                window.AzcMessaging.showError(errMsg);
+                            } else if (window.OC && window.OC.Notification && window.OC.Notification.showTemporary) {
                                 window.OC.Notification.showTemporary(errMsg, { type: 'error', timeout: 8000 });
                             } else {
-                                try { alert(errMsg); } catch (e) {}
+                                const alertRegion = document.getElementById('azc-alert-region');
+                                if (alertRegion) { alertRegion.textContent = errMsg; }
                             }
                         });
                     })
@@ -1251,10 +1181,13 @@ $absenceFormEndDisplay = ($mode === 'create')
                             errEl.style.display = 'block';
                             errEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                         }
-                        if (window.OC && window.OC.Notification && window.OC.Notification.showTemporary) {
+                        if (window.AzcMessaging && typeof window.AzcMessaging.showError === 'function') {
+                            window.AzcMessaging.showError(errMsg);
+                        } else if (window.OC && window.OC.Notification && window.OC.Notification.showTemporary) {
                             window.OC.Notification.showTemporary(errMsg, { type: 'error', timeout: 8000 });
                         } else {
-                            try { alert(errMsg); } catch (e) {}
+                            const alertRegion = document.getElementById('azc-alert-region');
+                            if (alertRegion) { alertRegion.textContent = errMsg; }
                         }
                     });
             });
@@ -1291,16 +1224,13 @@ $absenceFormEndDisplay = ($mode === 'create')
             const form = btn.closest('form');
             if (!form) return;
 
-            const comp = window.ArbeitszeitCheckComponents;
-            if (!comp || typeof comp.showConfirmDialog !== 'function') {
-                // Fallback: native confirm — should never happen since components.js is always loaded
-                if (window.confirm(btn.dataset.confirmMessage || '')) {
-                    form.submit();
-                }
+            const comp = window.AzcComponents || window.ArbeitszeitCheckComponents;
+            const confirmFn = comp && (comp.confirmDialog || comp.showConfirmDialog);
+            if (!confirmFn) {
                 return;
             }
 
-            const confirmed = await comp.showConfirmDialog({
+            const confirmed = await confirmFn({
                 title:        btn.dataset.confirmTitle   || '',
                 message:      btn.dataset.confirmMessage || '',
                 variant:      btn.dataset.confirmVariant || 'info',

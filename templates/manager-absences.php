@@ -2,24 +2,18 @@
 
 declare(strict_types=1);
 
+use OCA\ArbeitszeitCheck\Service\IconCatalog;
+
 /** @var array $_ */
 /** @var \OCP\IL10N $l */
 $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 ?>
 
-<?php include __DIR__ . '/common/navigation.php'; ?>
+<?php include __DIR__ . '/common/page-start.php'; ?>
 
-<main id="app-content" role="main" aria-label="<?php p($l->t('Employee absences content')); ?>" class="manager-time-entries-page">
-	<div id="app-content-wrapper">
-		<div class="section manager-time-entries-page__content">
-			<header class="section-header manager-time-entries-page__header">
-				<h1><?php p($l->t('Employee absences')); ?></h1>
-				<p class="section__desc">
-					<?php p($l->t('View your employees\' absences directly in the app. Start by selecting a date range and optionally one person.')); ?>
-				</p>
-			</header>
 
-			<section class="section manager-time-entries-page__filters" aria-labelledby="employee-absences-filters-title">
+        <div class="section manager-time-entries-page__content">
+<section class="section manager-time-entries-page__filters" aria-labelledby="employee-absences-filters-title">
 				<header class="manager-time-entries-page__filters-head">
 					<h2 id="employee-absences-filters-title"><?php p($l->t('Filter')); ?></h2>
 					<p class="manager-time-entries-page__filters-intro">
@@ -141,7 +135,7 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 				     role="status"
 				     aria-live="polite"
 				     hidden>
-					<span class="absence-historical-hint__icon" aria-hidden="true">⏱</span>
+					<span class="absence-historical-hint__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('clock', 'absence-historical-hint__icon-svg')); ?></span>
 					<div class="absence-historical-hint__body">
 						<strong class="absence-historical-hint__title"><?php p($l->t('Historical entry – the dates you selected are in the past')); ?></strong>
 						<p class="absence-historical-hint__text"><?php p($l->t('This will be saved immediately as approved and shown with the "Past record" badge in calendars, timelines and reports. Audit trail captures who recorded it.')); ?></p>
@@ -224,9 +218,8 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 					<button type="button" id="employee-absences-next" class="btn btn--secondary" disabled><?php p($l->t('Next')); ?></button>
 				</div>
 			</section>
-		</div>
-	</div>
-</main>
 </div>
 
 <?php include __DIR__ . '/common/manager-employee-list-l10n.php'; ?>
+
+<?php include __DIR__ . '/common/page-end.php'; ?>

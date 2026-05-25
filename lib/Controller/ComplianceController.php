@@ -14,6 +14,7 @@ namespace OCA\ArbeitszeitCheck\Controller;
 use OCA\ArbeitszeitCheck\Service\ComplianceService;
 use OCA\ArbeitszeitCheck\Service\CSPService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
+use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
 use OCA\ArbeitszeitCheck\Db\AuditLogMapper;
 use OCA\ArbeitszeitCheck\Db\ComplianceViolationMapper;
 use OCA\ArbeitszeitCheck\Db\ComplianceViolation;
@@ -37,15 +38,17 @@ use OCP\Util;
 class ComplianceController extends Controller
 {
 	use CSPTrait;
+	use PageShellTrait;
 
 	private ComplianceService $complianceService;
 	private ComplianceViolationMapper $violationMapper;
 	private AuditLogMapper $auditLogMapper;
-	private PermissionService $permissionService;
-	private IUserSession $userSession;
+	protected PermissionService $permissionService;
+	protected IUserSession $userSession;
 	private IUserManager $userManager;
-	private IURLGenerator $urlGenerator;
-	private IL10N $l10n;
+	protected IURLGenerator $urlGenerator;
+	protected IL10N $l10n;
+	protected LocaleFormatService $localeFormat;
 
 	public function __construct(
 		string $appName,
@@ -58,6 +61,7 @@ class ComplianceController extends Controller
 		IUserManager $userManager,
 		IURLGenerator $urlGenerator,
 		CSPService $cspService,
+		LocaleFormatService $localeFormat,
 		IL10N $l10n
 	) {
 		parent::__construct($appName, $request);
@@ -68,8 +72,43 @@ class ComplianceController extends Controller
 		$this->userSession = $userSession;
 		$this->userManager = $userManager;
 		$this->urlGenerator = $urlGenerator;
+		$this->localeFormat = $localeFormat;
 		$this->l10n = $l10n;
 		$this->setCspService($cspService);
+	}
+
+	/**
+	 * @return array{showSubstitutionLink: bool, showManagerLink: bool, showReportsLink: bool, showAdminNav: bool}
+	 */
+	private function getNavigationFlags(string $userId): array
+	{
+		$canAccessManagerDashboard = $this->permissionService->canAccessManagerDashboard($userId);
+		$isAdmin = $this->permissionService->isAdmin($userId);
+
+		return [
+			'showSubstitutionLink' => false,
+			'showManagerLink' => $canAccessManagerDashboard,
+			'showReportsLink' => $canAccessManagerDashboard || $isAdmin,
+			'showAdminNav' => $isAdmin,
+		];
+	}
+
+	/**
+	 * @return array{showSubstitutionLink: bool, showManagerLink: bool, showReportsLink: bool, showAdminNav: bool}
+	 */
+	private function getNavigationFlagsForSession(): array
+	{
+		$user = $this->userSession->getUser();
+		if ($user === null) {
+			return [
+				'showSubstitutionLink' => false,
+				'showManagerLink' => false,
+				'showReportsLink' => false,
+				'showAdminNav' => false,
+			];
+		}
+
+		return $this->getNavigationFlags($user->getUID());
 	}
 
 	/**
@@ -107,28 +146,7 @@ class ComplianceController extends Controller
 	#[NoCSRFRequired]
 	public function dashboard(): TemplateResponse
 	{
-		Util::addTranslations('arbeitszeitcheck');
-
-		// Add common CSS files (including colors, typography for consistent fonts)
-		Util::addStyle('arbeitszeitcheck', 'common/colors');
-		Util::addStyle('arbeitszeitcheck', 'common/typography');
-		Util::addStyle('arbeitszeitcheck', 'common/base');
-		Util::addStyle('arbeitszeitcheck', 'common/components');
-		Util::addStyle('arbeitszeitcheck', 'common/layout');
-		Util::addStyle('arbeitszeitcheck', 'common/utilities');
-		Util::addStyle('arbeitszeitcheck', 'common/accessibility');
-		Util::addStyle('arbeitszeitcheck', 'common/app-layout');
-		Util::addStyle('arbeitszeitcheck', 'common/responsive');
-		Util::addStyle('arbeitszeitcheck', 'navigation');
-		Util::addStyle('arbeitszeitcheck', 'arbeitszeitcheck-main');
-		Util::addStyle('arbeitszeitcheck', 'compliance-violations');
-
-		// Add common JavaScript files
-		Util::addScript('arbeitszeitcheck', 'common/utils');
-		Util::addScript('arbeitszeitcheck', 'common/time');
-		Util::addScript('arbeitszeitcheck', 'common/components');
-		Util::addScript('arbeitszeitcheck', 'common/messaging');
-		Util::addScript('arbeitszeitcheck', 'compliance-dashboard');
+		$this->registerFrontEndAssets('compliance-dashboard', 'compliance-violations', ['compliance-violations']);
 
 		try {
 			$userId = $this->getUserId();
@@ -154,24 +172,30 @@ class ComplianceController extends Controller
 				];
 			}
 
-			$isAdmin = $this->permissionService->isAdmin($userId);
-			$canAccessManagerDashboard = $this->permissionService->canAccessManagerDashboard($userId);
+			$navFlags = $this->getNavigationFlags($userId);
 
-			$response = new TemplateResponse('arbeitszeitcheck', 'compliance-dashboard', [
+			$response = new TemplateResponse('arbeitszeitcheck', 'compliance-dashboard', $this->buildShellParams(
+				'compliance',
+				$this->l10n->t('Compliance Dashboard'),
+				$this->l10n->t('Check if your working time follows German labor law and see any problems that need fixing'),
+				$navFlags,
+			) + [
 				'complianceStatus' => $complianceStatus,
 				'recentViolations' => $violationsData,
-				'urlGenerator' => $this->urlGenerator,
-				'l' => $this->l10n,
-				// Navigation flags
-				'showSubstitutionLink' => false,
-				'showManagerLink' => $canAccessManagerDashboard,
-				'showReportsLink' => $canAccessManagerDashboard || $isAdmin,
-				'showAdminNav' => $isAdmin,
+				'showComplianceRunCheck' => $this->permissionService->isAdmin($userId),
+				'complianceRunCheckUrl' => $this->urlGenerator->linkToRoute('arbeitszeitcheck.compliance.runCheck'),
+				'complianceViolationsUrl' => $this->urlGenerator->linkToRoute('arbeitszeitcheck.compliance.violations'),
 			]);
 			return $this->configureCSP($response);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Compliance dashboard error: ' . $e->getMessage(), ['exception' => $e]);
-			$response = new TemplateResponse('arbeitszeitcheck', 'compliance-dashboard', [
+			$navFlags = $this->getNavigationFlagsForSession();
+			$response = new TemplateResponse('arbeitszeitcheck', 'compliance-dashboard', $this->buildShellParams(
+				'compliance',
+				$this->l10n->t('Compliance Dashboard'),
+				$this->l10n->t('Check if your working time follows German labor law and see any problems that need fixing'),
+				$navFlags,
+			) + [
 				'complianceStatus' => [
 					'compliant' => false,
 					'score' => 0,
@@ -179,13 +203,7 @@ class ComplianceController extends Controller
 					'load_error' => true,
 				],
 				'recentViolations' => [],
-				'urlGenerator' => $this->urlGenerator,
 				'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.'),
-				'l' => $this->l10n,
-				'showSubstitutionLink' => false,
-				'showManagerLink' => false,
-				'showReportsLink' => false,
-				'showAdminNav' => false,
 			]);
 			return $this->configureCSP($response);
 		}
@@ -199,28 +217,8 @@ class ComplianceController extends Controller
 	#[NoCSRFRequired]
 	public function violations(): TemplateResponse
 	{
-		Util::addTranslations('arbeitszeitcheck');
-
-		// Add common CSS files (including colors, typography for consistent fonts)
-		Util::addStyle('arbeitszeitcheck', 'common/colors');
-		Util::addStyle('arbeitszeitcheck', 'common/typography');
-		Util::addStyle('arbeitszeitcheck', 'common/base');
-		Util::addStyle('arbeitszeitcheck', 'common/components');
-		Util::addStyle('arbeitszeitcheck', 'common/layout');
-		Util::addStyle('arbeitszeitcheck', 'common/utilities');
-		Util::addStyle('arbeitszeitcheck', 'common/accessibility');
-		Util::addStyle('arbeitszeitcheck', 'common/app-layout');
-		Util::addStyle('arbeitszeitcheck', 'common/responsive');
-		Util::addStyle('arbeitszeitcheck', 'navigation');
-		Util::addStyle('arbeitszeitcheck', 'arbeitszeitcheck-main');
-		Util::addStyle('arbeitszeitcheck', 'compliance-violations');
-
-		// Add common JavaScript files
-		Util::addScript('arbeitszeitcheck', 'common/utils');
-		Util::addScript('arbeitszeitcheck', 'common/time');
+		$this->registerFrontEndAssets('compliance-violations', 'compliance-violations');
 		Util::addScript('arbeitszeitcheck', 'common/datepicker');
-		Util::addScript('arbeitszeitcheck', 'common/messaging');
-		Util::addScript('arbeitszeitcheck', 'compliance-violations');
 
 		try {
 			$currentUserId = $this->getUserId();
@@ -246,37 +244,37 @@ class ComplianceController extends Controller
 					'severity' => $violation->getSeverity(),
 					'date' => $violation->getDate() ? $violation->getDate()->format('Y-m-d') : null,
 					'resolved' => $violation->getResolved(),
-					'description' => $violation->getDescription()
+					'description' => $violation->getDescription(),
+					'can_resolve' => !$violation->getResolved()
+						&& $this->permissionService->canResolveViolation($currentUserId, $violation->getUserId()),
 				];
 			}
 
-			$isAdmin = $this->permissionService->isAdmin($currentUserId);
-			$canAccessManagerDashboard = $this->permissionService->canAccessManagerDashboard($currentUserId);
+			$navFlags = $this->getNavigationFlags($currentUserId);
 
-			$response = new TemplateResponse('arbeitszeitcheck', 'compliance-violations', [
+			$response = new TemplateResponse('arbeitszeitcheck', 'compliance-violations', $this->buildShellParams(
+				'compliance-violations',
+				$this->l10n->t('Compliance Violations'),
+				$this->l10n->t('Review and resolve working time rule violations'),
+				$navFlags,
+			) + [
 				'violations' => $violationsData,
 				'total' => count($violations),
 				'filterUserId' => $filterUserId !== '' && $filterUserId !== $currentUserId ? $filterUserId : null,
 				'filterDisplayName' => $filterDisplayName,
-				'urlGenerator' => $this->urlGenerator,
-				'l' => $this->l10n,
-				'showSubstitutionLink' => false,
-				'showManagerLink' => $canAccessManagerDashboard,
-				'showReportsLink' => $canAccessManagerDashboard || $isAdmin,
-				'showAdminNav' => $isAdmin,
 			]);
 			return $this->configureCSP($response);
 		} catch (\Throwable $e) {
-			$response = new TemplateResponse('arbeitszeitcheck', 'compliance-violations', [
+			$navFlags = $this->getNavigationFlagsForSession();
+			$response = new TemplateResponse('arbeitszeitcheck', 'compliance-violations', $this->buildShellParams(
+				'compliance-violations',
+				$this->l10n->t('Compliance Violations'),
+				$this->l10n->t('Review and resolve working time rule violations'),
+				$navFlags,
+			) + [
 				'violations' => [],
 				'total' => 0,
-				'urlGenerator' => $this->urlGenerator,
 				'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.'),
-				'l' => $this->l10n,
-				'showSubstitutionLink' => false,
-				'showManagerLink' => false,
-				'showReportsLink' => false,
-				'showAdminNav' => false,
 			]);
 			return $this->configureCSP($response);
 		}
@@ -290,27 +288,7 @@ class ComplianceController extends Controller
 	#[NoCSRFRequired]
 	public function reports(): TemplateResponse
 	{
-		Util::addTranslations('arbeitszeitcheck');
-
-		// Add common CSS files (including colors, typography for consistent fonts)
-		Util::addStyle('arbeitszeitcheck', 'common/colors');
-		Util::addStyle('arbeitszeitcheck', 'common/typography');
-		Util::addStyle('arbeitszeitcheck', 'common/base');
-		Util::addStyle('arbeitszeitcheck', 'common/components');
-		Util::addStyle('arbeitszeitcheck', 'common/layout');
-		Util::addStyle('arbeitszeitcheck', 'common/utilities');
-		Util::addStyle('arbeitszeitcheck', 'common/accessibility');
-		Util::addStyle('arbeitszeitcheck', 'common/app-layout');
-		Util::addStyle('arbeitszeitcheck', 'common/responsive');
-		Util::addStyle('arbeitszeitcheck', 'navigation');
-		Util::addStyle('arbeitszeitcheck', 'arbeitszeitcheck-main');
-
-		// Add common JavaScript files
-		Util::addScript('arbeitszeitcheck', 'common/utils');
-		Util::addScript('arbeitszeitcheck', 'common/time');
-		Util::addScript('arbeitszeitcheck', 'common/components');
-		Util::addScript('arbeitszeitcheck', 'common/messaging');
-		Util::addScript('arbeitszeitcheck', 'compliance-reports');
+		$this->registerFrontEndAssets('compliance-reports');
 
 		try {
 			$userId = $this->getUserId();
@@ -337,28 +315,31 @@ class ComplianceController extends Controller
 				$reportData['by_severity'][$severity] = ($reportData['by_severity'][$severity] ?? 0) + 1;
 			}
 
-			$isAdmin = $this->permissionService->isAdmin($userId);
-			$canAccessManagerDashboard = $this->permissionService->canAccessManagerDashboard($userId);
+			$navFlags = $this->getNavigationFlags($userId);
 
 			$response = new TemplateResponse(
 				'arbeitszeitcheck',
 				'compliance-reports',
-				[
+				$this->buildShellParams(
+					'compliance-reports',
+					$this->l10n->t('Compliance Reports'),
+					$this->l10n->t('Summary of compliance violations and trends'),
+					$navFlags,
+				) + [
 					'reportData' => $reportData,
-					// No fixed date range; the page shows an all-time summary.
 					'startDate' => null,
 					'endDate' => null,
-					'urlGenerator' => $this->urlGenerator,
-					'l' => $this->l10n,
-					'showSubstitutionLink' => false,
-					'showManagerLink' => $canAccessManagerDashboard,
-					'showReportsLink' => $canAccessManagerDashboard || $isAdmin,
-					'showAdminNav' => $isAdmin,
 				]
 			);
 			return $this->configureCSP($response);
 		} catch (\Throwable $e) {
-			$response = new TemplateResponse('arbeitszeitcheck', 'compliance-reports', [
+			$navFlags = $this->getNavigationFlagsForSession();
+			$response = new TemplateResponse('arbeitszeitcheck', 'compliance-reports', $this->buildShellParams(
+				'compliance-reports',
+				$this->l10n->t('Compliance Reports'),
+				$this->l10n->t('Summary of compliance violations and trends'),
+				$navFlags,
+			) + [
 				'reportData' => [
 					'total_violations' => 0,
 					'unresolved' => 0,
@@ -367,13 +348,7 @@ class ComplianceController extends Controller
 				],
 				'startDate' => date('Y-m-d', strtotime('-30 days')),
 				'endDate' => date('Y-m-d'),
-				'urlGenerator' => $this->urlGenerator,
 				'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.'),
-				'l' => $this->l10n,
-				'showSubstitutionLink' => false,
-				'showManagerLink' => false,
-				'showReportsLink' => false,
-				'showAdminNav' => false,
 			]);
 			return $this->configureCSP($response);
 		}
@@ -519,7 +494,11 @@ class ComplianceController extends Controller
 			$violationSummaries = [];
 			foreach ($violations as $violation) {
 				try {
-					$violationSummaries[] = $violation->getSummary();
+					$summary = $violation->getSummary();
+					$summary['type'] = $summary['violationType'] ?? $violation->getViolationType();
+					$summary['can_resolve'] = !$violation->getResolved()
+						&& $this->permissionService->canResolveViolation($currentUserId, $violation->getUserId());
+					$violationSummaries[] = $summary;
 				} catch (\Throwable $e) {
 					\OCP\Log\logger('arbeitszeitcheck')->error('Error getting summary for violation ' . $violation->getId() . ': ' . $e->getMessage(), ["exception" => $e]);
 					continue;

@@ -18,18 +18,12 @@ $violations = $_['violations'] ?? [];
 $total = $_['total'] ?? 0;
 ?>
 
-<?php include __DIR__ . '/common/navigation.php'; ?>
+<?php include __DIR__ . '/common/page-start.php'; ?>
 
-<main id="app-content" role="main" aria-label="<?php p($l->t('Compliance violations content')); ?>">
-    <div id="app-content-wrapper">
-        <?php include __DIR__ . '/common/compliance-tabs.php'; ?>
-        <div class="section">
-            <div class="section-header">
-                <h1><?php p($l->t('Compliance Violations')); ?></h1>
-                <p><?php p($l->t('See when working time rules were not followed and what needs to be fixed')); ?></p>
-            </div>
+                <?php include __DIR__ . '/common/compliance-tabs.php'; ?>
 
-            <?php if (!empty($_['filterUserId'])): ?>
+<div class="section">
+<?php if (!empty($_['filterUserId'])): ?>
             <div class="callout callout--info compliance-violations-filter-banner" role="status" aria-live="polite">
                 <p class="callout__text">
                     <?php p($l->t('Showing violations for %s.', [$_['filterDisplayName'] ?? $_['filterUserId']])); ?>
@@ -136,6 +130,14 @@ $total = $_['total'] ?? 0;
                                             <span class="badge badge--success"><?php p($l->t('Resolved')); ?></span>
                                         <?php else: ?>
                                             <span class="badge badge--error"><?php p($l->t('Unresolved')); ?></span>
+                                            <?php if (!empty($violation['can_resolve'])): ?>
+                                                <button type="button"
+                                                    class="btn btn--sm btn--secondary"
+                                                    id="btn-resolve-violation-<?php p((string)($violation['id'] ?? '')); ?>"
+                                                    data-violation-id="<?php p((string)($violation['id'] ?? '')); ?>">
+                                                    <?php p($l->t('Mark as fixed')); ?>
+                                                </button>
+                                            <?php endif; ?>
                                         <?php endif; ?>
                                     </td>
                                 </tr>
@@ -144,11 +146,6 @@ $total = $_['total'] ?? 0;
                     </tbody>
                 </table>
             </div>
-        </div>
-    </div>
-</main>
-</div><!-- /#arbeitszeitcheck-app -->
-
 <?php
 $complianceViolationsL10n = [
 	'Loading...' => $l->t('Loading...'),
@@ -175,3 +172,5 @@ window.ArbeitszeitCheck = window.ArbeitszeitCheck || {};
 window.ArbeitszeitCheck.complianceViolationsL10n = <?php echo json_encode($complianceViolationsL10n, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;
 window.ArbeitszeitCheck.complianceFilterUserId = <?php echo json_encode($_['filterUserId'] ?? null, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;
 </script>
+
+<?php include __DIR__ . '/common/page-end.php'; ?>

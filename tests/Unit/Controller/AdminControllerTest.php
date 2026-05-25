@@ -145,6 +145,13 @@ class AdminControllerTest extends TestCase
 		]);
 		$this->layeredVacationDefaultsService = $this->createMock(\OCA\ArbeitszeitCheck\Service\LayeredVacationDefaultsService::class);
 		$this->userOvertimeSettingsService = $this->createMock(UserOvertimeSettingsService::class);
+		$permissionService = $this->createMock(\OCA\ArbeitszeitCheck\Service\PermissionService::class);
+		$localeFormat = $this->createMock(\OCA\ArbeitszeitCheck\Service\LocaleFormatService::class);
+		$localeFormat->method('clientHints')->willReturn([
+			'locale' => 'en-US',
+			'htmlLang' => 'en-US',
+			'timezone' => 'Europe/Berlin',
+		]);
 
 		$this->controller = new AdminController(
 			'arbeitszeitcheck',
@@ -175,7 +182,9 @@ class AdminControllerTest extends TestCase
 			$this->userVacationPolicyAssignmentMapper,
 			$this->vacationEntitlementEngine,
 			$this->layeredVacationDefaultsService,
-			$this->userOvertimeSettingsService
+			$this->userOvertimeSettingsService,
+			$permissionService,
+			$localeFormat,
 		);
 	}
 

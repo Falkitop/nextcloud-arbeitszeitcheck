@@ -2,13 +2,14 @@
 
 declare(strict_types=1);
 
+use OCA\ArbeitszeitCheck\Service\IconCatalog;
+
 /**
  * Compliance dashboard template for arbeitszeitcheck app
  *
  * @copyright Copyright (c) 2024, Nextcloud GmbH
  * @license AGPL-3.0-or-later
  */
-
 
 /** @var array $_ */
 /** @var \OCP\IL10N $l */
@@ -19,117 +20,126 @@ $recentViolations = $_['recentViolations'] ?? [];
 $error = $_['error'] ?? null;
 $loadError = $complianceStatus['load_error'] ?? false;
 $hasData = $complianceStatus['has_data'] ?? true;
+$urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class);
 ?>
 
-<?php include __DIR__ . '/common/navigation.php'; ?>
+<?php include __DIR__ . '/common/page-start.php'; ?>
 
-<main id="app-content" role="main" aria-label="<?php p($l->t('Compliance dashboard content')); ?>">
-    <div id="app-content-wrapper">
         <?php include __DIR__ . '/common/compliance-tabs.php'; ?>
-        <div class="section">
-            <div class="section-header">
-                <h1><?php p($l->t('Compliance Dashboard')); ?></h1>
-                <p><?php p($l->t('Check if your working time follows German labor law and see any problems that need fixing')); ?></p>
-            </div>
 
-            <!-- Compliance Status -->
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title"><?php p($l->t('Compliance Status')); ?></h3>
+        <section class="azc-card compliance-dashboard__status" aria-labelledby="compliance-status-heading">
+            <header class="azc-card__header">
+                <div class="azc-card__header-text">
+                    <h2 id="compliance-status-heading" class="azc-card__title"><?php p($l->t('Compliance Status')); ?></h2>
+                    <?php if (!empty($_['showComplianceRunCheck'])): ?>
+                        <p id="compliance-run-check-help" class="azc-card__lead">
+                            <?php p($l->t('Administrator only: runs a manual compliance scan for all users. This does not change your data automatically — review new violations afterward.')); ?>
+                        </p>
+                    <?php endif; ?>
                 </div>
-                <div class="card-content">
-                    <?php if ($loadError): ?>
-                        <div class="alert alert--error">
-                            <span class="alert-icon" aria-hidden="true">❌</span>
+                <?php if (!empty($_['showComplianceRunCheck'])): ?>
+                    <div class="azc-card__header-actions">
+                        <button type="button"
+                            id="btn-run-compliance-check"
+                            class="azc-btn azc-btn--secondary azc-btn--sm"
+                            data-run-check-url="<?php p((string)($_['complianceRunCheckUrl'] ?? '')); ?>"
+                            data-violations-url="<?php p((string)($_['complianceViolationsUrl'] ?? '')); ?>"
+                            aria-describedby="compliance-run-check-help">
+                            <?php print_unescaped(IconCatalog::render('rotate', 'azc-btn__icon')); ?>
+                            <span><?php p($l->t('Run compliance check now')); ?></span>
+                        </button>
+                    </div>
+                <?php endif; ?>
+            </header>
+            <div class="azc-card__body">
+                <?php if ($loadError): ?>
+                    <div class="alert alert--error" role="alert">
+                        <span class="alert-icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('circle-alert')); ?></span>
+                        <div class="alert-content">
+                            <strong class="alert-title"><?php p($l->t('Could not load compliance status')); ?></strong>
+                            <p class="alert-message">
+                                <?php p($l->t('Please refresh the page to try again.')); ?>
+                            </p>
+                            <?php if (!empty($error)): ?>
+                                <p class="form-help"><?php p($error); ?></p>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                <?php elseif ($complianceStatus['compliant'] ?? false): ?>
+                    <?php if (!$hasData): ?>
+                        <div class="alert alert--info" role="status">
+                            <span class="alert-icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('info')); ?></span>
                             <div class="alert-content">
-                                <strong class="alert-title"><?php p($l->t('Could not load compliance status')); ?></strong>
+                                <strong class="alert-title"><?php p($l->t('Not enough data yet')); ?></strong>
                                 <p class="alert-message">
-                                    <?php p($l->t('Please refresh the page to try again.')); ?>
+                                    <?php p($l->t('Create time entries to get your compliance status. Once you have recorded working hours, we can check them against German labor law.')); ?>
                                 </p>
-                                <?php if (!empty($error)): ?>
-                                    <p class="form-help">
-                                        <?php p($error); ?>
-                                    </p>
-                                <?php endif; ?>
                             </div>
                         </div>
-                    <?php elseif ($complianceStatus['compliant'] ?? false): ?>
-                        <?php if (!$hasData): ?>
-                            <div class="alert alert--info">
-                                <span class="alert-icon" aria-hidden="true">ℹ️</span>
-                                <div class="alert-content">
-                                    <strong class="alert-title"><?php p($l->t('Not enough data yet')); ?></strong>
-                                    <p class="alert-message">
-                                        <?php p($l->t('Create time entries to get your compliance status. Once you have recorded working hours, we can check them against German labor law.')); ?>
-                                    </p>
-                                </div>
-                            </div>
-                        <?php else: ?>
-                            <div class="alert alert--success">
-                                <span class="alert-icon" aria-hidden="true">✅</span>
-                                <div class="alert-content">
-                                    <strong class="alert-title"><?php p($l->t('Everything looks good!')); ?></strong>
-                                    <p class="alert-message">
-                                        <?php p($l->t('Your working time follows all German labor law rules. Keep up the good work!')); ?>
-                                    </p>
-                                </div>
-                            </div>
-                        <?php endif; ?>
                     <?php else: ?>
-                        <div class="alert alert--warning">
-                            <span class="alert-icon" aria-hidden="true">⚠️</span>
+                        <div class="alert alert--success" role="status">
+                            <span class="alert-icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('circle-check')); ?></span>
                             <div class="alert-content">
-                                <strong class="alert-title"><?php p($l->t('Some problems found')); ?></strong>
+                                <strong class="alert-title"><?php p($l->t('Everything looks good!')); ?></strong>
                                 <p class="alert-message">
-                                    <?php p($l->t('There are issues with your working time that need attention. Please check the list below and fix them.')); ?>
+                                    <?php p($l->t('Your working time follows all German labor law rules. Keep up the good work!')); ?>
                                 </p>
                             </div>
                         </div>
                     <?php endif; ?>
-                    <?php if (!$loadError): ?>
-                    <p>
+                <?php else: ?>
+                    <div class="alert alert--warning" role="status">
+                        <span class="alert-icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('triangle-alert')); ?></span>
+                        <div class="alert-content">
+                            <strong class="alert-title"><?php p($l->t('Some problems found')); ?></strong>
+                            <p class="alert-message">
+                                <?php p($l->t('There are issues with your working time that need attention. Please check the list below and fix them.')); ?>
+                            </p>
+                        </div>
+                    </div>
+                <?php endif; ?>
+                <?php if (!$loadError): ?>
+                    <p class="compliance-dashboard__score">
                         <strong><?php p($l->t('How well you follow the rules:')); ?></strong>
                         <?php if ($hasData): ?>
-                            <?php p($complianceStatus['score'] ?? 0); ?>%
+                            <?php p((string)($complianceStatus['score'] ?? 0)); ?>%
                         <?php else: ?>
                             — <?php p($l->t('(no data yet)')); ?>
                         <?php endif; ?>
-                        <span class="form-help" style="display: block; margin-top: var(--space-1);">
+                        <span class="form-help compliance-dashboard__score-hint">
                             <?php p($l->t('This shows how well your working time follows German labor law. 100% means everything is perfect.')); ?>
                         </span>
                     </p>
-                    <?php endif; ?>
-                </div>
+                <?php endif; ?>
             </div>
+        </section>
 
-            <!-- Recent Violations -->
-            <?php
-            $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class);
-            ?>
-            <div class="section">
-                <div class="section-header section-header--with-actions">
-                    <h3><?php p($l->t('Recent Violations')); ?></h3>
-                    <div class="flex flex--gap">
-                        <a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.compliance.violations')); ?>"
-                           class="btn btn--secondary btn--sm"
-                           aria-label="<?php p($l->t('View all compliance violations')); ?>">
-                            <?php p($l->t('View All Violations')); ?>
-                        </a>
-                        <a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.compliance.reports')); ?>"
-                           class="btn btn--secondary btn--sm"
-                           aria-label="<?php p($l->t('View compliance reports')); ?>">
-                            <?php p($l->t('Reports')); ?>
-                        </a>
-                    </div>
+        <section class="azc-card compliance-dashboard__violations" aria-labelledby="compliance-violations-heading">
+            <header class="azc-card__header">
+                <div class="azc-card__header-text">
+                    <h2 id="compliance-violations-heading" class="azc-card__title"><?php p($l->t('Recent Violations')); ?></h2>
                 </div>
-
+                <div class="azc-card__header-actions">
+                    <a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.compliance.violations')); ?>"
+                       class="azc-btn azc-btn--secondary azc-btn--sm"
+                       aria-label="<?php p($l->t('View all compliance violations')); ?>">
+                        <?php p($l->t('View All Violations')); ?>
+                    </a>
+                    <a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.compliance.reports')); ?>"
+                       class="azc-btn azc-btn--secondary azc-btn--sm"
+                       aria-label="<?php p($l->t('View compliance reports')); ?>">
+                        <?php p($l->t('Reports')); ?>
+                    </a>
+                </div>
+            </header>
+            <div class="azc-card__body">
                 <?php if (empty($recentViolations)): ?>
-                    <div class="empty-state">
-                        <p><?php p($l->t('No recent violations')); ?></p>
+                    <div class="azc-empty-state">
+                        <p class="azc-empty-state__title"><?php p($l->t('No recent violations')); ?></p>
                     </div>
                 <?php else: ?>
                     <div class="table-responsive" role="region" aria-label="<?php p($l->t('Recent violations')); ?>">
-                        <table class="table" role="table" aria-label="<?php p($l->t('Recent violations')); ?>">
+                        <table class="table" aria-label="<?php p($l->t('Recent violations')); ?>">
                             <thead>
                                 <tr>
                                     <th scope="col"><?php p($l->t('Type')); ?></th>
@@ -139,7 +149,7 @@ $hasData = $complianceStatus['has_data'] ?? true;
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php foreach (($recentViolations ?? []) as $violation): ?>
+                                <?php foreach ($recentViolations as $violation): ?>
                                     <?php
                                     $typeKey = $violation['type'] ?? '';
                                     $typeLabel = match ($typeKey) {
@@ -188,7 +198,6 @@ $hasData = $complianceStatus['has_data'] ?? true;
                     </div>
                 <?php endif; ?>
             </div>
-        </div>
-    </div>
-</main>
-</div><!-- /#arbeitszeitcheck-app -->
+        </section>
+
+<?php include __DIR__ . '/common/page-end.php'; ?>

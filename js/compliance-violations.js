@@ -43,6 +43,9 @@
         if (applyBtn) {
             Utils.on(applyBtn, 'click', loadViolations);
         }
+        document.querySelectorAll('[id^="btn-resolve-violation-"]').forEach((btn) => {
+            btn.addEventListener('click', () => resolveViolation(btn.getAttribute('data-violation-id')));
+        });
     }
 
     /**
@@ -123,7 +126,11 @@
             info: cvT('Low'),
         };
 
-        tbody.innerHTML = violations.map(v => `
+        tbody.innerHTML = violations.map(v => {
+            const resolveBtn = (!v.resolved && v.can_resolve)
+                ? `<button type="button" class="btn btn--sm btn--secondary" id="btn-resolve-violation-${Utils.escapeHtml(String(v.id))}" data-violation-id="${Utils.escapeHtml(String(v.id))}">${Utils.escapeHtml(cvT('Mark as fixed'))}</button>`
+                : '';
+            return `
             <tr>
                 <td>${Utils.escapeHtml(typeLabels[v.type] || v.type)}</td>
                 <td>
@@ -137,9 +144,43 @@
                     <span class="badge badge--${v.resolved ? 'success' : 'error'}">
                         ${Utils.escapeHtml(v.resolved ? resolvedLabel : unresolvedLabel)}
                     </span>
+                    ${resolveBtn}
                 </td>
-            </tr>
-        `).join('');
+            </tr>`;
+        }).join('');
+
+        tbody.querySelectorAll('[id^="btn-resolve-violation-"]').forEach((btn) => {
+            btn.addEventListener('click', () => resolveViolation(btn.getAttribute('data-violation-id')));
+        });
+    }
+
+    async function resolveViolation(id) {
+        if (!id) return;
+        const confirmed = await Utils.confirmDestructiveAction({
+            title: cvT('Mark as fixed'),
+            message: cvT('Confirm that this violation has been reviewed and corrected.'),
+            confirmLabel: cvT('Mark as fixed'),
+            variant: 'primary',
+        });
+        if (!confirmed) {
+            return;
+        }
+
+        Utils.ajax('/apps/arbeitszeitcheck/api/compliance/violations/' + encodeURIComponent(id) + '/resolve', {
+            method: 'POST',
+            onSuccess: function (data) {
+                if (data.success) {
+                    Messaging.showSuccess?.(cvT('Violation marked as fixed.'));
+                    Messaging.announcePolite?.(cvT('Violation marked as fixed.'));
+                    loadViolations();
+                } else {
+                    Messaging.showError?.(data.error || cvT('Could not update violation.'));
+                }
+            },
+            onError: function () {
+                Messaging.showError?.(cvT('Could not update violation.'));
+            },
+        });
     }
 
     // Initialize on DOM ready

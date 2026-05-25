@@ -46,7 +46,7 @@ function stageDom() {
     <select id="sim-hypothetical-teams" multiple></select>
     <button type="button" id="sim-hypothetical-clear">Clear</button>
 
-    <dialog id="layer-dialog" aria-modal="true">
+    <dialog id="layer-dialog" class="layer-dialog azc-native-dialog" aria-modal="true">
       <form id="layer-dialog-form">
         <h2 id="layer-dialog-title"></h2>
         <p id="layer-dialog-intro"></p>
@@ -325,6 +325,25 @@ describe('simulator combobox keyboard interactions', () => {
     expect(suggest.hidden).toBe(false);
     expect(suggest.querySelector('.form-suggest__empty')).not.toBeNull();
     vi.useRealTimers();
+  });
+});
+
+describe('Layer dialog lifecycle', () => {
+  it('stays closed on initial page load (no stray open attribute)', () => {
+    const dlg = document.getElementById('layer-dialog');
+    expect(dlg).not.toBeNull();
+    expect(dlg.hasAttribute('open')).toBe(false);
+    expect(dlg.open).toBeFalsy();
+    expect(document.getElementById('layer-dialog-title').textContent).toBe('');
+  });
+
+  it('closes via Cancel and clears the open state', () => {
+    const dlg = document.getElementById('layer-dialog');
+    dlg.showModal();
+    expect(dlg.hasAttribute('open')).toBe(true);
+    document.getElementById('layer-dialog-cancel').click();
+    expect(dlg.hasAttribute('open')).toBe(false);
+    expect(dlg.open).toBeFalsy();
   });
 });
 

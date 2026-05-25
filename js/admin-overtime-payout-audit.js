@@ -70,17 +70,13 @@
 		}
 	}
 
-	function setLiveMessage(message, isError) {
+	function setLiveMessage(message) {
 		const live = $('#ot-audit-live');
 		if (!live) {
 			return;
 		}
 		live.textContent = message || '';
-		if (message) {
-			live.hidden = false;
-		} else {
-			live.hidden = true;
-		}
+		live.hidden = !message;
 	}
 
 	function buildPayoutProcessUrl(year, month) {
@@ -133,13 +129,13 @@
 			const hoursLabel = (i18n.gapHours || '%s h unpaid').replace('%s', formatHours(hoursRaw));
 			const processUrl = escapeHtml(buildPayoutProcessUrl(year, month));
 			const processLabel = escapeHtml(i18n.gapProcess || 'Process payout');
-			return '<li class="admin-overtime-payout-audit-gaps__item">'
-				+ '<div class="admin-overtime-payout-audit-gaps__meta">'
-				+ '<span class="admin-overtime-payout-audit-gaps__name">' + name + '</span>'
-				+ '<span class="admin-overtime-payout-audit-gaps__period">' + period + '</span>'
+			return '<li class="admin-ot-audit-gaps__item">'
+				+ '<div class="admin-ot-audit-gaps__meta">'
+				+ '<span class="admin-ot-audit-gaps__name">' + name + '</span>'
+				+ '<span class="admin-ot-audit-gaps__period">' + period + '</span>'
 				+ '</div>'
-				+ '<span class="admin-overtime-payout-audit-gaps__hours">' + escapeHtml(hoursLabel) + '</span>'
-				+ '<a href="' + processUrl + '" class="btn btn--secondary btn--small">' + processLabel + '</a>'
+				+ '<span class="admin-ot-audit-gaps__hours">' + escapeHtml(hoursLabel) + '</span>'
+				+ '<a href="' + processUrl + '" class="azc-btn azc-btn--secondary azc-btn--sm">' + processLabel + '</a>'
 				+ '</li>';
 		}).join('');
 	}
@@ -155,12 +151,14 @@
 			.replace('%2$s', formatHours(totalHours));
 
 		if (meta && meta.truncated) {
-			summaryEl.classList.add('admin-overtime-stat-banner--warning');
+			summaryEl.classList.add('azc-callout--warning');
+			summaryEl.classList.remove('azc-callout--info');
 			text += ' ' + (i18n.truncated || 'Showing %1$s of %2$s records.')
 				.replace('%1$s', String(meta.shown ?? 0))
 				.replace('%2$s', String(total));
 		} else {
-			summaryEl.classList.remove('admin-overtime-stat-banner--warning');
+			summaryEl.classList.remove('azc-callout--warning');
+			summaryEl.classList.add('azc-callout--info');
 		}
 
 		summaryEl.textContent = text;
@@ -171,14 +169,14 @@
 		const tbody = $('#ot-audit-tbody');
 		const summaryEl = $('#ot-audit-summary');
 
-		setLiveMessage('', false);
+		setLiveMessage('');
 
 		const { year, month, userId } = getFilters();
 		if (!year || year < 2000 || year > 2100) {
 			const msg = i18n.invalidYear || 'Enter a valid year (2000–2100).';
-			setLiveMessage(msg, true);
+			setLiveMessage(msg);
 			if (tbody) {
-				tbody.innerHTML = '<tr><td colspan="5" class="admin-overtime-payout-audit-table__empty">'
+				tbody.innerHTML = '<tr><td colspan="5" class="admin-ot-audit__empty">'
 					+ escapeHtml(msg) + '</td></tr>';
 			}
 			if (summaryEl) {
@@ -189,7 +187,7 @@
 		}
 
 		if (tbody) {
-			tbody.innerHTML = '<tr><td colspan="5" class="admin-overtime-payout-audit-table__empty">'
+			tbody.innerHTML = '<tr><td colspan="5" class="admin-ot-audit__empty">'
 				+ escapeHtml(i18n.loading || 'Loading…') + '</td></tr>';
 		}
 
@@ -222,7 +220,7 @@
 
 			if (tbody) {
 				if (items.length === 0) {
-					tbody.innerHTML = '<tr><td colspan="5" class="admin-overtime-payout-audit-table__empty">'
+					tbody.innerHTML = '<tr><td colspan="5" class="admin-ot-audit__empty">'
 						+ escapeHtml(i18n.noRecords || '') + '</td></tr>';
 				} else {
 					tbody.innerHTML = items.map(function (row) {
@@ -232,25 +230,25 @@
 						const processed = formatProcessedAt(row.created_at || row.processed_at);
 						const links = [];
 						if (row.audit_log_url) {
-							links.push('<a href="' + escapeHtml(row.audit_log_url) + '" class="btn btn--secondary btn--small">'
+							links.push('<a href="' + escapeHtml(row.audit_log_url) + '" class="azc-btn azc-btn--secondary azc-btn--sm">'
 								+ escapeHtml(i18n.auditLog || 'Activity log') + '</a>');
 						}
 						if (row.pdf_url) {
-							links.push('<a href="' + escapeHtml(row.pdf_url) + '" class="btn btn--secondary btn--small" target="_blank" rel="noopener noreferrer">'
+							links.push('<a href="' + escapeHtml(row.pdf_url) + '" class="azc-btn azc-btn--secondary azc-btn--sm" target="_blank" rel="noopener noreferrer">'
 								+ escapeHtml(i18n.monthPdf || 'Month-closure PDF') + '</a>');
 						}
 						const actionsHtml = links.length > 0
 							? links.join(' ')
-							: '<span class="admin-overtime-payout-audit-table__muted">' + escapeHtml(i18n.noActions || '—') + '</span>';
+							: '<span class="admin-ot-audit__muted">' + escapeHtml(i18n.noActions || '—') + '</span>';
 						const timeCell = processed.datetime
 							? '<time datetime="' + escapeHtml(processed.datetime) + '">' + escapeHtml(processed.display) + '</time>'
 							: escapeHtml(processed.display);
 						return '<tr>'
 							+ '<td>' + escapeHtml(period) + '</td>'
 							+ '<th scope="row">' + escapeHtml(name) + '</th>'
-							+ '<td class="admin-overtime-payout-audit-table__num">' + escapeHtml(hours) + '</td>'
+							+ '<td class="admin-ot-audit__num">' + escapeHtml(hours) + '</td>'
 							+ '<td>' + timeCell + '</td>'
-							+ '<td class="admin-overtime-payout-audit-table__actions">' + actionsHtml + '</td>'
+							+ '<td class="admin-ot-audit__actions">' + actionsHtml + '</td>'
 							+ '</tr>';
 					}).join('');
 				}
@@ -260,17 +258,39 @@
 		} catch (e) {
 			const errMsg = (e && e.message && e.message !== 'error') ? String(e.message) : (i18n.error || '');
 			if (tbody) {
-				tbody.innerHTML = '<tr><td colspan="5" class="admin-overtime-payout-audit-table__empty">'
+				tbody.innerHTML = '<tr><td colspan="5" class="admin-ot-audit__empty">'
 					+ escapeHtml(errMsg) + '</td></tr>';
 			}
 			if (summaryEl) {
 				summaryEl.hidden = true;
 			}
 			renderGaps([]);
-			setLiveMessage(errMsg, true);
+			setLiveMessage(errMsg);
 		} finally {
 			setLoading(false);
 		}
+	}
+
+	function createEmployeePicker() {
+		if (typeof window.ArbeitszeitCheck?.initAdminUserPicker !== 'function') {
+			return null;
+		}
+		return window.ArbeitszeitCheck.initAdminUserPicker({
+			hiddenSelector: '#ot-audit-user-id',
+			searchSelector: '#ot-audit-employee-search',
+			listSelector: '#ot-audit-employee-listbox',
+			wrapSelector: '#ot-audit-employee-picker',
+			statusSelector: '#ot-audit-employee-status',
+			searchUrl: cfg.adminUserSearchUrl || '',
+			limit: 20,
+			l10n: i18n,
+			onChange: function (userId) {
+				const clearBtn = $('#ot-audit-clear-employee');
+				if (clearBtn) {
+					clearBtn.hidden = userId === '';
+				}
+			},
+		});
 	}
 
 	function init() {
@@ -279,28 +299,24 @@
 		const resetBtn = $('#ot-audit-reset');
 		const defaultYear = cfg.defaultYear || new Date().getFullYear();
 
-		let employeePicker = null;
-		if (window.ArbeitszeitCheck && typeof window.ArbeitszeitCheck.initAdminUserPicker === 'function') {
-			employeePicker = window.ArbeitszeitCheck.initAdminUserPicker({
-				hiddenSelector: '#ot-audit-user-id',
-				searchSelector: '#ot-audit-employee-search',
-				listSelector: '#ot-audit-employee-listbox',
-				wrapSelector: '#ot-audit-employee-picker',
-				searchUrl: cfg.adminUserSearchUrl || '',
-				limit: 15,
-				l10n: i18n,
-				onChange: function (userId) {
-					if (clearEmployeeBtn) {
-						clearEmployeeBtn.hidden = userId === '';
-					}
-				},
-			});
+		let employeePicker = createEmployeePicker();
+		if (!employeePicker) {
+			setLiveMessage(i18n.searchError || 'Employee search is unavailable. Reload the page.');
 		}
 
 		if (clearEmployeeBtn) {
 			clearEmployeeBtn.addEventListener('click', function () {
 				if (employeePicker) {
 					employeePicker.clear();
+				} else {
+					const hidden = $('#ot-audit-user-id');
+					const search = $('#ot-audit-employee-search');
+					if (hidden) {
+						hidden.value = '';
+					}
+					if (search) {
+						search.value = '';
+					}
 				}
 				clearEmployeeBtn.hidden = true;
 			});
@@ -318,6 +334,15 @@
 				}
 				if (employeePicker) {
 					employeePicker.clear();
+				} else {
+					const hidden = $('#ot-audit-user-id');
+					const search = $('#ot-audit-employee-search');
+					if (hidden) {
+						hidden.value = '';
+					}
+					if (search) {
+						search.value = '';
+					}
 				}
 				if (clearEmployeeBtn) {
 					clearEmployeeBtn.hidden = true;

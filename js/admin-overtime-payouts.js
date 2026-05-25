@@ -23,13 +23,18 @@
 		return d.innerHTML;
 	}
 
-	function setLive(msg, isError) {
+	function setLive(msg, type) {
 		const el = $('#ot-payout-live');
 		if (!el) {
 			return;
 		}
 		el.textContent = msg || '';
-		el.classList.toggle('admin-overtime-payouts-live--error', !!isError);
+		el.classList.remove('admin-ot-payouts__live--error', 'admin-ot-payouts__live--success');
+		if (type === 'error') {
+			el.classList.add('admin-ot-payouts__live--error');
+		} else if (type === 'success') {
+			el.classList.add('admin-ot-payouts__live--success');
+		}
 	}
 
 	function getYearMonth() {
@@ -37,6 +42,32 @@
 			year: parseInt($('#ot-payout-year')?.value || '0', 10),
 			month: parseInt($('#ot-payout-month')?.value || '0', 10),
 		};
+	}
+
+	function validateYearMonth() {
+		const { year, month } = getYearMonth();
+		if (!Number.isFinite(year) || year < 2000 || year > 2100) {
+			setLive(i18n.invalidYear || 'Enter a valid year (2000–2100).', 'error');
+			$('#ot-payout-year')?.focus();
+			return false;
+		}
+		if (!Number.isFinite(month) || month < 1 || month > 12) {
+			setLive(i18n.invalidMonth || 'Choose a valid month.', 'error');
+			$('#ot-payout-month')?.focus();
+			return false;
+		}
+		return true;
+	}
+
+	function setToolbarBusy(busy) {
+		['#ot-payout-refresh', '#ot-payout-export', '#ot-payout-bulk'].forEach((sel) => {
+			const btn = $(sel);
+			if (!btn) {
+				return;
+			}
+			btn.disabled = busy || (sel !== '#ot-payout-refresh' && !cfg.bankEnabled);
+			btn.setAttribute('aria-busy', busy ? 'true' : 'false');
+		});
 	}
 
 	async function apiGet(url, params) {
@@ -78,7 +109,8 @@
 				.replace('%1$s', String(scanned));
 		}
 		el.textContent = text;
-		el.classList.toggle('admin-overtime-payouts-live--error', !!(meta && meta.truncated));
+		el.classList.toggle('azc-callout--warning', !!(meta && meta.truncated));
+		el.classList.toggle('azc-callout--info', !(meta && meta.truncated));
 		el.hidden = false;
 	}
 
@@ -116,7 +148,7 @@
 				eligible = Number(row.payout_eligible_hours || 0).toFixed(2);
 				const name = escapeHtml(row.display_name || row.user_id);
 				const hours = eligible;
-				action = '<button type="button" class="btn btn--primary btn--small ot-payout-one" data-user-id="'
+				action = '<button type="button" class="azc-btn azc-btn--primary azc-btn--sm ot-payout-one" data-user-id="'
 					+ escapeHtml(row.user_id) + '" data-name="' + name + '" data-hours="' + escapeHtml(hours) + '">'
 					+ escapeHtml(i18n.confirmBtn || 'Confirm') + '</button>';
 			} else if (status === 'paid') {
@@ -133,12 +165,18 @@
 		}).join('');
 
 		tbody.querySelectorAll('.ot-payout-one').forEach((btn) => {
-			btn.addEventListener('click', () => {
+			btn.addEventListener('click', async () => {
 				const name = btn.getAttribute('data-name') || '';
 				const hours = btn.getAttribute('data-hours') || '';
 				const msg = (i18n.confirmOne || 'Record payout for %s?')
 					.replace('%s', name + ' (' + hours + ' h)');
-				if (window.confirm(msg)) {
+				const confirmed = await (window.ArbeitszeitCheckUtils?.confirmDestructiveAction?.({
+					title: i18n.confirmTitle || 'Confirm payout',
+					message: msg,
+					variant: 'danger',
+					confirmLabel: i18n.confirmBtn || 'Confirm',
+				}) ?? Promise.resolve(null));
+				if (confirmed) {
 					processOne(btn.getAttribute('data-user-id'));
 				}
 			});
@@ -147,70 +185,108 @@
 
 	async function loadList() {
 		if (!cfg.bankEnabled) {
+			setLive(i18n.bankDisabled || 'Enable the overtime bank before loading payouts.', 'error');
+			return;
+		}
+		if (!validateYearMonth()) {
 			return;
 		}
 		const { year, month } = getYearMonth();
 		setLive(i18n.loading || 'Loading…', false);
+		setToolbarBusy(true);
 		try {
 			const json = await apiGet(cfg.apiList, { year, month });
 			if (!json.success) {
-				setLive(json.error || i18n.error, true);
+				setLive(json.error || i18n.error, 'error');
 				return;
 			}
 			renderSummary(json.data?.summary, json.data?.meta);
 			renderTable(json.data?.items);
 			setLive('', false);
 		} catch (e) {
-			setLive(i18n.error, true);
+			setLive(i18n.error, 'error');
+		} finally {
+			setToolbarBusy(false);
 		}
 	}
 
 	async function processOne(userId) {
+		if (!cfg.bankEnabled || !validateYearMonth()) {
+			return;
+		}
 		const { year, month } = getYearMonth();
 		if (!userId) {
 			return;
 		}
 		setLive(i18n.loading || 'Loading…', false);
+		setToolbarBusy(true);
 		try {
 			const json = await apiPost(cfg.apiProcess, { userId, year, month });
 			if (!json.success) {
-				setLive(json.error || i18n.error, true);
+				setLive(json.error || i18n.error, 'error');
 				return;
 			}
 			await loadList();
-			setLive(i18n.paid || 'Paid', false);
+			setLive(i18n.paid || 'Paid', 'success');
 		} catch (e) {
-			setLive(i18n.error, true);
+			setLive(i18n.error, 'error');
+		} finally {
+			setToolbarBusy(false);
 		}
 	}
 
 	async function processBulk() {
-		if (!window.confirm(i18n.confirmBulk || 'Confirm bulk payout?')) {
+		if (!cfg.bankEnabled || !validateYearMonth()) {
+			return;
+		}
+		const confirmed = await (window.ArbeitszeitCheckUtils?.confirmDestructiveAction?.({
+			title: i18n.confirmBulkTitle || 'Pay out all pending',
+			message: i18n.confirmBulk || 'Confirm bulk payout?',
+			variant: 'danger',
+			confirmLabel: i18n.confirmBtn || 'Confirm',
+		}) ?? Promise.resolve(null));
+		if (!confirmed) {
 			return;
 		}
 		const { year, month } = getYearMonth();
 		setLive(i18n.loading || 'Loading…', false);
+		setToolbarBusy(true);
 		try {
 			const json = await apiPost(cfg.apiBulk, { year, month });
 			if (!json.success) {
-				setLive(json.error || i18n.error, true);
+				setLive(json.error || i18n.error, 'error');
 				return;
 			}
 			const r = json.result || {};
 			const text = (i18n.done || 'Done.')
 				.replace('%1$s', String(r.processed ?? 0))
 				.replace('%2$s', String(r.skipped ?? 0));
-			setLive(text, false);
+			setLive(text, 'success');
 			await loadList();
 		} catch (e) {
-			setLive(i18n.error, true);
+			setLive(i18n.error, 'error');
+		} finally {
+			setToolbarBusy(false);
 		}
 	}
 
 	function exportCsv() {
+		if (!cfg.bankEnabled) {
+			setLive(i18n.bankDisabled || 'Enable the overtime bank before exporting.', 'error');
+			return;
+		}
+		if (!validateYearMonth()) {
+			return;
+		}
 		const { year, month } = getYearMonth();
-		const url = cfg.apiExport + '?year=' + encodeURIComponent(year) + '&month=' + encodeURIComponent(month);
-		window.location.href = url;
+		const params = new URLSearchParams({
+			year: String(year),
+			month: String(month),
+		});
+		if (typeof OC !== 'undefined' && OC.requestToken) {
+			params.set('requesttoken', OC.requestToken);
+		}
+		window.location.href = cfg.apiExport + '?' + params.toString();
 	}
 
 	function applyQueryParams() {

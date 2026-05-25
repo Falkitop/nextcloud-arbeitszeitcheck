@@ -31,10 +31,6 @@
         return div.innerHTML;
     }
 
-    function getDateLocale() {
-        return window.ArbeitszeitCheck?.dateLocale || document.documentElement.lang || undefined;
-    }
-
     function formatDateForDisplay(dateString) {
         if (!dateString) return '';
         const api = window.ArbeitszeitCheckTime;
@@ -567,7 +563,7 @@
                         parts.push(escapeHtml(trafficLightLabel(m.traffic_light_state)));
                     }
                     if (m.bank_enabled && m.payout_eligible_hours >= 0.01) {
-                        parts.push(escapeHtml(t('Payout eligible: %s h', 'Payout eligible: %s h').replace('%s', String(m.payout_eligible_hours)));
+                        parts.push(escapeHtml(t('Payout eligible: %s h', 'Payout eligible: %s h').replace('%s', String(m.payout_eligible_hours))));
                     } else if (m.bank_enabled && m.bank_state === 'bank_yellow') {
                         parts.push(escapeHtml(t('Bank nearly full', 'Bank nearly full')));
                     } else if (m.bank_enabled && (m.bank_state === 'bank_red' || m.bank_state === 'payout_eligible')) {

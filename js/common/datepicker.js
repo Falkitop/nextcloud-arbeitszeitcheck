@@ -315,8 +315,13 @@ function initializeDatepicker(input, options = {}) {
 
 	const toggleBtn = document.createElement('button');
 	toggleBtn.type = 'button';
-	toggleBtn.innerHTML = '📅';
-	toggleBtn.style.cssText = 'position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;padding:4px 8px;';
+	toggleBtn.className = 'azc-datepicker-toggle';
+	if (typeof window.AzcCatalog !== 'undefined' && typeof window.AzcCatalog.render === 'function') {
+		toggleBtn.innerHTML = window.AzcCatalog.render('calendar', 'azc-datepicker-toggle__icon');
+	} else {
+		toggleBtn.textContent = '';
+	}
+	toggleBtn.style.cssText = 'position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:4px 8px;display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;';
 	toggleBtn.setAttribute('aria-label', t('Open calendar'));
 	toggleBtn.addEventListener('click', function (e) {
 		e.preventDefault();

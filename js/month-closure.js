@@ -211,6 +211,7 @@
                     deadlineEl.hidden = false;
                 }
 
+                const lockNotice = $('month-closure-finalized-notice');
                 if (isFinalized) {
                     if (data.autoFinalized) {
                         statusEl.textContent = mcT('monthClosureStatusFinalizedAuto', 'Finalized automatically');
@@ -220,8 +221,17 @@
                     if (btn) {
                         btn.disabled = true;
                     }
+                    if (lockNotice) {
+                        lockNotice.hidden = false;
+                    }
+                    if (blockedEl) {
+                        blockedEl.hidden = true;
+                    }
                     setPdfLink(y, m, true);
                 } else {
+                    if (lockNotice) {
+                        lockNotice.hidden = true;
+                    }
                     statusEl.textContent = mcT('monthClosureStatusOpen', 'Open (month status)');
                     if (btn) {
                         btn.disabled = !canFinalize;
@@ -251,13 +261,21 @@
             return;
         }
         fin.setAttribute('data-mc-bound', '1');
-        fin.addEventListener('click', function () {
+        fin.addEventListener('click', async function () {
             if (fin.disabled) {
                 return;
             }
             const msg = fin.getAttribute('data-confirm-finalize') || '';
-            if (msg && typeof window.confirm === 'function' && !window.confirm(msg)) {
-                return;
+            if (msg) {
+                const confirmed = await Utils.confirmDestructiveAction({
+                    title: mcT('finalizeConfirmTitle', 'Finalize month'),
+                    message: msg,
+                    confirmLabel: mcT('finalizeConfirmAction', 'Finalize'),
+                    variant: 'danger',
+                });
+                if (!confirmed) {
+                    return;
+                }
             }
             const { y, m } = parsePeriodValue(periodSel.value);
             if (!Number.isInteger(y) || !Number.isInteger(m) || m < 1 || m > 12) {

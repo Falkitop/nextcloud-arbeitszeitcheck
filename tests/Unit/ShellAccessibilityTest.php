@@ -1,0 +1,85 @@
+<?php
+
+declare(strict_types=1);
+
+namespace OCA\ArbeitszeitCheck\Tests\Unit;
+
+use PHPUnit\Framework\TestCase;
+
+/**
+ * Unified page shell accessibility contract (WCAG 2.1 AA baseline).
+ */
+class ShellAccessibilityTest extends TestCase
+{
+	public function testPageStartIncludesShellLandmarksAndLiveRegions(): void
+	{
+		$path = __DIR__ . '/../../templates/common/page-start.php';
+		$this->assertFileExists($path);
+		$content = (string)file_get_contents($path);
+
+		$this->assertStringContainsString('azc-skip-link', $content);
+		$this->assertStringContainsString('#azc-main-content', $content);
+		$this->assertStringContainsString('id="azc-live-region"', $content);
+		$this->assertStringContainsString('aria-live="polite"', $content);
+		$this->assertStringContainsString('id="azc-alert-region"', $content);
+		$this->assertStringContainsString('aria-live="assertive"', $content);
+		$this->assertStringContainsString('id="azc-page-title"', $content);
+		$this->assertStringContainsString('azc-scope-strip', $content);
+		$this->assertStringContainsString('azc-breadcrumb__list', $content);
+		$this->assertStringContainsString('azc-breadcrumb__link', $content);
+		$this->assertStringContainsString('aria-current="page"', $content);
+		$this->assertStringContainsString('<main id="azc-main-content"', $content);
+		$this->assertStringContainsString('id="azc-page-title"', $content);
+		$this->assertMatchesRegularExpression('/<h1[^>]*id="azc-page-title"/', $content);
+	}
+
+	public function testTimeBootstrapEmitsInlineTimezoneConfig(): void
+	{
+		$path = __DIR__ . '/../../templates/common/time-bootstrap.php';
+		$this->assertFileExists($path);
+		$content = (string)file_get_contents($path);
+
+		$this->assertStringContainsString('ArbeitszeitCheck.tz', $content);
+		$this->assertStringContainsString('serverNow', $content);
+		$this->assertStringContainsString('registerConfig()', $content);
+	}
+
+	public function testAdminSettingsSupportsNextcloudAdministrationShell(): void
+	{
+		$path = __DIR__ . '/../../templates/admin-settings.php';
+		$this->assertFileExists($path);
+		$content = (string)file_get_contents($path);
+
+		$this->assertStringContainsString("settingsShell", $content);
+		$this->assertStringContainsString('azc-nc-admin-settings', $content);
+		$this->assertStringContainsString('Open full settings in app', $content);
+	}
+
+	public function testTimeInitSupportsModernInitialStateApi(): void
+	{
+		$path = __DIR__ . '/../../js/common/time-init.js';
+		$this->assertFileExists($path);
+		$content = (string)file_get_contents($path);
+
+		$this->assertStringContainsString('OCP.InitialState', $content);
+		$this->assertStringContainsString('OC.initialState', $content);
+	}
+
+	public function testPageEndClosesMain(): void
+	{
+		$path = __DIR__ . '/../../templates/common/page-end.php';
+		$this->assertFileExists($path);
+		$content = (string)file_get_contents($path);
+
+		$this->assertStringContainsString('</main>', $content);
+	}
+
+	public function testSubstitutionRequestsHasSingleDocumentHeading(): void
+	{
+		$path = __DIR__ . '/../../templates/substitution-requests.php';
+		$content = (string)file_get_contents($path);
+		$this->assertSame(0, substr_count($content, '<h1'), 'page shell provides the only h1');
+		$this->assertStringContainsString('substitution-requests__list', $content);
+		$this->assertStringContainsString('azc-card', $content);
+	}
+}

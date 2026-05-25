@@ -8,6 +8,7 @@ tests/coverage/
 tests/results.xml
 .phpunit.result.cache
 test-results/
+tests/e2e/.env
 
 # IDE files
 .vscode/

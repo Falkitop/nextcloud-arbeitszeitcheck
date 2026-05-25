@@ -24,6 +24,7 @@ use OCA\ArbeitszeitCheck\Service\TeamResolverService;
 use OCA\ArbeitszeitCheck\Service\TimeTrackingService;
 use OCA\ArbeitszeitCheck\Service\OvertimeBankService;
 use OCA\ArbeitszeitCheck\Service\OvertimeDisplayService;
+use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
 use OCA\ArbeitszeitCheck\Service\OvertimePayoutService;
 use OCP\AppFramework\Http\RedirectResponse;
 use OCP\AppFramework\Http\TemplateResponse;
@@ -88,7 +89,15 @@ class PageControllerTest extends TestCase
 		$overtimePayoutService = $this->createMock(OvertimePayoutService::class);
 		$cspService = $this->createMock(CSPService::class);
 		$cspService->method('applyPolicyWithNonce')->willReturnCallback(fn ($r) => $r);
+		$localeFormat = $this->createMock(LocaleFormatService::class);
+		$localeFormat->method('clientHints')->willReturn([
+			'locale' => 'en-US',
+			'htmlLang' => 'en-US',
+			'timezone' => 'Europe/Berlin',
+			'displayTimezone' => 'Europe/Berlin',
+		]);
 		$l10n = $this->createMock(IL10N::class);
+		$l10n->method('t')->willReturnArgument(0);
 
 		$this->controller = new PageController(
 			'arbeitszeitcheck',
@@ -109,6 +118,7 @@ class PageControllerTest extends TestCase
 			$overtimeBankService,
 			$overtimePayoutService,
 			$cspService,
+			$localeFormat,
 			$l10n
 		);
 	}
@@ -135,6 +145,10 @@ class PageControllerTest extends TestCase
 		$this->assertInstanceOf(TemplateResponse::class, $response);
 		$this->assertEquals('arbeitszeitcheck', $response->getApp());
 		$this->assertEquals('dashboard', $response->getTemplateName());
+		$params = $response->getParams();
+		$this->assertSame('dashboard', $params['pageId'] ?? null);
+		$this->assertNotEmpty($params['clientHints'] ?? null);
+		$this->assertIsArray($params['urls'] ?? null);
 	}
 
 	/**
@@ -158,6 +172,8 @@ class PageControllerTest extends TestCase
 		$this->assertInstanceOf(TemplateResponse::class, $response);
 		$this->assertEquals('arbeitszeitcheck', $response->getApp());
 		$this->assertEquals('calendar', $response->getTemplateName());
+		$params = $response->getParams();
+		$this->assertSame('calendar', $params['pageId'] ?? null);
 	}
 
 	/**
@@ -170,5 +186,7 @@ class PageControllerTest extends TestCase
 		$this->assertInstanceOf(TemplateResponse::class, $response);
 		$this->assertEquals('arbeitszeitcheck', $response->getApp());
 		$this->assertEquals('timeline', $response->getTemplateName());
+		$params = $response->getParams();
+		$this->assertSame('timeline', $params['pageId'] ?? null);
 	}
 }

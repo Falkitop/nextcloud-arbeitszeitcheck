@@ -18,6 +18,7 @@ use OCA\ArbeitszeitCheck\Db\ComplianceViolation;
 use OCA\ArbeitszeitCheck\Db\ComplianceViolationMapper;
 use OCA\ArbeitszeitCheck\Service\ComplianceService;
 use OCA\ArbeitszeitCheck\Service\CSPService;
+use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\JSONResponse;
@@ -87,6 +88,12 @@ class ComplianceControllerTest extends TestCase
 		$this->l10n = $this->createMock(IL10N::class);
 		$this->l10n->method('t')->willReturnCallback(fn ($s) => $s);
 		$this->request = $this->createMock(IRequest::class);
+		$localeFormat = $this->createMock(LocaleFormatService::class);
+		$localeFormat->method('clientHints')->willReturn([
+			'locale' => 'en-US',
+			'htmlLang' => 'en-US',
+			'timezone' => 'Europe/Berlin',
+		]);
 
 		$this->controller = new ComplianceController(
 			'arbeitszeitcheck',
@@ -99,6 +106,7 @@ class ComplianceControllerTest extends TestCase
 			$this->userManager,
 			$this->urlGenerator,
 			$this->cspService,
+			$localeFormat,
 			$this->l10n
 		);
 	}
@@ -106,8 +114,23 @@ class ComplianceControllerTest extends TestCase
 	/**
 	 * Test dashboard returns template
 	 */
+	private function mockAuthenticatedUser(string $userId = 'testuser'): void
+	{
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn($userId);
+		$this->userSession->method('getUser')->willReturn($user);
+	}
+
 	public function testDashboardReturnsTemplate(): void
 	{
+		$this->mockAuthenticatedUser();
+		$this->complianceService->method('getComplianceStatus')->willReturn([
+			'compliant' => true,
+			'score' => 100,
+			'has_data' => true,
+		]);
+		$this->violationMapper->method('findByUser')->willReturn([]);
+
 		$response = $this->controller->dashboard();
 
 		$this->assertInstanceOf(TemplateResponse::class, $response);
@@ -118,6 +141,10 @@ class ComplianceControllerTest extends TestCase
 	 */
 	public function testViolationsReturnsTemplate(): void
 	{
+		$this->mockAuthenticatedUser();
+		$this->violationMapper->method('findByUser')->willReturn([]);
+		$this->violationMapper->method('count')->willReturn(0);
+
 		$response = $this->controller->violations();
 
 		$this->assertInstanceOf(TemplateResponse::class, $response);
@@ -128,6 +155,9 @@ class ComplianceControllerTest extends TestCase
 	 */
 	public function testReportsReturnsTemplate(): void
 	{
+		$this->mockAuthenticatedUser();
+		$this->violationMapper->method('findByUser')->willReturn([]);
+
 		$response = $this->controller->reports();
 
 		$this->assertInstanceOf(TemplateResponse::class, $response);
@@ -325,6 +355,12 @@ class ComplianceControllerTest extends TestCase
 		$permissionService = $this->createMock(PermissionService::class);
 		$permissionService->method('canViewUserCompliance')->willReturn(false);
 		$permissionService->method('canResolveViolation')->willReturn(false);
+		$localeFormat = $this->createMock(LocaleFormatService::class);
+		$localeFormat->method('clientHints')->willReturn([
+			'locale' => 'en-US',
+			'htmlLang' => 'en-US',
+			'timezone' => 'Europe/Berlin',
+		]);
 		$controller = new ComplianceController(
 			'arbeitszeitcheck',
 			$this->request,
@@ -336,6 +372,7 @@ class ComplianceControllerTest extends TestCase
 			$this->userManager,
 			$this->urlGenerator,
 			$this->cspService,
+			$localeFormat,
 			$this->l10n
 		);
 
@@ -585,6 +622,12 @@ class ComplianceControllerTest extends TestCase
 		$permissionService = $this->createMock(PermissionService::class);
 		$permissionService->method('canViewUserCompliance')->willReturn(true);
 		$permissionService->method('canResolveViolation')->willReturn(false);
+		$localeFormat = $this->createMock(LocaleFormatService::class);
+		$localeFormat->method('clientHints')->willReturn([
+			'locale' => 'en-US',
+			'htmlLang' => 'en-US',
+			'timezone' => 'Europe/Berlin',
+		]);
 		$controller = new ComplianceController(
 			'arbeitszeitcheck',
 			$this->request,
@@ -596,6 +639,7 @@ class ComplianceControllerTest extends TestCase
 			$this->userManager,
 			$this->urlGenerator,
 			$this->cspService,
+			$localeFormat,
 			$this->l10n
 		);
 
@@ -666,9 +710,7 @@ class ComplianceControllerTest extends TestCase
 	 */
 	public function testGetViolationsReturnsErrorWhenNotAuthenticated(): void
 	{
-		$this->userSession->expects($this->once())
-			->method('getUser')
-			->willReturn(null);
+		$this->userSession->method('getUser')->willReturn(null);
 
 		$response = $this->controller->getViolations();
 

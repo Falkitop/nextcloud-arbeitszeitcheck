@@ -10,6 +10,7 @@ use OCA\ArbeitszeitCheck\Service\OvertimeBankService;
 use OCA\ArbeitszeitCheck\Service\OvertimePayoutAuditService;
 use OCA\ArbeitszeitCheck\Service\OvertimePayoutService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
+use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
@@ -28,6 +29,13 @@ use OCP\Util;
 class OvertimePayoutController extends Controller
 {
 	use CSPTrait;
+	use PageShellTrait;
+
+	protected PermissionService $permissionService;
+	protected IUserSession $userSession;
+	protected IURLGenerator $urlGenerator;
+	protected IL10N $l10n;
+	protected LocaleFormatService $localeFormat;
 
 	public function __construct(
 		string $appName,
@@ -36,14 +44,41 @@ class OvertimePayoutController extends Controller
 		private readonly OvertimePayoutAuditService $auditService,
 		private readonly OvertimeBankService $bankService,
 		private readonly MonthClosureService $monthClosureService,
-		private readonly PermissionService $permissionService,
-		private readonly IUserSession $userSession,
+		PermissionService $permissionService,
+		IUserSession $userSession,
 		CSPService $cspService,
-		private readonly IURLGenerator $urlGenerator,
-		private readonly IL10N $l10n,
+		IURLGenerator $urlGenerator,
+		LocaleFormatService $localeFormat,
+		IL10N $l10n,
 	) {
 		parent::__construct($appName, $request);
+		$this->permissionService = $permissionService;
+		$this->userSession = $userSession;
+		$this->urlGenerator = $urlGenerator;
+		$this->localeFormat = $localeFormat;
+		$this->l10n = $l10n;
 		$this->setCspService($cspService);
+	}
+
+	/**
+	 * @return array{showSubstitutionLink: bool, showManagerLink: bool, showReportsLink: bool, showAdminNav: bool}
+	 */
+	private function buildAdminNavFlags(): array
+	{
+		return [
+			'showSubstitutionLink' => false,
+			'showManagerLink' => true,
+			'showReportsLink' => true,
+			'showAdminNav' => true,
+		];
+	}
+
+	/**
+	 * @return array<string, mixed>
+	 */
+	private function buildAdminShellParams(string $pageId, string $title, string $help): array
+	{
+		return $this->buildShellParams($pageId, $title, $help, $this->buildAdminNavFlags(), $this->l10n->t('Administration'));
 	}
 
 	#[NoCSRFRequired]
@@ -51,24 +86,12 @@ class OvertimePayoutController extends Controller
 	{
 		$this->assertAppAdmin();
 
-		Util::addTranslations('arbeitszeitcheck');
-		Util::addStyle('arbeitszeitcheck', 'common/colors');
-		Util::addStyle('arbeitszeitcheck', 'common/typography');
-		Util::addStyle('arbeitszeitcheck', 'common/base');
-		Util::addStyle('arbeitszeitcheck', 'common/components');
-		Util::addStyle('arbeitszeitcheck', 'common/layout');
-		Util::addStyle('arbeitszeitcheck', 'common/app-layout');
-		Util::addStyle('arbeitszeitcheck', 'common/utilities');
-		Util::addStyle('arbeitszeitcheck', 'common/accessibility');
-		Util::addStyle('arbeitszeitcheck', 'common/responsive');
-		Util::addStyle('arbeitszeitcheck', 'navigation');
-	Util::addStyle('arbeitszeitcheck', 'arbeitszeitcheck-main');
-	Util::addStyle('arbeitszeitcheck', 'admin-overtime-payout-audit');
-		Util::addScript('arbeitszeitcheck', 'common/utils');
-		Util::addScript('arbeitszeitcheck', 'common/messaging');
-		Util::addScript('arbeitszeitcheck', 'common/navigation');
-		Util::addScript('arbeitszeitcheck', 'common/admin-user-picker');
-		Util::addScript('arbeitszeitcheck', 'admin-overtime-payout-audit');
+		$this->registerFrontEndAssets(
+			'admin-overtime-payout-audit',
+			'admin-overtime-payout-audit',
+			[],
+			['common/admin-user-picker'],
+		);
 
 		$now = new \DateTime();
 		$defaultYear = (int)$now->format('Y');
@@ -86,18 +109,16 @@ class OvertimePayoutController extends Controller
 			$monthLabels[$m] = $dt !== false ? (string)$fmt->format($dt) : (string)$m;
 		}
 
-		$response = new TemplateResponse('arbeitszeitcheck', 'admin-overtime-payout-audit', [
+		$response = new TemplateResponse('arbeitszeitcheck', 'admin-overtime-payout-audit', $this->buildAdminShellParams(
+			'admin-overtime-payout-audit',
+			$this->l10n->t('Overtime payout audit'),
+			$this->l10n->t('Search and review recorded overtime payouts'),
+		) + [
 			'defaultYear' => $defaultYear,
 			'monthLabels' => $monthLabels,
 			'bankEnabled' => $this->bankService->isEnabled(),
 			'payoutProcessUrl' => $this->urlGenerator->linkToRoute('arbeitszeitcheck.overtime_payout.index'),
 			'adminUserSearchUrl' => $this->urlGenerator->linkToRoute('arbeitszeitcheck.admin.searchVacationLayersUsers'),
-			'urlGenerator' => $this->urlGenerator,
-			'l' => $this->l10n,
-			'showSubstitutionLink' => false,
-			'showManagerLink' => true,
-			'showReportsLink' => true,
-			'showAdminNav' => true,
 		]);
 
 		return $this->configureCSP($response, 'admin');
@@ -221,36 +242,18 @@ class OvertimePayoutController extends Controller
 	{
 		$this->assertAppAdmin();
 
-		Util::addTranslations('arbeitszeitcheck');
-		Util::addStyle('arbeitszeitcheck', 'common/colors');
-		Util::addStyle('arbeitszeitcheck', 'common/typography');
-		Util::addStyle('arbeitszeitcheck', 'common/base');
-		Util::addStyle('arbeitszeitcheck', 'common/components');
-		Util::addStyle('arbeitszeitcheck', 'common/layout');
-		Util::addStyle('arbeitszeitcheck', 'common/app-layout');
-		Util::addStyle('arbeitszeitcheck', 'common/utilities');
-		Util::addStyle('arbeitszeitcheck', 'common/accessibility');
-		Util::addStyle('arbeitszeitcheck', 'common/responsive');
-		Util::addStyle('arbeitszeitcheck', 'navigation');
-		Util::addStyle('arbeitszeitcheck', 'arbeitszeitcheck-main');
-		Util::addStyle('arbeitszeitcheck', 'admin-overtime-payouts');
-		Util::addScript('arbeitszeitcheck', 'common/utils');
-		Util::addScript('arbeitszeitcheck', 'common/messaging');
-		Util::addScript('arbeitszeitcheck', 'common/navigation');
-		Util::addScript('arbeitszeitcheck', 'admin-overtime-payouts');
+		$this->registerFrontEndAssets('admin-overtime-payouts', 'admin-overtime-payouts');
 
 		$now = new \DateTime();
-		$response = new TemplateResponse('arbeitszeitcheck', 'admin-overtime-payouts', [
+		$response = new TemplateResponse('arbeitszeitcheck', 'admin-overtime-payouts', $this->buildAdminShellParams(
+			'admin-overtime-payouts',
+			$this->l10n->t('Overtime payouts'),
+			$this->l10n->t('Record month-end payout of overtime hours above the bank cap for payroll. Each payout is stored permanently for audit.'),
+		) + [
 			'defaultYear' => (int)$now->format('Y'),
 			'defaultMonth' => (int)$now->format('n'),
 			'bankEnabled' => $this->bankService->isEnabled(),
 			'bankMaxHours' => $this->bankService->getBankMaxHours(),
-			'urlGenerator' => $this->urlGenerator,
-			'l' => $this->l10n,
-			'showSubstitutionLink' => false,
-			'showManagerLink' => true,
-			'showReportsLink' => true,
-			'showAdminNav' => true,
 		]);
 
 		return $this->configureCSP($response, 'admin');

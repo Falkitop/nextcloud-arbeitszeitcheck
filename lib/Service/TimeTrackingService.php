@@ -662,20 +662,26 @@ class TimeTrackingService
 						);
 						$pausedSummary = ['id' => $pausedEntry->getId(), 'userId' => $userId, 'status' => TimeEntry::STATUS_PAUSED];
 					}
-					return $this->appendAutoClockoutNotice($this->withServerClock([
-						'status' => TimeEntry::STATUS_PAUSED,
-						'current_entry' => $pausedSummary,
-						'working_today_hours' => $this->getTodayHours($userId),
-						'current_session_duration' => $sessionDuration,
-					], $nowImmutable), $userId);
+					return $this->appendAutoClockoutNotice($this->withServerClock(
+						$this->appendArbzgCalendarDayStatusFields([
+							'status' => TimeEntry::STATUS_PAUSED,
+							'current_entry' => $pausedSummary,
+							'working_today_hours' => $this->getTodayHours($userId),
+							'current_session_duration' => $sessionDuration,
+						], $userId, $pausedEntry),
+						$nowImmutable,
+					), $userId);
 				}
 
-				return $this->appendAutoClockoutNotice($this->withServerClock([
-					'status' => 'clocked_out',
-					'current_entry' => null,
-					'working_today_hours' => $this->getTodayHours($userId),
-					'current_session_duration' => null
-				], $nowImmutable), $userId);
+				return $this->appendAutoClockoutNotice($this->withServerClock(
+					$this->appendArbzgCalendarDayStatusFields([
+						'status' => 'clocked_out',
+						'current_entry' => null,
+						'working_today_hours' => $this->getTodayHours($userId),
+						'current_session_duration' => null,
+					], $userId, null),
+					$nowImmutable,
+				), $userId);
 			}
 
 			$sessionStart = $currentEntry->getStartTime();
@@ -713,34 +719,62 @@ class TimeTrackingService
 				];
 			}
 
-			[$todayStart, $todayEnd] = $this->getAppLocalTodayWindow();
-			$sessionHoursOnCalendarToday = $this->dailyWorkingHoursCalculator
-				->getEntryWorkingHoursOnCalendarDay(
-					$currentEntry,
-					$todayStart,
-					$todayEnd,
-					$this->nowForAtEntries(),
-				);
-
-			return $this->appendAutoClockoutNotice($this->withServerClock([
-				'status' => $currentEntry->getStatus(),
-				'current_entry' => $entrySummary,
-				'working_today_hours' => $this->getTodayHours($userId),
-				'session_hours_on_calendar_today' => round($sessionHoursOnCalendarToday, 4),
-				'at_daily_maximum' => $this->isAtOrAboveDailyMaximum($userId),
-				'current_session_duration' => $sessionDuration
-			], $nowImmutable), $userId);
+			return $this->appendAutoClockoutNotice($this->withServerClock(
+				$this->appendArbzgCalendarDayStatusFields([
+					'status' => $currentEntry->getStatus(),
+					'current_entry' => $entrySummary,
+					'working_today_hours' => $this->getTodayHours($userId),
+					'current_session_duration' => $sessionDuration,
+				], $userId, $currentEntry),
+				$nowImmutable,
+			), $userId);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in getStatus for user ' . $userId . ': ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(), ["exception" => $e]);
 			// Return a safe default status (still include the server clock so
 			// the client can keep its drift estimate alive even on error).
-			return $this->appendAutoClockoutNotice($this->withServerClock([
-				'status' => 'clocked_out',
-				'current_entry' => null,
-				'working_today_hours' => 0.0,
-				'current_session_duration' => null
-			], $this->timeZoneService->nowImmutableInStorage()), $userId);
+			return $this->appendAutoClockoutNotice($this->withServerClock(
+				$this->appendArbzgCalendarDayStatusFields([
+					'status' => 'clocked_out',
+					'current_entry' => null,
+					'working_today_hours' => 0.0,
+					'current_session_duration' => null,
+				], $userId, null),
+				$this->timeZoneService->nowImmutableInStorage(),
+			), $userId);
 		}
+	}
+
+	/**
+	 * ArbZG §3 calendar-day fields for status API consumers.
+	 *
+	 * Always returned (including when clocked out) so the UI can disable clock-in
+	 * when {@see isAtOrAboveDailyMaximum()} without requiring an active session.
+	 *
+	 * @param array<string,mixed> $status
+	 * @return array<string,mixed>
+	 */
+	private function appendArbzgCalendarDayStatusFields(array $status, string $userId, ?TimeEntry $liveEntry): array
+	{
+		if (!array_key_exists('working_today_hours', $status)) {
+			$status['working_today_hours'] = $this->getTodayHours($userId);
+		}
+		$status['at_daily_maximum'] = $this->isAtOrAboveDailyMaximum($userId);
+		if ($liveEntry !== null) {
+			[$todayStart, $todayEnd] = $this->getAppLocalTodayWindow();
+			$status['session_hours_on_calendar_today'] = round(
+				$this->dailyWorkingHoursCalculator->getEntryWorkingHoursOnCalendarDay(
+					$liveEntry,
+					$todayStart,
+					$todayEnd,
+					$this->nowForAtEntries(),
+				),
+				4,
+			);
+		} else {
+			$status['session_hours_on_calendar_today'] = 0.0;
+		}
+
+		return $status;
 	}
 
 	/**

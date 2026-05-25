@@ -1,475 +1,336 @@
 /**
- * Admin overtime payout audit (read-only registry)
- * Matches overtime payouts admin panels — WCAG 2.1 AA, responsive.
+ * Admin overtime payout audit — read-only registry (scoped to unified shell).
  *
  * @license AGPL-3.0-or-later
  */
 
-.admin-overtime-payout-audit-page #app-content-wrapper {
-	padding-bottom: var(--space-12);
+#app-content.azc-app--admin-overtime-payout-audit #azc-main-content {
+	gap: var(--azc-space-4);
+	text-align: left;
 }
 
-.admin-overtime-payout-audit-page .section {
-	width: 100%;
-}
-
-.admin-overtime-payout-audit-page .breadcrumb-container {
-	margin-bottom: var(--space-4);
-}
-
-.admin-overtime-payout-audit-header-actions {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-3);
-	margin-bottom: var(--space-8);
-}
-
-/* ----- Filter toolbar ----- */
-
-.admin-overtime-payout-audit-filters {
-	margin-bottom: var(--space-6);
-}
-
-.admin-overtime-payout-audit-filters__heading {
-	margin: 0 0 var(--space-3);
-	font-size: var(--arbeitszeitcheck-font-size-base, 1rem);
-	font-weight: var(--arbeitszeitcheck-font-weight-semibold, 600);
-	line-height: 1.35;
-	color: var(--arbeitszeitcheck-color-text, var(--color-main-text));
-}
-
-.admin-overtime-payout-audit-filters__form {
-	margin: 0;
-}
-
-.admin-overtime-payout-audit-filters__bar {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: flex-end;
-	gap: var(--space-3) var(--space-4);
-	width: fit-content;
-	max-width: 100%;
-	padding: var(--space-3) var(--space-4);
-	border-radius: var(--radius-lg);
-	border: 1px solid var(--arbeitszeitcheck-color-border-subtle, var(--color-border));
-	background: color-mix(in srgb, var(--arbeitszeitcheck-color-background-elevated, var(--color-background-hover)) 72%, transparent);
-}
-
-.admin-overtime-payout-audit-filters__cluster {
-	display: flex;
-	align-items: flex-end;
-	gap: var(--space-3);
-	min-width: 0;
-}
-
-.admin-overtime-payout-audit-filters__cluster--period {
-	flex: 0 0 auto;
-}
-
-.admin-overtime-payout-audit-filters__cluster--employee {
-	flex: 1 1 14rem;
-	max-width: 20rem;
-}
-
-.admin-overtime-payout-audit-filters__cluster--actions {
-	flex: 0 0 auto;
-	gap: var(--space-2);
-}
-
-.admin-overtime-payout-audit-filters__field {
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-payout-audit {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-1);
-	min-width: 0;
+	gap: var(--azc-space-4);
+	width: 100%;
+	text-align: left;
+}
+
+/* ----- Filter card ----- */
+
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit-filters__form {
 	margin: 0;
 }
 
-.admin-overtime-payout-audit-filters__field--year {
-	width: 5.5rem;
-}
-
-.admin-overtime-payout-audit-filters__field--month {
-	width: 10.5rem;
-}
-
-.admin-overtime-payout-audit-filters__field--employee {
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit-filters__grid {
+	display: grid;
+	grid-template-columns: minmax(6rem, 8rem) minmax(10rem, 14rem) minmax(12rem, 1fr) auto;
+	gap: var(--azc-space-4);
+	align-items: end;
 	width: 100%;
 }
 
-.admin-overtime-payout-audit-filters__label {
-	margin: 0;
-	font-size: var(--arbeitszeitcheck-font-size-xs, 0.75rem);
-	font-weight: var(--arbeitszeitcheck-font-weight-medium, 500);
-	letter-spacing: 0.02em;
-	text-transform: uppercase;
-	color: var(--arbeitszeitcheck-color-text-secondary, var(--color-text-maxcontrast));
-	line-height: 1.3;
-}
-
-.admin-overtime-payout-audit-filters__optional {
-	font-weight: var(--arbeitszeitcheck-font-weight-normal, 400);
-	text-transform: lowercase;
-	letter-spacing: 0;
-}
-
-.admin-overtime-payout-audit-filters__field .form-input {
-	width: 100%;
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit-filters__grid .form-group {
+	margin-bottom: 0;
 	min-width: 0;
-	max-width: none;
-	box-sizing: border-box;
 }
 
-.admin-overtime-payout-audit-filters__picker {
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit-filters__optional {
+	font-weight: 400;
+	color: var(--azc-muted);
+}
+
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit-filters__picker {
 	position: relative;
 	width: 100%;
 }
 
-.admin-overtime-payout-audit-filters__picker .user-picker__search {
+#app-content.azc-app--admin-overtime-payout-audit .user-picker__control {
+	position: relative;
+	display: flex;
+	align-items: stretch;
 	width: 100%;
-	padding-inline-end: calc(var(--space-8) + var(--space-1));
 }
 
-.admin-overtime-payout-audit-filters__clear {
+#app-content.azc-app--admin-overtime-payout-audit .user-picker__control .user-picker__search {
+	width: 100%;
+	padding-inline-end: calc(var(--azc-space-7) + var(--azc-space-2));
+}
+
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit-filters__clear,
+#app-content.azc-app--admin-overtime-payout-audit .user-picker__clear {
 	position: absolute;
-	inset-inline-end: var(--space-2);
+	inset-inline-end: var(--azc-space-2);
 	top: 50%;
 	transform: translateY(-50%);
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 1.75rem;
-	height: 1.75rem;
+	min-width: 2.75rem;
+	min-height: 2.75rem;
 	padding: 0;
 	border: 0;
-	border-radius: var(--radius-full, 999px);
+	border-radius: var(--azc-radius-sm);
 	background: transparent;
-	color: var(--arbeitszeitcheck-color-text-secondary, var(--color-text-maxcontrast));
+	color: var(--azc-muted);
 	font-size: 1.25rem;
 	line-height: 1;
 	cursor: pointer;
 }
 
-.admin-overtime-payout-audit-filters__clear:hover,
-.admin-overtime-payout-audit-filters__clear:focus-visible {
-	background: var(--arbeitszeitcheck-color-background-hover, var(--color-background-hover));
-	color: var(--arbeitszeitcheck-color-text, var(--color-main-text));
-	outline: none;
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit-filters__clear:hover,
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit-filters__clear:focus-visible,
+#app-content.azc-app--admin-overtime-payout-audit .user-picker__clear:hover,
+#app-content.azc-app--admin-overtime-payout-audit .user-picker__clear:focus-visible {
+	background: var(--color-background-hover, var(--azc-bg-soft));
+	color: var(--azc-text);
 }
 
-.admin-overtime-payout-audit-filters__clear:focus-visible {
-	outline: 2px solid var(--arbeitszeitcheck-color-primary, var(--color-primary-element));
-	outline-offset: 1px;
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit-filters__clear:focus-visible,
+#app-content.azc-app--admin-overtime-payout-audit .user-picker__clear:focus-visible {
+	outline: 2px solid var(--color-primary-element, #0082c9);
+	outline-offset: 2px;
 }
 
-.admin-overtime-payout-audit-filters__picker .user-picker__list {
+#app-content.azc-app--admin-overtime-payout-audit .user-picker__list {
 	position: absolute;
 	z-index: 60;
 	inset-inline: 0;
-	margin: var(--space-1) 0 0;
-	padding: var(--space-1) 0;
+	top: 100%;
+	margin: var(--azc-space-1) 0 0;
+	padding: var(--azc-space-1) 0;
 	max-height: 14rem;
 	overflow-y: auto;
 	list-style: none;
-	background: var(--arbeitszeitcheck-color-main-background, var(--color-main-background));
-	border: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
-	border-radius: var(--radius-base);
-	box-shadow: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.12));
+	background: var(--color-main-background, #fff);
+	border: 1px solid var(--azc-border);
+	border-radius: var(--azc-radius-sm);
+	box-shadow: var(--azc-shadow-md);
 }
 
-.admin-overtime-payout-audit-filters__picker .user-picker__item {
-	padding: var(--space-2) var(--space-3);
+#app-content.azc-app--admin-overtime-payout-audit .user-picker__item {
+	padding: var(--azc-space-2) var(--azc-space-3);
 	cursor: pointer;
 	line-height: 1.35;
+	text-align: left;
 }
 
-.admin-overtime-payout-audit-filters__picker .user-picker__item:hover,
-.admin-overtime-payout-audit-filters__picker .user-picker__item:focus {
-	background: var(--arbeitszeitcheck-color-background-hover, var(--color-background-hover));
+#app-content.azc-app--admin-overtime-payout-audit .user-picker__item:hover,
+#app-content.azc-app--admin-overtime-payout-audit .user-picker__item:focus-visible {
+	background: var(--color-background-hover, var(--azc-bg-soft));
 	outline: none;
 }
 
-.admin-overtime-payout-audit-filters__picker .user-picker__item:focus-visible {
-	outline: 2px solid var(--arbeitszeitcheck-color-primary, var(--color-primary-element));
-	outline-offset: -2px;
+#app-content.azc-app--admin-overtime-payout-audit .user-picker__item[aria-selected='true'] {
+	background: var(--color-primary-element-light, var(--azc-bg-soft));
 }
 
-.admin-overtime-payout-audit-filters__picker .user-picker__item[aria-selected='true'] {
-	background: var(--arbeitszeitcheck-color-primary-light, var(--color-primary-element-light));
-}
-
-.admin-overtime-payout-audit-filters__picker .user-picker__item--muted {
+#app-content.azc-app--admin-overtime-payout-audit .user-picker__item--muted {
 	cursor: default;
-	color: var(--arbeitszeitcheck-color-text-secondary, var(--color-text-maxcontrast));
-	font-size: var(--arbeitszeitcheck-font-size-sm);
+	color: var(--azc-muted);
+	font-size: var(--azc-fs-sm);
 }
 
-.admin-overtime-payout-audit-filters__picker .user-picker__name {
+#app-content.azc-app--admin-overtime-payout-audit .user-picker__name {
 	display: block;
 	font-weight: 600;
-	color: var(--arbeitszeitcheck-color-text, var(--color-main-text));
+	color: var(--azc-text);
 }
 
-.admin-overtime-payout-audit-filters__picker .user-picker__meta {
+#app-content.azc-app--admin-overtime-payout-audit .user-picker__meta {
 	display: block;
-	font-size: var(--arbeitszeitcheck-font-size-sm);
-	color: var(--arbeitszeitcheck-color-text-secondary, var(--color-text-maxcontrast));
+	font-size: var(--azc-fs-sm);
+	color: var(--azc-muted);
 	margin-top: 0.125rem;
 }
 
-.admin-overtime-payout-audit-filters__cluster--actions .btn {
-	min-height: 44px;
-	white-space: nowrap;
-}
-
-.admin-overtime-payout-audit-filters__reset {
-	display: inline-flex;
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit-filters__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--azc-space-3);
 	align-items: center;
-	justify-content: center;
-	min-height: 44px;
-	padding: 0 var(--space-2);
-	border: 0;
-	border-radius: var(--radius-base);
-	background: transparent;
-	color: var(--arbeitszeitcheck-color-text-secondary, var(--color-text-maxcontrast));
-	font: inherit;
-	font-size: var(--arbeitszeitcheck-font-size-sm, 0.875rem);
-	line-height: 1.2;
-	text-decoration: underline;
-	text-underline-offset: 0.15em;
-	cursor: pointer;
+	justify-content: flex-start;
 }
 
-.admin-overtime-payout-audit-filters__reset:hover,
-.admin-overtime-payout-audit-filters__reset:focus-visible {
-	color: var(--arbeitszeitcheck-color-text, var(--color-main-text));
+/* ----- Summary ----- */
+
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit__summary:not([hidden]) {
+	margin: 0;
 }
 
-.admin-overtime-payout-audit-filters__reset:focus-visible {
-	outline: 2px solid var(--arbeitszeitcheck-color-primary, var(--color-primary-element));
-	outline-offset: 2px;
-	text-decoration: none;
+/* ----- Compliance gaps ----- */
+
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit-gaps:not([hidden]) {
+	margin: 0;
 }
 
-@media (max-width: 768px) {
-	.admin-overtime-payout-audit-filters__bar {
-		width: 100%;
-		padding: var(--space-3);
-	}
-
-	.admin-overtime-payout-audit-filters__cluster--period,
-	.admin-overtime-payout-audit-filters__cluster--employee,
-	.admin-overtime-payout-audit-filters__cluster--actions {
-		flex: 1 1 100%;
-		max-width: none;
-	}
-
-	.admin-overtime-payout-audit-filters__field--year,
-	.admin-overtime-payout-audit-filters__field--month {
-		flex: 1 1 0;
-		width: auto;
-	}
-
-	.admin-overtime-payout-audit-filters__cluster--actions {
-		justify-content: stretch;
-	}
-
-	.admin-overtime-payout-audit-filters__cluster--actions .btn {
-		flex: 1 1 auto;
-	}
-
-	.admin-overtime-payout-audit-filters__reset {
-		flex: 0 0 auto;
-	}
-}
-
-/* Shared elevated panel (gaps, table) */
-.admin-overtime-payout-audit-page .admin-overtime-panel {
-	margin-bottom: var(--space-8);
-	padding: var(--space-6);
-	border-radius: var(--radius-xl);
-	border: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
-	background: var(--arbeitszeitcheck-color-background-elevated, var(--color-background-hover));
-}
-
-.admin-overtime-payout-audit-page .admin-overtime-panel__title {
-	margin: 0 0 var(--space-3);
-	padding-bottom: var(--space-3);
-	font-size: var(--arbeitszeitcheck-font-size-lg, 1.125rem);
-	font-weight: var(--arbeitszeitcheck-font-weight-semibold, 600);
-	line-height: var(--arbeitszeitcheck-line-height-tight, 1.3);
-	color: var(--arbeitszeitcheck-color-text, var(--color-main-text));
-	border-bottom: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
-}
-
-.admin-overtime-stat-banner {
-	margin-bottom: var(--space-6);
-	padding: var(--space-4) var(--space-5);
-	border-radius: var(--radius-lg);
-	background: var(--arbeitszeitcheck-color-primary-light, var(--color-primary-element-light, var(--color-background-hover)));
-	border: 2px solid var(--arbeitszeitcheck-color-primary, var(--color-primary-element, var(--color-border)));
-	color: var(--arbeitszeitcheck-color-text, var(--color-main-text));
-	font-size: var(--arbeitszeitcheck-font-size-lg);
-	font-weight: 600;
-	line-height: 1.5;
-}
-
-.admin-overtime-stat-banner--warning {
-	background: var(--arbeitszeitcheck-color-warning-light, color-mix(in srgb, var(--color-warning) 12%, var(--color-main-background)));
-	border-color: var(--arbeitszeitcheck-color-warning, var(--color-warning));
-}
-
-.admin-overtime-payout-audit-gaps {
-	border-width: 2px;
-	border-color: var(--arbeitszeitcheck-color-warning, var(--color-warning));
-	background: var(--arbeitszeitcheck-color-warning-light, color-mix(in srgb, var(--color-warning) 10%, var(--color-main-background)));
-}
-
-.admin-overtime-payout-audit-gaps__count {
-	margin: 0 0 var(--space-3);
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit-gaps__count {
+	margin: 0 0 var(--azc-space-3);
 	font-weight: 600;
 }
 
-.admin-overtime-payout-audit-gaps__list {
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit-gaps__list {
 	margin: 0;
 	padding: 0;
 	list-style: none;
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-3);
+	gap: var(--azc-space-3);
 }
 
-.admin-overtime-payout-audit-gaps__item {
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit-gaps__item {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
 	justify-content: space-between;
-	gap: var(--space-3);
-	padding: var(--space-4);
-	border-radius: var(--radius-base);
-	border: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
-	background: var(--arbeitszeitcheck-color-main-background, var(--color-main-background));
+	gap: var(--azc-space-3);
+	padding: var(--azc-space-4);
+	border-radius: var(--azc-radius-sm);
+	border: 1px solid var(--azc-border);
+	background: var(--color-main-background, #fff);
 }
 
-.admin-overtime-payout-audit-gaps__meta {
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit-gaps__meta {
 	flex: 1 1 12rem;
 	min-width: 0;
 }
 
-.admin-overtime-payout-audit-gaps__name {
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit-gaps__name {
 	display: block;
 	font-weight: 600;
-	color: var(--arbeitszeitcheck-color-text, var(--color-main-text));
 }
 
-.admin-overtime-payout-audit-gaps__period {
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit-gaps__period {
 	display: block;
-	margin-top: var(--space-1);
-	font-size: var(--arbeitszeitcheck-font-size-sm);
-	color: var(--arbeitszeitcheck-color-text-secondary, var(--color-text-maxcontrast));
+	margin-top: var(--azc-space-1);
+	font-size: var(--azc-fs-sm);
+	color: var(--azc-muted);
 }
 
-.admin-overtime-payout-audit-gaps__hours {
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit-gaps__hours {
 	font-weight: 600;
 	white-space: nowrap;
 }
 
-.admin-overtime-payout-audit-table th,
-.admin-overtime-payout-audit-table td {
+/* ----- Results table ----- */
+
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit__table .table-responsive {
+	inline-size: 100%;
+	max-inline-size: 100%;
+	overflow-x: auto;
+	border: 1px solid var(--azc-border);
+	border-radius: var(--azc-radius-sm);
+}
+
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit__grid {
+	inline-size: max-content;
+	min-inline-size: 100%;
+	margin: 0;
+}
+
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit__grid th,
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit__grid td {
 	vertical-align: middle;
+	text-align: left;
+	padding: var(--azc-space-2) var(--azc-space-3);
 }
 
-.admin-overtime-payout-audit-table__num {
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit__grid tbody th {
+	font-weight: 600;
+	background: var(--azc-bg-soft);
+}
+
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit__num {
 	text-align: end;
-}
-
-.admin-overtime-payout-audit-table td.admin-overtime-payout-audit-table__num {
 	font-variant-numeric: tabular-nums;
 	font-weight: 600;
 }
 
-.admin-overtime-payout-audit-table th[scope='row'] {
-	font-weight: var(--arbeitszeitcheck-font-weight-semibold, 600);
-}
-
-.admin-overtime-payout-audit-table__actions {
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit__actions {
 	white-space: nowrap;
 	text-align: end;
 }
 
-.admin-overtime-payout-audit-table__actions .btn + .btn {
-	margin-inline-start: var(--space-2);
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit__actions .azc-btn + .azc-btn {
+	margin-inline-start: var(--azc-space-2);
 }
 
-.admin-overtime-payout-audit-table__empty {
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit__empty {
 	text-align: center;
-	color: var(--arbeitszeitcheck-color-text-secondary, var(--color-text-maxcontrast));
-	padding: var(--space-6) var(--space-4);
+	color: var(--azc-muted);
+	padding: var(--azc-space-5) var(--azc-space-4);
 }
 
-.admin-overtime-payout-audit-table__muted {
-	color: var(--arbeitszeitcheck-color-text-secondary, var(--color-text-maxcontrast));
-	font-size: var(--arbeitszeitcheck-font-size-sm);
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit__muted {
+	color: var(--azc-muted);
+	font-size: var(--azc-fs-sm);
 }
 
-.admin-overtime-payout-audit-live {
-	min-height: 1.25rem;
-	margin-top: var(--space-4);
-	padding: var(--space-3) var(--space-4);
-	border-radius: var(--radius-base);
+#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit__live:not([hidden]) {
+	margin: 0;
+	padding: var(--azc-space-3) var(--azc-space-4);
+	border-radius: var(--azc-radius-sm);
+	border: 1px solid var(--color-error, #cc4646);
+	background: color-mix(in srgb, var(--color-error, #cc4646) 8%, var(--color-main-background, #fff));
+	color: var(--color-error, #cc4646);
 	font-weight: 600;
 }
 
-.admin-overtime-payout-audit-live:not(:empty) {
-	border: 1px solid var(--arbeitszeitcheck-color-error, var(--color-error));
-	background: color-mix(in srgb, var(--color-error) 8%, var(--color-main-background));
-	color: var(--arbeitszeitcheck-color-error, var(--color-error));
-}
-
-.admin-overtime-payout-audit-live:empty {
-	display: none;
-}
-
-@media (max-width: 768px) {
-	.admin-overtime-payout-audit-page .admin-overtime-panel {
-		padding: var(--space-4);
+@media (max-width: 1023px) {
+	#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit-filters__grid {
+		grid-template-columns: 1fr 1fr;
 	}
 
-	.admin-overtime-payout-audit-gaps__item {
+	#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit-filters__field--employee {
+		grid-column: 1 / -1;
+	}
+
+	#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit-filters__actions {
+		grid-column: 1 / -1;
+	}
+}
+
+@media (max-width: 767px) {
+	#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit-filters__grid {
+		grid-template-columns: 1fr;
+	}
+
+	#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit-filters__actions {
 		flex-direction: column;
 		align-items: stretch;
 	}
 
-	.admin-overtime-payout-audit-gaps__item .btn {
+	#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit-filters__actions .azc-btn {
 		width: 100%;
 		justify-content: center;
 	}
 
-	.admin-overtime-payout-audit-table__actions .btn {
+	#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit-gaps__item {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit-gaps__item .azc-btn {
+		width: 100%;
+		justify-content: center;
+	}
+
+	#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit__grid {
+		min-inline-size: 40rem;
+	}
+
+	#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit__actions .azc-btn {
 		display: block;
 		width: 100%;
-		margin: var(--space-1) 0;
+		margin: var(--azc-space-1) 0;
 	}
 }
 
 @media (forced-colors: active) {
-	.admin-overtime-payout-audit-page .admin-overtime-panel,
-	.admin-overtime-payout-audit-filters,
-	.admin-overtime-stat-banner,
-	.admin-overtime-payout-audit-gaps__item,
-	.admin-overtime-payout-audit-table th,
-	.admin-overtime-payout-audit-table td {
+	#app-content.azc-app--admin-overtime-payout-audit .user-picker__list,
+	#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit__table .table-responsive,
+	#app-content.azc-app--admin-overtime-payout-audit .admin-ot-audit-gaps__item {
 		border-color: CanvasText;
-		background: Canvas;
-		color: CanvasText;
-	}
-
-	.admin-overtime-payout-audit-live:not(:empty) {
-		border-color: CanvasText;
-		color: CanvasText;
-	}
-
-	.admin-overtime-payout-audit-page .btn:focus-visible,
-	.admin-overtime-payout-audit-filters__clear:focus-visible {
-		outline-color: Highlight;
 	}
 }

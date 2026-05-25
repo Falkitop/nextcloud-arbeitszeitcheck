@@ -13,43 +13,41 @@ use OCP\Util;
 /** @var array $_ */
 /** @var \OCP\IL10N $l */
 
-/** Styles/scripts are registered in AdminController::notifications(). */
 $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class);
 $settings = is_array($_['settings'] ?? null) ? $_['settings'] : [];
 $absenceTypes = is_array($_['absenceTypes'] ?? null) ? $_['absenceTypes'] : [];
 $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 ?>
 
-<?php include __DIR__ . '/common/navigation.php'; ?>
+<?php include __DIR__ . '/common/page-start.php'; ?>
 
-<main id="app-content" class="admin-notifications-page" role="main" aria-label="<?php p($l->t('Notification settings')); ?>">
-	<div id="app-content-wrapper">
-		<div class="section">
-			<div class="section-header section-header--stacked">
-				<h1><?php p($l->t('Notification settings')); ?></h1>
-				<p><?php p($l->t('Configure HR emails, overtime alerts, vacation carryover rules, and the overtime bank for payroll.')); ?></p>
-			</div>
+        <div class="azc-admin-notifications-layout">
+            <?php
+            $jumpNavLayout = 'bar';
+            $jumpNavAriaLabel = $l->t('Jump to notification sections');
+            $jumpNavItems = [
+                ['href' => '#section-absences-heading', 'label' => $l->t('Absences')],
+                ['href' => '#section-absence-workflow-heading', 'label' => $l->t('Calendar & email')],
+                ['href' => '#overtime-trafficlight-heading', 'label' => $l->t('Overtime alerts')],
+                ['href' => '#overtime-bank-heading', 'label' => $l->t('Overtime bank')],
+                ['href' => '#hr-notifications-heading', 'label' => $l->t('HR notifications')],
+            ];
+            include __DIR__ . '/common/azc-jump-nav.php';
+            ?>
+            <form id="admin-notifications-form" class="form admin-settings-form admin-notifications-form" novalidate>
+                <input type="hidden" name="requesttoken" value="<?php p($_['requesttoken'] ?? ''); ?>">
 
-			<form id="admin-notifications-form" class="form admin-settings-form admin-notifications-form" novalidate>
-				<input type="hidden" name="requesttoken" value="<?php p($_['requesttoken'] ?? ''); ?>">
+                <div class="azc-admin-notifications-form__sections">
 
-				<nav class="settings-jump-nav" aria-label="<?php p($l->t('Jump to notification sections')); ?>">
-					<p class="settings-jump-nav__title"><?php p($l->t('Quick navigation')); ?></p>
-					<ul class="settings-jump-nav__list">
-						<li><a href="#section-absences-heading"><?php p($l->t('Absences and carryover')); ?></a></li>
-						<li><a href="#section-absence-workflow-heading"><?php p($l->t('Calendar and workflow emails')); ?></a></li>
-						<li><a href="#overtime-trafficlight-heading"><?php p($l->t('Overtime and undertime traffic light')); ?></a></li>
-						<li><a href="#overtime-bank-heading"><?php p($l->t('Overtime bank and payouts')); ?></a></li>
-						<li><a href="#hr-notifications-heading"><?php p($l->t('HR office notifications')); ?></a></li>
-					</ul>
-				</nav>
-
-				<section class="admin-settings-section" aria-labelledby="section-absences-heading">
-					<h3 id="section-absences-heading" class="admin-settings-section__title"><?php p($l->t('Absences and notifications')); ?></h3>
-					<p class="form-help form-help--block">
-						<?php p($l->t('Configure reminder behavior, vacation carryover rules, and substitution-related communication for absence workflows.')); ?>
-					</p>
-					<h4 id="block-clock-reminders-heading" class="admin-settings-subsection__title"><?php p($l->t('Clock-in reminders')); ?></h4>
+                <section class="azc-card azc-admin-notifications-section admin-settings-section" aria-labelledby="section-absences-heading">
+                    <header class="azc-card__header">
+                        <div class="azc-card__header-text">
+                            <h2 id="section-absences-heading" class="azc-card__title"><?php p($l->t('Absences and notifications')); ?></h2>
+                            <p class="azc-card__lead"><?php p($l->t('Configure reminder behavior, vacation carryover rules, and substitution-related communication for absence workflows.')); ?></p>
+                        </div>
+                    </header>
+                    <div class="azc-card__body">
+					<h3 id="block-clock-reminders-heading" class="admin-settings-subsection__title"><?php p($l->t('Clock-in reminders')); ?></h3>
 					<div class="form-group">
 						<div class="form-checkbox">
 							<input type="checkbox" id="missingClockInRemindersEnabled" name="missingClockInRemindersEnabled"
@@ -63,15 +61,15 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 							<?php p($l->t('If enabled, users can still turn this reminder off in their personal settings. Reminders are sent only for expected workdays (not weekends, holidays, or approved absences).')); ?>
 						</p>
 					</div>
-					<fieldset class="form-fieldset" aria-labelledby="vacation-carryover-expiry-legend">
-						<legend id="vacation-carryover-expiry-legend" class="form-legend"><?php p($l->t('Vacation carryover expiry')); ?></legend>
+					<div class="azc-settings-subsection" role="group" aria-labelledby="vacation-carryover-expiry-heading">
+						<h3 id="vacation-carryover-expiry-heading" class="admin-settings-subsection__title"><?php p($l->t('Vacation carryover expiry')); ?></h3>
 						<p class="form-help form-help--block" id="vacation-carryover-expiry-intro">
 							<?php p($l->t('This is the last calendar day in each year when carryover from the opening balance (Resturlaub) may still be used for vacation. You enter each person\'s opening balance per calendar year under Users. After this date, new vacation requests can only use the annual vacation entitlement from the working time model—not carryover. This applies to everyone.')); ?>
 						</p>
 						<p class="form-help form-help--block form-help--note" id="vacation-carryover-expiry-how">
 							<?php p($l->t('Only approved vacation counts. For working days on or before this date, carryover is used before annual entitlement. Approved absences are applied in chronological order (by start date, then id).')); ?>
 						</p>
-						<div class="form-row form-row--inline" role="group" aria-labelledby="vacation-carryover-expiry-legend" aria-describedby="vacation-carryover-expiry-intro vacation-carryover-expiry-how vacation-carryover-expiry-help">
+						<div class="form-row form-row--inline" role="group" aria-labelledby="vacation-carryover-expiry-heading" aria-describedby="vacation-carryover-expiry-intro vacation-carryover-expiry-how vacation-carryover-expiry-help">
 							<div class="form-group">
 								<label for="vacationCarryoverExpiryMonth" class="form-label"><?php p($l->t('Month (1–12)')); ?></label>
 								<input type="number" class="form-input" id="vacationCarryoverExpiryMonth" name="vacationCarryoverExpiryMonth"
@@ -122,16 +120,20 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 								<?php p($l->t('Off by default. Only enable if your collective agreement allows transferring unused annual leave; consult HR / legal. When on, unused annual days for the year may be added to the next year’s carryover opening, subject to the maximum carryover cap above.')); ?>
 							</p>
 						</div>
-					</fieldset>
+					</div>
+                    </div>
 				</section>
 
-				<section class="admin-settings-section" aria-labelledby="section-absence-workflow-heading">
-					<h3 id="section-absence-workflow-heading" class="admin-settings-section__title"><?php p($l->t('Calendar invites and workflow emails')); ?></h3>
-					<p class="form-help form-help--block">
-						<?php p($l->t('Control iCal attachments and substitution emails when absences are approved.')); ?>
-					</p>
-					<fieldset class="form-fieldset" aria-labelledby="send-ical-legend">
-						<legend id="send-ical-legend" class="form-legend"><?php p($l->t('Absences: Send iCal via email')); ?></legend>
+				<section class="azc-card azc-admin-notifications-section admin-settings-section" aria-labelledby="section-absence-workflow-heading">
+                    <header class="azc-card__header">
+                        <div class="azc-card__header-text">
+                            <h2 id="section-absence-workflow-heading" class="azc-card__title"><?php p($l->t('Calendar invites and workflow emails')); ?></h2>
+                            <p class="azc-card__lead"><?php p($l->t('Control iCal attachments and substitution emails when absences are approved.')); ?></p>
+                        </div>
+                    </header>
+                    <div class="azc-card__body">
+					<div class="azc-settings-subsection" role="group" aria-labelledby="send-ical-heading">
+						<h3 id="send-ical-heading" class="admin-settings-subsection__title"><?php p($l->t('Absences: Send iCal via email')); ?></h3>
 						<p class="form-help form-help--block">
 							<?php p($l->t('For approved absences, an email with an iCal attachment (.ics) can be sent automatically.')); ?>
 						</p>
@@ -145,7 +147,7 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 							<div class="form-checkbox">
 								<input type="checkbox" id="sendIcalApprovedAbsences" name="sendIcalApprovedAbsences" value="1"
 									<?php echo ($settings['sendIcalApprovedAbsences'] ?? true) ? 'checked' : ''; ?>
-									aria-describedby="send-ical-legend">
+									aria-describedby="send-ical-heading">
 								<label for="sendIcalApprovedAbsences" class="form-label">
 									<?php p($l->t('Send iCal to the person with approved absence')); ?>
 								</label>
@@ -155,7 +157,7 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 							<div class="form-checkbox">
 								<input type="checkbox" id="sendIcalToSubstitute" name="sendIcalToSubstitute" value="1"
 									<?php echo ($settings['sendIcalToSubstitute'] ?? false) ? 'checked' : ''; ?>
-									aria-describedby="send-ical-legend">
+									aria-describedby="send-ical-heading">
 								<label for="sendIcalToSubstitute" class="form-label">
 									<?php p($l->t('Also send iCal to substitute (if selected)')); ?>
 								</label>
@@ -165,16 +167,16 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 							<div class="form-checkbox">
 								<input type="checkbox" id="sendIcalToManagers" name="sendIcalToManagers" value="1"
 									<?php echo ($settings['sendIcalToManagers'] ?? false) ? 'checked' : ''; ?>
-									aria-describedby="send-ical-legend">
+									aria-describedby="send-ical-heading">
 								<label for="sendIcalToManagers" class="form-label">
 									<?php p($l->t('Also send iCal to managers (team managers)')); ?>
 								</label>
 							</div>
 						</div>
-					</fieldset>
+					</div>
 
-					<fieldset class="form-fieldset" aria-labelledby="email-notifications-legend">
-						<legend id="email-notifications-legend" class="form-legend"><?php p($l->t('Absences: Email notifications for substitution workflow')); ?></legend>
+					<div class="azc-settings-subsection" role="group" aria-labelledby="email-notifications-heading">
+						<h3 id="email-notifications-heading" class="admin-settings-subsection__title"><?php p($l->t('Absences: Email notifications for substitution workflow')); ?></h3>
 						<p class="form-help form-help--block">
 							<?php p($l->t('When a substitute is selected, emails can be sent at each step of the approval process.')); ?>
 						</p>
@@ -182,7 +184,7 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 							<div class="form-checkbox">
 								<input type="checkbox" id="sendEmailSubstitutionRequest" name="sendEmailSubstitutionRequest" value="1"
 									<?php echo ($settings['sendEmailSubstitutionRequest'] ?? true) ? 'checked' : ''; ?>
-									aria-describedby="email-notifications-legend">
+									aria-describedby="email-notifications-heading">
 								<label for="sendEmailSubstitutionRequest" class="form-label">
 									<?php p($l->t('Email substitute when a substitution request is created')); ?>
 								</label>
@@ -192,7 +194,7 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 							<div class="form-checkbox">
 								<input type="checkbox" id="sendEmailSubstituteApprovedToEmployee" name="sendEmailSubstituteApprovedToEmployee" value="1"
 									<?php echo ($settings['sendEmailSubstituteApprovedToEmployee'] ?? true) ? 'checked' : ''; ?>
-									aria-describedby="email-notifications-legend">
+									aria-describedby="email-notifications-heading">
 								<label for="sendEmailSubstituteApprovedToEmployee" class="form-label">
 									<?php p($l->t('Email employee when substitute approves')); ?>
 								</label>
@@ -202,21 +204,25 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 							<div class="form-checkbox">
 								<input type="checkbox" id="sendEmailSubstituteApprovedToManager" name="sendEmailSubstituteApprovedToManager" value="1"
 									<?php echo ($settings['sendEmailSubstituteApprovedToManager'] ?? true) ? 'checked' : ''; ?>
-									aria-describedby="email-notifications-legend">
+									aria-describedby="email-notifications-heading">
 								<label for="sendEmailSubstituteApprovedToManager" class="form-label">
 									<?php p($l->t('Email managers when substitute approves (requires app teams)')); ?>
 								</label>
 							</div>
 						</div>
-					</fieldset>
+					</div>
+                    </div>
 				</section>
 
-				<section class="admin-settings-section" aria-labelledby="overtime-trafficlight-heading">
-					<h3 id="overtime-trafficlight-heading" class="admin-settings-section__title"><?php p($l->t('Overtime and undertime traffic light')); ?></h3>
-					<p class="form-help form-help--block">
-						<?php p($l->t('Configure thresholds and recipients for bidirectional balance alerts (overtime and undertime).')); ?>
-					</p>
-					<h4 id="block-trafficlight-recipients-heading" class="admin-settings-subsection__title"><?php p($l->t('Activation and recipients')); ?></h4>
+				<section class="azc-card azc-admin-notifications-section admin-settings-section" aria-labelledby="overtime-trafficlight-heading">
+                    <header class="azc-card__header">
+                        <div class="azc-card__header-text">
+                            <h2 id="overtime-trafficlight-heading" class="azc-card__title"><?php p($l->t('Overtime and undertime traffic light')); ?></h2>
+                            <p class="azc-card__lead"><?php p($l->t('Configure thresholds and recipients for bidirectional balance alerts (overtime and undertime).')); ?></p>
+                        </div>
+                    </header>
+                    <div class="azc-card__body">
+					<h3 id="block-trafficlight-recipients-heading" class="admin-settings-subsection__title"><?php p($l->t('Activation and recipients')); ?></h3>
 					<div class="form-group">
 						<div class="form-checkbox">
 							<input type="checkbox"
@@ -273,12 +279,12 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 						</p>
 					</div>
 
-					<h4 id="block-trafficlight-matrix-heading" class="admin-settings-subsection__title"><?php p($l->t('Notification matrix')); ?></h4>
+					<h3 id="block-trafficlight-matrix-heading" class="admin-settings-subsection__title"><?php p($l->t('Notification matrix')); ?></h3>
 					<p class="form-help form-help--block">
 						<?php p($l->t('Choose which severity levels should trigger notifications for overtime and undertime.')); ?>
 					</p>
-					<div class="table-responsive">
-						<table class="grid-table admin-notifications-matrix" role="table" aria-labelledby="block-trafficlight-matrix-heading">
+					<div class="azc-table-wrap table-responsive admin-notifications-matrix-wrap">
+						<table class="grid-table admin-notifications-matrix azc-table--matrix" role="table" aria-labelledby="block-trafficlight-matrix-heading">
 							<caption class="sr-only"><?php p($l->t('Severity levels that trigger notifications for overtime and undertime')); ?></caption>
 							<thead>
 								<tr>
@@ -318,13 +324,17 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 						</table>
 					</div>
 					</div>
+                    </div>
 				</section>
 
-				<section class="admin-settings-section" aria-labelledby="overtime-bank-heading">
-					<h3 id="overtime-bank-heading" class="admin-settings-section__title"><?php p($l->t('Overtime bank and payouts')); ?></h3>
-					<p class="form-help form-help--block">
-						<?php p($l->t('Employees can accumulate overtime up to a maximum (bank). Hours above the cap can be paid out at month end via Admin → Overtime payouts.')); ?>
-					</p>
+				<section class="azc-card azc-admin-notifications-section admin-settings-section" aria-labelledby="overtime-bank-heading">
+                    <header class="azc-card__header">
+                        <div class="azc-card__header-text">
+                            <h2 id="overtime-bank-heading" class="azc-card__title"><?php p($l->t('Overtime bank and payouts')); ?></h2>
+                            <p class="azc-card__lead"><?php p($l->t('Employees can accumulate overtime up to a maximum (bank). Hours above the cap can be paid out at month end via Admin → Overtime payouts.')); ?></p>
+                        </div>
+                    </header>
+                    <div class="azc-card__body">
 					<div class="form-group">
 						<div class="form-checkbox">
 							<input type="checkbox"
@@ -348,15 +358,15 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 							<input type="number" class="form-input" id="overtimeBankMaxHours" name="overtimeBankMaxHours" min="1" max="500" step="0.25" value="<?php p((string)($settings['overtimeBankMaxHours'] ?? 100)); ?>">
 						</div>
 						<div class="form-group">
-							<label for="overtimeBankYellowPercent" class="form-label"><?php p($l->t('Bank fill yellow from (%)')); ?></label>
+							<label for="overtimeBankYellowPercent" class="form-label"><?php p($l->t('Bank fill yellow from (%%)')); ?></label>
 							<input type="number" class="form-input" id="overtimeBankYellowPercent" name="overtimeBankYellowPercent" min="0" max="100" step="1" value="<?php p((string)($settings['overtimeBankYellowPercent'] ?? 80)); ?>">
 						</div>
 						<div class="form-group">
-							<label for="overtimeBankRedPercent" class="form-label"><?php p($l->t('Bank fill red from (%)')); ?></label>
+							<label for="overtimeBankRedPercent" class="form-label"><?php p($l->t('Bank fill red from (%%)')); ?></label>
 							<input type="number" class="form-input" id="overtimeBankRedPercent" name="overtimeBankRedPercent" min="0" max="100" step="1" value="<?php p((string)($settings['overtimeBankRedPercent'] ?? 95)); ?>">
 						</div>
 					</div>
-					<h4 class="admin-settings-subsection__title"><?php p($l->t('After payout')); ?></h4>
+					<h3 class="admin-settings-subsection__title"><?php p($l->t('After payout')); ?></h3>
 					<div class="form-group">
 						<div class="form-checkbox">
 							<input type="checkbox" id="overtimePayoutNotifyInApp" name="overtimePayoutNotifyInApp" value="1"
@@ -377,10 +387,10 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 					</div>
 					<nav class="admin-overtime-quicklinks" aria-label="<?php p($l->t('Overtime payroll shortcuts')); ?>">
 						<p class="admin-overtime-quicklinks__label"><?php p($l->t('Payroll actions')); ?></p>
-						<a class="btn btn--secondary btn--small" href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.overtime_payout.index')); ?>">
+						<a class="azc-btn azc-btn--secondary azc-btn--sm" href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.overtime_payout.index')); ?>">
 							<?php p($l->t('Process payouts')); ?>
 						</a>
-						<a class="btn btn--secondary btn--small" href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.overtime_payout.auditIndex')); ?>">
+						<a class="azc-btn azc-btn--secondary azc-btn--sm" href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.overtime_payout.auditIndex')); ?>">
 							<?php p($l->t('Payout audit')); ?>
 						</a>
 					</nav>
@@ -401,14 +411,18 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 						</p>
 					</div>
 					</div>
+                    </div>
 				</section>
 
-				<section class="admin-settings-section" aria-labelledby="hr-notifications-heading">
-					<h3 id="hr-notifications-heading" class="admin-settings-section__title"><?php p($l->t('HR office notifications')); ?></h3>
-					<p class="form-help form-help--block">
-						<?php p($l->t('These settings define if and when HR receives email updates for absence workflows.')); ?>
-					</p>
-					<h4 id="block-hr-setup-heading" class="admin-settings-subsection__title"><?php p($l->t('General HR notification setup')); ?></h4>
+				<section class="azc-card azc-admin-notifications-section admin-settings-section" aria-labelledby="hr-notifications-heading">
+                    <header class="azc-card__header">
+                        <div class="azc-card__header-text">
+                            <h2 id="hr-notifications-heading" class="azc-card__title"><?php p($l->t('HR office notifications')); ?></h2>
+                            <p class="azc-card__lead"><?php p($l->t('These settings define if and when HR receives email updates for absence workflows.')); ?></p>
+                        </div>
+                    </header>
+                    <div class="azc-card__body">
+					<h3 id="block-hr-setup-heading" class="admin-settings-subsection__title"><?php p($l->t('General HR notification setup')); ?></h3>
 					<div class="form-group">
 						<div class="form-checkbox">
 							<input type="checkbox"
@@ -441,12 +455,12 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 						</p>
 					</div>
 
-					<h4 id="notification-matrix-heading" class="admin-settings-subsection__title"><?php p($l->t('Rules by absence type and event')); ?></h4>
+					<h3 id="notification-matrix-heading" class="admin-settings-subsection__title"><?php p($l->t('Rules by absence type and event')); ?></h3>
 					<p class="form-help form-help--block">
 						<?php p($l->t('Activate exactly which event should trigger an HR email for each absence type. Disabled cells mean no email is sent for that combination.')); ?>
 					</p>
-					<div class="table-responsive">
-						<table class="grid-table admin-notifications-matrix" role="table" aria-labelledby="notification-matrix-heading">
+					<div class="azc-table-wrap table-responsive admin-notifications-matrix-wrap">
+						<table class="grid-table admin-notifications-matrix azc-table--matrix" role="table" aria-labelledby="notification-matrix-heading">
 							<caption class="sr-only"><?php p($l->t('Notification rules by absence type and event')); ?></caption>
 							<thead>
 								<tr>
@@ -483,23 +497,32 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 						</table>
 					</div>
 					</div>
+                    </div>
 				</section>
 
-				<footer class="admin-settings-form__footer card-actions">
-					<button type="submit" class="btn btn--primary" id="admin-notifications-save">
-						<?php p($l->t('Save notification settings')); ?>
-					</button>
-					<a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.admin.settings')); ?>" class="btn btn--secondary">
-						<?php p($l->t('Back to global settings')); ?>
-					</a>
-				</footer>
-				<div id="admin-notifications-live" class="admin-notifications-live form-help" role="status" aria-live="polite" aria-atomic="true"></div>
-			</form>
-		</div>
-	</div>
-</main>
-</div><!-- /#arbeitszeitcheck-app -->
+                </div><!-- /.azc-admin-notifications-form__sections -->
 
+                <div class="azc-admin-notifications-form__actions" role="group" aria-labelledby="admin-notifications-actions-heading">
+                    <h2 id="admin-notifications-actions-heading" class="visually-hidden"><?php p($l->t('Save and leave')); ?></h2>
+                    <div id="admin-notifications-live" class="admin-notifications-live azc-admin-notifications-live" role="status" aria-live="polite" aria-atomic="true"></div>
+                    <div class="azc-admin-notifications-form__footer">
+                        <button type="submit"
+                            class="azc-btn azc-btn--primary"
+                            id="admin-notifications-save"
+                            aria-label="<?php p($l->t('Save notification settings')); ?>"
+                            title="<?php p($l->t('Save changes to notification rules, overtime alerts, and HR emails')); ?>">
+                            <?php p($l->t('Save notification settings')); ?>
+                        </button>
+                        <a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.admin.settings')); ?>"
+                            class="azc-btn azc-btn--secondary"
+                            aria-label="<?php p($l->t('Back to global settings without saving')); ?>"
+                            title="<?php p($l->t('Open global admin settings')); ?>">
+                            <?php p($l->t('Back to global settings')); ?>
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
 <script nonce="<?php p($_['cspNonce'] ?? ''); ?>">
 window.ArbeitszeitCheck = window.ArbeitszeitCheck || {};
 window.ArbeitszeitCheck.adminNotificationsApiUrl = <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.admin.updateNotificationSettings'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
@@ -518,3 +541,5 @@ window.ArbeitszeitCheck.l10n.invalidBankFillOrder = <?php echo json_encode($l->t
 window.ArbeitszeitCheck.l10n.invalidCarryoverMaxDays = <?php echo json_encode($l->t('Maximum carryover days must be empty (unlimited) or between 0 and 366'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 window.ArbeitszeitCheck.l10n.failedToSaveNotifications = <?php echo json_encode($l->t('Failed to save notification settings'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 </script>
+
+<?php include __DIR__ . '/common/page-end.php'; ?>

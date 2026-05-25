@@ -20,6 +20,32 @@ test('Health endpoint returns JSON', async ({ request }) => {
   expect(json).toHaveProperty('timestamp')
 })
 
+test('Dashboard exposes timezone bootstrap for client timer', async ({ page }) => {
+  await login(page, credsFromEnv('EMPLOYEE'))
+  await page.goto('/apps/arbeitszeitcheck/dashboard')
+  await assertArbeitszeitcheckLoaded(page)
+
+  const bootstrap = await page.evaluate(() => ({
+    storageTz: window.ArbeitszeitCheck?.tz?.storage || '',
+    displayTz: window.ArbeitszeitCheck?.tz?.display || '',
+    serverNow: window.ArbeitszeitCheck?.serverNow || '',
+    hasTimeApi: Boolean(window.ArbeitszeitCheckTime?.parseInstant),
+  }))
+
+  expect(bootstrap.storageTz).not.toBe('')
+  expect(bootstrap.displayTz).not.toBe('')
+  expect(bootstrap.serverNow.length).toBeGreaterThan(10)
+  expect(bootstrap.hasTimeApi).toBe(true)
+})
+
+test('GDPR export returns downloadable response when logged in', async ({ page }) => {
+  await login(page, credsFromEnv('EMPLOYEE'))
+  const res = await page.request.get('/apps/arbeitszeitcheck/gdpr/export')
+  expect(res.ok()).toBeTruthy()
+  const disposition = res.headers()['content-disposition'] || ''
+  expect(disposition).toMatch(/attachment/i)
+})
+
 test('Month closure feature endpoint returns JSON when logged in', async ({ page }) => {
   await login(page, credsFromEnv('EMPLOYEE'))
   const res = await page.request.get('/apps/arbeitszeitcheck/api/month-closure/feature')
