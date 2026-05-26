@@ -223,6 +223,7 @@ class ManagerControllerTest extends TestCase
 			$this->monthClosureService,
 			$timeZoneService,
 			$this->correctionService,
+			$this->createMock(\OCA\ArbeitszeitCheck\Service\ProjectCheckIntegrationService::class),
 			$localeFormat,
 			new NavigationFlagsService(
 				$this->absenceMapper,

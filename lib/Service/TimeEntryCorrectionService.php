@@ -26,6 +26,8 @@ class TimeEntryCorrectionService
 		private readonly AuditLogMapper $auditLogMapper,
 		private readonly IConfig $config,
 		private readonly IL10N $l10n,
+		private readonly ProjectCheckIntegrationService $projectCheckIntegration,
+		private readonly ProjectCheckLaborTimeSyncService $projectCheckLaborSync,
 	) {
 	}
 
@@ -52,6 +54,15 @@ class TimeEntryCorrectionService
 		}
 		if (array_key_exists('description', $proposal)) {
 			$entry->setDescription($proposal['description'] === null ? null : (string)$proposal['description']);
+		}
+		if (\array_key_exists('projectCheckProjectId', $proposal) || \array_key_exists('project_check_project_id', $proposal)) {
+			$raw = $proposal['projectCheckProjectId'] ?? $proposal['project_check_project_id'] ?? null;
+			if ($raw === null || $raw === '') {
+				$entry->setProjectCheckProjectId(null);
+				$entry->setProjectCheckTimeEntryId(null);
+			} else {
+				$entry->setProjectCheckProjectId((string)$raw);
+			}
 		}
 		if (isset($proposal['date'])) {
 			$newStart = new \DateTime((string)$proposal['date']);
@@ -123,7 +134,7 @@ class TimeEntryCorrectionService
 		$entry->setBreakEndTime(null);
 	}
 
-	public function validateProposal(TimeEntry $entry, array $proposal): ?string
+	public function validateProposal(TimeEntry $entry, array $proposal, ?string $actingManagerUserId = null): ?string
 	{
 		$candidate = clone $entry;
 		$this->applyProposal($candidate, $proposal);
@@ -165,6 +176,37 @@ class TimeEntryCorrectionService
 			return $this->l10n->t((string)$firstError);
 		}
 
+		if ($this->projectCheckIntegration->isProjectCheckAvailable()) {
+			$pid = $candidate->getProjectCheckProjectId();
+			if ($pid !== null && $pid !== '') {
+				$allowed = $actingManagerUserId !== null && $actingManagerUserId !== ''
+					? $this->projectCheckIntegration->managerMayAttachProjectCheckProjectForEmployee(
+						$actingManagerUserId,
+						$entry->getUserId(),
+						$pid
+					)
+					: $this->projectCheckIntegration->userMayAttachProjectCheckProjectToOwnTime($entry->getUserId(), $pid);
+				if (!$allowed) {
+					return $this->l10n->t('You cannot link this ProjectCheck project to your time entry.');
+				}
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * @param string $actorUserId User performing the write (employee or manager)
+	 */
+	public function syncProjectCheckBilling(TimeEntry $entry, string $actorUserId): ?string
+	{
+		if (!$this->projectCheckIntegration->isProjectCheckAvailable()) {
+			return null;
+		}
+		$result = $this->projectCheckLaborSync->syncFromTimeEntry($entry, $actorUserId);
+		if (!($result['success'] ?? false)) {
+			return $this->l10n->t('Working time was saved, but billing hours in ProjectCheck could not be updated. Please check the project link or contact an administrator.');
+		}
 		return null;
 	}
 
@@ -225,6 +267,7 @@ class TimeEntryCorrectionService
 
 		$updated = $this->timeEntryMapper->update($entry);
 		$this->runComplianceIfEnabled($updated);
+		$this->syncProjectCheckBilling($updated, $managerId);
 
 		return $updated;
 	}
@@ -256,6 +299,7 @@ class TimeEntryCorrectionService
 
 		$updated = $this->timeEntryMapper->update($entry);
 		$this->runComplianceIfEnabled($updated);
+		$this->syncProjectCheckBilling($updated, 'system');
 
 		return $updated;
 	}
@@ -358,7 +402,7 @@ class TimeEntryCorrectionService
 
 	public function applyManagerCorrection(TimeEntry $entry, array $proposal, string $managerId, string $reason): TimeEntry
 	{
-		$error = $this->validateProposal($entry, $proposal);
+		$error = $this->validateProposal($entry, $proposal, $managerId);
 		if ($error !== null) {
 			throw new \InvalidArgumentException($error);
 		}
@@ -394,8 +438,42 @@ class TimeEntryCorrectionService
 
 		$updated = $this->timeEntryMapper->update($entry);
 		$this->runComplianceIfEnabled($updated);
+		$this->syncProjectCheckBilling($updated, $managerId);
 
 		return $updated;
+	}
+
+	/**
+	 * Insert a completed manual entry recorded by a manager on behalf of an employee.
+	 *
+	 * @throws \InvalidArgumentException When validation fails
+	 */
+	public function createManagerRecordedEntry(TimeEntry $entry, array $proposal, string $managerId, string $reason): TimeEntry
+	{
+		$error = $this->validateProposal($entry, $proposal, $managerId);
+		if ($error !== null) {
+			throw new \InvalidArgumentException($error);
+		}
+
+		$this->applyProposal($entry, $proposal);
+		$this->applyComplianceAdjustments($entry);
+		$entry->setStatus(TimeEntry::STATUS_COMPLETED);
+		$entry->setApprovedByUserId($managerId);
+		$nowAt = AppLocalNaiveDateTimeNormalizer::nowMutableInAppStorage($this->config);
+		$entry->setApprovedAt(clone $nowAt);
+		$entry->setUpdatedAt(clone $nowAt);
+		$entry->setJustification(json_encode([
+			'manager_created' => true,
+			'reason' => $reason,
+			'created_at' => date('c'),
+			'created_by' => $managerId,
+		], JSON_THROW_ON_ERROR));
+
+		$inserted = $this->timeEntryMapper->insert($entry);
+		$this->runComplianceIfEnabled($inserted);
+		$this->syncProjectCheckBilling($inserted, $managerId);
+
+		return $inserted;
 	}
 
 	/**

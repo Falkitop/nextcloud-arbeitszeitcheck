@@ -156,6 +156,11 @@ class TimeEntryControllerTest extends TestCase
 			$this->config
 		);
 
+		$projectCheckIntegration = $this->createMock(\OCA\ArbeitszeitCheck\Service\ProjectCheckIntegrationService::class);
+		$projectCheckIntegration->method('isProjectCheckAvailable')->willReturn(false);
+		$projectCheckIntegration->method('getAvailableProjects')->willReturn([]);
+		$projectCheckIntegration->method('userMayAttachProjectCheckProjectToOwnTime')->willReturn(true);
+
 		$this->controller = new TimeEntryController(
 			'arbeitszeitcheck',
 			$this->request,
@@ -178,7 +183,9 @@ class TimeEntryControllerTest extends TestCase
 			$timeZoneService,
 			$this->createMock(TimeEntryCorrectionService::class),
 			$localeFormat,
-			$navigationFlags
+			$navigationFlags,
+			$projectCheckIntegration,
+			$this->createMock(\OCA\ArbeitszeitCheck\Service\ProjectCheckLaborTimeSyncService::class),
 		);
 	}
 

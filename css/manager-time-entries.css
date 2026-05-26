@@ -9,6 +9,30 @@
 	margin-inline: auto;
 }
 
+#app-content.azc-app--manager-time-entries .manager-scope-page__create .azc-card__header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--azc-space-4, 1rem);
+}
+
+#app-content.azc-app--manager-time-entries .manager-scope-page__create-hint {
+	margin: 0 var(--azc-space-4, 1rem) var(--azc-space-4, 1rem);
+}
+
+.manager-create-dialog__meta {
+	display: grid;
+	gap: var(--azc-space-4, 1rem);
+	margin-bottom: var(--azc-space-4, 1rem);
+}
+
+@media (min-width: 40rem) {
+	.manager-create-dialog__meta {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
 /* ── List card: filters flush above table (no nested box) ───── */
 #app-content.azc-app--manager-time-entries .manager-scope-page__results .azc-card__body,
 #app-content.azc-app--manager-absences .manager-scope-page__results .azc-card__body {

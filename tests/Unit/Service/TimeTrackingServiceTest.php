@@ -160,8 +160,8 @@ class TimeTrackingServiceTest extends TestCase {
 
 		// Mock project validation
 		$this->projectCheckService->expects($this->once())
-			->method('projectExists')
-			->with($projectId)
+			->method('userMayAttachProjectCheckProjectToOwnTime')
+			->with($userId, $projectId)
 			->willReturn(true);
 
 		// Mock compliance check (no violations)
@@ -189,33 +189,20 @@ class TimeTrackingServiceTest extends TestCase {
 	 */
 	public function testClockInWithInvalidProjectThrowsException(): void {
 		$userId = 'testuser';
-		$projectId = 'invalid123';
+		$projectId = '999';
 
-		// Mock that user is not clocked in
-		$this->timeEntryMapper->expects($this->once())
-			->method('findActiveByUser')
-			->with($userId)
-			->willReturn(null);
-
-		// Mock that user is not on break
-		$this->timeEntryMapper->expects($this->once())
-			->method('findOnBreakByUser')
-			->with($userId)
-			->willReturn(null);
-
-		// Mock project validation - project doesn't exist
 		$this->projectCheckService->expects($this->once())
-			->method('projectExists')
-			->with($projectId)
+			->method('userMayAttachProjectCheckProjectToOwnTime')
+			->with($userId, $projectId)
 			->willReturn(false);
 
 		$this->l10n->expects($this->once())
 			->method('t')
-			->with('Selected project does not exist')
-			->willReturn('Selected project does not exist');
+			->with($this->stringContains('cannot clock in'))
+			->willReturn('You cannot clock in on the selected project.');
 
 		$this->expectException(\Exception::class);
-		$this->expectExceptionMessage('Selected project does not exist');
+		$this->expectExceptionMessage('You cannot clock in on the selected project.');
 
 		$this->service->clockIn($userId, $projectId);
 	}

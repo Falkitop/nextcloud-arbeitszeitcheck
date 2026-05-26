@@ -55,7 +55,7 @@ return [
 		['name' => 'time_entry#getOvertimeBank', 'url' => '/api/time-entries/overtime/bank', 'verb' => 'GET'],
 
 		// API routes for time entries
-		['name' => 'time_entry#apiIndex', 'url' => '/api/time-entries', 'verb' => 'GET'],
+		['name' => 'time_entry#apiAssignableProjectcheckProjects', 'url' => '/api/projectcheck/assignable-projects', 'verb' => 'GET'],
 		['name' => 'time_entry#apiShow', 'url' => '/api/time-entries/{id}', 'verb' => 'GET'],
 		['name' => 'time_entry#apiStore', 'url' => '/api/time-entries', 'verb' => 'POST'],
 		['name' => 'time_entry#apiUpdate', 'url' => '/api/time-entries/{id}', 'verb' => 'PUT'],
@@ -101,6 +101,8 @@ return [
 		['name' => 'manager#revisionPdfUsersForMonth', 'url' => '/api/manager/revision-pdf/users-for-month', 'verb' => 'GET'],
 		['name' => 'manager#getTeamOverview', 'url' => '/api/manager/team-overview', 'verb' => 'GET'],
 		['name' => 'manager#getEmployeeTimeEntries', 'url' => '/api/manager/employee-time-entries', 'verb' => 'GET'],
+		['name' => 'manager#createEmployeeTimeEntry', 'url' => '/api/manager/employee-time-entries', 'verb' => 'POST'],
+		['name' => 'manager#getManagerAssignableProjectcheckProjects', 'url' => '/api/manager/employees/{employeeId}/projectcheck-assignable-projects', 'verb' => 'GET'],
 		['name' => 'manager#getEmployeeAbsences', 'url' => '/api/manager/employee-absences', 'verb' => 'GET'],
 		['name' => 'manager#createEmployeeAbsence', 'url' => '/api/manager/employee-absences', 'verb' => 'POST'],
 		['name' => 'manager#getPendingApprovals', 'url' => '/api/manager/pending-approvals', 'verb' => 'GET'],

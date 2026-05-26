@@ -22,6 +22,9 @@ $monthClosureEnabled = !empty($_['monthClosureEnabled']);
 $mode = $_['mode'] ?? 'list'; // 'list', 'create', 'edit'
 $entry = $_['entry'] ?? null;
 $error = $_['error'] ?? null;
+$projectCheckEnabled = !empty($_['projectCheckEnabled']);
+$projectCheckProjects = is_array($_['projectCheckProjects'] ?? null) ? $_['projectCheckProjects'] : [];
+$selectedProjectCheckId = $entry ? (string)($entry->getProjectCheckProjectId() ?? '') : '';
 $appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitcheck', 'app_timezone', 'Europe/Berlin');
 require __DIR__ . '/common/user-display-timezone.php';
 ?>
@@ -627,6 +630,41 @@ require __DIR__ . '/common/user-display-timezone.php';
                                 </button>
                             </div>
                         </fieldset>
+
+                        <?php if ($projectCheckEnabled): ?>
+                        <fieldset class="time-entry-form-fieldset time-entry-form-fieldset--project" aria-describedby="entry-project-help">
+                            <legend class="time-entry-form-fieldset__legend"><?php p($l->t('Project (optional)')); ?></legend>
+                            <div class="form-group">
+                                <label for="entry-project-check" class="form-label" id="entry-project-check-label">
+                                    <?php p($l->t('Link to ProjectCheck project')); ?>
+                                </label>
+                                <select id="entry-project-check"
+                                    name="projectCheckProjectId"
+                                    class="form-select time-entry-form__project-select"
+                                    aria-labelledby="entry-project-check-label"
+                                    aria-describedby="entry-project-help">
+                                    <option value=""><?php p($l->t('No project selected')); ?></option>
+                                    <?php
+                                    $listedIds = [];
+                                    foreach ($projectCheckProjects as $pcProject):
+                                        $pid = (string)($pcProject['id'] ?? '');
+                                        if ($pid === '') {
+                                            continue;
+                                        }
+                                        $listedIds[$pid] = true;
+                                        ?>
+                                        <option value="<?php p($pid); ?>"<?php if ($selectedProjectCheckId === $pid) {
+                                            p(' selected');
+                                        } ?>><?php p($pcProject['displayName'] ?? $pcProject['name'] ?? $pid); ?></option>
+                                    <?php endforeach;
+                                    if ($selectedProjectCheckId !== '' && !isset($listedIds[$selectedProjectCheckId])): ?>
+                                        <option value="<?php p($selectedProjectCheckId); ?>" selected><?php p($l->t('Linked project %s (not in your current picker list)', [$selectedProjectCheckId])); ?></option>
+                                    <?php endif; ?>
+                                </select>
+                                <p id="entry-project-help" class="form-help"><?php p($l->t('ProjectCheck links your hours to a customer project when both apps are enabled. Projects with per-person pricing only appear if you are on the team.')); ?></p>
+                            </div>
+                        </fieldset>
+                        <?php endif; ?>
 
                         <fieldset class="time-entry-form-fieldset">
                             <legend class="time-entry-form-fieldset__legend"><?php p($l->t('Note')); ?> <span class="form-optional"><?php p($l->t('(optional)')); ?></span></legend>

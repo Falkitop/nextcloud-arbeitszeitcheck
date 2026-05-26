@@ -105,6 +105,10 @@ class PageControllerTest extends TestCase
 		$l10n = $this->createMock(IL10N::class);
 		$l10n->method('t')->willReturnArgument(0);
 
+		$projectCheckIntegration = $this->createMock(\OCA\ArbeitszeitCheck\Service\ProjectCheckIntegrationService::class);
+		$projectCheckIntegration->method('isProjectCheckAvailable')->willReturn(false);
+		$projectCheckIntegration->method('getAvailableProjects')->willReturn([]);
+
 		$this->controller = new PageController(
 			'arbeitszeitcheck',
 			$request,
@@ -126,7 +130,8 @@ class PageControllerTest extends TestCase
 			$cspService,
 			$localeFormat,
 			$navigationFlags,
-			$l10n
+			$projectCheckIntegration,
+			$l10n,
 		);
 	}
 

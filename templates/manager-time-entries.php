@@ -12,6 +12,23 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 <div class="azc-page-stack">
 	<div class="manager-scope-page manager-scope-page--time-entries">
 
+		<section class="azc-card manager-scope-page__create" aria-labelledby="manager-create-time-entry-title">
+			<header class="azc-card__header">
+				<div class="azc-card__header-text">
+					<h2 id="manager-create-time-entry-title" class="azc-card__title"><?php p($l->t('Record time for an employee')); ?></h2>
+					<p class="azc-card__lead"><?php p($l->t('Create a completed manual entry on behalf of someone you manage. The employee is notified and the change is logged for audit.')); ?></p>
+				</div>
+				<button type="button" id="manager-open-create-time-entry" class="azc-btn azc-btn--primary">
+					<?php p($l->t('Add time entry')); ?>
+				</button>
+			</header>
+			<?php if (!empty($_['projectCheckEnabled'])): ?>
+				<p class="manager-scope-page__create-hint azc-callout azc-callout--neutral" role="note">
+					<?php p($l->t('When ProjectCheck is enabled, you can optionally link billing hours on a project the employee is allowed to use.')); ?>
+				</p>
+			<?php endif; ?>
+		</section>
+
 		<section class="azc-card manager-scope-page__results" aria-labelledby="employee-time-entries-results-title" aria-busy="false">
 			<header class="azc-card__header">
 				<div class="azc-card__header-text">

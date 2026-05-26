@@ -89,6 +89,8 @@ class TimeEntryCorrectionServiceTest extends TestCase
 			$this->auditLogMapper,
 			$this->config,
 			$this->l10n,
+			$this->createMock(\OCA\ArbeitszeitCheck\Service\ProjectCheckIntegrationService::class),
+			$this->createMock(\OCA\ArbeitszeitCheck\Service\ProjectCheckLaborTimeSyncService::class),
 		);
 	}
 
@@ -257,6 +259,8 @@ class TimeEntryCorrectionServiceTest extends TestCase
 			$this->auditLogMapper,
 			$this->config,
 			$this->l10n,
+			$this->createMock(\OCA\ArbeitszeitCheck\Service\ProjectCheckIntegrationService::class),
+			$this->createMock(\OCA\ArbeitszeitCheck\Service\ProjectCheckLaborTimeSyncService::class),
 		);
 
 		$error = $service->validateProposal($entry, [

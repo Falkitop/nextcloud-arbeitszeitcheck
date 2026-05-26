@@ -285,11 +285,48 @@ class Application extends App implements IBootstrap {
 
 		// Register ProjectCheckIntegrationService
 		$context->registerService(ProjectCheckIntegrationService::class, function($c) {
+			$projectCheckProjectService = null;
+			if (\class_exists(\OCA\ProjectCheck\Service\ProjectService::class)) {
+				try {
+					$projectCheckProjectService = $c->query(\OCA\ProjectCheck\Service\ProjectService::class);
+				} catch (\Throwable $e) {
+					$projectCheckProjectService = null;
+				}
+			}
+			$projectCheckTimeEntryService = null;
+			if (\class_exists(\OCA\ProjectCheck\Service\TimeEntryService::class)) {
+				try {
+					$projectCheckTimeEntryService = $c->query(\OCA\ProjectCheck\Service\TimeEntryService::class);
+				} catch (\Throwable $e) {
+					$projectCheckTimeEntryService = null;
+				}
+			}
 			return new ProjectCheckIntegrationService(
 				$c->query(\OCP\App\IAppManager::class),
 				$c->query(IDBConnection::class),
 				$c->query(\OCP\IL10N::class),
-				$c->query(\Psr\Log\LoggerInterface::class)
+				$c->query(\Psr\Log\LoggerInterface::class),
+				$projectCheckProjectService,
+				$projectCheckTimeEntryService,
+			);
+		});
+
+		$context->registerService(\OCA\ArbeitszeitCheck\Service\ProjectCheckLaborTimeSyncService::class, function ($c) {
+			$projectCheckTimeEntryService = null;
+			if (\class_exists(\OCA\ProjectCheck\Service\TimeEntryService::class)) {
+				try {
+					$projectCheckTimeEntryService = $c->query(\OCA\ProjectCheck\Service\TimeEntryService::class);
+				} catch (\Throwable $e) {
+					$projectCheckTimeEntryService = null;
+				}
+			}
+			return new \OCA\ArbeitszeitCheck\Service\ProjectCheckLaborTimeSyncService(
+				$c->query(\OCP\App\IAppManager::class),
+				$c->query(\OCA\ArbeitszeitCheck\Db\TimeEntryMapper::class),
+				$c->query(\OCA\ArbeitszeitCheck\Service\TimeZoneService::class),
+				$c->query(\OCP\IConfig::class),
+				$c->query(\Psr\Log\LoggerInterface::class),
+				$projectCheckTimeEntryService,
 			);
 		});
 
@@ -318,6 +355,7 @@ class Application extends App implements IBootstrap {
 				$c->query(\OCP\Lock\ILockingProvider::class),
 				$c->query(\OCA\ArbeitszeitCheck\Service\TimeZoneService::class),
 				$c->query(DailyWorkingHoursCalculator::class),
+				$c->query(\OCA\ArbeitszeitCheck\Service\ProjectCheckLaborTimeSyncService::class),
 			);
 		});
 
@@ -501,6 +539,8 @@ class Application extends App implements IBootstrap {
 				$c->query(\OCA\ArbeitszeitCheck\Db\AuditLogMapper::class),
 				$c->query(\OCP\IConfig::class),
 				$c->query(\OCP\IL10N::class),
+				$c->query(ProjectCheckIntegrationService::class),
+				$c->query(\OCA\ArbeitszeitCheck\Service\ProjectCheckLaborTimeSyncService::class),
 			);
 		});
 

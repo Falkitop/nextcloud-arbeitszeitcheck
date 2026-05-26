@@ -1434,6 +1434,11 @@ class TimeEntryFormManager {
 				description: (formData.get('description') || '').trim()
 			};
 
+			const projectField = formData.get('projectCheckProjectId');
+			if (projectField !== null && String(projectField).trim() !== '') {
+				data.projectCheckProjectId = String(projectField).trim();
+			}
+
 			// Process breaks - include all valid breaks (both manual and auto-generated)
 			const breaks = [];
 			const breakEntries = this.breaksContainer ? this.breaksContainer.querySelectorAll('.break-entry') : [];

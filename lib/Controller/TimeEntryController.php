@@ -28,6 +28,8 @@ use OCA\ArbeitszeitCheck\Service\MonthClosureGuard;
 use OCA\ArbeitszeitCheck\Service\TimeEntryCorrectionService;
 use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
 use OCA\ArbeitszeitCheck\Service\NavigationFlagsService;
+use OCA\ArbeitszeitCheck\Service\ProjectCheckIntegrationService;
+use OCA\ArbeitszeitCheck\Service\ProjectCheckLaborTimeSyncService;
 use OCA\ArbeitszeitCheck\Exception\BusinessRuleException;
 use OCA\ArbeitszeitCheck\Exception\MonthFinalizedException;
 use OCP\Lock\LockedException;
@@ -72,6 +74,8 @@ class TimeEntryController extends Controller
 	private TimeEntryCorrectionService $correctionService;
 	private LocaleFormatService $localeFormat;
 	private NavigationFlagsService $navigationFlags;
+	private ProjectCheckIntegrationService $projectCheckIntegration;
+	private ProjectCheckLaborTimeSyncService $projectCheckLaborSync;
 
 	public function __construct(
 		string $appName,
@@ -95,7 +99,9 @@ class TimeEntryController extends Controller
 		TimeZoneService $timeZoneService,
 		TimeEntryCorrectionService $correctionService,
 		LocaleFormatService $localeFormat,
-		NavigationFlagsService $navigationFlags
+		NavigationFlagsService $navigationFlags,
+		ProjectCheckIntegrationService $projectCheckIntegration,
+		ProjectCheckLaborTimeSyncService $projectCheckLaborSync,
 	) {
 		parent::__construct($appName, $request);
 		$this->timeEntryMapper = $timeEntryMapper;
@@ -118,6 +124,8 @@ class TimeEntryController extends Controller
 		$this->correctionService = $correctionService;
 		$this->localeFormat = $localeFormat;
 		$this->navigationFlags = $navigationFlags;
+		$this->projectCheckIntegration = $projectCheckIntegration;
+		$this->projectCheckLaborSync = $projectCheckLaborSync;
 	}
 
 	/**
@@ -165,6 +173,68 @@ class TimeEntryController extends Controller
 			throw new \Exception('User not authenticated');
 		}
 		return $user->getUID();
+	}
+
+	private function normalizeOptionalProjectCheckProjectId(mixed $raw): ?string
+	{
+		if ($raw === null) {
+			return null;
+		}
+		$s = trim((string)$raw);
+		if ($s === '') {
+			return null;
+		}
+		return $s;
+	}
+
+	private function assertProjectCheckAttachAllowed(string $userId, ?string $projectId): ?JSONResponse
+	{
+		if ($projectId === null) {
+			return null;
+		}
+		if (mb_strlen($projectId) > TimeEntry::PROJECT_CHECK_PROJECT_ID_MAX_LENGTH) {
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('Project ID must not exceed %d characters', [TimeEntry::PROJECT_CHECK_PROJECT_ID_MAX_LENGTH]),
+			], Http::STATUS_BAD_REQUEST);
+		}
+		if (!$this->projectCheckIntegration->userMayAttachProjectCheckProjectToOwnTime($userId, $projectId)) {
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('You cannot link this time entry to the selected project. If the project uses per-person rates, you must be on the project team. Otherwise ask a ProjectCheck administrator for access.'),
+				'error_code' => 'projectcheck_project_forbidden',
+			], Http::STATUS_FORBIDDEN);
+		}
+		return null;
+	}
+
+	private function syncProjectCheckBillingAfterSave(TimeEntry $entry, string $actorUserId): void
+	{
+		if ($entry->getStatus() !== TimeEntry::STATUS_COMPLETED || $entry->getEndTime() === null) {
+			return;
+		}
+		$this->projectCheckLaborSync->syncFromTimeEntry($entry, $actorUserId);
+	}
+
+	/**
+	 * JSON list of ProjectCheck projects the current user may link to their time entries (clock-in / manual).
+	 */
+	#[NoAdminRequired]
+	public function apiAssignableProjectcheckProjects(): JSONResponse
+	{
+		try {
+			$userId = $this->getUserId();
+			return new JSONResponse([
+				'success' => true,
+				'enabled' => $this->projectCheckIntegration->isProjectCheckAvailable(),
+				'projects' => $this->projectCheckIntegration->getAvailableProjects($userId),
+			]);
+		} catch (\Throwable $e) {
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('Could not load projects.'),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
 	}
 
 	/**
@@ -683,7 +753,7 @@ class TimeEntryController extends Controller
 		$maxDailyHours = (float)$this->config->getAppValue('arbeitszeitcheck', 'max_daily_hours', '10');
 		$complianceStrictMode = $this->config->getAppValue('arbeitszeitcheck', 'compliance_strict_mode', '0') === '1';
 
-		$response = new TemplateResponse(
+			$response = new TemplateResponse(
 			$this->appName,
 			'time-entries',
 			$this->buildTimeEntryFormTemplateParams('create', [
@@ -695,6 +765,9 @@ class TimeEntryController extends Controller
 				'maxDailyHours' => $maxDailyHours,
 				'complianceStrictMode' => $complianceStrictMode,
 				'l' => $this->l10n,
+				'projectCheckEnabled' => $this->projectCheckIntegration->isProjectCheckAvailable(),
+				'projectCheckProjects' => $this->projectCheckIntegration->getAvailableProjects($userId),
+				'projectCheckAssignableUrl' => $this->urlGenerator->linkToRoute('arbeitszeitcheck.time_entry.apiAssignableProjectcheckProjects'),
 			] + $this->getTimeEntriesSharedTemplateParams($userId))
 		);
 		return $this->configureCSP($response);
@@ -795,6 +868,9 @@ class TimeEntryController extends Controller
 					'maxDailyHours' => $maxDailyHours,
 					'complianceStrictMode' => $complianceStrictMode,
 					'l' => $this->l10n,
+					'projectCheckEnabled' => $this->projectCheckIntegration->isProjectCheckAvailable(),
+					'projectCheckProjects' => $this->projectCheckIntegration->getAvailableProjects($userId),
+					'projectCheckAssignableUrl' => $this->urlGenerator->linkToRoute('arbeitszeitcheck.time_entry.apiAssignableProjectcheckProjects'),
 				] + $this->getTimeEntriesSharedTemplateParams($userId))
 			);
 			return $this->configureCSP($response);
@@ -904,11 +980,16 @@ class TimeEntryController extends Controller
 			$endDateTime->modify('+' . round($hours * 3600) . ' seconds');
 			$timeEntry->setEndTime($endDateTime);
 			$timeEntry->setDescription($description);
+			$project_check_project_id = $this->normalizeOptionalProjectCheckProjectId($project_check_project_id);
 			if ($project_check_project_id !== null && mb_strlen($project_check_project_id) > TimeEntry::PROJECT_CHECK_PROJECT_ID_MAX_LENGTH) {
 				return new JSONResponse([
 					'success' => false,
 					'error' => $this->l10n->t('Project ID must not exceed %d characters', [TimeEntry::PROJECT_CHECK_PROJECT_ID_MAX_LENGTH])
 				], Http::STATUS_BAD_REQUEST);
+			}
+			$pcBlock = $this->assertProjectCheckAttachAllowed($userId, $project_check_project_id);
+			if ($pcBlock !== null) {
+				return $pcBlock;
 			}
 			$timeEntry->setProjectCheckProjectId($project_check_project_id);
 			$manualRequiresApproval = $this->requiresManualEntryApproval();
@@ -1041,6 +1122,8 @@ class TimeEntryController extends Controller
 					'message' => $this->l10n->t('Manual time entry submitted for manager approval.')
 				], Http::STATUS_CREATED);
 			}
+
+			$this->syncProjectCheckBillingAfterSave($savedEntry, $userId);
 
 			// Real-time compliance check for completed entries
 			if ($savedEntry->getStatus() === TimeEntry::STATUS_COMPLETED && $savedEntry->getEndTime() !== null) {
@@ -1385,14 +1468,19 @@ class TimeEntryController extends Controller
 				$entry->setDescription($description);
 			}
 
-			if ($project_check_project_id !== null) {
-				if (mb_strlen($project_check_project_id) > TimeEntry::PROJECT_CHECK_PROJECT_ID_MAX_LENGTH) {
-					return new JSONResponse([
-						'success' => false,
-						'error' => $this->l10n->t('Project ID must not exceed %d characters', [TimeEntry::PROJECT_CHECK_PROJECT_ID_MAX_LENGTH])
-					], Http::STATUS_BAD_REQUEST);
+			$rawProjectId = null;
+			if (\array_key_exists('project_check_project_id', $params) || \array_key_exists('projectCheckProjectId', $params)) {
+				$rawProjectId = $params['project_check_project_id'] ?? $params['projectCheckProjectId'] ?? '';
+			} elseif ($project_check_project_id !== null) {
+				$rawProjectId = $project_check_project_id;
+			}
+			if ($rawProjectId !== null) {
+				$normalizedPid = $this->normalizeOptionalProjectCheckProjectId($rawProjectId);
+				$pcBlock = $this->assertProjectCheckAttachAllowed($userId, $normalizedPid);
+				if ($pcBlock !== null) {
+					return $pcBlock;
 				}
-				$entry->setProjectCheckProjectId($project_check_project_id);
+				$entry->setProjectCheckProjectId($normalizedPid);
 			}
 
 			// Finalise paused entries: when the user supplies an end_time, the entry
@@ -1486,6 +1574,7 @@ class TimeEntryController extends Controller
 			}
 
 			$updatedEntry = $this->timeEntryMapper->update($entry);
+			$this->syncProjectCheckBillingAfterSave($updatedEntry, $userId);
 
 			// Real-time compliance check if entry is now completed
 			// Check if status changed to COMPLETED or if it was already COMPLETED
@@ -1558,7 +1647,7 @@ class TimeEntryController extends Controller
 		$date = $params['date'] ?? null;
 		$hours = $this->parseNullableDecimal($params['hours'] ?? null);
 		$description = $params['description'] ?? null;
-		$project_check_project_id = $params['project_check_project_id'] ?? $params['projectCheckProjectId'] ?? null;
+		$project_check_project_id = $this->normalizeOptionalProjectCheckProjectId($params['project_check_project_id'] ?? $params['projectCheckProjectId'] ?? null);
 
 		return $this->update($id, $date, $hours, $description, $project_check_project_id);
 	}
@@ -1914,6 +2003,7 @@ class TimeEntryController extends Controller
 
 			$result = $this->correctionService->cancelByEmployee($entry);
 			if ($result === null) {
+				$this->projectCheckLaborSync->onTimeEntryDeleted($oldSummary, $userId);
 				$this->timeEntryMapper->delete($entry);
 				$this->auditLogMapper->logAction($userId, 'time_entry_correction_cancelled', 'time_entry', $id, $oldSummary, ['cascade_delete' => true]);
 				return new JSONResponse(['success' => true, 'deleted' => true]);
@@ -1992,6 +2082,7 @@ class TimeEntryController extends Controller
 
 			// Delete the entry itself
 			$entryId = $entry->getId();
+			$this->projectCheckLaborSync->onTimeEntryDeleted($deletedSummary ?? [], $userId);
 			$this->timeEntryMapper->delete($entry);
 
 			// Log the action
@@ -2312,7 +2403,7 @@ class TimeEntryController extends Controller
 		$breakEndTime = $params['breakEndTime'] ?? null;
 		$hours = $this->parseNullableDecimal($params['hours'] ?? null);
 		$description = $params['description'] ?? null;
-		$project_check_project_id = $params['project_check_project_id'] ?? $params['projectCheckProjectId'] ?? null;
+		$project_check_project_id = $this->normalizeOptionalProjectCheckProjectId($params['project_check_project_id'] ?? $params['projectCheckProjectId'] ?? null);
 
 		// New format: startTime and endTime
 		if ($startTime && $endTime) {
@@ -2480,6 +2571,10 @@ class TimeEntryController extends Controller
 						'error' => $this->l10n->t('Project ID must not exceed %d characters', [TimeEntry::PROJECT_CHECK_PROJECT_ID_MAX_LENGTH])
 					], Http::STATUS_BAD_REQUEST);
 				}
+				$pcBlock = $this->assertProjectCheckAttachAllowed($userId, $project_check_project_id);
+				if ($pcBlock !== null) {
+					return $pcBlock;
+				}
 				$timeEntry->setProjectCheckProjectId($project_check_project_id);
 				$timeEntry->setStatus(TimeEntry::STATUS_COMPLETED);
 				$timeEntry->setIsManualEntry(true);
@@ -2576,6 +2671,7 @@ class TimeEntryController extends Controller
 				}
 
 				$savedEntry = $this->timeEntryMapper->insert($timeEntry);
+				$this->syncProjectCheckBillingAfterSave($savedEntry, $userId);
 
 				// Record violations after save (warning mode); strict blocks already ran pre-save.
 				if ($savedEntry->getStatus() === TimeEntry::STATUS_COMPLETED && $savedEntry->getEndTime() !== null) {
@@ -2639,7 +2735,7 @@ class TimeEntryController extends Controller
 		$date = $params['date'] ?? null;
 		$hours = $this->parseNullableDecimal($params['hours'] ?? null);
 		$description = $params['description'] ?? null;
-		$project_check_project_id = $params['project_check_project_id'] ?? $params['projectCheckProjectId'] ?? null;
+		$project_check_project_id = $this->normalizeOptionalProjectCheckProjectId($params['project_check_project_id'] ?? $params['projectCheckProjectId'] ?? null);
 
 		return $this->update($id, $date, $hours, $description, $project_check_project_id);
 	}
@@ -2676,7 +2772,7 @@ class TimeEntryController extends Controller
 		$date = $params['date'] ?? null;
 		$hours = $this->parseNullableDecimal($params['hours'] ?? null);
 		$description = $params['description'] ?? null;
-		$project_check_project_id = $params['project_check_project_id'] ?? $params['projectCheckProjectId'] ?? null;
+		$project_check_project_id = $this->normalizeOptionalProjectCheckProjectId($params['project_check_project_id'] ?? $params['projectCheckProjectId'] ?? null);
 
 		return $this->update($id, $date, $hours, $description, $project_check_project_id);
 	}

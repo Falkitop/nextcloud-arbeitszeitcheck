@@ -21,6 +21,7 @@ use OCA\ArbeitszeitCheck\Service\AbsenceService;
 use OCA\ArbeitszeitCheck\Service\CSPService;
 use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
 use OCA\ArbeitszeitCheck\Service\NavigationFlagsService;
+use OCA\ArbeitszeitCheck\Service\ProjectCheckIntegrationService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCA\ArbeitszeitCheck\Service\TeamResolverService;
 use OCA\ArbeitszeitCheck\Service\OvertimeDisplayService;
@@ -65,6 +66,7 @@ class PageController extends Controller
 	private OvertimePayoutService $overtimePayoutService;
 	private LocaleFormatService $localeFormat;
 	private NavigationFlagsService $navigationFlags;
+	private ProjectCheckIntegrationService $projectCheckIntegration;
 	private IL10N $l10n;
 
 	/**
@@ -102,6 +104,7 @@ class PageController extends Controller
 		CSPService $cspService,
 		LocaleFormatService $localeFormat,
 		NavigationFlagsService $navigationFlags,
+		ProjectCheckIntegrationService $projectCheckIntegration,
 		IL10N $l10n
 	) {
 		parent::__construct($appName, $request);
@@ -122,6 +125,7 @@ class PageController extends Controller
 		$this->overtimePayoutService = $overtimePayoutService;
 		$this->localeFormat = $localeFormat;
 		$this->navigationFlags = $navigationFlags;
+		$this->projectCheckIntegration = $projectCheckIntegration;
 		$this->l10n = $l10n;
 		$this->setCspService($cspService);
 	}
@@ -316,6 +320,8 @@ class PageController extends Controller
 				'recentEntries' => $recentEntries,
 				'isFirstTimeUser' => $isFirstTimeUser,
 				'workingTimeModelMissing' => $workingTimeModelMissing,
+				'projectCheckEnabled' => $this->projectCheckIntegration->isProjectCheckAvailable(),
+				'projectCheckProjects' => $this->projectCheckIntegration->getAvailableProjects($userId),
 				'stats' => [
 					'total_time_entries' => $timeEntryCount,
 					'total_absences' => $absenceCount,

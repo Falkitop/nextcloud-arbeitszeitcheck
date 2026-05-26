@@ -430,7 +430,7 @@ class TimeEntryMapper extends QBMapper
 		$qb = $this->db->getQueryBuilder();
 		$qb->select('te.*')
 			->from($this->getTableName(), 'te')
-			->leftJoin('te', 'projectcheck_projects', 'pcp', $qb->expr()->eq('te.project_check_project_id', 'pcp.id'))
+			->leftJoin('te', 'pc_projects', 'pcp', $qb->expr()->eq('te.project_check_project_id', $qb->expr()->castColumn('pcp.id', IQueryBuilder::PARAM_STR)))
 			->addSelect('pcp.name as project_name')
 			->addSelect('pcp.customer_id as customer_id');
 

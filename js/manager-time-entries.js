@@ -262,6 +262,8 @@
 		body.innerHTML = entries.map((entry) => {
 			const canCorrect = entry.status === 'completed';
 			const summaryPayload = {
+				userId: entry.userId || null,
+				projectCheckProjectId: entry.projectCheckProjectId || null,
 				startTime: entry.displayStartTime || entry.startTime || null,
 				endTime: entry.displayEndTime || entry.endTime || null,
 				breaks: entry.displayBreaks || entry.breaks || null,
@@ -549,6 +551,7 @@
 		bindPagination();
 		updatePagination();
 		document.addEventListener('arbeitszeitcheck:manager-entry-corrected', loadEntries);
+		document.addEventListener('arbeitszeitcheck:manager-entry-created', loadEntries);
 	}
 
 	if (document.readyState === 'loading') {

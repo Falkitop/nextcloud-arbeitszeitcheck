@@ -35,6 +35,7 @@ use OCA\ArbeitszeitCheck\Exception\MonthFinalizedException;
 use OCA\ArbeitszeitCheck\Service\AppLocalNaiveDateTimeNormalizer;
 use OCA\ArbeitszeitCheck\Service\TimeZoneService;
 use OCA\ArbeitszeitCheck\Service\TimeEntryCorrectionService;
+use OCA\ArbeitszeitCheck\Service\ProjectCheckIntegrationService;
 use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
 use OCA\ArbeitszeitCheck\Service\NavigationFlagsService;
 use OCA\ArbeitszeitCheck\Constants;
@@ -89,6 +90,7 @@ class ManagerController extends Controller
 	private MonthClosureService $monthClosureService;
 	private TimeZoneService $timeZoneService;
 	private TimeEntryCorrectionService $correctionService;
+	private ProjectCheckIntegrationService $projectCheckIntegration;
 	protected NavigationFlagsService $navigationFlags;
 
 	public function __construct(
@@ -119,6 +121,7 @@ class ManagerController extends Controller
 		MonthClosureService $monthClosureService,
 		TimeZoneService $timeZoneService,
 		TimeEntryCorrectionService $correctionService,
+		ProjectCheckIntegrationService $projectCheckIntegration,
 		LocaleFormatService $localeFormat,
 		NavigationFlagsService $navigationFlags,
 	) {
@@ -147,6 +150,7 @@ class ManagerController extends Controller
 		$this->monthClosureService = $monthClosureService;
 		$this->timeZoneService = $timeZoneService;
 		$this->correctionService = $correctionService;
+		$this->projectCheckIntegration = $projectCheckIntegration;
 		$this->localeFormat = $localeFormat;
 		$this->navigationFlags = $navigationFlags;
 		$this->setCspService($cspService);
@@ -530,6 +534,7 @@ class ManagerController extends Controller
 		Util::addScript('arbeitszeitcheck', 'common/datepicker');
 		Util::addScript('arbeitszeitcheck', 'common/time-entry-clock-form');
 		Util::addScript('arbeitszeitcheck', 'manager-correction-dialog');
+		Util::addScript('arbeitszeitcheck', 'manager-create-time-entry');
 
 		try {
 			$actorUserId = $this->getUserId();
@@ -557,6 +562,7 @@ class ManagerController extends Controller
 				$this->managerEmployeeListTemplateParams('time-entries'),
 				[
 					'monthClosureEnabled' => $this->monthClosureEnabledParam(),
+					'projectCheckEnabled' => $this->projectCheckIntegration->isProjectCheckAvailable(),
 				]
 			));
 			return $this->configureCSP($response);
@@ -1454,6 +1460,174 @@ class ManagerController extends Controller
 	}
 
 	/**
+	 * ProjectCheck projects a manager may link when creating or correcting employee time.
+	 */
+	#[NoAdminRequired]
+	public function getManagerAssignableProjectcheckProjects(string $employeeId): JSONResponse
+	{
+		try {
+			$managerId = $this->getUserId();
+			$accessResponse = $this->ensureManagerReadAccess($managerId, 'manager_assignable_projectcheck_projects');
+			if ($accessResponse !== null) {
+				return $accessResponse;
+			}
+
+			$employeeId = trim($employeeId);
+			if ($employeeId === '') {
+				return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Employee is required.')], Http::STATUS_BAD_REQUEST);
+			}
+
+			if (!$this->permissionService->canManageEmployee($managerId, $employeeId)) {
+				$this->permissionService->logPermissionDenied($managerId, 'manager_assignable_projectcheck_projects', 'user', $employeeId);
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('Access denied. You can only manage employees in your scope.'),
+				], Http::STATUS_FORBIDDEN);
+			}
+
+			if (!$this->projectCheckIntegration->isProjectCheckAvailable()) {
+				return new JSONResponse(['success' => true, 'projects' => []]);
+			}
+
+			return new JSONResponse([
+				'success' => true,
+				'projects' => $this->projectCheckIntegration->getAssignableProjectsForManagerOnBehalfOfEmployee($managerId, $employeeId),
+			]);
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error('Error in ManagerController::getManagerAssignableProjectcheckProjects', ['exception' => $e]);
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('An internal error occurred. Please contact your administrator.'),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	/**
+	 * Create a completed manual time entry for a managed employee (HR / migration corrections).
+	 */
+	#[NoAdminRequired]
+	public function createEmployeeTimeEntry(): JSONResponse
+	{
+		try {
+			$managerId = $this->getUserId();
+			$accessResponse = $this->ensureManagerReadAccess($managerId, 'create_employee_time_entry');
+			if ($accessResponse !== null) {
+				return $accessResponse;
+			}
+
+			$params = $this->request->getParams();
+			$targetUserId = trim((string)($params['userId'] ?? $params['employeeId'] ?? ''));
+			$reason = trim((string)($params['reason'] ?? ''));
+			if ($targetUserId === '') {
+				return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Employee is required.')], Http::STATUS_BAD_REQUEST);
+			}
+			if (mb_strlen($reason) < 10) {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('A reason of at least 10 characters is required.'),
+				], Http::STATUS_BAD_REQUEST);
+			}
+			if (mb_strlen($reason) > 2000) {
+				$reason = mb_substr($reason, 0, 2000);
+			}
+
+			if (!$this->permissionService->canManageEmployee($managerId, $targetUserId)) {
+				$this->permissionService->logPermissionDenied($managerId, 'create_employee_time_entry', 'user', $targetUserId);
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('Access denied. You can only record time for employees you manage.'),
+				], Http::STATUS_FORBIDDEN);
+			}
+
+			$targetUser = $this->userManager->get($targetUserId);
+			if ($targetUser === null || !$targetUser->isEnabled()) {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('The selected user does not exist or is disabled.'),
+				], Http::STATUS_BAD_REQUEST);
+			}
+
+			$proposal = TimeEntryClockPayloadBuilder::mergeIntoProposal($params, []);
+			if (!isset($proposal['startTime'], $proposal['endTime'])) {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('Date, start time, and end time are required.'),
+				], Http::STATUS_BAD_REQUEST);
+			}
+			if (array_key_exists('description', $params)) {
+				$proposal['description'] = $params['description'];
+			}
+
+			$rawProjectId = $params['projectCheckProjectId'] ?? $params['project_check_project_id'] ?? null;
+			$projectIdStr = $this->normalizeOptionalProjectCheckProjectId($rawProjectId);
+			if ($projectIdStr !== null) {
+				$proposal['projectCheckProjectId'] = $projectIdStr;
+			}
+
+			$entry = new TimeEntry();
+			$entry->setUserId($targetUserId);
+			$entry->setIsManualEntry(true);
+			$nowAt = AppLocalNaiveDateTimeNormalizer::nowMutableInAppStorage($this->config);
+			$entry->setCreatedAt(clone $nowAt);
+			$entry->setUpdatedAt(clone $nowAt);
+
+			try {
+				$saved = $this->correctionService->createManagerRecordedEntry($entry, $proposal, $managerId, $reason);
+			} catch (\InvalidArgumentException $e) {
+				return new JSONResponse(['success' => false, 'error' => $e->getMessage()], Http::STATUS_BAD_REQUEST);
+			}
+
+			$this->auditLogMapper->logAction(
+				$targetUserId,
+				'time_entry_manager_created',
+				'time_entry',
+				$saved->getId(),
+				null,
+				$saved->getSummary(),
+				$managerId
+			);
+
+			$this->notificationService->notifyTimeEntryCorrectedByManager(
+				$targetUserId,
+				$saved->getSummary(),
+				$reason
+			);
+
+			return new JSONResponse([
+				'success' => true,
+				'entry' => $saved->getSummary(),
+				'message' => $this->l10n->t('Time entry recorded for the employee.'),
+			], Http::STATUS_CREATED);
+		} catch (\InvalidArgumentException $e) {
+			return new JSONResponse(['success' => false, 'error' => $e->getMessage()], Http::STATUS_BAD_REQUEST);
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error('Error in ManagerController::createEmployeeTimeEntry', ['exception' => $e]);
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('An internal error occurred. Please contact your administrator.'),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	private function normalizeOptionalProjectCheckProjectId(mixed $raw): ?string
+	{
+		if ($raw === null) {
+			return null;
+		}
+		$str = trim((string)$raw);
+		if ($str === '') {
+			return null;
+		}
+		if (!ctype_digit($str) || (int)$str <= 0) {
+			return null;
+		}
+		if (mb_strlen($str) > TimeEntry::PROJECT_CHECK_PROJECT_ID_MAX_LENGTH) {
+			return null;
+		}
+		return $str;
+	}
+
+	/**
 	 * Get pending approvals
 	 *
 	 *
@@ -2236,6 +2410,13 @@ class ManagerController extends Controller
 			$proposal = TimeEntryClockPayloadBuilder::mergeIntoProposal($params, []);
 			if (array_key_exists('description', $params)) {
 				$proposal['description'] = $params['description'];
+			}
+			$rawProjectId = $params['projectCheckProjectId'] ?? $params['project_check_project_id'] ?? null;
+			$projectIdStr = $this->normalizeOptionalProjectCheckProjectId($rawProjectId);
+			if ($projectIdStr !== null) {
+				$proposal['projectCheckProjectId'] = $projectIdStr;
+			} elseif (\array_key_exists('projectCheckProjectId', $params) || \array_key_exists('project_check_project_id', $params)) {
+				$proposal['projectCheckProjectId'] = null;
 			}
 			if ($proposal === []) {
 				return new JSONResponse([

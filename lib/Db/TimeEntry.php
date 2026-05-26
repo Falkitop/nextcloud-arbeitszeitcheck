@@ -34,6 +34,8 @@ use OCP\AppFramework\Db\Entity;
  * @method void setDescription(string|null $description)
  * @method string|null getProjectCheckProjectId()
  * @method void setProjectCheckProjectId(string|null $projectCheckProjectId)
+ * @method int|null getProjectCheckTimeEntryId()
+ * @method void setProjectCheckTimeEntryId(int|null $projectCheckTimeEntryId)
  * @method string getStatus()
  * @method void setStatus(string $status)
  * @method string|null getEndedReason()
@@ -96,6 +98,9 @@ class TimeEntry extends Entity
 	/** @var string|null */
 	protected $projectCheckProjectId;
 
+	/** @var int|null Linked ProjectCheck pc_time_entries.id when billing sync is active */
+	protected $projectCheckTimeEntryId;
+
 	/** @var string */
 	protected $status;
 
@@ -139,6 +144,7 @@ class TimeEntry extends Entity
 		$this->addType('breaks', 'string');
 		$this->addType('description', 'string');
 		$this->addType('projectCheckProjectId', 'string');
+		$this->addType('projectCheckTimeEntryId', 'integer');
 		$this->addType('status', 'string');
 		$this->addType('endedReason', 'string');
 		$this->addType('policyApplied', 'string');
@@ -564,6 +570,7 @@ class TimeEntry extends Entity
 			'workingDurationHours' => $this->getWorkingDurationHours(),
 			'description' => $this->getDescription(),
 			'projectCheckProjectId' => $this->getProjectCheckProjectId(),
+			'projectCheckTimeEntryId' => $this->getProjectCheckTimeEntryId(),
 			'status' => $this->getStatus(),
 			'endedReason' => $this->getEndedReason(),
 			'policyApplied' => $this->getPolicyApplied(),

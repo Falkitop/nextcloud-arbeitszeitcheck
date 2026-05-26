@@ -78,9 +78,57 @@
 		const modal = Components.createModal({
 			id: modalId,
 			title: t('Correct time entry', 'Correct time entry'),
-			content: formHtml + footerHtml,
+			content: '<div class="manager-create-dialog__meta manager-correct-dialog__meta"></div>' + formHtml + footerHtml,
 			size: 'xl',
 		});
+
+		const meta = modal.querySelector('.manager-correct-dialog__meta');
+		let projectSelect = null;
+		if (window.ArbeitszeitCheck?.projectCheckEnabled && summary?.userId) {
+			const wrap = document.createElement('div');
+			wrap.className = 'azc-filter-field';
+			const pid = 'mgr-correct-project-' + entryId;
+			wrap.innerHTML = [
+				`<label for="${pid}" class="azc-filter-field__label">${t('Project (optional)', 'Project (optional)')}</label>`,
+				'<div class="azc-filter-field__control">',
+				`<select id="${pid}" class="form-select" disabled></select>`,
+				'</div>',
+			].join('');
+			projectSelect = wrap.querySelector('select');
+			meta.appendChild(wrap);
+			const url = OC.generateUrl(
+				'/apps/arbeitszeitcheck/api/manager/employees/{employeeId}/projectcheck-assignable-projects',
+				{ employeeId: summary.userId }
+			);
+			fetch(url, { headers: { requesttoken: OC.requestToken } })
+				.then((r) => r.json())
+				.then((data) => {
+					if (!projectSelect) {
+						return;
+					}
+					projectSelect.innerHTML = '';
+					const none = document.createElement('option');
+					none.value = '';
+					none.textContent = t('No project link', 'No project link');
+					projectSelect.appendChild(none);
+					if (data.success && Array.isArray(data.projects)) {
+						data.projects.forEach((p) => {
+							const opt = document.createElement('option');
+							opt.value = String(p.id);
+							opt.textContent = p.displayName || p.name || String(p.id);
+							if (String(summary.projectCheckProjectId || '') === opt.value) {
+								opt.selected = true;
+							}
+							projectSelect.appendChild(opt);
+						});
+					}
+				})
+				.finally(() => {
+					if (projectSelect) {
+						projectSelect.disabled = false;
+					}
+				});
+		}
 
 		const initial = {
 			startTime: summary?.startTime || null,
@@ -111,6 +159,9 @@
 			};
 			if (result.payload.breaks && result.payload.breaks.length > 0) {
 				payload.breaks = result.payload.breaks;
+			}
+			if (projectSelect) {
+				payload.projectCheckProjectId = projectSelect.value || '';
 			}
 
 			saveBtn.disabled = true;

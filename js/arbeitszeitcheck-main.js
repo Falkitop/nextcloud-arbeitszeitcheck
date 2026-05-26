@@ -572,7 +572,9 @@
             if (buttons.clockIn) {
                 buttons.clockIn.addEventListener('click', (e) => {
                     e.preventDefault();
-                    this.clockIn();
+                    const projectSelect = document.getElementById('dashboard-clock-in-project');
+                    const projectId = projectSelect && projectSelect.value ? projectSelect.value : null;
+                    this.clockIn(projectId);
                 });
             }
 
@@ -1150,7 +1152,9 @@
          */
         clockIn: function(projectCheckProjectId = null, description = null) {
             const data = {};
-            if (projectCheckProjectId) data.projectCheckProjectId = projectCheckProjectId;
+            if (projectCheckProjectId) {
+                data.projectCheckProjectId = projectCheckProjectId;
+            }
             if (description) data.description = description;
 
             this.callApi('/apps/arbeitszeitcheck/api/clock/in', 'POST', data).catch((err) => {

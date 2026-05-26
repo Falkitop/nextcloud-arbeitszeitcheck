@@ -33,7 +33,19 @@ $timeEntriesMessageIds = [
 	'Could not load employee time entries.',
 	'No description',
 	'Choose a date range to load entries.',
+	'Add time entry',
+	'Record time for an employee',
+	'Select employee',
+	'Save time entry',
+	'Time entry recorded for the employee.',
+	'Could not save time entry.',
+	'Project (optional)',
+	'No project link',
+	'Could not load projects.',
+	'Correct time entry',
 ];
+
+$projectCheckEnabled = !empty($_['projectCheckEnabled']);
 
 $absencesMessageIds = [
 	'Could not load employee absences.',
@@ -65,5 +77,6 @@ window.ArbeitszeitCheck = window.ArbeitszeitCheck || {};
 window.ArbeitszeitCheck.l10n = window.ArbeitszeitCheck.l10n || {};
 window.ArbeitszeitCheck.dateLocale = <?php echo json_encode($l->getLanguageCode(), TemplateL10n::JSON_ENCODE_FLAGS); ?>;
 window.ArbeitszeitCheck.maxManagerListDateRangeDays = <?php echo $maxDays; ?>;
+window.ArbeitszeitCheck.projectCheckEnabled = <?php echo $projectCheckEnabled ? 'true' : 'false'; ?>;
 Object.assign(window.ArbeitszeitCheck.l10n, <?php echo json_encode($managerEmployeeListL10n, TemplateL10n::JSON_ENCODE_FLAGS); ?>);
 </script>

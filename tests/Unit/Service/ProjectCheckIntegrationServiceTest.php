@@ -58,7 +58,9 @@ class ProjectCheckIntegrationServiceTest extends TestCase
 			$this->appManager,
 			$this->db,
 			$this->l10n,
-			$this->logger
+			$this->logger,
+			null,
+			null,
 		);
 	}
 
@@ -112,7 +114,7 @@ class ProjectCheckIntegrationServiceTest extends TestCase
 	}
 
 	/**
-	 * Test getAvailableProjects returns projects when available
+	 * Test getAvailableProjects returns projects when ProjectService is wired
 	 */
 	public function testGetAvailableProjectsReturnsProjects(): void
 	{
@@ -123,91 +125,71 @@ class ProjectCheckIntegrationServiceTest extends TestCase
 			->with('projectcheck')
 			->willReturn(true);
 
-		$queryBuilder = $this->createMock(IQueryBuilder::class);
-		$result = $this->createMock(IResult::class);
+		$project = $this->getMockBuilder(\stdClass::class)
+			->addMethods(['getId', 'getName', 'getCustomerName', 'getCustomerId', 'getCostRateMode', 'allowsTimeTracking', 'isActiveTeamMember'])
+			->getMock();
+		$project->method('getId')->willReturn(1);
+		$project->method('getName')->willReturn('Project 1');
+		$project->method('getCustomerName')->willReturn('Customer A');
+		$project->method('getCustomerId')->willReturn(10);
+		$project->method('getCostRateMode')->willReturn('project');
+		$project->method('allowsTimeTracking')->willReturn(true);
 
-		$this->db->expects($this->once())
-			->method('getQueryBuilder')
-			->willReturn($queryBuilder);
+		$projectService = $this->createMock(\OCA\ProjectCheck\Service\ProjectService::class);
+		$projectService->expects($this->once())
+			->method('getProjectsForUserTimeEntry')
+			->with($userId, $this->isType('array'))
+			->willReturn([$project]);
 
-		$queryBuilder->expects($this->once())
-			->method('select')
-			->with($this->isType('array'))
-			->willReturnSelf();
+		$service = new ProjectCheckIntegrationService(
+			$this->appManager,
+			$this->db,
+			$this->l10n,
+			$this->logger,
+			$projectService,
+			null,
+		);
 
-		$queryBuilder->expects($this->once())
-			->method('from')
-			->with('projectcheck_projects', 'p')
-			->willReturnSelf();
+		$projects = $service->getAvailableProjects($userId);
 
-		$queryBuilder->expects($this->exactly(2))
-			->method('leftJoin')
-			->willReturnSelf();
-
-		$queryBuilder->expects($this->once())
-			->method('where')
-			->willReturnSelf();
-
-		$queryBuilder->expects($this->once())
-			->method('andWhere')
-			->willReturnSelf();
-
-		$queryBuilder->expects($this->once())
-			->method('orderBy')
-			->willReturnSelf();
-
-		$queryBuilder->method('createNamedParameter')
-			->willReturnCallback(function ($value) {
-				return ':' . $value;
-			});
-
-		$expr = $this->createMock(\OCP\DB\QueryBuilder\IExpressionBuilder::class);
-		$composite = $this->createMock(\OCP\DB\QueryBuilder\ICompositeExpression::class);
-		$expr->method('eq')->willReturn('expr');
-		$expr->method('andX')->willReturn($composite);
-		$expr->method('orX')->willReturn($composite);
-		$expr->method('isNull')->willReturn('expr');
-
-		$queryBuilder->method('expr')->willReturn($expr);
-
-		$queryBuilder->expects($this->once())
-			->method('executeQuery')
-			->willReturn($result);
-
-		// Mock result rows
-		$result->expects($this->exactly(3))
-			->method('fetch')
-			->willReturnOnConsecutiveCalls(
-				[
-					'id' => '1',
-					'name' => 'Project 1',
-					'customer_id' => '10',
-					'customer_name' => 'Customer A'
-				],
-				[
-					'id' => '2',
-					'name' => 'Project 2',
-					'customer_id' => null,
-					'customer_name' => null
-				],
-				false // End of results
-			);
-
-		$result->expects($this->once())
-			->method('closeCursor');
-
-		$projects = $this->service->getAvailableProjects($userId);
-
-		$this->assertIsArray($projects);
-		$this->assertCount(2, $projects);
+		$this->assertCount(1, $projects);
 		$this->assertEquals('1', $projects[0]['id']);
-		$this->assertEquals('Project 1', $projects[0]['name']);
-		$this->assertEquals('Customer A', $projects[0]['customerName']);
 		$this->assertEquals('Project 1 (Customer A)', $projects[0]['displayName']);
-		$this->assertEquals('2', $projects[1]['id']);
-		$this->assertEquals('Project 2', $projects[1]['name']);
-		$this->assertEquals('No Customer', $projects[1]['customerName']);
-		$this->assertEquals('Project 2', $projects[1]['displayName']);
+	}
+
+	/**
+	 * Test getAvailableProjects excludes per-person projects when user is not on team
+	 */
+	public function testGetAvailableProjectsExcludesPerPersonWhenNotOnTeam(): void
+	{
+		$userId = 'user1';
+
+		$this->appManager->method('isEnabledForUser')->willReturn(true);
+
+		$project = $this->getMockBuilder(\stdClass::class)
+			->addMethods(['getId', 'getName', 'getCustomerName', 'getCustomerId', 'getCostRateMode', 'allowsTimeTracking'])
+			->getMock();
+		$project->method('getId')->willReturn(2);
+		$project->method('getName')->willReturn('Per person');
+		$project->method('getCustomerName')->willReturn('');
+		$project->method('getCustomerId')->willReturn(null);
+		$project->method('getCostRateMode')->willReturn('project_member');
+		$project->method('allowsTimeTracking')->willReturn(true);
+
+		$projectService = $this->createMock(\OCA\ProjectCheck\Service\ProjectService::class);
+		$projectService->method('getProjectsForUserTimeEntry')->willReturn([$project]);
+		$projectService->method('isActiveTeamMember')->with(2, $userId)->willReturn(false);
+
+		$service = new ProjectCheckIntegrationService(
+			$this->appManager,
+			$this->db,
+			$this->l10n,
+			$this->logger,
+			$projectService,
+			null,
+		);
+
+		$this->assertSame([], $service->getAvailableProjects($userId));
 	}
 
 	/**
@@ -220,11 +202,21 @@ class ProjectCheckIntegrationServiceTest extends TestCase
 			->with('projectcheck')
 			->willReturn(true);
 
-		$this->db->expects($this->once())
-			->method('getQueryBuilder')
-			->willThrowException(new \Exception('Database error'));
+		$projectService = $this->createMock(\OCA\ProjectCheck\Service\ProjectService::class);
+		$projectService->expects($this->once())
+			->method('getProjectsForUserTimeEntry')
+			->willThrowException(new \Exception('Service error'));
 
-		$result = $this->service->getAvailableProjects('user1');
+		$service = new ProjectCheckIntegrationService(
+			$this->appManager,
+			$this->db,
+			$this->l10n,
+			$this->logger,
+			$projectService,
+			null,
+		);
+
+		$result = $service->getAvailableProjects('user1');
 
 		$this->assertIsArray($result);
 		$this->assertEmpty($result);
@@ -250,7 +242,7 @@ class ProjectCheckIntegrationServiceTest extends TestCase
 	 */
 	public function testGetProjectDetailsReturnsProject(): void
 	{
-		$projectId = 'project1';
+		$projectId = '42';
 
 		$this->appManager->expects($this->once())
 			->method('isEnabledForUser')
@@ -297,16 +289,17 @@ class ProjectCheckIntegrationServiceTest extends TestCase
 		$result->expects($this->once())
 			->method('fetch')
 			->willReturn([
-				'id' => $projectId,
+				'id' => 42,
 				'name' => 'Test Project',
-				'description' => 'Test Description',
-				'customer_id' => '10',
+				'short_description' => 'Test Description',
+				'customer_id' => 10,
 				'customer_name' => 'Customer A',
-				'status' => 'active',
-				'budget' => 10000.0,
+				'status' => 'Active',
+				'total_budget' => 10000.0,
 				'hourly_rate' => 50.0,
 				'start_date' => '2024-01-01',
-				'end_date' => '2024-12-31'
+				'end_date' => '2024-12-31',
+				'cost_rate_mode' => 'project',
 			]);
 
 		$result->expects($this->once())
@@ -315,7 +308,7 @@ class ProjectCheckIntegrationServiceTest extends TestCase
 		$project = $this->service->getProjectDetails($projectId);
 
 		$this->assertIsArray($project);
-		$this->assertEquals($projectId, $project['id']);
+		$this->assertEquals('42', $project['id']);
 		$this->assertEquals('Test Project', $project['name']);
 		$this->assertEquals('Test Description', $project['description']);
 		$this->assertEquals(10000.0, $project['budget']);
@@ -380,7 +373,7 @@ class ProjectCheckIntegrationServiceTest extends TestCase
 	 */
 	public function testGetProjectCheckTimeEntriesReturnsEntries(): void
 	{
-		$projectId = 'project1';
+		$projectId = '42';
 
 		$this->appManager->expects($this->once())
 			->method('isEnabledForUser')
@@ -401,7 +394,7 @@ class ProjectCheckIntegrationServiceTest extends TestCase
 
 		$queryBuilder->expects($this->once())
 			->method('from')
-			->with('projectcheck_time_entries')
+			->with('pc_time_entries')
 			->willReturnSelf();
 
 		$queryBuilder->expects($this->once())
@@ -513,7 +506,7 @@ class ProjectCheckIntegrationServiceTest extends TestCase
 
 		$insertQb->expects($this->once())
 			->method('insert')
-			->with('projectcheck_time_entries')
+			->with('pc_time_entries')
 			->willReturnSelf();
 		$insertQb->expects($this->once())
 			->method('values')
@@ -572,7 +565,7 @@ class ProjectCheckIntegrationServiceTest extends TestCase
 	 */
 	public function testGetProjectBudgetInfoReturnsBudget(): void
 	{
-		$projectId = 'project1';
+		$projectId = '42';
 
 		$this->appManager->expects($this->once())
 			->method('isEnabledForUser')
@@ -592,7 +585,7 @@ class ProjectCheckIntegrationServiceTest extends TestCase
 
 		$queryBuilder->expects($this->once())
 			->method('from')
-			->with('projectcheck_projects')
+			->with('pc_projects')
 			->willReturnSelf();
 
 		$queryBuilder->expects($this->once())
@@ -615,8 +608,8 @@ class ProjectCheckIntegrationServiceTest extends TestCase
 		$result->expects($this->once())
 			->method('fetch')
 			->willReturn([
-				'budget' => 10000.0,
-				'hourly_rate' => 50.0
+				'total_budget' => 10000.0,
+				'hourly_rate' => 50.0,
 			]);
 
 		$result->expects($this->once())
@@ -634,7 +627,7 @@ class ProjectCheckIntegrationServiceTest extends TestCase
 	 */
 	public function testGetProjectTimeStatsCombinesStats(): void
 	{
-		$projectId = 'project1';
+		$projectId = '42';
 
 		$this->appManager->expects($this->once())
 			->method('isEnabledForUser')
@@ -711,7 +704,7 @@ class ProjectCheckIntegrationServiceTest extends TestCase
 	 */
 	public function testProjectExistsReturnsTrue(): void
 	{
-		$projectId = 'project1';
+		$projectId = '42';
 
 		$this->appManager->expects($this->once())
 			->method('isEnabledForUser')
@@ -732,7 +725,7 @@ class ProjectCheckIntegrationServiceTest extends TestCase
 
 		$queryBuilder->expects($this->once())
 			->method('from')
-			->with('projectcheck_projects')
+			->with('pc_projects')
 			->willReturnSelf();
 
 		$queryBuilder->expects($this->once())
@@ -746,8 +739,8 @@ class ProjectCheckIntegrationServiceTest extends TestCase
 
 		$queryBuilder->expects($this->once())
 			->method('createNamedParameter')
-			->with($projectId)
-			->willReturn(':project1');
+			->with(42, $this->anything())
+			->willReturn(':p42');
 
 		$queryBuilder->expects($this->once())
 			->method('expr')
@@ -759,7 +752,7 @@ class ProjectCheckIntegrationServiceTest extends TestCase
 
 		$result->expects($this->once())
 			->method('fetch')
-			->willReturn(['id' => $projectId]);
+			->willReturn(['id' => 42]);
 
 		$result->expects($this->once())
 			->method('closeCursor');
@@ -801,7 +794,7 @@ class ProjectCheckIntegrationServiceTest extends TestCase
 		$result->expects($this->once())
 			->method('closeCursor');
 
-		$exists = $this->service->projectExists('nonexistent');
+		$exists = $this->service->projectExists('999');
 
 		$this->assertFalse($exists);
 	}
@@ -820,7 +813,7 @@ class ProjectCheckIntegrationServiceTest extends TestCase
 			->method('getQueryBuilder')
 			->willThrowException(new \Exception('Database error'));
 
-		$exists = $this->service->projectExists('project1');
+		$exists = $this->service->projectExists('999');
 
 		$this->assertFalse($exists);
 	}

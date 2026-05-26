@@ -12,6 +12,7 @@ declare(strict_types=1);
 namespace OCA\ArbeitszeitCheck\Service;
 
 use OCP\App\IAppManager;
+use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 use OCP\IL10N;
 use Psr\Log\LoggerInterface;
@@ -21,18 +22,21 @@ use Psr\Log\LoggerInterface;
  */
 class ProjectCheckIntegrationService
 {
+	/** @see \OCA\ProjectCheck\Util\CostRateMode::PROJECT_MEMBER */
+	private const COST_RATE_MODE_PROJECT_MEMBER = 'project_member';
+
 	public function __construct(
 		private readonly IAppManager $appManager,
 		private readonly IDBConnection $db,
 		private readonly IL10N $l10n,
 		private readonly LoggerInterface $logger,
+		private readonly ?object $projectCheckProjectService = null,
+		private readonly ?object $projectCheckTimeEntryService = null,
 	) {
 	}
 
 	/**
 	 * Check if ProjectCheck app is installed and enabled
-	 *
-	 * @return bool
 	 */
 	public function isProjectCheckAvailable(): bool
 	{
@@ -40,10 +44,24 @@ class ProjectCheckIntegrationService
 	}
 
 	/**
-	 * Get available projects from ProjectCheck for a user
+	 * Optional ProjectCheck ProjectService when the app is present (injected from the server container).
+	 */
+	private function projectService(): ?object
+	{
+		return $this->projectCheckProjectService;
+	}
+
+	/**
+	 * Projects the current user may link to their own ArbeitszeitCheck time entries.
 	 *
-	 * @param string $userId
-	 * @return array
+	 * Rules (aligned with ProjectCheck billing):
+	 * - Project must exist, be visible per ProjectCheck access (member, creator, or org/system admin),
+	 *   and accept new time (Active / On Hold).
+	 * - If pricing is "per person on the project" ({@see self::COST_RATE_MODE_PROJECT_MEMBER}), the user
+	 *   must be an active team member with a resolvable rate path in ProjectCheck — not merely an admin
+	 *   browsing the project.
+	 *
+	 * @return list<array{id: string, name: string, customerId: int|null, customerName: string, displayName: string, costRateMode: string}>
 	 */
 	public function getAvailableProjects(string $userId): array
 	{
@@ -51,57 +69,148 @@ class ProjectCheckIntegrationService
 			return [];
 		}
 
+		$svc = $this->projectService();
+		if ($svc === null) {
+			$this->logger->warning('ProjectCheck is enabled but ProjectService is not available to ArbeitszeitCheck; project picker will be empty.');
+			return [];
+		}
+
 		try {
-			// Query ProjectCheck database tables directly
-			// This implementation queries the ProjectCheck database tables directly
-			// as a working integration approach. If ProjectCheck provides a formal API
-			// in the future, this can be refactored to use that API.
-
-			$query = $this->db->getQueryBuilder();
-			$query->select(['p.id', 'p.name', 'p.customer_id', 'c.name as customer_name'])
-				->from('projectcheck_projects', 'p')
-				->leftJoin('p', 'projectcheck_customers', 'c', $query->expr()->eq('p.customer_id', 'c.id'))
-				->leftJoin('p', 'projectcheck_project_members', 'pm', $query->expr()->andX(
-					$query->expr()->eq('p.id', 'pm.project_id'),
-					$query->expr()->eq('pm.user_id', $query->createNamedParameter($userId))
-				))
-				->where($query->expr()->orX(
-					$query->expr()->eq('pm.user_id', $query->createNamedParameter($userId)),
-					$query->expr()->isNull('pm.user_id') // Allow projects without specific assignments
-				))
-				->andWhere($query->expr()->eq('p.status', $query->createNamedParameter('active')))
-				->orderBy('p.name', 'ASC');
-
-			$result = $query->executeQuery();
-			$projects = [];
-
-			while ($row = $result->fetch()) {
-				$projects[] = [
-					'id' => $row['id'],
-					'name' => $row['name'],
-					'customerId' => $row['customer_id'],
-					'customerName' => $row['customer_name'] ?? $this->l10n->t('No Customer'),
-					'displayName' => $row['customer_name']
-						? sprintf('%s (%s)', $row['name'], $row['customer_name'])
-						: $row['name']
+			if (!method_exists($svc, 'getProjectsForUserTimeEntry')) {
+				return [];
+			}
+			/** @var list<object> $projects */
+			$projects = $svc->getProjectsForUserTimeEntry($userId, [
+				'status' => ['Active', 'On Hold'],
+				'sort' => 'name',
+				'direction' => 'ASC',
+			]);
+			$out = [];
+			foreach ($projects as $p) {
+				if (!method_exists($p, 'allowsTimeTracking') || !$p->allowsTimeTracking()) {
+					continue;
+				}
+				$pid = (int)$p->getId();
+				$mode = method_exists($p, 'getCostRateMode') ? (string)$p->getCostRateMode() : '';
+				if ($mode === self::COST_RATE_MODE_PROJECT_MEMBER) {
+					if (!method_exists($svc, 'isActiveTeamMember') || !$svc->isActiveTeamMember($pid, $userId)) {
+						continue;
+					}
+				}
+				$customerName = method_exists($p, 'getCustomerName') ? (string)($p->getCustomerName() ?? '') : '';
+				$name = method_exists($p, 'getName') ? (string)$p->getName() : '';
+				$customerId = method_exists($p, 'getCustomerId') ? $p->getCustomerId() : null;
+				$display = $customerName !== ''
+					? sprintf('%s (%s)', $name, $customerName)
+					: $name;
+				$out[] = [
+					'id' => (string)$pid,
+					'name' => $name,
+					'customerId' => $customerId,
+					'customerName' => $customerName !== '' ? $customerName : $this->l10n->t('No Customer'),
+					'displayName' => $display,
+					'costRateMode' => $mode,
 				];
 			}
-
-			$result->closeCursor();
-
-			return $projects;
+			return $out;
 		} catch (\Throwable $e) {
-			// Log error but don't fail - ProjectCheck integration should be graceful
-			$this->logger->warning('Failed to load projects from ProjectCheck: ' . $e->getMessage());
+			$this->logger->warning('Failed to load projects from ProjectCheck: ' . $e->getMessage(), ['exception' => $e]);
 			return [];
+		}
+	}
+
+	/**
+	 * Projects a manager may assign when creating or correcting an employee's ArbeitszeitCheck entry.
+	 *
+	 * @return list<array{id: string, name: string, customerId: int|null, customerName: string, displayName: string, costRateMode: string}>
+	 */
+	public function getAssignableProjectsForManagerOnBehalfOfEmployee(string $managerUserId, string $employeeUserId): array
+	{
+		if (!$this->isProjectCheckAvailable()) {
+			return [];
+		}
+		$svc = $this->projectService();
+		if ($svc === null || !\method_exists($svc, 'mayBillArbeitszeitCheckTimeForUser')) {
+			return [];
+		}
+
+		$out = [];
+		foreach ($this->getAvailableProjects($employeeUserId) as $row) {
+			$pid = (int)$row['id'];
+			if ($pid <= 0) {
+				continue;
+			}
+			try {
+				if ($svc->mayBillArbeitszeitCheckTimeForUser($managerUserId, $employeeUserId, $pid)) {
+					$out[] = $row;
+				}
+			} catch (\Throwable $e) {
+				$this->logger->debug('Skipping project for manager assign list: ' . $e->getMessage());
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * Whether a manager may attach this ProjectCheck project when writing time for an employee.
+	 */
+	public function managerMayAttachProjectCheckProjectForEmployee(string $managerUserId, string $employeeUserId, string $projectIdStr): bool
+	{
+		if (!$this->isProjectCheckAvailable()) {
+			return false;
+		}
+		$pid = (int)trim($projectIdStr);
+		if ($pid <= 0) {
+			return false;
+		}
+		$svc = $this->projectService();
+		if ($svc === null || !\method_exists($svc, 'mayBillArbeitszeitCheckTimeForUser')) {
+			return false;
+		}
+		try {
+			return (bool)$svc->mayBillArbeitszeitCheckTimeForUser($managerUserId, $employeeUserId, $pid);
+		} catch (\Throwable $e) {
+			$this->logger->warning('Manager ProjectCheck attach validation failed: ' . $e->getMessage(), ['exception' => $e]);
+			return false;
+		}
+	}
+
+	/**
+	 * Whether the user may attach this ProjectCheck project ID to their own time entry (clock-in or manual).
+	 */
+	public function userMayAttachProjectCheckProjectToOwnTime(string $userId, string $projectIdStr): bool
+	{
+		if (!$this->isProjectCheckAvailable()) {
+			return false;
+		}
+		$pid = (int)trim($projectIdStr);
+		if ($pid <= 0) {
+			return false;
+		}
+		$svc = $this->projectService();
+		if ($svc === null || !method_exists($svc, 'getProject')) {
+			return $this->projectExistsInDatabase($pid);
+		}
+		try {
+			$project = $svc->getProject($pid);
+			if ($project === null || !method_exists($project, 'allowsTimeTracking') || !$project->allowsTimeTracking()) {
+				return false;
+			}
+			$mode = method_exists($project, 'getCostRateMode') ? (string)$project->getCostRateMode() : '';
+			if ($mode === self::COST_RATE_MODE_PROJECT_MEMBER) {
+				return method_exists($svc, 'isActiveTeamMember') && $svc->isActiveTeamMember($pid, $userId);
+			}
+			return method_exists($svc, 'canUserAccessProject') && $svc->canUserAccessProject($userId, $pid);
+		} catch (\Throwable $e) {
+			$this->logger->warning('ProjectCheck attach validation failed: ' . $e->getMessage(), ['exception' => $e]);
+			return false;
 		}
 	}
 
 	/**
 	 * Get project details from ProjectCheck
 	 *
-	 * @param string $projectId
-	 * @return array|null
+	 * @return array<string, mixed>|null
 	 */
 	public function getProjectDetails(string $projectId): ?array
 	{
@@ -112,9 +221,9 @@ class ProjectCheckIntegrationService
 		try {
 			$query = $this->db->getQueryBuilder();
 			$query->select(['p.*', 'c.name as customer_name'])
-				->from('projectcheck_projects', 'p')
-				->leftJoin('p', 'projectcheck_customers', 'c', $query->expr()->eq('p.customer_id', 'c.id'))
-				->where($query->expr()->eq('p.id', $query->createNamedParameter($projectId)));
+				->from('pc_projects', 'p')
+				->leftJoin('p', 'pc_customers', 'c', $query->expr()->eq('p.customer_id', 'c.id'))
+				->where($query->expr()->eq('p.id', $query->createNamedParameter((int)$projectId, IQueryBuilder::PARAM_INT)));
 
 			$result = $query->executeQuery();
 			$project = $result->fetch();
@@ -123,16 +232,17 @@ class ProjectCheckIntegrationService
 
 			if ($project) {
 				return [
-					'id' => $project['id'],
+					'id' => (string)$project['id'],
 					'name' => $project['name'],
-					'description' => $project['description'],
+					'description' => $project['short_description'] ?? $project['detailed_description'] ?? '',
 					'customerId' => $project['customer_id'],
 					'customerName' => $project['customer_name'],
 					'status' => $project['status'],
-					'budget' => $project['budget'] ?? 0,
+					'budget' => $project['total_budget'] ?? 0,
 					'hourlyRate' => $project['hourly_rate'] ?? 0,
-					'startDate' => $project['start_date'],
-					'endDate' => $project['end_date']
+					'startDate' => $project['start_date'] ?? null,
+					'endDate' => $project['end_date'] ?? null,
+					'costRateMode' => $project['cost_rate_mode'] ?? null,
 				];
 			}
 
@@ -152,8 +262,7 @@ class ProjectCheckIntegrationService
 	 *             contract and may change without notice.
 	 * @internal
 	 *
-	 * @param string $projectId
-	 * @return array
+	 * @return array<int, array<string, mixed>>
 	 */
 	public function getProjectCheckTimeEntries(string $projectId): array
 	{
@@ -164,8 +273,8 @@ class ProjectCheckIntegrationService
 		try {
 			$query = $this->db->getQueryBuilder();
 			$query->select('*')
-				->from('projectcheck_time_entries')
-				->where($query->expr()->eq('project_id', $query->createNamedParameter($projectId)))
+				->from('pc_time_entries')
+				->where($query->expr()->eq('project_id', $query->createNamedParameter((int)$projectId, IQueryBuilder::PARAM_INT)))
 				->orderBy('date', 'DESC');
 
 			$result = $query->executeQuery();
@@ -181,7 +290,7 @@ class ProjectCheckIntegrationService
 					'description' => $row['description'],
 					'hourlyRate' => $row['hourly_rate'],
 					'createdAt' => $row['created_at'],
-					'source' => 'projectcheck'
+					'source' => 'projectcheck',
 				];
 			}
 
@@ -205,9 +314,7 @@ class ProjectCheckIntegrationService
 	 *             from production code.
 	 * @internal
 	 *
-	 * @param string $userId
-	 * @param \DateTime|null $since Only sync entries since this date
-	 * @return array Sync results
+	 * @return array<string, mixed>
 	 */
 	public function syncTimeEntriesToProjectCheck(string $userId, ?\DateTime $since = null): array
 	{
@@ -237,25 +344,25 @@ class ProjectCheckIntegrationService
 					// Check if this entry already exists in ProjectCheck
 					$existingQuery = $this->db->getQueryBuilder();
 					$existingQuery->select('id')
-						->from('projectcheck_time_entries')
+						->from('pc_time_entries')
 						->where($existingQuery->expr()->eq('project_id', $existingQuery->createNamedParameter($entry['project_check_project_id'])))
 						->andWhere($existingQuery->expr()->eq('user_id', $existingQuery->createNamedParameter($entry['user_id'])))
-						->andWhere($existingQuery->expr()->eq('date', $existingQuery->createNamedParameter($entry['start_time'] instanceof \DateTime ? $entry['start_time']->format('Y-m-d') : $entry['start_time'], \OCP\DB\QueryBuilder\IQueryBuilder::PARAM_STR)));
+						->andWhere($existingQuery->expr()->eq('date', $existingQuery->createNamedParameter($entry['start_time'] instanceof \DateTime ? $entry['start_time']->format('Y-m-d') : $entry['start_time'], IQueryBuilder::PARAM_STR)));
 
 					$existing = $existingQuery->executeQuery()->fetch();
 
 					if (!$existing) {
 						// Insert into ProjectCheck time entries
 						$insertQuery = $this->db->getQueryBuilder();
-						$insertQuery->insert('projectcheck_time_entries')
+						$insertQuery->insert('pc_time_entries')
 							->values([
 								'project_id' => $insertQuery->createNamedParameter($entry['project_check_project_id']),
 								'user_id' => $insertQuery->createNamedParameter($entry['user_id']),
-								'date' => $insertQuery->createNamedParameter($entry['start_time'] instanceof \DateTime ? $entry['start_time']->format('Y-m-d') : $entry['start_time'], \OCP\DB\QueryBuilder\IQueryBuilder::PARAM_STR),
+								'date' => $insertQuery->createNamedParameter($entry['start_time'] instanceof \DateTime ? $entry['start_time']->format('Y-m-d') : $entry['start_time'], IQueryBuilder::PARAM_STR),
 								'hours' => $insertQuery->createNamedParameter($entry['hours']),
 								'description' => $insertQuery->createNamedParameter($entry['description'] ?? ''),
 								'hourly_rate' => $insertQuery->createNamedParameter($entry['hourly_rate'] ?? 0),
-								'created_at' => $insertQuery->createNamedParameter($entry['created_at'])
+								'created_at' => $insertQuery->createNamedParameter($entry['created_at']),
 							])
 							->executeStatement();
 
@@ -272,7 +379,7 @@ class ProjectCheckIntegrationService
 			return [
 				'success' => true,
 				'synced' => $synced,
-				'errors' => $errors
+				'errors' => $errors,
 			];
 		} catch (\Throwable $e) {
 			$this->logger->warning('Failed to sync time entries to ProjectCheck: ' . $e->getMessage());
@@ -287,8 +394,7 @@ class ProjectCheckIntegrationService
 	 *             projectcheck schema and is sensitive to changes there.
 	 * @internal
 	 *
-	 * @param string $projectId
-	 * @return array|null
+	 * @return array<string, float>|null
 	 */
 	public function getProjectBudgetInfo(string $projectId): ?array
 	{
@@ -298,9 +404,9 @@ class ProjectCheckIntegrationService
 
 		try {
 			$query = $this->db->getQueryBuilder();
-			$query->select(['budget', 'hourly_rate'])
-				->from('projectcheck_projects')
-				->where($query->expr()->eq('id', $query->createNamedParameter($projectId)));
+			$query->select(['total_budget', 'hourly_rate'])
+				->from('pc_projects')
+				->where($query->expr()->eq('id', $query->createNamedParameter((int)$projectId, IQueryBuilder::PARAM_INT)));
 
 			$result = $query->executeQuery();
 			$project = $result->fetch();
@@ -309,8 +415,8 @@ class ProjectCheckIntegrationService
 
 			if ($project) {
 				return [
-					'budget' => (float)($project['budget'] ?? 0),
-					'hourlyRate' => (float)($project['hourly_rate'] ?? 0)
+					'budget' => (float)($project['total_budget'] ?? 0),
+					'hourlyRate' => (float)($project['hourly_rate'] ?? 0),
 				];
 			}
 
@@ -333,8 +439,7 @@ class ProjectCheckIntegrationService
 	 *             aggregates.
 	 * @internal
 	 *
-	 * @param string $projectId
-	 * @return array
+	 * @return array<string, mixed>
 	 */
 	public function getProjectTimeStats(string $projectId): array
 	{
@@ -343,18 +448,18 @@ class ProjectCheckIntegrationService
 			'arbeitszeitcheck' => [
 				'totalHours' => 0,
 				'totalCost' => 0,
-				'entriesCount' => 0
+				'entriesCount' => 0,
 			],
 			'projectcheck' => [
 				'totalHours' => 0,
 				'totalCost' => 0,
-				'entriesCount' => 0
+				'entriesCount' => 0,
 			],
 			'combined' => [
 				'totalHours' => 0,
 				'totalCost' => 0,
-				'entriesCount' => 0
-			]
+				'entriesCount' => 0,
+			],
 		];
 
 		// Get ArbeitszeitCheck stats
@@ -363,11 +468,11 @@ class ProjectCheckIntegrationService
 			$query->select([
 				$query->createFunction('SUM(hours) as total_hours'),
 				$query->createFunction('SUM(hours * hourly_rate) as total_cost'),
-				$query->createFunction('COUNT(*) as entries_count')
+				$query->createFunction('COUNT(*) as entries_count'),
 			])
-			->from('at_entries')
-			->where($query->expr()->eq('project_check_project_id', $query->createNamedParameter($projectId)))
-			->andWhere($query->expr()->eq('status', $query->createNamedParameter('completed')));
+				->from('at_entries')
+				->where($query->expr()->eq('project_check_project_id', $query->createNamedParameter($projectId)))
+				->andWhere($query->expr()->eq('status', $query->createNamedParameter('completed')));
 
 			$result = $query->executeQuery();
 			$row = $result->fetch();
@@ -375,7 +480,7 @@ class ProjectCheckIntegrationService
 			$stats['arbeitszeitcheck'] = [
 				'totalHours' => (float)($row['total_hours'] ?? 0),
 				'totalCost' => (float)($row['total_cost'] ?? 0),
-				'entriesCount' => (int)($row['entries_count'] ?? 0)
+				'entriesCount' => (int)($row['entries_count'] ?? 0),
 			];
 
 			$result->closeCursor();
@@ -390,10 +495,10 @@ class ProjectCheckIntegrationService
 				$query->select([
 					$query->createFunction('SUM(hours) as total_hours'),
 					$query->createFunction('SUM(hours * hourly_rate) as total_cost'),
-					$query->createFunction('COUNT(*) as entries_count')
+					$query->createFunction('COUNT(*) as entries_count'),
 				])
-				->from('projectcheck_time_entries')
-				->where($query->expr()->eq('project_id', $query->createNamedParameter($projectId)));
+					->from('pc_time_entries')
+					->where($query->expr()->eq('project_id', $query->createNamedParameter((int)$projectId, IQueryBuilder::PARAM_INT)));
 
 				$result = $query->executeQuery();
 				$row = $result->fetch();
@@ -401,7 +506,7 @@ class ProjectCheckIntegrationService
 				$stats['projectcheck'] = [
 					'totalHours' => (float)($row['total_hours'] ?? 0),
 					'totalCost' => (float)($row['total_cost'] ?? 0),
-					'entriesCount' => (int)($row['entries_count'] ?? 0)
+					'entriesCount' => (int)($row['entries_count'] ?? 0),
 				];
 
 				$result->closeCursor();
@@ -414,29 +519,31 @@ class ProjectCheckIntegrationService
 		$stats['combined'] = [
 			'totalHours' => $stats['arbeitszeitcheck']['totalHours'] + $stats['projectcheck']['totalHours'],
 			'totalCost' => $stats['arbeitszeitcheck']['totalCost'] + $stats['projectcheck']['totalCost'],
-			'entriesCount' => $stats['arbeitszeitcheck']['entriesCount'] + $stats['projectcheck']['entriesCount']
+			'entriesCount' => $stats['arbeitszeitcheck']['entriesCount'] + $stats['projectcheck']['entriesCount'],
 		];
 
 		return $stats;
 	}
 
 	/**
-	 * Check if a project exists in ProjectCheck
-	 *
-	 * @param string $projectId
-	 * @return bool
+	 * Check if a project exists in ProjectCheck (any status).
 	 */
 	public function projectExists(string $projectId): bool
 	{
-		if (!$this->isProjectCheckAvailable()) {
+		return $this->projectExistsInDatabase((int)trim($projectId));
+	}
+
+	private function projectExistsInDatabase(int $projectId): bool
+	{
+		if (!$this->isProjectCheckAvailable() || $projectId <= 0) {
 			return false;
 		}
 
 		try {
 			$query = $this->db->getQueryBuilder();
 			$query->select('id')
-				->from('projectcheck_projects')
-				->where($query->expr()->eq('id', $query->createNamedParameter($projectId)))
+				->from('pc_projects')
+				->where($query->expr()->eq('id', $query->createNamedParameter($projectId, IQueryBuilder::PARAM_INT)))
 				->setMaxResults(1);
 
 			$result = $query->executeQuery();

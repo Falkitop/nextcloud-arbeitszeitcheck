@@ -47,6 +47,7 @@ class TimeTrackingService
 	private ILockingProvider $lockingProvider;
 	private TimeZoneService $timeZoneService;
 	private DailyWorkingHoursCalculator $dailyWorkingHoursCalculator;
+	private ?ProjectCheckLaborTimeSyncService $projectCheckLaborSync;
 
 	public function __construct(
 		TimeEntryMapper $timeEntryMapper,
@@ -64,6 +65,7 @@ class TimeTrackingService
 		ILockingProvider $lockingProvider,
 		TimeZoneService $timeZoneService,
 		DailyWorkingHoursCalculator $dailyWorkingHoursCalculator,
+		?ProjectCheckLaborTimeSyncService $projectCheckLaborSync = null,
 	) {
 		$this->timeEntryMapper = $timeEntryMapper;
 		$this->violationMapper = $violationMapper;
@@ -80,6 +82,7 @@ class TimeTrackingService
 		$this->lockingProvider = $lockingProvider;
 		$this->timeZoneService = $timeZoneService;
 		$this->dailyWorkingHoursCalculator = $dailyWorkingHoursCalculator;
+		$this->projectCheckLaborSync = $projectCheckLaborSync;
 	}
 
 	/**
@@ -272,6 +275,27 @@ class TimeTrackingService
 	}
 
 	/**
+	 * @return string|null Normalized project id (null when empty / not allowed)
+	 */
+	private function normalizeAndAssertProjectCheckForClockIn(string $userId, ?string $projectCheckProjectId): ?string
+	{
+		if ($projectCheckProjectId === null) {
+			return null;
+		}
+		$projectCheckProjectId = trim($projectCheckProjectId);
+		if ($projectCheckProjectId === '') {
+			return null;
+		}
+		if (mb_strlen($projectCheckProjectId) > TimeEntry::PROJECT_CHECK_PROJECT_ID_MAX_LENGTH) {
+			throw new BusinessRuleException($this->l10n->t('Project ID must not exceed %d characters', [TimeEntry::PROJECT_CHECK_PROJECT_ID_MAX_LENGTH]));
+		}
+		if (!$this->projectCheckService->userMayAttachProjectCheckProjectToOwnTime($userId, $projectCheckProjectId)) {
+			throw new BusinessRuleException($this->l10n->t('You cannot clock in on the selected project. If the project uses per-person rates, you must be on the project team. Otherwise ask a ProjectCheck administrator for access.'));
+		}
+		return $projectCheckProjectId;
+	}
+
+	/**
 	 * Clock in a user (start working)
 	 *
 	 * @param string $userId
@@ -288,6 +312,7 @@ class TimeTrackingService
 			$this->db->beginTransaction();
 			try {
 				$this->monthClosureGuard->assertUserDayMutable($userId, $this->nowForAtEntries());
+				$projectCheckProjectId = $this->normalizeAndAssertProjectCheckForClockIn($userId, $projectCheckProjectId);
 				$activeEntry = $this->timeEntryMapper->findActiveByUser($userId);
 				if ($activeEntry !== null) {
 					throw new BusinessRuleException($this->l10n->t('User is already clocked in'));
@@ -304,13 +329,6 @@ class TimeTrackingService
 					$resumed = $this->resumePausedEntry($userId, $pausedTodayEntry, $projectCheckProjectId, $description);
 					$this->db->commit();
 					return $resumed;
-				}
-
-				if ($projectCheckProjectId !== null && mb_strlen($projectCheckProjectId) > TimeEntry::PROJECT_CHECK_PROJECT_ID_MAX_LENGTH) {
-					throw new BusinessRuleException($this->l10n->t('Project ID must not exceed %d characters', [TimeEntry::PROJECT_CHECK_PROJECT_ID_MAX_LENGTH]));
-				}
-				if ($projectCheckProjectId && !$this->projectCheckService->projectExists($projectCheckProjectId)) {
-					throw new BusinessRuleException($this->l10n->t('Selected project does not exist'));
 				}
 
 				$this->checkComplianceBeforeClockIn($userId);
@@ -444,6 +462,17 @@ class TimeTrackingService
 				);
 			}
 
+			if ($this->projectCheckLaborSync !== null) {
+				try {
+					$this->projectCheckLaborSync->syncFromTimeEntry($updatedEntry, $userId);
+				} catch (\Throwable $e) {
+					\OCP\Log\logger('arbeitszeitcheck')->warning(
+						'ProjectCheck billing sync after clock-out failed: ' . $e->getMessage(),
+						['exception' => $e]
+					);
+				}
+			}
+
 			return $updatedEntry;
 		} finally {
 			$this->releaseUserMutationLock($lockKey);
@@ -466,6 +495,10 @@ class TimeTrackingService
 		?string $description = null
 	): TimeEntry {
 		$this->monthClosureGuard->assertTimeEntryMutable($pausedEntry);
+
+		if ($projectCheckProjectId !== null) {
+			$projectCheckProjectId = $this->normalizeAndAssertProjectCheckForClockIn($userId, $projectCheckProjectId);
+		}
 
 		// Respect the daily maximum – the paused entry's own hours already count.
 		[$today, $tomorrow] = $this->getAppLocalTodayWindow();

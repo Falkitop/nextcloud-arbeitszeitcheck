@@ -275,6 +275,35 @@ $arbeitszeitCheckFormatHours = static function (float $hours): string {
                         </p>
                         <?php endif; ?>
 
+                        <?php
+                        $projectCheckEnabled = !empty($_['projectCheckEnabled']);
+                        $projectCheckProjects = is_array($_['projectCheckProjects'] ?? null) ? $_['projectCheckProjects'] : [];
+                        $showClockInProjectPicker = $projectCheckEnabled
+                            && !empty($projectCheckProjects)
+                            && in_array($statusKeySafe, ['clocked_out', 'paused'], true);
+                        ?>
+                        <?php if ($showClockInProjectPicker): ?>
+                        <div class="azc-dashboard-punch__project azc-dashboard-project-picker" role="group" aria-labelledby="dashboard-clock-in-project-label">
+                            <label for="dashboard-clock-in-project" id="dashboard-clock-in-project-label" class="azc-dashboard-project-picker__label">
+                                <?php p($l->t('Clock-in project (optional)')); ?>
+                            </label>
+                            <select id="dashboard-clock-in-project"
+                                class="form-select azc-dashboard-project-picker__select"
+                                aria-describedby="dashboard-clock-in-project-help">
+                                <option value=""><?php p($l->t('No project selected')); ?></option>
+                                <?php foreach ($projectCheckProjects as $pcProject):
+                                    $pid = (string)($pcProject['id'] ?? '');
+                                    if ($pid === '') {
+                                        continue;
+                                    }
+                                    ?>
+                                    <option value="<?php p($pid); ?>"><?php p($pcProject['displayName'] ?? $pcProject['name'] ?? $pid); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <p id="dashboard-clock-in-project-help" class="form-help azc-dashboard-project-picker__help"><?php p($l->t('ProjectCheck links your hours to a customer project when both apps are enabled. Projects with per-person pricing only appear if you are on the team.')); ?></p>
+                        </div>
+                        <?php endif; ?>
+
                         <div class="azc-dashboard-punch__actions azc-dashboard-status__actions<?php echo $statusKeySafe === 'clocked_out' ? ' azc-dashboard-punch__actions--solo' : ''; ?>" role="group" aria-label="<?php p($l->t('Time tracking actions')); ?>">
                             <?php if ($statusKeySafe === 'clocked_out' || $statusKeySafe === 'paused'): ?>
                                 <button id="btn-clock-in"
@@ -846,7 +875,8 @@ $arbeitszeitCheckFormatHours = static function (float $hours): string {
         startBreak: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.time_tracking.startBreak'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
         endBreak: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.time_tracking.endBreak'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
         status: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.time_tracking.getStatus'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
-        onboardingComplete: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.settings.setOnboardingCompleted'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>
+        onboardingComplete: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.settings.setOnboardingCompleted'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
+        projectcheckAssignable: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.time_entry.apiAssignableProjectcheckProjects'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>
     };
 
     // Handle welcome message dismissal
