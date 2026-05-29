@@ -1,0 +1,81 @@
+<?php
+
+declare(strict_types=1);
+
+namespace OCA\ArbeitszeitCheck\Controller;
+
+use OCA\ArbeitszeitCheck\Capabilities;
+use OCA\ArbeitszeitCheck\Service\DashboardWidgetDataService;
+use OCA\ArbeitszeitCheck\Service\MonthClosureFeature;
+use OCA\ArbeitszeitCheck\Service\OvertimeBankService;
+use OCA\ArbeitszeitCheck\Service\PermissionService;
+use OCP\App\IAppManager;
+use OCP\AppFramework\Controller;
+use OCP\AppFramework\Http;
+use OCP\AppFramework\Http\Attribute\NoAdminRequired;
+use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
+use OCP\AppFramework\Http\JSONResponse;
+use OCP\AppFramework\Services\IAppConfig;
+use OCP\IConfig;
+use OCP\IRequest;
+use OCP\IUserSession;
+use OCP\L10N\IFactory as L10NFactory;
+
+/**
+ * Single cold-start payload for the proprietary mobile app (Basic auth, no CSRF).
+ */
+class MobileBootstrapController extends Controller {
+	public function __construct(
+		string $appName,
+		IRequest $request,
+		private readonly IUserSession $userSession,
+		private readonly DashboardWidgetDataService $widgetDataService,
+		private readonly PermissionService $permissionService,
+		private readonly OvertimeBankService $overtimeBankService,
+		private readonly IAppManager $appManager,
+		private readonly IConfig $config,
+		private readonly IAppConfig $appConfig,
+		private readonly L10NFactory $l10nFactory,
+		private readonly Capabilities $capabilities,
+	) {
+		parent::__construct($appName, $request);
+	}
+
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	public function bootstrap(): JSONResponse {
+		$user = $this->userSession->getUser();
+		if ($user === null) {
+			return new JSONResponse([
+				'success' => false,
+				'error' => 'User not authenticated',
+			], Http::STATUS_UNAUTHORIZED);
+		}
+
+		$userId = $user->getUID();
+		$canManage = $this->permissionService->canAccessManagerDashboard($userId);
+		$isAdmin = $this->permissionService->isAdmin($userId);
+
+		$pushAvailable = $this->appManager->isEnabledForUser('notifications', $user);
+
+		$locale = $this->l10nFactory->findLanguage('arbeitszeitcheck', $userId);
+
+		return new JSONResponse([
+			'success' => true,
+			'data' => [
+				'userId' => $userId,
+				'displayName' => $user->getDisplayName(),
+				'locale' => $locale,
+				'canManage' => $canManage,
+				'isAdmin' => $isAdmin,
+				'pushAvailable' => $pushAvailable,
+				'employee' => $this->widgetDataService->getEmployeeWidgetData($userId),
+				'capabilities' => $this->capabilities->getCapabilities()['arbeitszeitcheck'] ?? [],
+				'features' => [
+					'monthClosure' => MonthClosureFeature::isEnabledFromIConfig($this->config),
+					'overtimeBank' => $this->overtimeBankService->isEnabled(),
+				],
+			],
+		]);
+	}
+}

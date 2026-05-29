@@ -106,6 +106,82 @@ class DashboardWidgetDataServiceTest extends TestCase {
 		$this->assertSame('08:30', $data['sessionStartFormatted']);
 	}
 
+	public function testEmployeeWidgetDataExposesBreakStartTimeIso(): void {
+		$timeTrackingService = $this->createMock(TimeTrackingService::class);
+		$timeTrackingService->method('getStatus')->with('u1')->willReturn([
+			'status' => 'break',
+			'working_today_hours' => 2.0,
+			'current_session_duration' => 3600,
+			'current_entry' => [
+				'breakStartTime' => '2026-01-15T12:00:00+01:00',
+			],
+		]);
+		$timeTrackingService->method('getBreakStatus')->willReturn([]);
+
+		$overtime = $this->createMock(OvertimeService::class);
+		$overtime->method('getWeeklyOvertime')->willReturn([]);
+		$absence = $this->createMock(AbsenceService::class);
+		$absence->method('getVacationStats')->willReturn(['year' => 2026]);
+		$display = $this->createMock(OvertimeDisplayService::class);
+		$display->method('getYearToDateBalanceForTrafficLight')->willReturn(0.0);
+		$display->method('buildTrafficLightViewModel')->willReturn(['state' => 'green']);
+		$bank = $this->createMock(OvertimeBankService::class);
+		$bank->method('isEnabled')->willReturn(false);
+
+		$service = new DashboardWidgetDataService(
+			$timeTrackingService,
+			$overtime,
+			$display,
+			$bank,
+			$absence,
+			$this->createMock(AbsenceMapper::class),
+			$this->createMock(TeamResolverService::class),
+			$this->createMock(PermissionService::class),
+			$this->createMock(IUserManager::class),
+			$this->createTimeZoneService()
+		);
+
+		$data = $service->getEmployeeWidgetData('u1');
+		$this->assertSame('2026-01-15T12:00:00+01:00', $data['breakStartTime']);
+	}
+
+	public function testEmployeeWidgetDataExposesServerClockAnchor(): void {
+		$timeTrackingService = $this->createMock(TimeTrackingService::class);
+		$timeTrackingService->method('getStatus')->with('u1')->willReturn([
+			'status' => 'active',
+			'server_now' => '2026-01-15T10:00:00+01:00',
+			'server_timezone' => 'Europe/Berlin',
+		]);
+		$timeTrackingService->method('getBreakStatus')->willReturn([]);
+
+		$overtime = $this->createMock(OvertimeService::class);
+		$overtime->method('getWeeklyOvertime')->willReturn([]);
+		$absence = $this->createMock(AbsenceService::class);
+		$absence->method('getVacationStats')->willReturn(['year' => 2026]);
+		$display = $this->createMock(OvertimeDisplayService::class);
+		$display->method('getYearToDateBalanceForTrafficLight')->willReturn(0.0);
+		$display->method('buildTrafficLightViewModel')->willReturn(['state' => 'green']);
+		$bank = $this->createMock(OvertimeBankService::class);
+		$bank->method('isEnabled')->willReturn(false);
+
+		$service = new DashboardWidgetDataService(
+			$timeTrackingService,
+			$overtime,
+			$display,
+			$bank,
+			$absence,
+			$this->createMock(AbsenceMapper::class),
+			$this->createMock(TeamResolverService::class),
+			$this->createMock(PermissionService::class),
+			$this->createMock(IUserManager::class),
+			$this->createTimeZoneService()
+		);
+
+		$data = $service->getEmployeeWidgetData('u1');
+		$this->assertSame('2026-01-15T10:00:00+01:00', $data['serverNow']);
+		$this->assertSame('Europe/Berlin', $data['serverTimezone']);
+	}
+
 	public function testEmployeeWidgetDataUsesTimeTrackingStatus(): void {
 		$timeTrackingService = $this->createMock(TimeTrackingService::class);
 		$timeTrackingService->method('getStatus')->with('u1')->willReturn([

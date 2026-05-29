@@ -68,7 +68,11 @@ class DashboardWidgetDataService {
 			'status'                 => (string)($status['status'] ?? 'clocked_out'),
 			'workingTodayHours'      => (float)($status['working_today_hours'] ?? 0.0),
 			'currentSessionDuration' => (int)($status['current_session_duration'] ?? 0),
+			// Drift-safe timer anchor (same fields as GET /api/clock/status).
+			'serverNow'              => (string)($status['server_now'] ?? ''),
+			'serverTimezone'         => (string)($status['server_timezone'] ?? ''),
 			'sessionStartFormatted'  => $sessionStartFormatted,
+			'breakStartTime'         => (string)($status['current_entry']['breakStartTime'] ?? ''),
 			'breakStartFormatted'    => $breakStartFormatted,
 			'weekHoursWorked'        => (float)($weekly['total_hours_worked'] ?? 0.0),
 			'weekHoursRequired'      => (float)($weekly['required_hours'] ?? 0.0),

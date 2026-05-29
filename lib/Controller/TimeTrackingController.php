@@ -16,7 +16,10 @@ use OCA\ArbeitszeitCheck\Exception\BusinessRuleException;
 use OCA\ArbeitszeitCheck\Exception\MonthFinalizedException;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
+use OCP\AppFramework\Http\Attribute\BruteForceProtection;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
+use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
+use OCP\AppFramework\Http\Attribute\UserRateLimit;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\IRequest;
 use OCP\IUserSession;
@@ -104,6 +107,9 @@ class TimeTrackingController extends Controller
 	 * Clock in endpoint (called via AJAX with JSON)
 	 */
 	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	#[BruteForceProtection(action: 'arbeitszeitcheck_clock')]
+	#[UserRateLimit(limit: 20, period: 60)]
 	public function clockIn(?string $projectCheckProjectId = null, ?string $description = null): JSONResponse
 	{
 		try {
@@ -136,6 +142,9 @@ class TimeTrackingController extends Controller
 	 * Clock out endpoint (called via AJAX with JSON)
 	 */
 	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	#[BruteForceProtection(action: 'arbeitszeitcheck_clock')]
+	#[UserRateLimit(limit: 20, period: 60)]
 	public function clockOut(): JSONResponse
 	{
 		try {
@@ -192,6 +201,9 @@ class TimeTrackingController extends Controller
 	 * its UI without a blind page reload, eliminating reload loops.
 	 */
 	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	#[BruteForceProtection(action: 'arbeitszeitcheck_clock')]
+	#[UserRateLimit(limit: 20, period: 60)]
 	public function enforceDailyMaximum(): JSONResponse
 	{
 		try {
@@ -226,6 +238,9 @@ class TimeTrackingController extends Controller
 	 * Start break endpoint (called via AJAX with JSON)
 	 */
 	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	#[BruteForceProtection(action: 'arbeitszeitcheck_clock')]
+	#[UserRateLimit(limit: 20, period: 60)]
 	public function startBreak(): JSONResponse
 	{
 		try {
@@ -258,6 +273,9 @@ class TimeTrackingController extends Controller
 	 * End break endpoint (called via AJAX with JSON)
 	 */
 	#[NoAdminRequired]
+	#[NoCSRFRequired]
+	#[BruteForceProtection(action: 'arbeitszeitcheck_clock')]
+	#[UserRateLimit(limit: 20, period: 60)]
 	public function endBreak(): JSONResponse
 	{
 		try {

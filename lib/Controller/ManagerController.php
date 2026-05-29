@@ -1336,6 +1336,7 @@ class ManagerController extends Controller
 	 * JSON body: { "userId": "…", "type": "vacation", "startDate": "YYYY-MM-DD", "endDate": "YYYY-MM-DD", "reason": "…" (optional) }
 	 */
 	#[NoAdminRequired]
+	#[NoCSRFRequired]
 	public function createEmployeeAbsence(): JSONResponse
 	{
 		try {
@@ -1506,6 +1507,7 @@ class ManagerController extends Controller
 	 * Create a completed manual time entry for a managed employee (HR / migration corrections).
 	 */
 	#[NoAdminRequired]
+	#[NoCSRFRequired]
 	public function createEmployeeTimeEntry(): JSONResponse
 	{
 		try {
@@ -2072,6 +2074,7 @@ class ManagerController extends Controller
 	 * @return JSONResponse
 	 */
 	#[NoAdminRequired]
+	#[NoCSRFRequired]
 	public function approveAbsence(int $absenceId, ?string $comment = null): JSONResponse
 	{
 		try {
@@ -2116,6 +2119,7 @@ class ManagerController extends Controller
 	 * @return JSONResponse
 	 */
 	#[NoAdminRequired]
+	#[NoCSRFRequired]
 	public function rejectAbsence(int $absenceId, ?string $comment = null): JSONResponse
 	{
 		try {
@@ -2160,6 +2164,7 @@ class ManagerController extends Controller
 	 * @return JSONResponse
 	 */
 	#[NoAdminRequired]
+	#[NoCSRFRequired]
 	public function approveTimeEntryCorrection(int $timeEntryId, ?string $comment = null): JSONResponse
 	{
 		try {
@@ -2265,6 +2270,7 @@ class ManagerController extends Controller
 	 * @return JSONResponse
 	 */
 	#[NoAdminRequired]
+	#[NoCSRFRequired]
 	public function rejectTimeEntryCorrection(int $timeEntryId, ?string $reason = null): JSONResponse
 	{
 		try {
@@ -2361,6 +2367,7 @@ class ManagerController extends Controller
 	 * Apply a manager-initiated correction directly (audit trail + employee notification).
 	 */
 	#[NoAdminRequired]
+	#[NoCSRFRequired]
 	public function correctTimeEntry(int $timeEntryId): JSONResponse
 	{
 		try {

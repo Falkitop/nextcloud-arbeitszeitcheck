@@ -352,6 +352,7 @@ class AbsenceController extends Controller
 	 * @return JSONResponse
 	 */
 	#[NoAdminRequired]
+	#[NoCSRFRequired]
 	public function apiStore(): JSONResponse
 	{
 		return $this->store();
@@ -396,6 +397,7 @@ class AbsenceController extends Controller
 	 * @return JSONResponse
 	 */
 	#[NoAdminRequired]
+	#[NoCSRFRequired]
 	public function apiUpdate(int $id): JSONResponse
 	{
 		$params = $this->request->getParams();
@@ -416,6 +418,7 @@ class AbsenceController extends Controller
 	 * @return JSONResponse
 	 */
 	#[NoAdminRequired]
+	#[NoCSRFRequired]
 	public function apiDelete(int $id): JSONResponse
 	{
 		return $this->delete($id);
@@ -436,6 +439,7 @@ class AbsenceController extends Controller
 	 * @return JSONResponse|RedirectResponse
 	 */
 	#[NoAdminRequired]
+	#[NoCSRFRequired]
 	public function cancel(int $id): JSONResponse|RedirectResponse
 	{
 		try {
@@ -490,6 +494,7 @@ class AbsenceController extends Controller
 	 * @return JSONResponse
 	 */
 	#[NoAdminRequired]
+	#[NoCSRFRequired]
 	public function shorten(int $id): JSONResponse
 	{
 		$params = $this->request->getParams();
@@ -1239,6 +1244,7 @@ class AbsenceController extends Controller
 	 * @return JSONResponse
 	 */
 	#[NoAdminRequired]
+	#[NoCSRFRequired]
 	public function approve(int $id, ?string $comment = null): JSONResponse
 	{
 		try {
@@ -1279,6 +1285,7 @@ class AbsenceController extends Controller
 	 * @return JSONResponse
 	 */
 	#[NoAdminRequired]
+	#[NoCSRFRequired]
 	public function reject(int $id, ?string $comment = null): JSONResponse
 	{
 		try {

@@ -76,6 +76,8 @@ gehosteten Nextcloud.
 	<optional-dependencies>
 		<!-- Optional integration with ProjectCheck app -->
 		<app min-version="2.0.0">projectcheck</app>
+		<!-- Recommended for mobile push reminders (proprietary employee app) -->
+		<app min-version="2.0.0">notifications</app>
 	</optional-dependencies>
 
 	<commands>
