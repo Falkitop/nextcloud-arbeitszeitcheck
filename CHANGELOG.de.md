@@ -1,3 +1,13 @@
+## 1.3.10 – 2026-05-30
+
+### Behoben
+
+- **Kalender-Tagesdetails-Panel** ([#11](https://github.com/aSoftwareByDesignRepository/nextcloud-arbeitszeitcheck/issues/11)): Seitenleiste beginnt unter der Nextcloud-Kopfzeile (Schließen-Button nicht mehr unter dem Profilmenü); Kalender und App-Navigation bleiben sichtbar; Tagwechsel ohne Schließen; schließen per X, Escape oder Klick außerhalb; live gemessener Header-Offset; Vitest in `js/calendar-day-panel.test.js`.
+
+### Geändert
+
+- **Overlay-Tokens** (`--azc-overlay-top` / `--azc-overlay-height`) für feste Panels und mobile Navigation; theme-sichere Dashboard-Callouts (WCAG-2.1-AA-Kontrast).
+
 ## 1.3.9 – 2026-05-25
 
 ### Neu

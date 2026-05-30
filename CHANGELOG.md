@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.3.10 - 2026-05-30
+
+### Fixed
+
+- **Calendar day details panel** ([#11](https://github.com/aSoftwareByDesignRepository/nextcloud-arbeitszeitcheck/issues/11)): side drawer sits below the Nextcloud header (close control no longer hidden under the profile menu); calendar and app navigation stay visible while the panel is open; switch days without closing; close via X, Escape, or click outside; live header offset via `syncAzcOverlayMetrics()`; Vitest coverage in `js/calendar-day-panel.test.js`.
+
+### Changed
+
+- **Overlay tokens** (`--azc-overlay-top` / `--azc-overlay-height`) shared for fixed panels and mobile nav; theme-safe dashboard callouts (WCAG 2.1 AA contrast on all Nextcloud themes).
+
 ## 1.3.9 - 2026-05-25
 
 ### Added
