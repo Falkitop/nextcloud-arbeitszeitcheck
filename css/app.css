@@ -78,12 +78,7 @@
 	box-sizing: border-box;
 }
 #app-content.azc-app--dashboard .azc-dashboard-alerts .azc-callout {
-	margin: 0 0 var(--azc-space-5);
-	padding: 0;
-	border: none;
-	border-radius: 0;
-	background: transparent;
-	box-shadow: none;
+	margin: 0;
 }
 #app-content.azc-app #azc-main-content.azc-main {
 	flex: 1 1 auto;
@@ -418,6 +413,11 @@
 	display: block;
 	margin-top: var(--azc-space-2);
 }
+/*
+ * Callouts — theme-safe on all Nextcloud themes (light, dark, high contrast, custom).
+ * Uses only --color-* from NC body; backgrounds mix semantic hues into main-background.
+ * Variant accents match azc-semantic-panel (see semantic-surfaces.css).
+ */
 #app-content.azc-app .azc-callout {
 	display: flex;
 	flex-direction: row;
@@ -425,10 +425,11 @@
 	align-items: flex-start;
 	gap: var(--azc-space-3) var(--azc-space-4);
 	padding: var(--azc-space-4) var(--azc-space-5);
-	border: 1px solid var(--azc-border);
+	border: 2px solid var(--color-border);
 	border-radius: var(--azc-radius-md);
-	background: var(--azc-tint-info);
+	background: var(--color-main-background);
 	box-shadow: var(--azc-shadow-sm);
+	color: var(--color-main-text);
 }
 #app-content.azc-app .azc-callout.azc-semantic-panel {
 	/* Accent/background: css/common/semantic-surfaces.css */
@@ -442,8 +443,9 @@
 	width: var(--azc-icon-well);
 	height: var(--azc-icon-well);
 	border-radius: var(--azc-radius-sm);
-	background: color-mix(in srgb, var(--color-primary-element, #0082c9) 14%, transparent);
-	color: var(--color-primary-element, #0082c9);
+	background: var(--color-primary-element);
+	color: var(--color-primary-element-text, var(--color-main-background));
+	border: 2px solid color-mix(in srgb, var(--color-main-text) 15%, transparent);
 }
 #app-content.azc-app .azc-callout__icon .azc-icon,
 #app-content.azc-app .azc-callout__icon-svg {
@@ -461,46 +463,75 @@
 	display: flex;
 	flex-direction: column;
 	gap: var(--azc-space-2);
+	flex: 1 1 12rem;
+	min-width: 0;
 }
-#app-content.azc-app .azc-callout--warning:not(.azc-semantic-panel) .azc-callout__icon {
-	background: color-mix(in srgb, var(--color-warning, #c98600) 16%, transparent);
-	color: var(--color-warning, #c98600);
-}
-#app-content.azc-app .azc-callout--success:not(.azc-semantic-panel) .azc-callout__icon {
-	background: color-mix(in srgb, var(--color-success, #46ba61) 16%, transparent);
-	color: var(--color-success, #46ba61);
-}
-#app-content.azc-app .azc-callout--danger .azc-callout__icon {
-	background: color-mix(in srgb, var(--color-error, #cc4646) 16%, transparent);
-	color: var(--color-error, #cc4646);
+#app-content.azc-app .azc-callout__body .azc-callout__actions {
+	margin-top: var(--azc-space-1);
 }
 #app-content.azc-app .azc-callout--info:not(.azc-semantic-panel) {
-	border-left: 4px solid var(--color-primary-element, #0082c9);
+	border-color: var(--color-primary-element);
+	border-left-width: 5px;
+	border-left-color: var(--color-primary-element);
+	background: color-mix(in srgb, var(--color-primary-element) 8%, var(--color-main-background));
 }
 #app-content.azc-app .azc-callout--warning:not(.azc-semantic-panel) {
-	background: var(--azc-tint-warning);
-	border-left: 4px solid var(--color-warning, #c98600);
+	border-color: var(--color-warning);
+	border-left-width: 5px;
+	border-left-color: var(--color-warning);
+	background: color-mix(in srgb, var(--color-warning) 12%, var(--color-main-background));
 }
 #app-content.azc-app .azc-callout--success:not(.azc-semantic-panel) {
-	background: var(--azc-tint-success);
-	border-left: 4px solid var(--color-success, #46ba61);
+	border-color: var(--color-success);
+	border-left-width: 5px;
+	border-left-color: var(--color-success);
+	background: color-mix(in srgb, var(--color-success) 10%, var(--color-main-background));
 }
-#app-content.azc-app .azc-callout--danger {
-	background: var(--azc-tint-danger);
-	border-left: 4px solid var(--color-error, #cc4646);
+#app-content.azc-app .azc-callout--danger:not(.azc-semantic-panel) {
+	border-color: var(--color-error);
+	border-left-width: 5px;
+	border-left-color: var(--color-error);
+	background: color-mix(in srgb, var(--color-error) 10%, var(--color-main-background));
+}
+#app-content.azc-app .azc-callout--neutral:not(.azc-semantic-panel) {
+	border-color: var(--color-border);
+	border-left-width: 2px;
+	background: color-mix(in srgb, var(--color-main-text) 4%, var(--color-main-background));
+}
+#app-content.azc-app .azc-callout--info:not(.azc-semantic-panel) .azc-callout__icon {
+	background: var(--color-primary-element);
+	color: var(--color-primary-element-text, var(--color-main-background));
+}
+#app-content.azc-app .azc-callout--warning:not(.azc-semantic-panel) .azc-callout__icon {
+	background: var(--color-warning);
+	color: var(--color-main-background);
+}
+#app-content.azc-app .azc-callout--success:not(.azc-semantic-panel) .azc-callout__icon {
+	background: var(--color-success);
+	color: var(--color-main-background);
+}
+#app-content.azc-app .azc-callout--danger .azc-callout__icon {
+	background: var(--color-error);
+	color: var(--color-main-background);
+}
+#app-content.azc-app .azc-callout--neutral:not(.azc-semantic-panel) .azc-callout__icon {
+	background: var(--color-background-dark, var(--color-main-background));
+	color: var(--color-main-text);
+	border-color: var(--color-border);
+}
+#app-content.azc-app .azc-callout__title,
+#app-content.azc-app .azc-callout__text {
+	margin: 0;
+	color: var(--color-main-text);
 }
 #app-content.azc-app .azc-callout__title {
-	margin: 0;
 	font-size: var(--azc-fs-lg);
 	font-weight: 600;
 	line-height: var(--azc-line-tight);
-	color: var(--azc-text);
 }
 #app-content.azc-app .azc-callout__text {
-	margin: 0;
 	font-size: var(--azc-fs-md);
 	line-height: var(--azc-line-base);
-	color: var(--azc-text);
 	max-width: 65ch;
 }
 #app-content.azc-app .azc-callout__actions {
@@ -509,9 +540,20 @@
 	flex-wrap: wrap;
 	gap: var(--azc-space-2);
 }
+#app-content.azc-app .azc-callout__actions .azc-btn--secondary {
+	background: var(--color-main-background);
+	border-color: var(--color-border);
+	color: var(--color-main-text);
+}
+#app-content.azc-app .azc-callout__actions .azc-btn--secondary:hover,
+#app-content.azc-app .azc-callout__actions .azc-btn--secondary:focus-visible {
+	background: var(--color-background-hover, var(--color-main-background));
+	border-color: var(--color-primary-element);
+	color: var(--color-main-text);
+}
 #app-content.azc-app .azc-callout__hint {
 	margin: 0;
-	color: var(--azc-muted);
+	color: var(--color-text-maxcontrast);
 	font-size: var(--azc-fs-sm);
 	line-height: var(--azc-line-base);
 }
@@ -853,7 +895,35 @@
 	.azc-btn { transition: none; }
 }
 
+@media (prefers-contrast: more) {
+	#app-content.azc-app .azc-callout:not(.azc-semantic-panel) {
+		border-width: 3px;
+	}
+
+	#app-content.azc-app .azc-callout__text {
+		font-weight: 500;
+	}
+}
+
 @media (forced-colors: active) {
+	#app-content.azc-app .azc-callout:not(.azc-semantic-panel) {
+		border: 2px solid CanvasText;
+		background: Canvas;
+		color: CanvasText;
+		border-left-width: 5px;
+	}
+
+	#app-content.azc-app .azc-callout:not(.azc-semantic-panel) .azc-callout__title,
+	#app-content.azc-app .azc-callout:not(.azc-semantic-panel) .azc-callout__text {
+		color: CanvasText;
+	}
+
+	#app-content.azc-app .azc-callout:not(.azc-semantic-panel) .azc-callout__icon {
+		background: Canvas;
+		color: CanvasText;
+		border: 1px solid CanvasText;
+	}
+
 	.azc-card,
 	.azc-scope-strip,
 	.azc-badge {

@@ -187,5 +187,17 @@ describe('ArbeitszeitCheckUtils', () => {
 
     delete window.ArbeitszeitCheckMessaging
   })
+
+  it('syncAzcOverlayMetrics measures #header and sets CSS variables on body', async () => {
+    document.body.innerHTML = '<header id="header" style="height:60px"></header>'
+    Object.defineProperty(document.getElementById('header'), 'getBoundingClientRect', {
+      value: () => ({ bottom: 60, height: 60, top: 0, left: 0, right: 100, width: 100 }),
+    })
+    const u = window.ArbeitszeitCheckUtils
+    const top = u.syncAzcOverlayMetrics()
+    expect(top).toBe(60)
+    expect(document.body.style.getPropertyValue('--azc-overlay-top')).toBe('60px')
+    expect(document.body.style.getPropertyValue('--azc-overlay-height')).toBe('calc(100dvh - 60px)')
+  })
 })
 

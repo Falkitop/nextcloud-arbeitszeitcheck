@@ -421,7 +421,7 @@
     border-radius: var(--radius-base);
     cursor: pointer;
     position: fixed;
-    top: calc(env(safe-area-inset-top, 0px) + var(--space-3));
+    top: calc(var(--azc-overlay-top, var(--header-height, 50px)) + env(safe-area-inset-top, 0px) + var(--space-3));
     left: calc(env(safe-area-inset-left, 0px) + var(--space-3));
     z-index: 1021;
     transition: background-color 0.2s ease, transform 0.2s ease;
@@ -470,10 +470,9 @@
 .nav-mobile-overlay {
     display: none;
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
+    inset-inline: 0;
+    inset-block-start: var(--azc-overlay-top, var(--header-height, 50px));
+    inset-block-end: 0;
     background-color: color-mix(in srgb, var(--color-main-text) 50%, transparent);
     z-index: 1999;
     backdrop-filter: blur(2px);
@@ -500,10 +499,10 @@
     #app-navigation {
         position: fixed;
         left: 0;
-        top: 0;
+        top: var(--azc-overlay-top, var(--header-height, 50px));
         width: 280px;
         max-width: 85vw;
-        height: 100dvh;
+        height: var(--azc-overlay-height, calc(100dvh - var(--header-height, 50px)));
         z-index: 1020;
         transform: translateX(-100%);
         transition: transform 0.3s ease-in-out;

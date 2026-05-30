@@ -618,36 +618,59 @@
 	font-weight: 600;
 }
 
-/* Day Details Panel */
+/* Day details side drawer — below NC #header, overlays right edge only (calendar stays visible) */
+.day-details-panel[hidden] {
+	display: none !important;
+}
+
 .day-details-panel {
+	--day-panel-width: min(26rem, 100%);
 	position: fixed;
-	top: 0;
-	right: 0;
-	width: 400px;
-	height: 100vh;
+	inset-inline-end: 0;
+	top: var(--azc-overlay-top, var(--header-height, 50px));
+	inset-block-start: var(--azc-overlay-top, var(--header-height, 50px));
+	inset-block-end: 0;
+	width: var(--day-panel-width);
+	max-width: 100%;
 	background: var(--arbeitszeitcheck-color-background-elevated, var(--color-main-background, var(--arbeitszeitcheck-color-background)));
-	box-shadow: var(--shadow-lg, -4px 0 20px var(--arbeitszeitcheck-color-shadow-light, var(--color-box-shadow)));
-	z-index: 1000;
+	box-shadow: var(--shadow-lg, -4px 0 24px color-mix(in srgb, var(--color-main-text) 18%, transparent));
+	border-inline-start: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
+	z-index: var(--z-modal, 1050);
 	display: flex;
 	flex-direction: column;
 }
 
+/* Desktop: make room beside the drawer so the calendar is not covered */
+@media (min-width: 769px) {
+	body.azc-day-panel-open .calendar-section {
+		margin-inline-end: min(26rem, 100%);
+		transition: margin-inline-end 0.2s ease;
+	}
+}
+
 .panel-header {
-	padding: var(--space-6, 1.5rem);
+	flex-shrink: 0;
+	padding: var(--space-4, 1rem) var(--space-5, 1.25rem);
 	border-bottom: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
 	display: flex;
 	justify-content: space-between;
-	align-items: center;
+	align-items: flex-start;
+	gap: var(--space-3, 0.75rem);
+	background: var(--arbeitszeitcheck-color-background-elevated, var(--color-main-background));
 }
 
 .panel-header h3 {
 	margin: 0;
-	font-size: 1.1rem;
+	flex: 1 1 auto;
+	min-width: 0;
+	font-size: 1.125rem;
+	line-height: 1.35;
 	font-weight: 600;
 	color: var(--arbeitszeitcheck-color-main-text, var(--color-main-text, var(--arbeitszeitcheck-color-text)));
 }
 
 .btn-close {
+	flex-shrink: 0;
 	background: transparent;
 	border: none;
 	font-size: 1.5rem;
@@ -671,9 +694,11 @@
 }
 
 .panel-content {
-	padding: var(--space-6, 1.5rem);
+	padding: var(--space-5, 1.25rem) var(--space-6, 1.5rem) var(--space-8, 2rem);
 	overflow-y: auto;
-	flex: 1;
+	flex: 1 1 auto;
+	min-height: 0;
+	-webkit-overflow-scrolling: touch;
 }
 
 .day-details-section {
@@ -722,6 +747,13 @@
 	justify-content: center;
 	min-height: 44px;
 	text-decoration: none;
+}
+
+.calendar-day--panel-selected,
+.calendar-week-day.calendar-day--panel-selected {
+	outline: 2px solid var(--color-primary-element, var(--color-primary));
+	outline-offset: 2px;
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-element, var(--color-primary)) 35%, transparent);
 }
 
 /* Focus styles for keyboard navigation (WCAG 2.1 AA) */
@@ -784,8 +816,23 @@
 	}
 
 	.day-details-panel {
+		--day-panel-width: 100%;
 		width: 100%;
 		max-width: 100%;
+		inset-inline: 0;
+		top: auto;
+		inset-block-start: auto;
+		inset-block-end: 0;
+		max-height: min(85dvh, calc(100dvh - var(--azc-overlay-top, var(--header-height, 50px)) - 1rem));
+		height: auto;
+		border-inline-start: none;
+		border-block-start: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
+		border-radius: var(--radius-lg, 12px) var(--radius-lg, 12px) 0 0;
+		box-shadow: 0 -8px 32px color-mix(in srgb, var(--color-main-text) 20%, transparent);
+	}
+
+	body.azc-day-panel-open .calendar-section {
+		margin-inline-end: 0;
 	}
 
 	.calendar-legend {
@@ -803,6 +850,10 @@
 	.calendar-week-day,
 	.btn-nav,
 	.btn-close {
+		transition: none;
+	}
+
+	body.azc-day-panel-open .calendar-section {
 		transition: none;
 	}
 }

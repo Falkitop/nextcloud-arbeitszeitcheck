@@ -42,6 +42,10 @@
 
 /* Theme-bound tokens — must follow body [data-theme-*] where NC defines --color-* */
 body {
+	/* Fixed overlays (panels, backdrops, mobile nav) sit below NC #header, not under the profile menu */
+	--azc-overlay-top: var(--header-height, 50px);
+	--azc-overlay-height: calc(100dvh - var(--header-height, 50px));
+
 	--azc-bg-soft: color-mix(in srgb, var(--color-main-background) 96%, var(--color-main-text) 4%);
 	--azc-bg-card: var(--color-main-background);
 	--azc-text: var(--color-main-text);

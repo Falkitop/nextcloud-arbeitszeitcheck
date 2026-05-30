@@ -737,6 +737,38 @@ const ArbeitszeitCheckUtils = {
    */
   isNumeric(value) {
     return !isNaN(parseFloat(value)) && isFinite(value);
+  },
+
+  /**
+   * Measured or themed offset from viewport top to below Nextcloud #header.
+   * @returns {number} pixels
+   */
+  getHeaderOffsetPx() {
+    const header = document.getElementById('header');
+    if (header) {
+      const rect = header.getBoundingClientRect();
+      if (rect.height > 0) {
+        return Math.ceil(rect.bottom);
+      }
+    }
+    const raw = getComputedStyle(document.body).getPropertyValue('--header-height').trim();
+    const parsed = parseFloat(raw);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+    return 50;
+  },
+
+  /**
+   * Keep fixed overlays (calendar day panel, mobile nav) below the NC header.
+   * Uses live #header measurement so the close control never sits under the profile menu.
+   * @returns {number} applied top offset in pixels
+   */
+  syncAzcOverlayMetrics() {
+    const top = this.getHeaderOffsetPx();
+    document.body.style.setProperty('--azc-overlay-top', `${top}px`);
+    document.body.style.setProperty('--azc-overlay-height', `calc(100dvh - ${top}px)`);
+    return top;
   }
 };
 

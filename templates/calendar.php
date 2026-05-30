@@ -126,10 +126,10 @@ $currentMonth = $_['currentMonth'] ?? date('Y-m');
                 </div>
             </div>
 
-            <!-- Day Details Panel (Initially Hidden) -->
-            <div id="day-details-panel" class="day-details-panel" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="selected-date-label" aria-label="<?php p($l->t('Day details')); ?>">
+            <!-- Day details side drawer (moved to document.body when opened; no full-screen backdrop) -->
+            <div id="day-details-panel" class="day-details-panel" hidden role="dialog" aria-modal="false" aria-labelledby="selected-date-label" aria-label="<?php p($l->t('Day details')); ?>">
                 <div class="panel-header">
-                    <h3 id="selected-date-label"></h3>
+                    <h3 id="selected-date-label" tabindex="-1" aria-live="polite"></h3>
                     <button id="btn-close-panel" class="btn-close" type="button" aria-label="<?php p($l->t('Close')); ?>">
                         <span aria-hidden="true"><?php print_unescaped(IconCatalog::render('x', 'btn-close__icon')); ?></span>
                     </button>

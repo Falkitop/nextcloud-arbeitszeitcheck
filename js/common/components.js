@@ -38,9 +38,13 @@ const ArbeitszeitCheckComponents = {
 
   _getModalInertTargets() {
     const targets = [];
+    const header = document.getElementById('header');
     const nav = document.getElementById('app-navigation');
     const main = document.getElementById('azc-main-content');
     const shell = document.getElementById('app-content-wrapper');
+    if (header) {
+      targets.push(header);
+    }
     if (nav) {
       targets.push(nav);
     }

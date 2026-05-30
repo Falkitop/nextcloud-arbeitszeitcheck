@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 describe('ArbeitszeitCheckComponents confirmDialog', () => {
   beforeEach(async () => {
     document.body.innerHTML = `
+      <header id="header"></header>
       <nav id="app-navigation"></nav>
       <div id="app-content" data-azc-html-lang="en">
         <div id="azc-live-region" role="status" aria-live="polite"></div>
@@ -90,6 +91,7 @@ describe('ArbeitszeitCheckComponents confirmDialog', () => {
       typedConfirmPhrase: 'DELETE',
     })
 
+    expect(document.getElementById('header').hasAttribute('inert')).toBe(true)
     expect(document.getElementById('azc-main-content').hasAttribute('inert')).toBe(true)
     expect(document.getElementById('app-navigation').hasAttribute('inert')).toBe(true)
     expect(document.getElementById('app-content').getAttribute('aria-hidden')).toBeNull()
@@ -109,6 +111,7 @@ describe('ArbeitszeitCheckComponents confirmDialog', () => {
 
     Components.openModal(modal)
     expect(document.body.style.overflow).toBe('hidden')
+    expect(document.getElementById('header').hasAttribute('inert')).toBe(true)
     expect(document.getElementById('azc-main-content').hasAttribute('inert')).toBe(true)
 
     await new Promise((r) => setTimeout(r, 60))

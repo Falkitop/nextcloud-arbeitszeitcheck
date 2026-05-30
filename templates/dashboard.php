@@ -87,17 +87,23 @@ $arbeitszeitCheckFormatHours = static function (float $hours): string {
         <div class="azc-dashboard-alerts">
         <?php if ($dashboardError !== ''): ?>
             <div class="azc-callout azc-callout--danger" role="alert" aria-live="assertive">
-                <p class="azc-callout__title"><?php p($l->t('Some dashboard data could not be loaded.')); ?></p>
-                <p class="azc-callout__text"><?php p($dashboardError); ?></p>
+                <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('alert-triangle', 'azc-callout__icon-svg')); ?></span>
+                <div class="azc-callout__body">
+                    <p class="azc-callout__title"><?php p($l->t('Some dashboard data could not be loaded.')); ?></p>
+                    <p class="azc-callout__text"><?php p($dashboardError); ?></p>
+                </div>
             </div>
         <?php endif; ?>
 
         <?php if (!empty($_['workingTimeModelMissing'])): ?>
             <div class="azc-callout azc-callout--warning" role="status" aria-labelledby="dashboard-wtm-missing-title">
-                <p id="dashboard-wtm-missing-title" class="azc-callout__title"><?php p($l->t('Working time model missing')); ?></p>
-                <p class="azc-callout__text">
-                    <?php p($l->t('No working time model is assigned to your account. Ask your administrator to assign one in employee settings. Until then, break rules and compliance checks may use default values only.')); ?>
-                </p>
+                <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('alert-triangle', 'azc-callout__icon-svg')); ?></span>
+                <div class="azc-callout__body">
+                    <p id="dashboard-wtm-missing-title" class="azc-callout__title"><?php p($l->t('Working time model missing')); ?></p>
+                    <p class="azc-callout__text">
+                        <?php p($l->t('No working time model is assigned to your account. Ask your administrator to assign one in employee settings. Until then, break rules and compliance checks may use default values only.')); ?>
+                    </p>
+                </div>
             </div>
         <?php endif; ?>
 
@@ -107,18 +113,21 @@ $arbeitszeitCheckFormatHours = static function (float $hours): string {
             $timeEntriesUrl = $urlGenerator->linkToRoute('arbeitszeitcheck.page.timeEntries');
         ?>
             <div class="azc-callout azc-callout--warning" role="status" aria-labelledby="dashboard-pending-correction-title">
-                <p id="dashboard-pending-correction-title" class="azc-callout__title">
-                    <?php p($l->n(
-                        '%n of your time entries is waiting for manager approval.',
-                        '%n of your time entries are waiting for manager approval.',
-                        $pendingCorrectionCount
-                    )); ?>
-                </p>
-                <p class="azc-callout__text">
-                    <?php p($l->t('Open your time entries to see proposed times or withdraw the request.')); ?>
-                </p>
-                <div class="azc-callout__actions">
-                    <a href="<?php p($timeEntriesUrl); ?>" class="azc-btn azc-btn--secondary azc-btn--sm"><?php p($l->t('View time entries')); ?></a>
+                <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('user-check', 'azc-callout__icon-svg')); ?></span>
+                <div class="azc-callout__body">
+                    <p id="dashboard-pending-correction-title" class="azc-callout__title">
+                        <?php p($l->n(
+                            '%n of your time entries is waiting for manager approval.',
+                            '%n of your time entries are waiting for manager approval.',
+                            $pendingCorrectionCount
+                        )); ?>
+                    </p>
+                    <p class="azc-callout__text">
+                        <?php p($l->t('Open your time entries to see proposed times or withdraw the request.')); ?>
+                    </p>
+                    <div class="azc-callout__actions">
+                        <a href="<?php p($timeEntriesUrl); ?>" class="azc-btn azc-btn--secondary azc-btn--sm"><?php p($l->t('View time entries')); ?></a>
+                    </div>
                 </div>
             </div>
         <?php endif; ?>
@@ -260,8 +269,11 @@ $arbeitszeitCheckFormatHours = static function (float $hours): string {
 
                         <?php if ($isOvernightSession): ?>
                             <div class="azc-callout azc-callout--info azc-dashboard-overnight" role="status">
-                                <p class="azc-callout__title"><?php p($l->t('Night shift across midnight')); ?></p>
-                                <p class="azc-callout__text"><?php p($l->t('Your session continues from yesterday. “Worked today” counts only the hours since midnight on the current calendar day (German labor law, ArbZG §3). The session timer shows your total working time since clock-in.')); ?></p>
+                                <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('clock', 'azc-callout__icon-svg')); ?></span>
+                                <div class="azc-callout__body">
+                                    <p class="azc-callout__title"><?php p($l->t('Night shift across midnight')); ?></p>
+                                    <p class="azc-callout__text"><?php p($l->t('Your session continues from yesterday. “Worked today” counts only the hours since midnight on the current calendar day (German labor law, ArbZG §3). The session timer shows your total working time since clock-in.')); ?></p>
+                                </div>
                             </div>
                         <?php endif; ?>
 

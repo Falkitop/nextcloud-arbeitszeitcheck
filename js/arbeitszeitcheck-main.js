@@ -2477,19 +2477,120 @@
                 weekViewBtn.addEventListener('click', () => this.switchView('week'));
             }
             if (closePanelBtn) {
-                closePanelBtn.addEventListener('click', () => this.closeDayDetailsPanel());
+                closePanelBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.closeDayDetailsPanel();
+                });
             }
-            document.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape') {
+            if (!this._dayPanelOutsideClickBound) {
+                this._dayPanelOutsideClickBound = true;
+                document.addEventListener('click', (e) => {
+                    if (!this.isDayDetailsPanelOpen()) {
+                        return;
+                    }
                     const panel = document.getElementById('day-details-panel');
-                    if (panel && panel.style.display === 'block') {
+                    if (panel && panel.contains(e.target)) {
+                        return;
+                    }
+                    if (e.target.closest('.calendar-day[data-date], .calendar-week-day[data-date]')) {
+                        return;
+                    }
+                    this.closeDayDetailsPanel();
+                });
+            }
+            if (!this._dayPanelEscHandlerBound) {
+                this._dayPanelEscHandlerBound = true;
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape' && this.isDayDetailsPanelOpen()) {
+                        e.preventDefault();
+                        e.stopPropagation();
                         this.closeDayDetailsPanel();
                     }
-                }
-            });
+                });
+            }
 
             // Load calendar data
             this.loadCalendarData();
+        },
+
+        /**
+         * Whether the calendar day details side panel is open.
+         * @returns {boolean}
+         */
+        isDayDetailsPanelOpen: function() {
+            const panel = document.getElementById('day-details-panel');
+            return !!(panel && !panel.hidden);
+        },
+
+        /**
+         * Mount panel on document.body so fixed positioning is not clipped by overflow ancestors.
+         */
+        _mountDayDetailsOverlay: function() {
+            const panel = document.getElementById('day-details-panel');
+            if (panel && panel.parentNode !== document.body) {
+                document.body.appendChild(panel);
+            }
+        },
+
+        /**
+         * Align overlay top with the live Nextcloud header (never under profile menu).
+         */
+        _syncDayPanelOverlayMetrics: function() {
+            const Utils = window.ArbeitszeitCheckUtils;
+            if (Utils && typeof Utils.syncAzcOverlayMetrics === 'function') {
+                return Utils.syncAzcOverlayMetrics();
+            }
+            const header = document.getElementById('header');
+            let top = 50;
+            if (header) {
+                const rect = header.getBoundingClientRect();
+                if (rect.height > 0) {
+                    top = Math.ceil(rect.bottom);
+                }
+            }
+            document.body.style.setProperty('--azc-overlay-top', top + 'px');
+            document.body.style.setProperty('--azc-overlay-height', 'calc(100dvh - ' + top + 'px)');
+            return top;
+        },
+
+        _bindDayPanelResizeSync: function() {
+            if (this._dayPanelResizeHandlerBound) {
+                return;
+            }
+            this._dayPanelResizeHandlerBound = true;
+            this._dayPanelResizeHandler = () => {
+                if (this.isDayDetailsPanelOpen()) {
+                    this._syncDayPanelOverlayMetrics();
+                }
+            };
+            window.addEventListener('resize', this._dayPanelResizeHandler, { passive: true });
+        },
+
+        /**
+         * @param {string|null} dateKey YYYY-MM-DD or null to clear selection highlight
+         */
+        _setDayPanelSelectionHighlight: function(dateKey) {
+            document.querySelectorAll('.calendar-day--panel-selected, .calendar-week-day.calendar-day--panel-selected')
+                .forEach((el) => {
+                    el.classList.remove('calendar-day--panel-selected');
+                    el.removeAttribute('aria-current');
+                });
+            if (!dateKey) {
+                return;
+            }
+            const selector = `.calendar-day[data-date="${dateKey}"], .calendar-week-day[data-date="${dateKey}"]`;
+            document.querySelectorAll(selector).forEach((el) => {
+                el.classList.add('calendar-day--panel-selected');
+                el.setAttribute('aria-current', 'date');
+            });
+        },
+
+        _setDayPanelSectionOpen: function(isOpen) {
+            const section = document.querySelector('.calendar-section');
+            if (section) {
+                section.classList.toggle('calendar-section--day-panel-open', !!isOpen);
+            }
+            document.body.classList.toggle('azc-day-panel-open', !!isOpen);
         },
 
         /**
@@ -2593,6 +2694,9 @@
                 this.renderWeekView();
             }
             this.updatePeriodLabel();
+            if (this.isDayDetailsPanelOpen() && this.calendarData && this.calendarData.openDayDate) {
+                this._setDayPanelSelectionHighlight(this.calendarData.openDayDate);
+            }
         },
 
         /**
@@ -2723,9 +2827,15 @@
 
             // Add click and keyboard handlers to days
             container.querySelectorAll('.calendar-day[data-date]').forEach(dayEl => {
-                const openDay = () => {
+                const openDay = (e) => {
                     const date = dayEl.dataset.date;
-                    if (date) this.showDayDetails(date);
+                    if (!date) {
+                        return;
+                    }
+                    if (e && typeof e.stopPropagation === 'function') {
+                        e.stopPropagation();
+                    }
+                    this.showDayDetails(date, dayEl);
                 };
                 dayEl.addEventListener('click', openDay);
                 dayEl.addEventListener('keydown', (e) => {
@@ -2829,9 +2939,15 @@
             // Add click and keyboard handlers
             const holidaysForAria = Array.isArray(this.calendarData.holidays) ? this.calendarData.holidays : [];
             container.querySelectorAll('.calendar-week-day[data-date]').forEach(dayEl => {
-                const openDay = () => {
+                const openDay = (e) => {
                     const date = dayEl.dataset.date;
-                    if (date) this.showDayDetails(date);
+                    if (!date) {
+                        return;
+                    }
+                    if (e && typeof e.stopPropagation === 'function') {
+                        e.stopPropagation();
+                    }
+                    this.showDayDetails(date, dayEl);
                 };
                 dayEl.setAttribute('role', 'button');
                 dayEl.setAttribute('tabindex', '0');
@@ -2957,6 +3073,9 @@
          * Navigate calendar (prev/next month or week). Reloads data for the new period.
          */
         navigateCalendar: function(direction) {
+            if (this.isDayDetailsPanelOpen()) {
+                this.closeDayDetailsPanel();
+            }
             const currentDate = new Date(this.calendarData.currentDate);
             if (this.calendarData.currentView === 'month') {
                 currentDate.setMonth(currentDate.getMonth() + direction);
@@ -2971,6 +3090,9 @@
          * Go to today - navigate to current month/week and reload data for that month
          */
         goToToday: function() {
+            if (this.isDayDetailsPanelOpen()) {
+                this.closeDayDetailsPanel();
+            }
             this.calendarData.currentDate = new Date();
             this.loadCalendarData();
         },
@@ -2979,6 +3101,9 @@
          * Switch between month and week view
          */
         switchView: function(view) {
+            if (this.isDayDetailsPanelOpen()) {
+                this.closeDayDetailsPanel();
+            }
             this.calendarData.currentView = view;
             
             const monthView = document.getElementById('calendar-month-view');
@@ -3050,18 +3175,30 @@
 
         /**
          * Show day details panel
+         * @param {string} dateKey YYYY-MM-DD
+         * @param {HTMLElement|null} triggerEl Day cell that opened the panel (focus restore)
          */
-        showDayDetails: function(dateKey) {
+        showDayDetails: function(dateKey, triggerEl) {
             const panel = document.getElementById('day-details-panel');
             const label = document.getElementById('selected-date-label');
             const content = document.getElementById('day-details-content');
             
             if (!panel || !label || !content) return;
 
+            const wasOpen = this.isDayDetailsPanelOpen();
+            const switchingDay = wasOpen && this.calendarData.openDayDate && this.calendarData.openDayDate !== dateKey;
+
+            this._mountDayDetailsOverlay();
+            this._syncDayPanelOverlayMetrics();
+            this._bindDayPanelResizeSync();
+
             // Remember the element that opened the panel so we can restore focus on close
-            if (typeof document !== 'undefined' && document.activeElement) {
+            if (triggerEl && typeof triggerEl.focus === 'function') {
+                this.calendarData.lastActiveDayElement = triggerEl;
+            } else if (!wasOpen && typeof document !== 'undefined' && document.activeElement) {
                 this.calendarData.lastActiveDayElement = document.activeElement;
             }
+            this.calendarData.openDayDate = dateKey;
 
             const date = parseYmdToLocalDate(dateKey) || new Date();
             const dayData = this.getDayData(dateKey);
@@ -3155,19 +3292,16 @@
             }
 
             content.innerHTML = html;
-            panel.style.display = 'block';
+            panel.hidden = false;
             panel.removeAttribute('inert');
-            const Components = window.ArbeitszeitCheckComponents;
-            if (Components && typeof Components.lockBackground === 'function') {
-                Components.lockBackground();
-            }
+            this._setDayPanelSectionOpen(true);
+            this._setDayPanelSelectionHighlight(dateKey);
+
             const closeBtn = document.getElementById('btn-close-panel');
-            if (closeBtn && typeof closeBtn.focus === 'function') {
+            if (!wasOpen && closeBtn && typeof closeBtn.focus === 'function') {
                 setTimeout(() => closeBtn.focus(), 0);
-            }
-            if (Components && typeof Components._bindFocusTrap === 'function') {
-                panel.dataset.azcFocusTrapStandalone = '1';
-                Components._bindFocusTrap(panel);
+            } else if (switchingDay && label && typeof label.focus === 'function') {
+                setTimeout(() => label.focus(), 0);
             }
         },
 
@@ -3175,16 +3309,18 @@
          * Close day details panel
          */
         closeDayDetailsPanel: function() {
+            if (!this.isDayDetailsPanelOpen()) {
+                return;
+            }
             const panel = document.getElementById('day-details-panel');
-            const Components = window.ArbeitszeitCheckComponents;
-            if (panel && Components && typeof Components._unbindFocusTrap === 'function') {
-                Components._unbindFocusTrap(panel);
-            }
             if (panel) {
-                panel.style.display = 'none';
+                panel.hidden = true;
+                panel.setAttribute('inert', '');
             }
-            if (Components && typeof Components.unlockBackground === 'function') {
-                Components.unlockBackground();
+            this._setDayPanelSectionOpen(false);
+            this._setDayPanelSelectionHighlight(null);
+            if (this.calendarData) {
+                this.calendarData.openDayDate = null;
             }
             // Restore focus to the last active day tile to keep keyboard users oriented
             if (this.calendarData && this.calendarData.lastActiveDayElement && typeof this.calendarData.lastActiveDayElement.focus === 'function') {

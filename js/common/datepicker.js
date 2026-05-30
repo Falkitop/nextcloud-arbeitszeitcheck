@@ -256,14 +256,22 @@ function initializeDatepicker(input, options = {}) {
 		container.style.position = 'fixed';
 		const rect = element.getBoundingClientRect();
 		const calHeight = container.offsetHeight || 320;
+		const headerOffset = (() => {
+			const raw = getComputedStyle(document.body).getPropertyValue('--header-height').trim();
+			const parsed = parseFloat(raw);
+			return Number.isFinite(parsed) && parsed > 0 ? parsed : 50;
+		})();
+		const minTop = headerOffset + 8;
 		const spaceBelow = window.innerHeight - rect.bottom;
 		const showAbove = spaceBelow < calHeight && rect.top > calHeight;
 		let top;
 		if (showAbove) {
-			top = Math.max(8, rect.top - calHeight - 4);
+			top = Math.max(minTop, rect.top - calHeight - 4);
 		} else {
 			top = Math.min(window.innerHeight - calHeight - 8, rect.bottom + 4);
-			if (top < 8) top = 8;
+			if (top < minTop) {
+				top = minTop;
+			}
 		}
 		container.style.top = top + 'px';
 		/* Keep within viewport horizontally */
