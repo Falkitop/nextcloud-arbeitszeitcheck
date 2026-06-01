@@ -662,6 +662,10 @@ class TimeTrackingService
 	public function getStatus(string $userId): array
 	{
 		try {
+			// Repairs write to at_* tables; subsequent reads in this method would
+			// otherwise trigger "dirty table reads" diagnostics. A transaction keeps
+			// reads on the primary without that noise and preserves consistency.
+			$this->db->beginTransaction();
 			$this->repairStalePausedAutomaticEntries($userId);
 			// Self-healing: if the user has crossed the ArbZG §3 daily maximum,
 			// auto-complete the active entry on read so the frontend timer
@@ -695,7 +699,7 @@ class TimeTrackingService
 						);
 						$pausedSummary = ['id' => $pausedEntry->getId(), 'userId' => $userId, 'status' => TimeEntry::STATUS_PAUSED];
 					}
-					return $this->appendAutoClockoutNotice($this->withServerClock(
+					$status = $this->appendAutoClockoutNotice($this->withServerClock(
 						$this->appendArbzgCalendarDayStatusFields([
 							'status' => TimeEntry::STATUS_PAUSED,
 							'current_entry' => $pausedSummary,
@@ -704,9 +708,11 @@ class TimeTrackingService
 						], $userId, $pausedEntry),
 						$nowImmutable,
 					), $userId);
+					$this->db->commit();
+					return $status;
 				}
 
-				return $this->appendAutoClockoutNotice($this->withServerClock(
+				$status = $this->appendAutoClockoutNotice($this->withServerClock(
 					$this->appendArbzgCalendarDayStatusFields([
 						'status' => 'clocked_out',
 						'current_entry' => null,
@@ -715,6 +721,8 @@ class TimeTrackingService
 					], $userId, null),
 					$nowImmutable,
 				), $userId);
+				$this->db->commit();
+				return $status;
 			}
 
 			$sessionStart = $currentEntry->getStartTime();
@@ -752,7 +760,7 @@ class TimeTrackingService
 				];
 			}
 
-			return $this->appendAutoClockoutNotice($this->withServerClock(
+			$status = $this->appendAutoClockoutNotice($this->withServerClock(
 				$this->appendArbzgCalendarDayStatusFields([
 					'status' => $currentEntry->getStatus(),
 					'current_entry' => $entrySummary,
@@ -761,7 +769,12 @@ class TimeTrackingService
 				], $userId, $currentEntry),
 				$nowImmutable,
 			), $userId);
+			$this->db->commit();
+			return $status;
 		} catch (\Throwable $e) {
+			if ($this->db->inTransaction()) {
+				$this->db->rollBack();
+			}
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in getStatus for user ' . $userId . ': ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString(), ["exception" => $e]);
 			// Return a safe default status (still include the server clock so
 			// the client can keep its drift estimate alive even on error).
