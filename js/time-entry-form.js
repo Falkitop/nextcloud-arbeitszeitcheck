@@ -153,9 +153,9 @@ class TimeEntryFormManager {
 	}
 
 	hasFormData() {
-		return this.dateInput?.value &&
-			   this.startTimeHidden?.value &&
-			   this.endTimeHidden?.value;
+		return this.dateInput?.value
+			&& this.startTimeHidden?.value
+			&& this.endTimeHidden?.value;
 	}
 
 	setupTimeInputs() {
