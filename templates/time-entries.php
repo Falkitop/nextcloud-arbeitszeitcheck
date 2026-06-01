@@ -824,9 +824,9 @@ require __DIR__ . '/common/user-display-timezone.php';
                                     );
                                     ?>
                                     <tr data-entry-id="<?php p($entry->getId()); ?>" class="<?php echo $isPendingRow ? 'time-entry-row--pending' : ''; ?>">
-                                        <td><?php if ($rowDisplayStart) { p($rowDisplayStart->format('d.m.Y')); } else { p('-'); } ?></td>
-                                        <td><?php if ($rowDisplayStart) { p($rowDisplayStart->format('H:i')); } else { p('-'); } ?></td>
-                                        <td><?php
+                                        <td data-label="<?php p($l->t('Date')); ?>"><?php if ($rowDisplayStart) { p($rowDisplayStart->format('d.m.Y')); } else { p('-'); } ?></td>
+                                        <td data-label="<?php p($l->t('Start Time')); ?>"><?php if ($rowDisplayStart) { p($rowDisplayStart->format('H:i')); } else { p('-'); } ?></td>
+                                        <td data-label="<?php p($l->t('End Time')); ?>"><?php
                                             if ($rowDisplayEnd) {
                                                 $startDate = $rowDisplayStart->format('Y-m-d');
                                                 $endDate = $rowDisplayEnd->format('Y-m-d');
@@ -840,8 +840,8 @@ require __DIR__ . '/common/user-display-timezone.php';
                                                 p('-');
                                             }
                                             ?></td>
-                                        <td><?php p(round($entry->getDurationHours() ?? 0, 2)); ?> h</td>
-                                        <td>
+                                        <td data-label="<?php p($l->t('Duration')); ?>"><?php p(round($entry->getDurationHours() ?? 0, 2)); ?> h</td>
+                                        <td data-label="<?php p($l->t('Break')); ?>">
                                             <?php
                                             // Display break times (start and end) if available
                                             $breakTimes = [];
@@ -906,7 +906,7 @@ require __DIR__ . '/common/user-display-timezone.php';
                                             }
                                             ?>
                                         </td>
-                                        <td>
+                                        <td data-label="<?php p($l->t('Working Hours')); ?>">
                                             <?php
                                             // For active/paused entries, calculate duration manually
                                             if (!$entry->getEndTime() && $entry->getStartTime()) {
@@ -944,13 +944,13 @@ require __DIR__ . '/common/user-display-timezone.php';
                                                 p(round($workingHours, 2)); ?> h
                                             <?php } ?>
                                         </td>
-                                        <td class="description-cell">
+                                        <td class="description-cell" data-label="<?php p($l->t('Description')); ?>">
                                             <?php p($entry->getDescription() ? substr($entry->getDescription(), 0, 50) : '-'); ?>
                                             <?php if ($entry->getDescription() && strlen($entry->getDescription()) > 50): ?>
                                                 <span class="description-more">...</span>
                                             <?php endif; ?>
                                         </td>
-                                        <td>
+                                        <td data-label="<?php p($l->t('Status')); ?>">
                                             <span class="badge badge--<?php
                                                                         p(match ($entry->getStatus()) {
                                                                             'completed' => 'success',
@@ -988,7 +988,7 @@ require __DIR__ . '/common/user-display-timezone.php';
                                                 ?>
                                             </span>
                                         </td>
-                                        <td class="actions-cell">
+                                        <td class="actions-cell" data-label="<?php p($l->t('Actions')); ?>">
                                             <?php
                                             $isPaused = $entry->getStatus() === \OCA\ArbeitszeitCheck\Db\TimeEntry::STATUS_PAUSED;
                                             // One-click completion for paused entries — the most common recovery action.

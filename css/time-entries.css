@@ -210,6 +210,119 @@
     opacity: 1;
 }
 
+/* ===== MOBILE CARD REFLOW FOR THE TIME ENTRIES TABLE =====
+   Breakpoint 768px: chosen to match the app's primary mobile breakpoint — the
+   same width at which the sidebar becomes an off-canvas drawer (common/responsive.css).
+   The entries table has 9 columns; in the horizontal-scroll wrapper the Actions
+   column (Edit / Withdraw / Delete) sits off-screen and needs sideways scrolling
+   to reach. At <=768px we reflow each row into a stacked card so every field and
+   every action is reachable with no horizontal scrolling. Desktop/tablet (>=769px)
+   are unaffected: every rule below lives inside this media query, and the
+   data-label attributes it relies on are inert when not rendered as ::before. */
+@media (max-width: 768px) {
+    #time-entries-table,
+    #time-entries-table tbody,
+    #time-entries-table tr,
+    #time-entries-table td {
+        display: block;
+        width: 100%;
+    }
+
+    /* Override common/responsive.css `.table-container .table { min-width: 520px }`
+       (ID specificity wins) so cards never force horizontal overflow. */
+    #time-entries-table {
+        min-width: 0;
+        border-collapse: collapse;
+    }
+
+    /* Column headers are surfaced per-cell via data-label/::before below; keep the
+       header row for assistive tech but remove it visually (sr-only pattern). */
+    #time-entries-table thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+        border: 0;
+    }
+
+    #time-entries-table tr {
+        margin-bottom: var(--space-4, 1rem);
+        padding: var(--space-3, 0.75rem) var(--space-4, 1rem);
+        border: 1px solid var(--arbeitszeitcheck-color-border);
+        border-radius: var(--radius-lg, 8px);
+        background: var(--arbeitszeitcheck-color-background-elevated);
+    }
+
+    #time-entries-table tr:last-child {
+        margin-bottom: 0;
+    }
+
+    /* Each cell becomes a label/value row inside the card. */
+    #time-entries-table td {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: var(--space-4, 1rem);
+        padding: var(--space-2, 0.5rem) 0;
+        border-bottom: 1px solid var(--arbeitszeitcheck-color-border-secondary);
+        text-align: right;
+    }
+
+    #time-entries-table td:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+    }
+
+    #time-entries-table td::before {
+        content: attr(data-label);
+        flex: 0 0 auto;
+        text-align: left;
+        font-weight: 600;
+        color: var(--arbeitszeitcheck-color-text-maxcontrast);
+    }
+
+    /* Description + actions read better stacked full-width than split left/right. */
+    #time-entries-table td.description-cell,
+    #time-entries-table td.actions-cell {
+        flex-direction: column;
+        align-items: stretch;
+        text-align: left;
+    }
+
+    /* Undo desktop truncation (max-width:300px + nowrap ellipsis) inside the card. */
+    #time-entries-table td.description-cell {
+        max-width: 100%;
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+    }
+
+    #time-entries-table td.actions-cell {
+        gap: var(--space-2, 0.5rem);
+    }
+
+    /* Full-width, >=44px touch targets, matching the app's mobile button pattern. */
+    #time-entries-table td.actions-cell .btn {
+        width: 100%;
+        justify-content: center;
+        min-height: 44px;
+    }
+
+    /* Empty-state row spans the whole card with no label. */
+    #time-entries-table td[colspan] {
+        justify-content: center;
+        text-align: center;
+    }
+
+    #time-entries-table td[colspan]::before {
+        content: none;
+    }
+}
+
 .empty-state {
     text-align: center;
     padding: var(--space-12, 3rem) var(--space-6, 1.5rem);
