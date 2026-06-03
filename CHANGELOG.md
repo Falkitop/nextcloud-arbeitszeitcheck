@@ -5,6 +5,81 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Fixed
+
+- **Callouts and notification icons (all Nextcloud themes)**: unified `templates/common/alert-callout.php` and `css/common/notification-surfaces.css` with theme-safe panel tints and semantic icon wells (same contrast model as the page header). Replaced invisible Lucide `h.01` SVG marks in `IconCatalog` with visible accent dots; added `IconCatalog::renderCalloutWell()` and variant classes (`azc-notif-icon-well--warning`, etc.) so warning/danger/info glyphs stay identifiable on light, dark, high-contrast, and custom themes. Admin notifications save feedback uses matching callout styling and `role="alert"` on errors.
+
+- **Admin → Teams: member/manager picker now finds people by name** ([#14](https://github.com/aSoftwareByDesignRepository/nextcloud-arbeitszeitcheck/issues/14)): the people picker searched the directory by *user id* only (`IUserManager::search()`), so on instances where the user id is an email, employee number or UUID, typing a person's name returned nothing — most of the directory was effectively hidden. All admin/manager people search now matches **user id OR display name** (shared `UserDirectorySearch` helper) across Teams, the Employees list, the company-status dashboard, the manager month-PDF picker and the scoped-employee picker. The Teams picker additionally excludes already-assigned members/managers **server-side** (`exclude[]`) so a large unit can no longer fill the capped result page with people already on the team, and shows a clear "Showing the first N matches — keep typing to narrow it down" hint (announced to screen readers) when more matches exist.
+- **Admin → Employees and time-entry tables: inflexible width / clipped actions** ([#12](https://github.com/aSoftwareByDesignRepository/nextcloud-arbeitszeitcheck/issues/12)): table-heavy pages now use the wide shell (`time-entries`, `absences`, manager lists, compliance lists); `.table-container` scrolls horizontally only when columns need more space; action columns use `min-width: max-content` so Edit/History buttons stay fully visible on desktop; mobile keeps card reflow (`azc-table--responsive` + `data-label`). Manager scope pages no longer cap list width at 56rem. Playwright regression: `tests/e2e/table-width-desktop.spec.js`.
+- **Admin → Holidays: auto-restore now respected when deleting statutory holidays** ([#17](https://github.com/aSoftwareByDesignRepository/nextcloud-arbeitszeitcheck/issues/17)): deleting a statutory holiday while *Auto-restore* is disabled records a per-`(state, date)` suppression (`at_holiday_suppress`) so the day stays removed in both the admin list and the calendar after a reload; re-enabling auto-restore revives the day and clears the stale suppression. The admin list and the working-day calendar now read from the same DB-backed source, so they can no longer diverge.
+- **Admin → Holidays: "Default federal state" select is now functional**: the control on the Holidays page was rendered but never wired up — choosing a state did nothing. It now persists the organisation default state immediately (with disabled/`aria-busy` state, success/error feedback, and rollback on failure) via the existing admin settings API.
+- **Admin → Holidays: statutory holidays are forced to full-day**: saving a statutory holiday now always stores `kind=full` (the working-day engine already treats statutory days as full-day), so the table badge can no longer claim "half-day" for a day that is counted as full.
+- **Admin → Holidays: honest delete feedback**: removing a statutory holiday while auto-restore is enabled now states the day will be added back automatically, instead of a misleading "Holiday was removed" message.
+- **Sachsen-Anhalt statutory holidays** ([#13](https://github.com/aSoftwareByDesignRepository/nextcloud-arbeitszeitcheck/issues/13)): `GermanStatutoryHolidayCatalog` seeds Epiphany (6 Jan) and Reformation Day for ST while excluding Corpus Christi and All Saints; auto-restore prunes legacy generated rows that used nationwide rules. `occ arbeitszeitcheck:holidays:verify` now reads the DB without reconciling first and fails when extra statutory rows remain (not only when catalog dates are missing).
+- **Admin → Employees: entitlement preview UX**: human-readable summary line for HR; full `calculationTrace` JSON only inside a collapsible **Technical details (audit)** block (WCAG-friendly, no raw dump in the main form).
+- **Unified date format for Stichtag**: overtime tracking start date uses the same `dd.mm.yyyy` datepicker as assignment validity dates (admin edit dialog and Nextcloud “New account” panel); values are converted to ISO before save.
+
+- **Admin → Employees: overtime Stichtag / opening balance not saved**: `UserOvertimeSettingsService` passed the Nextcloud user id (string) as the audit log `entityId` (must be `?int`), causing a `TypeError` on every Stichtag or Eröffnungssaldo write — with the atomic profile save this rolled back the whole transaction and surfaced as “Benutzer konnte nicht aktualisiert werden”. Audit entries now use `null` entity id (same pattern as time-capture settings).
+- **Admin user pickers (Teams, month reopen, overtime audit, vacation simulator)**: replaced the old 50-user dropdown cap with a searchable combobox (`GET /api/admin/users?picker=1`), minimum 2-character search, enabled accounts only, and shared WCAG-friendly styling. Legacy `GET /api/admin/vacation-layers/users` delegates to the same picker API.
+- **Admin → Employees list**: browse all accounts with **Previous / Next** pagination (50 per page) and honest search feedback; empty search no longer hides employees beyond the first page.
+- **Manager employee filters** (time entries, absences, record-absence form): replaced large `<select>` lists with the shared searchable combobox scoped to the manager’s team (`GET /api/manager/scoped-employees`); admins search the directory, managers only see their team.
+- **Admin company-status dashboard widget**: status totals now scan up to 500 enabled accounts (was 200) and note when the directory is larger, with a link hint to **Employees** for the full list.
+- **Admin → Employees**: server validation errors from the atomic profile save are now mapped to the matching form fields (instead of only a generic toast), with focus moved to the first invalid control.
+
+### Changed
+
+- **Admin → Employees**: clearer “Find an employee” search with help text; pagination status shows ranges (`1–50 of 150`) or match counts when searching.
+- **Admin → Employees (edit dialog load)**: vacation policy for future-dated work-schedule assignments is resolved as of the assignment start date, not only “today”, so opening and saving no longer mis-defaults to “inherit” and triggers a failed save.
+
+## 1.3.15 - 2026-06-03
+
+### Fixed
+
+- **Idempotent employee save**: the edit dialog now tracks the active vacation-policy row (`policyId` + `policyEffectiveFrom`) and only starts a new policy timeline when the work-schedule start date actually changes — repeated “open → save” no longer spawns duplicate `at_user_vacation_policies` rows.
+- **Server-side no-op detection**: `AdminUserProfileUpdateService` skips DB writes when work-schedule and vacation-policy payloads are unchanged; open-ended policies are closed consistently before a deliberate reschedule.
+
+## 1.3.14 - 2026-06-03
+
+### Fixed
+
+- **Atomic employee save**: the edit-employee dialog now uses a single `PUT /api/admin/users/{userId}/profile` endpoint that validates all sections up front and persists work schedule, vacation policy, time recording, and overtime inside **one DB transaction** — eliminating partial saves when a later step failed.
+- **Admin datepicker on Holidays, Tariff rules, and Audit log**: same script-registration fix as Employees (1.3.13); covered by Playwright asset checks.
+
+### Changed
+
+- **Employee edit modal UX**: sticky footer with clear primary (Save) vs secondary (Cancel) styling, improved spacing, and WCAG 2.1 AA focus rings on actions.
+- **Architecture**: consolidated profile update logic in `AdminUserProfileUpdateService`; legacy per-section PUT endpoints delegate to the same service for consistent validation.
+
+## 1.3.13 - 2026-06-03
+
+### Fixed
+
+- **Admin → Employees: “Benutzer konnte nicht aktualisiert werden” on save (true root cause)**: the date picker JavaScript was registered as a *stylesheet* dependency instead of a *script* on the Employees, Holidays, Tariff-rule-sets and Audit-log pages (`css/common/datepicker.css` 404'd and `js/common/datepicker.js` never loaded). With the picker absent, the **Start/End date** fields stayed as plain text in German `dd.mm.yyyy` format and were sent **unconverted** to the server. The strict `Y-m-d` parser on the `vacation-policy` endpoint rejected them with **HTTP 400**, which aborted the multi-step save *after* the work-schedule step had already persisted — exactly matching the report (work-time model saved, overtime Stichtag not saved, generic error even when nothing was changed). Fixed by registering `common/datepicker` as a **script** dependency on all four admin pages.
+- **Date-conversion safety net**: the employee save now always converts `dd.mm.yyyy` → ISO `Y-m-d` locally even if the shared date-picker module is unavailable, so a missing/late asset can never again leak an unconverted date to the API.
+
+## 1.3.12 - 2026-06-03
+
+### Fixed
+
+- **Admin → Employees: “Benutzer konnte nicht aktualisiert werden” on save**: editing an employee saved some sections (e.g. work schedule) but aborted the rest (e.g. overtime Stichtag) with a generic error, even when nothing was changed. Root cause: employees without an explicit individual vacation policy defaulted the dialog to **Fixed value per person** with an empty days field, which the server (correctly) rejected, breaking the multi-step save chain. The dialog now defaults to **Inherit from team / model / organisation** when no explicit policy exists (behaviour-equivalent to the previous “no policy” fallthrough, but valid to save).
+
+### Changed
+
+- **Robust, all-or-nothing employee save**: the edit-employee dialog now validates every field on the client *before* sending anything (vacation mode requirements, manual days, override reason, tariff rule set, carryover, overtime year/hours, and start/end date ordering), preventing half-saved employees. Errors are shown inline per field, are screen-reader announced (`role="alert"`, `aria-invalid`, `aria-describedby`), move focus to the first invalid field, and surface the **specific** server reason instead of a generic message. The Save button shows a busy state and blocks double submits.
+- **German localization** for the overtime/Stichtag and time-recording sections of the edit dialog and all new validation messages (previously shown in English).
+
+## 1.3.11 - 2026-06-03
+
+### Added
+
+- **Holiday architecture (audit-grade):** `at_holiday_suppress` per-date opt-outs; `GermanStatutoryHolidayCatalog` (Bundesland-aware seeding); `HolidayAdminService` for admin delete/verify; `occ arbeitszeitcheck:holidays:verify`; docs [`docs/Holidays-Data-Model.en.md`](docs/Holidays-Data-Model.en.md); integration and E2E tests for delete ↔ calendar ↔ working days.
+
+### Fixed
+
+- **Admin holidays / statutory auto-restore** ([#17](https://github.com/aSoftwareByDesignRepository/nextcloud-arbeitszeitcheck/issues/17)): removed API “safety net” that re-injected deleted statutory rows in the admin list while auto-restore was disabled; `HolidayService` now restores missing statutory dates individually when auto-restore is on; working-day math uses **DB holidays only** (no parallel national static calendar); admin UI shows setting-aware delete copy, a warning callout when auto-restore is off, and reloads the table after delete; `Absence::calculateWorkingDays()` fallback uses `computeWorkingDaysForUser`; distributed holiday cache keys include the auto-restore policy so toggling the setting cannot serve stale lists.
+
 ## 1.3.10 - 2026-05-30
 
 ### Fixed

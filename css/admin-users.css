@@ -6,6 +6,104 @@
  * @license AGPL-3.0-or-later
  */
 
+/* ===== EMPLOYEE LIST TOOLBAR & PAGINATION ===== */
+
+/* Search + action on one row (input aligned with button); label + help full width */
+.admin-users-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--space-4, 1rem);
+  row-gap: var(--space-2, 0.5rem);
+  align-items: center;
+  margin-bottom: var(--space-4, 1rem);
+}
+
+.admin-users-toolbar__search {
+  display: contents;
+}
+
+.admin-users-toolbar__search .form-label {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  margin: 0;
+}
+
+.admin-users-toolbar__search .form-input {
+  grid-column: 1;
+  grid-row: 2;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+}
+
+.admin-users-toolbar__search .form-help {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  margin: 0;
+}
+
+.admin-users-toolbar .azc-list-toolbar__actions {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.admin-users-toolbar .azc-list-toolbar__actions .btn {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.admin-users-pager {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 0.5rem);
+  margin-top: var(--space-4, 1rem);
+}
+
+.admin-users-meta {
+  margin-top: var(--space-2, 0.5rem);
+}
+
+.admin-users-meta p {
+  margin: 0;
+  color: var(--arbeitszeitcheck-color-text-lighter, var(--color-text-lighter));
+  line-height: 1.45;
+}
+
+@media (max-width: 640px) {
+  .admin-users-toolbar {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3, 0.75rem);
+  }
+
+  .admin-users-toolbar__search {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2, 0.5rem);
+    min-width: 0;
+  }
+
+  .admin-users-toolbar .azc-list-toolbar__actions {
+    grid-column: unset;
+    grid-row: unset;
+    width: 100%;
+  }
+
+  .admin-users-toolbar .azc-list-toolbar__actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .admin-users-pager .btn {
+    flex: 1 1 auto;
+  }
+}
+
 /* ===== HISTORY MODAL ===== */
 
 .history-modal__loading,
@@ -86,11 +184,62 @@
   color: var(--color-text-lighter);
 }
 
-#edit-user-modal .entitlement-preview__trace {
+#edit-user-modal .entitlement-preview__summary {
   margin: var(--space-2, 0.5rem) 0 0;
   font-size: var(--arbeitszeitcheck-font-size-sm, 0.875rem);
+  line-height: 1.5;
   color: var(--color-main-text);
+}
+
+#edit-user-modal .entitlement-preview__details {
+  margin-top: var(--space-3, 0.75rem);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-large, 10px);
+  padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
+  background: color-mix(in srgb, var(--color-main-background) 96%, var(--color-text-maxcontrast) 4%);
+}
+
+#edit-user-modal .entitlement-preview__details[hidden] {
+  display: none;
+}
+
+#edit-user-modal .entitlement-preview__details > summary {
+  cursor: pointer;
+  font-size: var(--arbeitszeitcheck-font-size-sm, 0.875rem);
+  font-weight: 600;
+  color: var(--color-main-text);
+  list-style-position: outside;
+}
+
+#edit-user-modal .entitlement-preview__details > summary:focus-visible {
+  outline: 2px solid var(--color-primary-element, #0082c9);
+  outline-offset: 2px;
+  border-radius: var(--border-radius, 4px);
+}
+
+#edit-user-modal .entitlement-preview__technical {
+  margin: var(--space-3, 0.75rem) 0 0;
+  padding: var(--space-3, 0.75rem);
+  max-height: 12rem;
+  overflow: auto;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  border-radius: var(--border-radius, 6px);
+  background: var(--color-background-dark, var(--color-main-background));
+  color: var(--color-main-text);
+  border: 1px solid var(--color-border);
+}
+
+#edit-user-modal .entitlement-preview__technical code {
+  font-family: var(--font-face-monospace, ui-monospace, monospace);
+  white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* Stichtag + validity dates: same picker affordance as other admin date fields */
+#edit-user-modal .form-input.datepicker-input {
+  width: 100%;
+  max-width: 100%;
 }
 
 #edit-user-modal .form-label {
@@ -109,6 +258,74 @@
 #edit-user-modal .form-group.is-disabled .form-select,
 #edit-user-modal .form-group.is-disabled .form-textarea {
   pointer-events: none;
+}
+
+#edit-user-modal .user-edit-capture__intro {
+  margin: 0;
+}
+
+#edit-user-modal .user-edit-capture__grid {
+  display: grid;
+  gap: var(--space-3, 0.75rem);
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 520px) {
+  #edit-user-modal .user-edit-capture__grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+#edit-user-modal .user-edit-capture__card {
+  display: flex;
+  gap: var(--space-3, 0.75rem);
+  align-items: flex-start;
+  padding: var(--space-3, 0.75rem);
+  border: 2px solid var(--color-border, var(--arbeitszeitcheck-color-border));
+  border-radius: var(--border-radius-large, 10px);
+  background: var(--color-main-background);
+  cursor: pointer;
+  min-height: 5.5rem;
+}
+
+#edit-user-modal .user-edit-capture__card:has(.user-edit-capture__checkbox:checked) {
+  border-color: var(--color-primary-element, #0082c9);
+  background: color-mix(in srgb, var(--color-main-background) 90%, var(--color-primary-element) 10%);
+}
+
+#edit-user-modal .user-edit-capture__card:has(.user-edit-capture__checkbox:focus-visible) {
+  outline: 2px solid var(--color-primary-element, #0082c9);
+  outline-offset: 2px;
+}
+
+#edit-user-modal .user-edit-capture__checkbox {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-top: 0.15rem;
+  flex-shrink: 0;
+  accent-color: var(--color-primary-element, #0082c9);
+}
+
+#edit-user-modal .user-edit-capture__card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 0.25rem);
+}
+
+#edit-user-modal .user-edit-capture__card-title {
+  font-weight: 600;
+  color: var(--color-main-text);
+  line-height: 1.35;
+}
+
+#edit-user-modal .user-edit-capture__card-text {
+  font-size: var(--arbeitszeitcheck-font-size-sm, 0.875rem);
+  color: var(--color-text-maxcontrast);
+  line-height: 1.45;
+}
+
+#edit-user-modal .user-edit-capture__error {
+  margin: 0;
 }
 
 /* Strong, theme-independent colors for the work schedule dropdown */
@@ -134,10 +351,39 @@ body[data-theme-dark-highcontrast] #edit-user-modal .form-select option {
   color: var(--color-main-text);
 }
 
-/* Make actions easy to hit and visually clear */
+/* Modal footer: sticky, high-contrast primary vs secondary (WCAG 2.1 AA) */
 #edit-user-modal .form-actions {
-  margin-top: var(--space-4, 1rem);
+  display: flex;
+  flex-direction: row-reverse;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
   gap: var(--space-3, 0.75rem);
+  margin-top: var(--space-4, 1rem);
+  padding: var(--space-4, 1rem) 0 0;
+  border-top: 1px solid var(--color-border, var(--arbeitszeitcheck-color-border));
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: var(--color-main-background, #fff);
+  box-shadow: 0 -4px 12px color-mix(in srgb, var(--color-box-shadow, #000) 8%, transparent);
+}
+
+#edit-user-modal .form-actions .btn--primary {
+  min-width: 9rem;
+  font-weight: 600;
+  order: 1;
+}
+
+#edit-user-modal .form-actions .btn--secondary {
+  min-width: 7rem;
+  order: 2;
+}
+
+#edit-user-modal .form-actions .btn--primary:focus-visible,
+#edit-user-modal .form-actions .btn--secondary:focus-visible {
+  outline: 2px solid var(--color-primary-element, #0082c9);
+  outline-offset: 2px;
 }
 
 @media (max-width: 768px) {

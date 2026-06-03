@@ -80,16 +80,29 @@
 
     let useAppTeamsSaving = false;
 
+    function syncUseAppTeamsAria(cb) {
+        if (!cb) {
+            return;
+        }
+        cb.setAttribute('aria-checked', cb.checked ? 'true' : 'false');
+    }
+
     function loadUseAppTeams() {
         Utils.ajax(baseUrl + '/api/admin/teams/config/use-app-teams', {
             method: 'GET',
             onSuccess: function(data) {
                 const cb = document.getElementById('use-app-teams');
-                if (cb) cb.checked = !!data.useAppTeams;
+                if (cb) {
+                    cb.checked = !!data.useAppTeams;
+                    syncUseAppTeamsAria(cb);
+                }
             },
             onError: function() {
                 const cb = document.getElementById('use-app-teams');
-                if (cb) cb.checked = false;
+                if (cb) {
+                    cb.checked = false;
+                    syncUseAppTeamsAria(cb);
+                }
             }
         });
     }
@@ -105,13 +118,22 @@
             data: { useAppTeams: !!checked },
             onSuccess: function() {
                 useAppTeamsSaving = false;
-                if (cb) { cb.disabled = false; cb.removeAttribute('aria-busy'); }
+                if (cb) {
+                    cb.disabled = false;
+                    cb.removeAttribute('aria-busy');
+                    syncUseAppTeamsAria(cb);
+                }
                 Messaging && Messaging.showSuccess && Messaging.showSuccess(t('Setting saved', 'Setting saved'));
                 announceStatus(t('Use app teams setting saved', 'Setting saved'));
             },
             onError: function() {
                 useAppTeamsSaving = false;
-                if (cb) { cb.disabled = false; cb.removeAttribute('aria-busy'); cb.checked = !checked; }
+                if (cb) {
+                    cb.disabled = false;
+                    cb.removeAttribute('aria-busy');
+                    cb.checked = !checked;
+                    syncUseAppTeamsAria(cb);
+                }
                 Messaging && Messaging.showError && Messaging.showError(t('Failed to save setting', 'Failed to save setting'));
             }
         });
@@ -234,10 +256,12 @@
         if (managersTab) { managersTab.setAttribute('aria-selected', !isMembers ? 'true' : 'false'); }
         if (membersPanel) {
             membersPanel.classList.toggle('hidden', !isMembers);
+            membersPanel.hidden = !isMembers;
             membersPanel.setAttribute('aria-hidden', isMembers ? 'false' : 'true');
         }
         if (managersPanel) {
             managersPanel.classList.toggle('hidden', isMembers);
+            managersPanel.hidden = isMembers;
             managersPanel.setAttribute('aria-hidden', isMembers ? 'true' : 'false');
         }
     }
@@ -618,150 +642,187 @@
         if (closeBtn) closeBtn.addEventListener('click', function() { Components.closeModal(modal); });
     }
 
-    function openAddMemberModal(teamId) {
-        Utils.ajax(baseUrl + '/api/admin/teams/' + teamId + '/members', {
+    function getAdminUserSearchUrl() {
+        const cfg = window.ArbeitszeitCheck && window.ArbeitszeitCheck.teamsConfig;
+        return (cfg && cfg.adminUserSearchUrl) ? cfg.adminUserSearchUrl : (baseUrl + '/api/admin/users');
+    }
+
+    function getPickerL10n() {
+        const map = window.ArbeitszeitCheck && window.ArbeitszeitCheck.teamsL10n;
+        return {
+            loading: t('Loading…', 'Loading…'),
+            searchError: t('Failed to load users', 'Failed to load users'),
+            noUsersFound: t('No matching users found', 'No matching users found'),
+            typeToSearch: t('Type at least 2 characters to search for a person.', 'Type at least 2 characters to search.'),
+            employeeSelected: t('Selected: %s', 'Selected: %s'),
+            resultsCount: t('%n results', '%n results'),
+            moreResults: t('Showing the first %n matches. Keep typing to narrow it down.', 'Showing the first %n matches. Keep typing to narrow it down.'),
+            allExcluded: t('Everyone matching your search is already assigned to this unit.', 'No one available to add.'),
+        };
+    }
+
+    /**
+     * @param {number} teamId
+     * @param {'member'|'manager'} role
+     */
+    function openAddTeamPersonModal(teamId, role) {
+        const isMember = role === 'member';
+        const listUrl = baseUrl + '/api/admin/teams/' + teamId + (isMember ? '/members' : '/managers');
+        const postUrl = listUrl;
+        const loadFailKey = isMember ? 'Failed to load members' : 'Failed to load managers';
+        const allAssignedKey = isMember
+            ? 'All users are already members of this team'
+            : 'All users are already managers of this team';
+        const modalId = isMember ? 'modal-add-member' : 'modal-add-manager';
+        const formId = isMember ? 'form-add-member' : 'form-add-manager';
+        const prefix = isMember ? 'add-member' : 'add-manager';
+        const title = isMember ? t('Add member', 'Add member') : t('Add manager', 'Add manager');
+        const successKey = isMember ? 'Member added' : 'Manager added';
+        const failKey = isMember ? 'Failed to add member' : 'Failed to add manager';
+        const findLabel = t('Find a person', 'Find a person');
+        const findHelp = t('Start typing their name or user ID, then pick them from the list.', 'Start typing, then select from the list.');
+        const cancelLabel = t('Cancel', 'Cancel');
+        const addLabel = t('Add', 'Add');
+        const selectRequired = t('Please select a person from the search results.', 'Please select a person.');
+
+        Utils.ajax(listUrl, {
             method: 'GET',
-            onSuccess: function(membersData) {
-                var excludeIds = (membersData.success && membersData.members) ? membersData.members.map(function(m) { return m.userId; }) : [];
-                Utils.ajax(baseUrl + '/api/admin/users', { method: 'GET', onSuccess: function(data) {
-                    if (!data.success || !data.users) {
-                        Messaging && Messaging.showError && Messaging.showError(t('No users available', 'No users available'));
-                        return;
+            onSuccess: function(listData) {
+                const listKey = isMember ? 'members' : 'managers';
+                const rows = (listData.success && listData[listKey]) ? listData[listKey] : [];
+                const excludeIds = rows.map(function(row) { return row.userId; });
+
+                const esc = Utils.escapeHtml ? Utils.escapeHtml.bind(Utils) : function(s) { return String(s); };
+                const content = '<form id="' + formId + '" class="form team-person-form" novalidate>'
+                    + '<div class="form-group team-person-form__picker">'
+                    + '<label for="' + prefix + '-search" class="form-label">' + esc(findLabel) + ' <span class="required-star" aria-hidden="true">*</span></label>'
+                    + '<input type="hidden" id="' + prefix + '-user-id" name="userId" value="" required>'
+                    + '<div class="user-picker user-picker--in-modal team-person-form__user-picker" id="' + prefix + '-picker">'
+                    + '<input type="search" id="' + prefix + '-search" class="form-input user-picker__search" autocomplete="off" autocapitalize="none" spellcheck="false"'
+                    + ' placeholder="' + esc(t('Search by name or user ID…', 'Search by name or user ID…')) + '"'
+                    + ' role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="' + prefix + '-listbox"'
+                    + ' aria-describedby="' + prefix + '-help ' + prefix + '-status" aria-required="true">'
+                    + '<div id="' + prefix + '-listbox" class="user-picker__list" role="listbox" hidden'
+                    + ' aria-label="' + esc(t('Matching users', 'Matching users')) + '"></div>'
+                    + '<p id="' + prefix + '-status" class="team-person-form__picker-status azc-sr-only" role="status" aria-live="polite" aria-atomic="true"></p>'
+                    + '</div>'
+                    + '<p id="' + prefix + '-help" class="form-help">' + esc(findHelp) + '</p>'
+                    + '</div>'
+                    + '<div class="form-actions">'
+                    + '<button type="button" class="btn btn--secondary" data-action="close-modal">' + esc(cancelLabel) + '</button>'
+                    + '<button type="submit" class="btn btn--primary">' + esc(addLabel) + '</button>'
+                    + '</div></form>';
+
+                let picker = null;
+                function teardownTeamPersonPicker() {
+                    if (picker && typeof picker.destroy === 'function') {
+                        picker.destroy();
+                        picker = null;
                     }
-                    var users = data.users.filter(function(u) { return excludeIds.indexOf(u.userId) === -1; });
-                    if (!users.length) {
-                        Messaging && Messaging.showError && Messaging.showError(t('All users are already members of this team', 'No users available'));
-                        return;
-                    }
-                    var title = t('Add member', 'Add member');
-            var selectLabel = t('Select user', 'Select user');
-            var cancelLabel = t('Cancel', 'Cancel');
-            var addLabel = t('Add', 'Add');
-            var options = users.map(function(u) {
-                return '<option value="' + (Utils.escapeHtml ? Utils.escapeHtml(u.userId) : u.userId) + '">' + (Utils.escapeHtml ? Utils.escapeHtml(u.displayName || u.userId) : (u.displayName || u.userId)) + '</option>';
-            }).join('');
-            var content = '<form id="form-add-member" class="form">' +
-                '<div class="form-group"><label for="add-member-user" class="form-label">' + selectLabel + '</label>' +
-                '<select id="add-member-user" name="userId" class="form-select" required>' + options + '</select></div>' +
-                '<div class="form-actions">' +
-                '<button type="button" class="btn btn--secondary" data-action="close-modal">' + cancelLabel + '</button>' +
-                '<button type="submit" class="btn btn--primary">' + addLabel + '</button></div></form>';
-            var modal = Components.createModal({
-                id: 'modal-add-member',
-                title: title,
-                content: content,
-                size: 'md',
-                closable: true,
-                onClose: function() { var m = document.getElementById('modal-add-member'); if (m && m.parentNode) m.parentNode.remove(); }
-            });
-            document.body.appendChild(modal);
-            Components.openModal('modal-add-member');
-            var form = document.getElementById('form-add-member');
-            if (form) {
-                form.addEventListener('submit', function(e) {
-                    e.preventDefault();
-                    var userId = (form.querySelector('#add-member-user') || {}).value;
-                    if (!userId) return;
-                    Utils.ajax(baseUrl + '/api/admin/teams/' + teamId + '/members', {
-                        method: 'POST',
-                        data: { userId: userId },
-                        onSuccess: function(res) {
-                            if (res.success) {
-                                Components.closeModal(document.getElementById('modal-add-member'));
-                                loadTeamMembers(teamId);
-                                Messaging && Messaging.showSuccess && Messaging.showSuccess(t('Member added', 'Member added'));
-                                announceStatus(t('Member added', 'Member added'));
-                            } else {
-                                Messaging && Messaging.showError && Messaging.showError(res.error || t('Failed to add member', 'Failed to add member'));
-                            }
-                        },
-                        onError: function(err) {
-                            Messaging && Messaging.showError && Messaging.showError((err && err.error) || t('Failed to add member', 'Failed to add member'));
+                }
+
+                const modal = Components.createModal({
+                    id: modalId,
+                    title: title,
+                    content: content,
+                    size: 'md',
+                    closable: true,
+                    onClose: function() {
+                        teardownTeamPersonPicker();
+                        const m = document.getElementById(modalId);
+                        if (m && m.parentNode) {
+                            m.parentNode.removeChild(m);
                         }
-                    });
+                    },
                 });
-            }
-            var closeBtn = modal.querySelector('[data-action="close-modal"]');
-            if (closeBtn) closeBtn.addEventListener('click', function() { Components.closeModal(modal); });
-        }, onError: function() {
-            Messaging && Messaging.showError && Messaging.showError(t('Failed to load users', 'Failed to load users'));
-        }});
-            }, onError: function() {
-                Messaging && Messaging.showError && Messaging.showError(t('Failed to load members', 'Failed to load members'));
-            }});
+                Components.openModal(modalId);
+
+                const initPicker = window.ArbeitszeitCheck && window.ArbeitszeitCheck.initAdminUserPicker;
+                if (typeof initPicker === 'function') {
+                    picker = initPicker({
+                        hiddenSelector: '#' + prefix + '-user-id',
+                        searchSelector: '#' + prefix + '-search',
+                        listSelector: '#' + prefix + '-listbox',
+                        wrapSelector: '#' + prefix + '-picker',
+                        statusSelector: '#' + prefix + '-status',
+                        searchUrl: getAdminUserSearchUrl(),
+                        limit: 20,
+                        minQueryLength: 2,
+                        excludeUserIds: excludeIds,
+                        idPrefix: prefix + '-user',
+                        l10n: getPickerL10n(),
+                    });
+                }
+
+                if (!picker) {
+                    Messaging && Messaging.showError && Messaging.showError(t('Failed to load users', 'Failed to load users'));
+                    Components.closeModal(document.getElementById(modalId));
+                    return;
+                }
+
+                const form = document.getElementById(formId);
+                if (form) {
+                    form.addEventListener('submit', function(e) {
+                        e.preventDefault();
+                        const userId = picker ? picker.getUserId() : String((document.getElementById(prefix + '-user-id') || {}).value || '').trim();
+                        if (!userId) {
+                            Messaging && Messaging.showError && Messaging.showError(selectRequired);
+                            const searchInput = document.getElementById(prefix + '-search');
+                            if (searchInput) {
+                                searchInput.focus();
+                            }
+                            return;
+                        }
+                        Utils.ajax(postUrl, {
+                            method: 'POST',
+                            data: { userId: userId },
+                            onSuccess: function(res) {
+                                if (res.success) {
+                                    teardownTeamPersonPicker();
+                                    Components.closeModal(document.getElementById(modalId));
+                                    if (isMember) {
+                                        loadTeamMembers(teamId);
+                                    } else {
+                                        loadTeamManagers(teamId);
+                                    }
+                                    Messaging && Messaging.showSuccess && Messaging.showSuccess(t(successKey, successKey));
+                                    announceStatus(t(successKey, successKey));
+                                } else {
+                                    Messaging && Messaging.showError && Messaging.showError(res.error || t(failKey, failKey));
+                                }
+                            },
+                            onError: function(err) {
+                                Messaging && Messaging.showError && Messaging.showError((err && err.error) || t(failKey, failKey));
+                            },
+                        });
+                    });
+                }
+
+                const searchInput = document.getElementById(prefix + '-search');
+                if (searchInput) {
+                    setTimeout(function() { searchInput.focus(); }, 100);
+                }
+
+                const closeBtn = modal.querySelector('[data-action="close-modal"]');
+                if (closeBtn) {
+                    closeBtn.addEventListener('click', function() {
+                        teardownTeamPersonPicker();
+                        Components.closeModal(modal);
+                    });
+                }
+            },
+            onError: function() {
+                Messaging && Messaging.showError && Messaging.showError(t(loadFailKey, loadFailKey));
+            },
+        });
+    }
+
+    function openAddMemberModal(teamId) {
+        openAddTeamPersonModal(teamId, 'member');
     }
 
     function openAddManagerModal(teamId) {
-        Utils.ajax(baseUrl + '/api/admin/teams/' + teamId + '/managers', {
-            method: 'GET',
-            onSuccess: function(managersData) {
-                var excludeIds = (managersData.success && managersData.managers) ? managersData.managers.map(function(m) { return m.userId; }) : [];
-                Utils.ajax(baseUrl + '/api/admin/users', { method: 'GET', onSuccess: function(data) {
-            if (!data.success || !data.users) {
-                Messaging && Messaging.showError && Messaging.showError(t('No users available', 'No users available'));
-                return;
-            }
-            var users = data.users.filter(function(u) { return excludeIds.indexOf(u.userId) === -1; });
-            if (!users.length) {
-                Messaging && Messaging.showError && Messaging.showError(t('All users are already managers of this team', 'No users available'));
-                return;
-            }
-            var title = t('Add manager', 'Add manager');
-            var selectLabel = t('Select user', 'Select user');
-            var cancelLabel = t('Cancel', 'Cancel');
-            var addLabel = t('Add', 'Add');
-            var options = users.map(function(u) {
-                return '<option value="' + (Utils.escapeHtml ? Utils.escapeHtml(u.userId) : u.userId) + '">' + (Utils.escapeHtml ? Utils.escapeHtml(u.displayName || u.userId) : (u.displayName || u.userId)) + '</option>';
-            }).join('');
-            var content = '<form id="form-add-manager" class="form">' +
-                '<div class="form-group"><label for="add-manager-user" class="form-label">' + selectLabel + '</label>' +
-                '<select id="add-manager-user" name="userId" class="form-select" required>' + options + '</select></div>' +
-                '<div class="form-actions">' +
-                '<button type="button" class="btn btn--secondary" data-action="close-modal">' + cancelLabel + '</button>' +
-                '<button type="submit" class="btn btn--primary">' + addLabel + '</button></div></form>';
-            var modal = Components.createModal({
-                id: 'modal-add-manager',
-                title: title,
-                content: content,
-                size: 'md',
-                closable: true,
-                onClose: function() { var m = document.getElementById('modal-add-manager'); if (m && m.parentNode) m.parentNode.remove(); }
-            });
-            document.body.appendChild(modal);
-            Components.openModal('modal-add-manager');
-            var form = document.getElementById('form-add-manager');
-            if (form) {
-                form.addEventListener('submit', function(e) {
-                    e.preventDefault();
-                    var userId = (form.querySelector('#add-manager-user') || {}).value;
-                    if (!userId) return;
-                    Utils.ajax(baseUrl + '/api/admin/teams/' + teamId + '/managers', {
-                        method: 'POST',
-                        data: { userId: userId },
-                        onSuccess: function(res) {
-                            if (res.success) {
-                                Components.closeModal(document.getElementById('modal-add-manager'));
-                                loadTeamManagers(teamId);
-                                Messaging && Messaging.showSuccess && Messaging.showSuccess(t('Manager added', 'Manager added'));
-                                announceStatus(t('Manager added', 'Manager added'));
-                            } else {
-                                Messaging && Messaging.showError && Messaging.showError(res.error || t('Failed to add manager', 'Failed to add manager'));
-                            }
-                        },
-                        onError: function(err) {
-                            Messaging && Messaging.showError && Messaging.showError((err && err.error) || t('Failed to add manager', 'Failed to add manager'));
-                        }
-                    });
-                });
-            }
-            var closeBtn = modal.querySelector('[data-action="close-modal"]');
-            if (closeBtn) closeBtn.addEventListener('click', function() { Components.closeModal(modal); });
-        }, onError: function() {
-            Messaging && Messaging.showError && Messaging.showError(t('Failed to load users', 'Failed to load users'));
-        }});
-            }, onError: function() {
-                Messaging && Messaging.showError && Messaging.showError(t('Failed to load managers', 'Failed to load managers'));
-            }});
+        openAddTeamPersonModal(teamId, 'manager');
     }
 
     function confirmRemoveMember(teamId, userId, displayName) {
@@ -816,6 +877,7 @@
         var useAppTeamsCb = document.getElementById('use-app-teams');
         if (useAppTeamsCb) {
             useAppTeamsCb.addEventListener('change', function() {
+                syncUseAppTeamsAria(useAppTeamsCb);
                 saveUseAppTeams(useAppTeamsCb.checked);
             });
         }

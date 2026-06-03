@@ -44,19 +44,20 @@ for ($m = 1; $m <= 12; $m++) {
 
         <div class="admin-ot-payouts">
             <?php if (!$bankEnabled): ?>
-            <aside class="azc-callout azc-callout--warning" role="alert" aria-labelledby="admin-ot-payout-bank-off-title">
-                <h2 id="admin-ot-payout-bank-off-title" class="azc-callout__title">
-                    <?php p($l->t('Overtime bank is off')); ?>
-                </h2>
-                <p class="azc-callout__text">
-                    <?php p($l->t('The overtime bank is disabled. Payouts cannot be processed until you enable it.')); ?>
-                </p>
-                <p class="azc-callout__actions">
-                    <a href="<?php p($notificationsUrl); ?>" class="azc-btn azc-btn--primary">
-                        <?php p($l->t('Open overtime bank settings')); ?>
-                    </a>
-                </p>
-            </aside>
+            <?php
+            $calloutVariant = 'warning';
+            $calloutRole = 'alert';
+            $calloutTitleId = 'admin-ot-payout-bank-off-title';
+            $calloutTitle = $l->t('Overtime bank is off');
+            $calloutText = $l->t('The overtime bank is disabled. Payouts cannot be processed until you enable it.');
+            $calloutExtraClass = 'admin-ot-payouts__bank-off';
+            $calloutActions = [[
+                'href' => $notificationsUrl,
+                'label' => $l->t('Open overtime bank settings'),
+                'class' => 'azc-btn azc-btn--primary',
+            ]];
+            include __DIR__ . '/common/alert-callout.php';
+            ?>
             <?php endif; ?>
 
             <section class="azc-card admin-ot-payouts__guide" aria-labelledby="admin-ot-payout-guide-title">
@@ -144,7 +145,7 @@ for ($m = 1; $m <= 12; $m++) {
                 </header>
                 <div class="azc-card__body">
                     <div class="table-container">
-                        <table class="table table--hover grid-table admin-ot-payouts__grid" id="ot-payout-table">
+                        <table class="table table--hover azc-table--responsive grid-table admin-ot-payouts__grid" id="ot-payout-table">
                             <caption class="sr-only"><?php p($l->t('Employees with overtime eligible for payout')); ?></caption>
                             <thead>
                                 <tr>

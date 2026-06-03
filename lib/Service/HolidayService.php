@@ -5,11 +5,8 @@ declare(strict_types=1);
 /**
  * Holiday rules and working-day math for the arbeitszeitcheck app.
  *
- * Combines:
- * - Static helpers: Germany-wide base public-holiday calendar and pure
- *   working-day calculations (Mon–Fri, excluding those holidays).
- * - Instance API: Bundesland resolution, DB-backed holidays (statutory +
- *   company/custom), caching, and user-aware working-day counts.
+ * Runtime source of truth: rows in at_holidays (seeded from GermanStatutoryHolidayCatalog).
+ * Working-day math uses only DB-backed holidays — never the catalog directly.
  *
  * @copyright Copyright (c) 2026
  * @license AGPL-3.0-or-later
@@ -19,7 +16,9 @@ namespace OCA\ArbeitszeitCheck\Service;
 
 use OCA\ArbeitszeitCheck\Db\Holiday;
 use OCA\ArbeitszeitCheck\Db\HolidayMapper;
+use OCA\ArbeitszeitCheck\Db\HolidaySuppressionMapper;
 use OCA\ArbeitszeitCheck\Db\UserSettingsMapper;
+use OCA\ArbeitszeitCheck\Support\GermanStatutoryHolidayCatalog;
 use OCP\ICacheFactory;
 use OCP\IConfig;
 use OCP\IL10N;
@@ -27,90 +26,87 @@ use Psr\Log\LoggerInterface;
 
 class HolidayService
 {
-	/** @var HolidayMapper */
-	private $holidayMapper;
-
-	/** @var UserSettingsMapper */
-	private $userSettingsMapper;
-
-	/** @var IConfig */
-	private $config;
-
-	/** @var IL10N */
-	private $l10n;
-
-	/** @var LoggerInterface */
-	private $logger;
-
-	/** @var \OCP\ICache|null */
-	private $cache;
-
 	/** @var string[] */
 	private const VALID_STATES = [
 		'BW', 'BY', 'BE', 'BB', 'HB', 'HH', 'HE', 'MV',
 		'NI', 'NW', 'RP', 'SL', 'SN', 'ST', 'SH', 'TH',
 	];
 
-	/**
-	 * App config key that tracks which (state, year) combinations have already
-	 * been initialised from the base German public holiday calendar.
-	 *
-	 * Once a (state, year) is marked as initialised we NEVER auto-seed it
-	 * again, even if all holidays are later deleted from at_holidays. This
-	 * allows administrators to permanently remove statutory holidays without
-	 * them being recreated on the next read.
-	 */
+	/** @deprecated Legacy flag; prefer at_holiday_suppress per date. */
 	private const INITIALIZED_CONFIG_KEY = 'holidays_initialized_state_years';
 
 	public function __construct(
-		HolidayMapper $holidayMapper,
-		UserSettingsMapper $userSettingsMapper,
-		IConfig $config,
+		private readonly HolidayMapper $holidayMapper,
+		private readonly HolidaySuppressionMapper $suppressionMapper,
+		private readonly UserSettingsMapper $userSettingsMapper,
+		private readonly IConfig $config,
 		ICacheFactory $cacheFactory,
-		IL10N $l10n,
-		LoggerInterface $logger
+		private readonly IL10N $l10n,
+		private readonly LoggerInterface $logger,
 	) {
-		$this->holidayMapper = $holidayMapper;
-		$this->userSettingsMapper = $userSettingsMapper;
-		$this->config = $config;
-		$this->l10n = $l10n;
-		$this->logger = $logger;
-		// Use a local app-specific cache namespace
 		$this->cache = $cacheFactory->createDistributed('arbeitszeitcheck_holidays');
 	}
 
+	/** @var \OCP\ICache|null */
+	private $cache;
+
 	/**
-	 * Build cache key for a given state/year combination.
+	 * Request-scoped guard: statutory seed/prune already ran for this state/year
+	 * in the current PHP request (avoids N× reconciliation in per-day loops).
+	 *
+	 * @var array<string,true>
 	 */
+	private array $reconciledStateYears = [];
+
+	/**
+	 * Request-scoped resolved holiday entities per state/year.
+	 * Cleared by clearCacheForStateYear() on admin writes.
+	 *
+	 * @var array<string,Holiday[]>
+	 */
+	private array $entitiesByStateYear = [];
+
+	private function requestMemoKey(string $state, int $year): string
+	{
+		return $this->normalizeState($state) . '|' . $year;
+	}
+
 	private function getCacheKey(string $state, int $year): string
 	{
-		return sprintf('holidays:%s:%d', $this->normalizeState($state), $year);
+		// Policy suffix avoids stale lists after toggling auto-restore OFF↔ON.
+		$policy = $this->isStatutoryAutoReseedEnabled() ? 'reseed' : 'noreseed';
+
+		return sprintf('holidays:%s:%d:%s', $this->normalizeState($state), $year, $policy);
+	}
+
+	public function clearCacheForStateYear(string $state, int $year): void
+	{
+		$state = $this->normalizeState($state);
+		$memoKey = $this->requestMemoKey($state, $year);
+		unset($this->entitiesByStateYear[$memoKey], $this->reconciledStateYears[$memoKey]);
+		$this->clearDistributedCacheForStateYear($state, $year);
 	}
 
 	/**
-	 * Invalidate cached holidays for a given state/year.
-	 *
-	 * This is called from admin write operations so that changes to
-	 * holidays become visible immediately in the admin UI and services.
+	 * Invalidate only the distributed cache (not request memos). Used during
+	 * statutory reconciliation so mid-request memo state stays consistent.
 	 */
-	public function clearCacheForStateYear(string $state, int $year): void
+	private function clearDistributedCacheForStateYear(string $state, int $year): void
 	{
 		if ($this->cache === null) {
 			return;
 		}
-		$this->cache->remove($this->getCacheKey($state, $year));
+		$this->cache->remove(sprintf('holidays:%s:%d:noreseed', $state, $year));
+		$this->cache->remove(sprintf('holidays:%s:%d:reseed', $state, $year));
+		// Pre-1.3.11 key without policy suffix (upgrade safety).
+		$this->cache->remove(sprintf('holidays:%s:%d', $state, $year));
 	}
 
-	/**
-	 * Resolve the effective German state (Bundesland) for a given user.
-	 *
-	 * Precedence:
-	 * 1) Per-user setting "german_state" (UserSettingsMapper)
-	 * 2) Global app default (app config "german_state", default "NW")
-	 *
-	 * @param string $userId
-	 * @return string
-	 */
+	public function isStatutoryAutoReseedEnabled(): bool
+	{
+		return $this->config->getAppValue('arbeitszeitcheck', 'statutory_auto_reseed', '1') === '1';
+	}
+
 	public function resolveStateForUser(string $userId): string
 	{
 		$defaultState = $this->getDefaultState();
@@ -130,9 +126,6 @@ class HolidayService
 		return $state;
 	}
 
-	/**
-	 * Get the configured default German state for the instance.
-	 */
 	private function getDefaultState(): string
 	{
 		$state = $this->config->getAppValue('arbeitszeitcheck', 'german_state', 'NW');
@@ -143,8 +136,6 @@ class HolidayService
 	}
 
 	/**
-	 * DTO for holiday information used in API / higher-level services.
-	 *
 	 * @return array<int,array<string,mixed>>
 	 */
 	public function getHolidaysForRange(string $state, \DateTime $start, \DateTime $end): array
@@ -158,11 +149,9 @@ class HolidayService
 			[$start, $end] = [$end, $start];
 		}
 
-		$years = $this->getYearsInRange($start, $end);
-
 		$result = [];
 
-		foreach ($years as $year) {
+		foreach ($this->getYearsInRange($start, $end) as $year) {
 			$holidays = $this->getHolidaysForYearInternal($state, $year);
 			foreach ($holidays as $holiday) {
 				$date = $holiday->getDate();
@@ -180,60 +169,44 @@ class HolidayService
 			}
 		}
 
-		// Sort by date ascending
 		usort($result, static function (array $a, array $b): int {
-			return strcmp($a['date'], $b['date']);
+			return strcmp((string)($a['date'] ?? ''), (string)($b['date'] ?? ''));
 		});
 
 		return $result;
 	}
 
-	/**
-	 * Compute working days (Mon–Fri) for a user and date range, using
-	 * state-specific holidays plus company/custom holidays from DB.
-	 */
 	public function computeWorkingDaysForUser(string $userId, \DateTime $start, \DateTime $end): float
 	{
 		$state = $this->resolveStateForUser($userId);
-		$extraWeights = $this->buildExtraHolidayWeightsForUser($userId, $start, $end, $state);
+		$weights = $this->buildHolidayWeightMapForState($state, $start, $end);
 
-		return self::computeWorkingDays($start, $end, $extraWeights);
+		return self::computeWorkingDaysFromWeights($start, $end, $weights);
 	}
 
 	/**
-	 * Compute working days per year (Mon–Fri) for a user over a date range.
-	 *
-	 * @return array<int,float> year => working days
+	 * @return array<int,float>
 	 */
 	public function computeWorkingDaysPerYearForUser(string $userId, \DateTime $start, \DateTime $end): array
 	{
 		$state = $this->resolveStateForUser($userId);
-		$extraWeights = $this->buildExtraHolidayWeightsForUser($userId, $start, $end, $state);
+		$weights = $this->buildHolidayWeightMapForState($state, $start, $end);
 
-		return self::computeWorkingDaysPerYear($start, $end, $extraWeights);
+		return self::computeWorkingDaysPerYearFromWeights($start, $end, $weights);
 	}
 
-	/**
-	 * Check if a given date is a (full or half) holiday for the user.
-	 */
 	public function isHolidayForUser(string $userId, \DateTime $date): bool
 	{
-		$state = $this->resolveStateForUser($userId);
-		return $this->isHolidayForState($state, $date);
+		return $this->isHolidayForState($this->resolveStateForUser($userId), $date);
 	}
 
-	/**
-	 * Check if a given date is a holiday for a specific state.
-	 */
 	public function isHolidayForState(string $state, \DateTime $date): bool
 	{
 		$state = $this->normalizeState($state);
-
 		$year = (int)$date->format('Y');
-		$holidays = $this->getHolidaysForYearInternal($state, $year);
 		$key = $date->format('Y-m-d');
 
-		foreach ($holidays as $holiday) {
+		foreach ($this->getHolidaysForYearInternal($state, $year) as $holiday) {
 			$holidayDate = $holiday->getDate();
 			if ($holidayDate && $holidayDate->format('Y-m-d') === $key) {
 				return true;
@@ -244,19 +217,11 @@ class HolidayService
 	}
 
 	/**
-	 * Build a map of additional holiday weights (full/half, statutory/company/custom)
-	 * for the given date range and user/state.
-	 *
-	 * The weight semantics are aligned with static computeWorkingDays():
-	 * - 1.0  => full holiday (day becomes non-working)
-	 * - 0.5  => half holiday (day counts as 0.5 working day)
-	 * - 0.0  => no special treatment
-	 *
-	 * @return array<string,float> date (Y-m-d) => weight
+	 * @return array<string,float> date (Y-m-d) => weight (1.0 full, 0.5 half)
 	 */
-	private function buildExtraHolidayWeightsForUser(string $userId, \DateTime $start, \DateTime $end, string $state): array
+	private function buildHolidayWeightMapForState(string $state, \DateTime $start, \DateTime $end): array
 	{
-		unset($userId); // reserved for future user-specific overrides
+		$state = $this->normalizeState($state);
 
 		$start = (clone $start)->setTime(0, 0, 0);
 		$end = (clone $end)->setTime(0, 0, 0);
@@ -266,24 +231,18 @@ class HolidayService
 
 		$weights = [];
 
-		$years = $this->getYearsInRange($start, $end);
-		foreach ($years as $year) {
-			$holidays = $this->getHolidaysForYearInternal($state, $year);
-			foreach ($holidays as $holiday) {
+		foreach ($this->getYearsInRange($start, $end) as $year) {
+			foreach ($this->getHolidaysForYearInternal($state, $year) as $holiday) {
 				$date = $holiday->getDate();
-				if ($date < $start || $date > $end) {
+				if ($date === null || $date < $start || $date > $end) {
 					continue;
 				}
 				$dateStr = $date->format('Y-m-d');
 
-				$kind = $holiday->getKind();
-				$scope = $holiday->getScope();
-
-				// Statutory holidays always count as full non-working days
-				if ($scope === Holiday::SCOPE_STATUTORY) {
+				if ($holiday->getScope() === Holiday::SCOPE_STATUTORY) {
 					$weight = 1.0;
 				} else {
-					$weight = ($kind === Holiday::KIND_HALF) ? 0.5 : 1.0;
+					$weight = ($holiday->getKind() === Holiday::KIND_HALF) ? 0.5 : 1.0;
 				}
 
 				$current = $weights[$dateStr] ?? 0.0;
@@ -297,71 +256,140 @@ class HolidayService
 	}
 
 	/**
-	 * Retrieve holidays for a given state and year, seeding statutory
-	 * holidays from the base calendar if necessary.
-	 *
 	 * @return Holiday[]
 	 */
 	private function getHolidaysForYearInternal(string $state, int $year): array
 	{
 		$state = $this->normalizeState($state);
+		$memoKey = $this->requestMemoKey($state, $year);
 
-		// Seed statutory holidays when missing. Company holidays alone must not
-		// prevent statutory seeding (bug: admin adding company holidays first
-		// caused statutory to be skipped).
-		$statutoryAutoReseed = $this->config->getAppValue('arbeitszeitcheck', 'statutory_auto_reseed', '1') === '1';
-		$needsStatutory = !$this->holidayMapper->hasStatutoryHolidaysForStateAndYear($state, $year);
-		// When auto-reseed is disabled and year was already initialized, do not re-seed
-		// (preserves admin-deleted statutory holidays)
-		if ($needsStatutory && !$statutoryAutoReseed && $this->isYearInitialized($state, $year)) {
-			$needsStatutory = false;
+		if (isset($this->entitiesByStateYear[$memoKey])) {
+			return $this->entitiesByStateYear[$memoKey];
 		}
-		if ($needsStatutory) {
-			$this->seedStatutoryHolidaysForStateAndYear($state, $year);
-			$this->clearCacheForStateYear($state, $year);
-		}
+
+		$this->reconcileStatutoryHolidaysForStateYear($state, $year);
+
 		if (!$this->isYearInitialized($state, $year)) {
 			$this->markYearInitialized($state, $year);
 		}
 
+		$statutoryAutoReseed = $this->isStatutoryAutoReseedEnabled();
 		$cacheKey = $this->getCacheKey($state, $year);
-		if (!$needsStatutory && $this->cache !== null) {
+		if (!$statutoryAutoReseed && $this->cache !== null) {
 			$cached = $this->cache->get($cacheKey);
 			if (is_array($cached)) {
-				return $this->hydrateFromArray($cached);
+				$entities = $this->hydrateFromArray($cached);
+				$this->entitiesByStateYear[$memoKey] = $entities;
+
+				return $entities;
 			}
 		}
 
 		$entities = $this->holidayMapper->findByStateAndYear($state, $year);
 
-		if ($this->cache !== null) {
+		// Distributed cache only when auto-restore is off (policy-stable reads).
+		// With auto-restore on, cross-request restore is handled by reconciling
+		// once per request above; request memo avoids N× DB work in per-day loops.
+		if (!$statutoryAutoReseed && $this->cache !== null) {
 			$this->cache->set($cacheKey, array_map(static function (Holiday $h): array {
 				return $h->toArray();
 			}, $entities));
 		}
 
+		$this->entitiesByStateYear[$memoKey] = $entities;
+
 		return $entities;
 	}
 
 	/**
-	 * Seed statutory holidays for a state/year based on the base German calendar.
+	 * Seed/prune statutory holidays at most once per (state, year) per request.
 	 */
-	private function seedStatutoryHolidaysForStateAndYear(string $state, int $year): void
+	private function reconcileStatutoryHolidaysForStateYear(string $state, int $year): void
+	{
+		$memoKey = $this->requestMemoKey($state, $year);
+		if (isset($this->reconciledStateYears[$memoKey])) {
+			return;
+		}
+		$this->reconciledStateYears[$memoKey] = true;
+
+		$statutoryAutoReseed = $this->isStatutoryAutoReseedEnabled();
+
+		if ($statutoryAutoReseed) {
+			// Auto-restore is on: statutory opt-outs are void. Seed ignores
+			// suppressions and clears any stale opt-out so that toggling the
+			// policy OFF→ON reliably brings previously deleted statutory days
+			// back (matches the documented "deleted rows reappear" contract).
+			$this->seedStatutoryHolidaysForStateAndYear($state, $year, false);
+			$this->clearDistributedCacheForStateYear($state, $year);
+		} else {
+			$needsStatutory = !$this->holidayMapper->hasStatutoryHolidaysForStateAndYear($state, $year);
+			if ($needsStatutory && $this->isYearInitialized($state, $year)) {
+				$needsStatutory = false;
+			}
+			if ($needsStatutory) {
+				// Auto-restore is off: honour per-date suppressions even on the
+				// very first seed for this Bundesland/year.
+				$this->seedStatutoryHolidaysForStateAndYear($state, $year, true);
+				$this->clearDistributedCacheForStateYear($state, $year);
+			}
+		}
+	}
+
+	public function markStateYearInitialized(string $state, int $year): void
+	{
+		$this->markYearInitialized($this->normalizeState($state), $year);
+	}
+
+	/**
+	 * Seed statutory holidays for a Bundesland/year from the catalog.
+	 *
+	 * @param bool $honorSuppressions When true (auto-restore OFF), per-date
+	 *        suppressions block (re-)seeding. When false (auto-restore ON),
+	 *        suppressions are ignored and any matching opt-out is cleared as the
+	 *        date is restored, keeping the suppression table consistent.
+	 */
+	private function seedStatutoryHolidaysForStateAndYear(string $state, int $year, bool $honorSuppressions = true): void
 	{
 		try {
-			$base = self::getGermanPublicHolidaysForYear($year);
+			$base = GermanStatutoryHolidayCatalog::getStatutoryHolidaysForStateAndYear($state, $year);
 		} catch (\Throwable $e) {
-			$this->logger->error('HolidayService: failed to get base holidays', [
+			$this->logger->error('HolidayService: failed to get statutory catalog', [
 				'year' => $year,
+				'state' => $state,
 				'exception' => $e,
 			]);
 			return;
 		}
 
+		// Self-heal (auto-restore ON only): remove auto-generated statutory rows
+		// whose date the Bundesland's catalog no longer contains. This prunes
+		// data seeded before the catalog became state-aware (e.g. Reformation
+		// Day wrongly seeded for NW) so working-day math cannot count a day the
+		// state does not actually observe. Only source=generated statutory rows
+		// are touched; manually added entries are never auto-deleted.
+		if (!$honorSuppressions) {
+			$this->pruneObsoleteGeneratedStatutory($state, $year, $base);
+		}
+
 		foreach ($base as $dateStr => $name) {
+			$isSuppressed = $this->suppressionMapper->isSuppressed($state, $dateStr);
+			if ($isSuppressed && $honorSuppressions) {
+				continue;
+			}
+
+			if ($this->holidayMapper->existsForStateDateScope($state, $dateStr, Holiday::SCOPE_STATUTORY)) {
+				continue;
+			}
+
+			// Auto-restore is on and this date carried a stale opt-out: drop the
+			// suppression as we re-create the statutory row so support tooling
+			// (verify) no longer reports a phantom suppression.
+			if ($isSuppressed && !$honorSuppressions) {
+				$this->suppressionMapper->removeSuppression($state, $dateStr);
+			}
+
 			$holiday = new Holiday();
 			$holiday->setState($state);
-			// Store a localized, human-readable name for statutory holidays.
 			$holiday->setName($this->l10n->t($name));
 			$holiday->setKind(Holiday::KIND_FULL);
 			$holiday->setScope(Holiday::SCOPE_STATUTORY);
@@ -372,7 +400,7 @@ class HolidayService
 			try {
 				$holiday->setDate(new \DateTime($dateStr));
 			} catch (\Throwable $e) {
-				$this->logger->warning('HolidayService: invalid base holiday date skipped', [
+				$this->logger->warning('HolidayService: invalid catalog date skipped', [
 					'date' => $dateStr,
 					'state' => $state,
 					'exception' => $e,
@@ -381,17 +409,6 @@ class HolidayService
 			}
 
 			if (!$holiday->isValid()) {
-				$this->logger->warning('HolidayService: generated holiday failed validation, skipped', [
-					'state' => $state,
-					'year' => $year,
-					'date' => $dateStr,
-					'name' => $name,
-				]);
-				continue;
-			}
-
-			// Idempotent: skip if already exists (avoids duplicates from concurrent requests)
-			if ($this->holidayMapper->existsForStateDateScope($state, $dateStr, Holiday::SCOPE_STATUTORY)) {
 				continue;
 			}
 
@@ -415,8 +432,30 @@ class HolidayService
 	}
 
 	/**
-	 * Normalize a state code and ensure it is a known value.
+	 * Delete auto-generated statutory rows for a state/year that are no longer
+	 * present in the supplied catalog map. Manual entries and non-statutory
+	 * scopes are left untouched.
+	 *
+	 * @param array<string,string> $catalog date (Y-m-d) => name
 	 */
+	private function pruneObsoleteGeneratedStatutory(string $state, int $year, array $catalog): void
+	{
+		foreach ($this->holidayMapper->findByStateAndYear($state, $year) as $existing) {
+			if ($existing->getScope() !== Holiday::SCOPE_STATUTORY
+				|| $existing->getSource() !== Holiday::SOURCE_GENERATED) {
+				continue;
+			}
+			$date = $existing->getDate();
+			$id = $existing->getId();
+			if ($date === null || $id === null) {
+				continue;
+			}
+			if (!array_key_exists($date->format('Y-m-d'), $catalog)) {
+				$this->holidayMapper->deleteById((int)$id);
+			}
+		}
+	}
+
 	private function normalizeState(string $state): string
 	{
 		$state = strtoupper(trim($state));
@@ -427,8 +466,6 @@ class HolidayService
 	}
 
 	/**
-	 * Helper: determine all years touched by a date range.
-	 *
 	 * @return int[]
 	 */
 	private function getYearsInRange(\DateTime $start, \DateTime $end): array
@@ -442,10 +479,6 @@ class HolidayService
 		return $years;
 	}
 
-	/**
-	 * Check whether a given (state, year) has already been initialised from
-	 * the base German public holiday calendar.
-	 */
 	private function isYearInitialized(string $state, int $year): bool
 	{
 		$json = $this->config->getAppValue('arbeitszeitcheck', self::INITIALIZED_CONFIG_KEY, '[]');
@@ -457,11 +490,6 @@ class HolidayService
 		return in_array($key, $list, true);
 	}
 
-	/**
-	 * Mark a (state, year) combination as initialised so that we never
-	 * auto-seed it again, even if the at_holidays table becomes empty
-	 * for that state/year later.
-	 */
 	private function markYearInitialized(string $state, int $year): void
 	{
 		$json = $this->config->getAppValue('arbeitszeitcheck', self::INITIALIZED_CONFIG_KEY, '[]');
@@ -477,8 +505,6 @@ class HolidayService
 	}
 
 	/**
-	 * Convert an array representation (from cache) back into Holiday entities.
-	 *
 	 * @param array<int,array<string,mixed>> $rows
 	 * @return Holiday[]
 	 */
@@ -530,8 +556,6 @@ class HolidayService
 	}
 
 	/**
-	 * Build a flat DTO for a Holiday entity for API responses.
-	 *
 	 * @return array<string,mixed>
 	 */
 	private function buildHolidayDto(Holiday $holiday): array
@@ -543,23 +567,18 @@ class HolidayService
 			if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateStr) !== 1) {
 				try {
 					$dateStr = (new \DateTime($dateStr))->format('Y-m-d');
-				} catch (\Throwable $e) {
+				} catch (\Throwable) {
 					$dateStr = null;
 				}
 			}
 		}
 
-		// Working day weight is derived from kind/scope; we expose it
-		// here so callers do not have to duplicate this logic.
 		$weight = ($holiday->getKind() === Holiday::KIND_HALF) ? 0.5 : 1.0;
 		if ($holiday->getScope() === Holiday::SCOPE_STATUTORY) {
 			$weight = 1.0;
 		}
 
 		$name = $holiday->getName();
-		// Statutory holidays are always run through the translator so that:
-		// - generated base-calendar entries with English names become localized
-		// - existing rows from older versions are also shown in the current UI language
 		if ($holiday->getScope() === Holiday::SCOPE_STATUTORY) {
 			$name = $this->l10n->t($name);
 		}
@@ -577,45 +596,30 @@ class HolidayService
 	}
 
 	/**
-	 * Compute working days (Mon–Fri) for a given date range.
+	 * Mon–Fri working days; holidays from weight map only (no implicit national calendar).
 	 *
-	 * - Excludes German public holidays (base calendar).
-	 * - Optionally applies additional holidays via $extraHolidayWeights:
-	 *   array<string,float> date (Y-m-d) => weight (1.0 = full holiday, 0.5 = half-day, 0 = no effect).
-	 *   For half-day holidays the working day counts as 0.5.
+	 * @param array<string,float> $holidayWeights date Y-m-d => weight
 	 */
-	public static function computeWorkingDays(\DateTime $start, \DateTime $end, array $extraHolidayWeights = []): float
+	public static function computeWorkingDaysFromWeights(\DateTime $start, \DateTime $end, array $holidayWeights): float
 	{
 		$start = (clone $start)->setTime(0, 0, 0);
 		$end = (clone $end)->setTime(0, 0, 0);
 
 		$workingDays = 0.0;
 
-		$startYear = (int)$start->format('Y');
-		$endYear = (int)$end->format('Y');
-
-		$holidaysByYear = [];
-		for ($y = $startYear; $y <= $endYear; $y++) {
-			$holidaysByYear[$y] = self::getGermanPublicHolidaysForYear($y);
-		}
-
 		while ($start <= $end) {
 			if ((int)$start->format('N') < 6) {
-				$year = (int)$start->format('Y');
 				$dateStr = $start->format('Y-m-d');
-
-				if (!isset($holidaysByYear[$year][$dateStr])) {
-					$weight = 1.0;
-					if (isset($extraHolidayWeights[$dateStr])) {
-						$extra = (float)$extraHolidayWeights[$dateStr];
-						if ($extra >= 1.0) {
-							$weight = 0.0;
-						} elseif ($extra > 0.0) {
-							$weight = max(0.0, 1.0 - $extra);
-						}
+				$weight = 1.0;
+				if (isset($holidayWeights[$dateStr])) {
+					$extra = (float)$holidayWeights[$dateStr];
+					if ($extra >= 1.0) {
+						$weight = 0.0;
+					} elseif ($extra > 0.0) {
+						$weight = max(0.0, 1.0 - $extra);
 					}
-					$workingDays += $weight;
 				}
+				$workingDays += $weight;
 			}
 			$start->modify('+1 day');
 		}
@@ -624,42 +628,31 @@ class HolidayService
 	}
 
 	/**
-	 * Compute working days per year for a date range (Mon–Fri), excluding
-	 * German public holidays and optionally additional holidays.
-	 *
-	 * @return array<int,float> year => working days
+	 * @param array<string,float> $holidayWeights
+	 * @return array<int,float>
 	 */
-	public static function computeWorkingDaysPerYear(\DateTime $start, \DateTime $end, array $extraHolidayWeights = []): array
+	public static function computeWorkingDaysPerYearFromWeights(\DateTime $start, \DateTime $end, array $holidayWeights): array
 	{
 		$start = (clone $start)->setTime(0, 0, 0);
 		$end = (clone $end)->setTime(0, 0, 0);
 
 		$result = [];
-		$startYear = (int)$start->format('Y');
-		$endYear = (int)$end->format('Y');
-
-		$holidaysByYear = [];
-		for ($y = $startYear; $y <= $endYear; $y++) {
-			$holidaysByYear[$y] = self::getGermanPublicHolidaysForYear($y);
-		}
 
 		while ($start <= $end) {
 			if ((int)$start->format('N') < 6) {
 				$year = (int)$start->format('Y');
 				$dateStr = $start->format('Y-m-d');
-				if (!isset($holidaysByYear[$year][$dateStr])) {
-					$weight = 1.0;
-					if (isset($extraHolidayWeights[$dateStr])) {
-						$extra = (float)$extraHolidayWeights[$dateStr];
-						if ($extra >= 1.0) {
-							$weight = 0.0;
-						} elseif ($extra > 0.0) {
-							$weight = max(0.0, 1.0 - $extra);
-						}
+				$weight = 1.0;
+				if (isset($holidayWeights[$dateStr])) {
+					$extra = (float)$holidayWeights[$dateStr];
+					if ($extra >= 1.0) {
+						$weight = 0.0;
+					} elseif ($extra > 0.0) {
+						$weight = max(0.0, 1.0 - $extra);
 					}
-					if ($weight > 0.0) {
-						$result[$year] = ($result[$year] ?? 0.0) + $weight;
-					}
+				}
+				if ($weight > 0.0) {
+					$result[$year] = ($result[$year] ?? 0.0) + $weight;
 				}
 			}
 			$start->modify('+1 day');
@@ -673,80 +666,35 @@ class HolidayService
 	}
 
 	/**
-	 * Simple "is public holiday" helper for generic German public holidays
-	 * (no state-specific differences yet).
+	 * @param array<string,float> $extraHolidayWeights
 	 */
-	public static function isGermanPublicHoliday(\DateTime $date): bool
+	public static function computeWorkingDays(\DateTime $start, \DateTime $end, array $extraHolidayWeights = []): float
+	{
+		return self::computeWorkingDaysFromWeights($start, $end, $extraHolidayWeights);
+	}
+
+	/**
+	 * @param array<string,float> $extraHolidayWeights
+	 * @return array<int,float>
+	 */
+	public static function computeWorkingDaysPerYear(\DateTime $start, \DateTime $end, array $extraHolidayWeights = []): array
+	{
+		return self::computeWorkingDaysPerYearFromWeights($start, $end, $extraHolidayWeights);
+	}
+
+	public static function isGermanPublicHoliday(\DateTime $date, string $state = 'NW'): bool
 	{
 		$year = (int)$date->format('Y');
-		$holidays = self::getGermanPublicHolidaysForYear($year);
+		$holidays = GermanStatutoryHolidayCatalog::getStatutoryHolidaysForStateAndYear($state, $year);
 		return isset($holidays[$date->format('Y-m-d')]);
 	}
 
 	/**
-	 * Get German public holidays for a year (for working-days calculation).
-	 *
-	 * @return array<string,string> date (Y-m-d) => name
+	 * @deprecated Use GermanStatutoryHolidayCatalog::getStatutoryHolidaysForStateAndYear()
+	 * @return array<string,string>
 	 */
-	public static function getGermanPublicHolidaysForYear(int $year): array
+	public static function getGermanPublicHolidaysForYear(int $year, string $state = 'NW'): array
 	{
-		$holidays = [];
-
-		$holidays[$year . '-01-01'] = 'New Year';
-		$holidays[$year . '-05-01'] = 'Labour Day';
-		$holidays[$year . '-10-03'] = 'Unity Day';
-		$holidays[$year . '-10-31'] = 'Reformation Day';
-		$holidays[$year . '-11-01'] = 'All Saints';
-		$holidays[$year . '-12-25'] = 'Christmas';
-		$holidays[$year . '-12-26'] = 'Second Christmas';
-
-		$easterDays = \function_exists('easter_days') ? \easter_days($year) : self::easterDaysGauss($year);
-		$march21 = new \DateTimeImmutable($year . '-03-21');
-		$easter = $march21->modify('+' . $easterDays . ' days');
-
-		$goodFriday = $easter->modify('-2 days');
-		$holidays[$goodFriday->format('Y-m-d')] = 'Good Friday';
-
-		$easterMonday = $easter->modify('+1 day');
-		$holidays[$easterMonday->format('Y-m-d')] = 'Easter Monday';
-
-		$ascension = $easter->modify('+39 days');
-		$holidays[$ascension->format('Y-m-d')] = 'Ascension';
-
-		$whitMonday = $easter->modify('+50 days');
-		$holidays[$whitMonday->format('Y-m-d')] = 'Whit Monday';
-
-		$corpusChristi = $easter->modify('+60 days');
-		$holidays[$corpusChristi->format('Y-m-d')] = 'Corpus Christi';
-
-		return $holidays;
-	}
-
-	/**
-	 * Gauss algorithm for Easter (fallback when ext/calendar easter_days()
-	 * is not available).
-	 */
-	private static function easterDaysGauss(int $year): int
-	{
-		$a = $year % 19;
-		$b = (int)($year / 100);
-		$c = $year % 100;
-		$d = (int)($b / 4);
-		$e = $b % 4;
-		$f = (int)(($b + 8) / 25);
-		$g = (int)(($b - $f + 1) / 3);
-		$h = (19 * $a + $b - $d - $g + 15) % 30;
-		$i = (int)($c / 4);
-		$k = $c % 4;
-		$l = (32 + 2 * $e + 2 * $i - $h - $k) % 7;
-		$m = (int)(($a + 11 * $h + 22 * $l) / 451);
-		$month = (int)(($h + $l - 7 * $m + 114) / 31);
-		$day = (($h + $l - 7 * $m + 114) % 31) + 1;
-
-		$march21 = new \DateTimeImmutable($year . '-03-21');
-		$easterDate = new \DateTimeImmutable(sprintf('%04d-%02d-%02d', $year, $month, $day));
-
-		return (int)$march21->diff($easterDate)->days;
+		return GermanStatutoryHolidayCatalog::getStatutoryHolidaysForStateAndYear($state, $year);
 	}
 }
-

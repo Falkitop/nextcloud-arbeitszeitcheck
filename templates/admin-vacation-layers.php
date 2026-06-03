@@ -31,7 +31,7 @@ echo json_encode([
 		'team' => $urlGenerator->linkToRoute('arbeitszeitcheck.admin.saveTeamVacationPolicy'),
 		'teamDelete' => $urlGenerator->linkToRoute('arbeitszeitcheck.admin.deleteTeamVacationPolicy', ['id' => 0]),
 		'simulate' => $urlGenerator->linkToRoute('arbeitszeitcheck.admin.simulateVacationPolicy'),
-		'userSearch' => $urlGenerator->linkToRoute('arbeitszeitcheck.admin.searchVacationLayersUsers'),
+		'userSearch' => $urlGenerator->linkToRoute('arbeitszeitcheck.admin.getUsers'),
 		'impact' => $urlGenerator->linkToRoute('arbeitszeitcheck.admin.previewVacationLayerImpact'),
 	],
 	'layeredEnabled' => $layeredEnabled,
@@ -96,7 +96,7 @@ echo json_encode([
 				<details class="layer-card__history">
 					<summary><?php p($l->t('Show full history')); ?></summary>
 					<div class="table-container layer-card__history-scroll" role="region" aria-label="<?php p($l->t('Organisation default history')); ?>">
-						<table class="table table--hover layer-card__history-table">
+						<table class="table table--hover azc-table--responsive layer-card__history-table">
 							<thead>
 								<tr>
 									<th scope="col"><?php p($l->t('Effective')); ?></th>
@@ -138,7 +138,7 @@ echo json_encode([
 			</header>
 			<div class="azc-card__body">
 				<div class="table-container layer-card__history-scroll" role="region" aria-label="<?php p($l->t('Working time model defaults')); ?>">
-					<table class="table table--hover layer-card__history-table">
+					<table class="table table--hover azc-table--responsive layer-card__history-table">
 						<thead>
 							<tr>
 								<th scope="col"><?php p($l->t('Model')); ?></th>
@@ -180,7 +180,7 @@ echo json_encode([
 			</header>
 			<div class="azc-card__body">
 				<div class="table-container layer-card__history-scroll" role="region" aria-label="<?php p($l->t('Team vacation policies')); ?>">
-					<table class="table table--hover layer-card__history-table">
+					<table class="table table--hover azc-table--responsive layer-card__history-table">
 						<thead>
 							<tr>
 								<th scope="col"><?php p($l->t('Team')); ?></th>

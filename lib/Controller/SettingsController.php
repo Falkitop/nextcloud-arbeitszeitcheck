@@ -219,7 +219,7 @@ class SettingsController extends Controller
 				'notifications_enabled',
 				'break_reminders_enabled',
 				'auto_break_calculation',
-				'missing_clock_in_reminders_enabled'
+				'missing_clock_in_reminders_enabled',
 			];
 
 			$updatedSettings = [];
@@ -235,12 +235,9 @@ class SettingsController extends Controller
 					// Update setting
 					$value = $params[$key];
 
-					// Validate value based on key type
-					if ($key === 'notifications_enabled' || $key === 'break_reminders_enabled' || $key === 'auto_break_calculation' || $key === 'missing_clock_in_reminders_enabled') {
-						$value = $value === true || $value === 'true' || $value === '1' ? '1' : '0';
-					} else {
-						$value = (string)$value;
-					}
+					// All allowed personal settings are boolean toggles: coerce to
+					// the canonical '1' / '0' string the rest of the app expects.
+					$value = ($value === true || $value === 'true' || $value === '1' || $value === 1) ? '1' : '0';
 
 					$this->userSettingsMapper->setSetting($userId, $key, $value);
 					$updatedSettings[$key] = $value;

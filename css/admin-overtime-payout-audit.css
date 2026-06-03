@@ -271,9 +271,6 @@
 	margin: 0;
 	padding: var(--azc-space-3) var(--azc-space-4);
 	border-radius: var(--azc-radius-sm);
-	border: 1px solid var(--color-error, #cc4646);
-	background: color-mix(in srgb, var(--color-error, #cc4646) 8%, var(--color-main-background, #fff));
-	color: var(--color-error, #cc4646);
 	font-weight: 600;
 }
 

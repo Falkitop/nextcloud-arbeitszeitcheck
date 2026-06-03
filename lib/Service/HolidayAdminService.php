@@ -1,0 +1,140 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Admin-facing holiday operations: policy, suppressions, cache, verification.
+ *
+ * @copyright Copyright (c) 2026
+ * @license AGPL-3.0-or-later
+ */
+
+namespace OCA\ArbeitszeitCheck\Service;
+
+use OCA\ArbeitszeitCheck\Db\Holiday;
+use OCA\ArbeitszeitCheck\Db\HolidayMapper;
+use OCA\ArbeitszeitCheck\Db\HolidaySuppressionMapper;
+use OCA\ArbeitszeitCheck\Support\GermanStatutoryHolidayCatalog;
+use OCP\AppFramework\Db\DoesNotExistException;
+use OCP\IConfig;
+
+class HolidayAdminService
+{
+	public function __construct(
+		private readonly HolidayMapper $holidayMapper,
+		private readonly HolidaySuppressionMapper $suppressionMapper,
+		private readonly HolidayService $holidayCalendarService,
+		private readonly IConfig $config,
+	) {
+	}
+
+	public function isStatutoryAutoReseedEnabled(): bool
+	{
+		return $this->config->getAppValue('arbeitszeitcheck', 'statutory_auto_reseed', '1') === '1';
+	}
+
+	/**
+	 * @return array{success:bool, state?:string, year?:int, error?:string}
+	 */
+	public function deleteStateHolidayById(int $id, ?string $suppressedBy = null): array
+	{
+		if ($id <= 0) {
+			return ['success' => false, 'error' => 'invalid_id'];
+		}
+
+		try {
+			$existing = $this->holidayMapper->findById($id);
+		} catch (DoesNotExistException) {
+			return ['success' => true];
+		}
+
+		$state = $existing->getState();
+		$date = $existing->getDate();
+		$year = $date !== null ? (int)$date->format('Y') : null;
+		$dateYmd = $date !== null ? $date->format('Y-m-d') : null;
+		$scope = $existing->getScope();
+
+		$this->holidayMapper->deleteById($id);
+
+		if ($state !== '' && $year !== null) {
+			$this->holidayCalendarService->clearCacheForStateYear($state, $year);
+			if ($scope === Holiday::SCOPE_STATUTORY && $dateYmd !== null && !$this->isStatutoryAutoReseedEnabled()) {
+				$this->suppressionMapper->addSuppression($state, $dateYmd, $suppressedBy);
+				$this->holidayCalendarService->markStateYearInitialized($state, $year);
+			}
+		}
+
+		return [
+			'success' => true,
+			'state' => $state,
+			'year' => $year,
+		];
+	}
+
+	/**
+	 * When a statutory holiday is manually saved, clear any suppression for that date.
+	 */
+	public function onStatutoryHolidaySaved(string $state, string $dateYmd): void
+	{
+		$this->suppressionMapper->removeSuppression($state, $dateYmd);
+	}
+
+	/**
+	 * Compare active DB holidays, catalog, and suppressions for support/audit.
+	 *
+	 * @return array<string,mixed>
+	 */
+	public function verifyStateYear(string $state, int $year): array
+	{
+		$state = strtoupper(trim($state));
+		$catalog = GermanStatutoryHolidayCatalog::getStatutoryHolidaysForStateAndYear($state, $year);
+		$suppressed = $this->suppressionMapper->findSuppressedDatesForStateAndYear($state, $year);
+
+		// Read persisted rows only — do not call getHolidaysForRange() here because
+		// that reconciles (seed/prune) and would hide stale statutory rows during audit.
+		$activeStatutory = [];
+		foreach ($this->holidayMapper->findByStateAndYear($state, $year) as $holiday) {
+			if ($holiday->getScope() !== Holiday::SCOPE_STATUTORY) {
+				continue;
+			}
+			$date = $holiday->getDate();
+			if ($date === null) {
+				continue;
+			}
+			$dateYmd = $date->format('Y-m-d');
+			$activeStatutory[$dateYmd] = [
+				'name' => $holiday->getName(),
+				'source' => $holiday->getSource(),
+			];
+		}
+
+		$missingInDb = [];
+		foreach ($catalog as $dateYmd => $name) {
+			if (in_array($dateYmd, $suppressed, true)) {
+				continue;
+			}
+			if (!isset($activeStatutory[$dateYmd])) {
+				$missingInDb[$dateYmd] = $name;
+			}
+		}
+
+		$extraInDb = [];
+		foreach ($activeStatutory as $dateYmd => $row) {
+			if (!isset($catalog[$dateYmd])) {
+				$extraInDb[$dateYmd] = $row['name'] ?? '';
+			}
+		}
+
+		return [
+			'state' => $state,
+			'year' => $year,
+			'statutoryAutoReseed' => $this->isStatutoryAutoReseedEnabled(),
+			'catalogCount' => count($catalog),
+			'activeStatutoryCount' => count($activeStatutory),
+			'suppressedDates' => $suppressed,
+			'missingInDb' => $missingInDb,
+			'extraInDb' => $extraInDb,
+			'ok' => $missingInDb === [] && $extraInDb === [],
+		];
+	}
+}

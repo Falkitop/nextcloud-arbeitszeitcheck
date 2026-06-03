@@ -146,7 +146,18 @@ class Absence extends Entity
 		if ($this->days !== null) {
 			return (float)$this->days;
 		}
-		return HolidayService::computeWorkingDays($this->startDate, $this->endDate);
+		$userId = $this->userId ?? '';
+		$start = $this->startDate;
+		$end = $this->endDate;
+		if ($userId === '' || $start === null || $end === null) {
+			return 0.0;
+		}
+		try {
+			$service = \OCP\Server::get(HolidayService::class);
+			return $service->computeWorkingDaysForUser($userId, $start, $end);
+		} catch (\Throwable) {
+			return 0.0;
+		}
 	}
 
 	/**

@@ -314,33 +314,47 @@
 	color: var(--azc-muted);
 }
 
-/* ── Save feedback ────────────────────────────────────────── */
+/* ── Save feedback (callout-aligned, theme-safe) ─────────── */
 #app-content.azc-app--admin-notifications .admin-notifications-live {
 	margin: 0;
 	min-height: 0;
-	font-size: var(--azc-fs-sm);
+	font-size: var(--azc-fs-md);
 	text-align: start;
+	color: var(--color-main-text);
 }
 
 #app-content.azc-app--admin-notifications .admin-notifications-live:not(:empty) {
 	padding: var(--azc-space-4) var(--azc-space-5);
 	border-radius: var(--azc-radius-md);
-	border: 1px solid var(--azc-border);
-	background: var(--azc-bg-soft);
+	border: 2px solid var(--color-border);
+	border-left-width: 5px;
+	background: var(--color-main-background);
+	box-shadow: var(--azc-shadow-sm);
 	font-weight: 600;
 	line-height: var(--azc-line-base);
+	max-width: 65ch;
 }
 
 #app-content.azc-app--admin-notifications .admin-notifications-live--error {
-	border-color: var(--color-error, #cc4646);
+	border-color: var(--color-error-text, var(--color-error));
+	border-left-color: var(--color-error-text, var(--color-error));
 	background: var(--azc-tint-danger);
-	color: var(--azc-text);
+	color: var(--color-main-text);
 }
 
 #app-content.azc-app--admin-notifications .admin-notifications-live--success {
-	border-color: var(--color-success, #46ba61);
+	border-color: var(--color-success-text, var(--color-success));
+	border-left-color: var(--color-success-text, var(--color-success));
 	background: var(--azc-tint-success);
-	color: var(--azc-text);
+	color: var(--color-main-text);
+}
+
+@media (forced-colors: active) {
+	#app-content.azc-app--admin-notifications .admin-notifications-live:not(:empty) {
+		border: 2px solid CanvasText;
+		background: Canvas;
+		color: CanvasText;
+	}
 }
 
 /* ── Form actions (static bar — not sticky; stays at end of the form) ── */

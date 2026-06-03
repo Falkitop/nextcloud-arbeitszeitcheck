@@ -11,7 +11,9 @@ declare(strict_types=1);
 
 namespace OCA\ArbeitszeitCheck\Service;
 
+use OCA\ArbeitszeitCheck\Constants;
 use OCP\App\IAppManager;
+use OCP\AppFramework\Services\IAppConfig;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 use OCP\IL10N;
@@ -25,8 +27,15 @@ class ProjectCheckIntegrationService
 	/** @see \OCA\ProjectCheck\Util\CostRateMode::PROJECT_MEMBER */
 	private const COST_RATE_MODE_PROJECT_MEMBER = 'project_member';
 
+	/**
+	 * @deprecated Per-user toggle removed; use {@see Constants::CONFIG_PROJECTCHECK_INTEGRATION_ENABLED}.
+	 *             Kept only so legacy rows in user_settings are ignored, not read.
+	 */
+	public const SETTING_LINK_ENABLED = 'projectcheck_link_enabled';
+
 	public function __construct(
 		private readonly IAppManager $appManager,
+		private readonly IAppConfig $appConfig,
 		private readonly IDBConnection $db,
 		private readonly IL10N $l10n,
 		private readonly LoggerInterface $logger,
@@ -41,6 +50,61 @@ class ProjectCheckIntegrationService
 	public function isProjectCheckAvailable(): bool
 	{
 		return $this->appManager->isEnabledForUser('projectcheck');
+	}
+
+	/**
+	 * Whether an administrator has enabled the ArbeitszeitCheck ↔ ProjectCheck
+	 * connection for everyone on this server.
+	 */
+	public function isAdminIntegrationEnabled(): bool
+	{
+		if (!$this->isProjectCheckAvailable()) {
+			return false;
+		}
+		return $this->appConfig->getAppValueString(
+			Constants::CONFIG_PROJECTCHECK_INTEGRATION_ENABLED,
+			Constants::CONFIG_PROJECTCHECK_INTEGRATION_DEFAULT,
+		) === '1';
+	}
+
+	/**
+	 * Whether ProjectCheck linking is active for this user's *own* time
+	 * (clock-in picker and manual time-entry picker / linking).
+	 *
+	 * Governed solely by the admin global toggle
+	 * ({@see Constants::CONFIG_PROJECTCHECK_INTEGRATION_ENABLED}) plus
+	 * {@see self::isProjectCheckAvailable()}. Per-project access checks in
+	 * {@see self::userMayAttachProjectCheckProjectToOwnTime()} still apply.
+	 *
+	 * Also governs manager/HR on-behalf assignment
+	 * ({@see self::managerMayAttachProjectCheckProjectForEmployee()}).
+	 */
+	public function isLinkingEnabledForUser(string $userId): bool
+	{
+		unset($userId);
+		return $this->isAdminIntegrationEnabled();
+	}
+
+	/**
+	 * Safely read a (possibly magic) string getter from a foreign entity.
+	 *
+	 * ProjectCheck entities expose their columns through the Nextcloud
+	 * {@see \OCP\AppFramework\Db\Entity} `__call()` magic, for which
+	 * `method_exists()` returns false. `is_callable()` honours `__call()`, so it
+	 * is the correct probe for loosely-coupled cross-app objects.
+	 */
+	private function readStringGetter(object $obj, string $method): string
+	{
+		if (!is_callable([$obj, $method])) {
+			return '';
+		}
+		try {
+			$value = $obj->{$method}();
+		} catch (\Throwable $e) {
+			$this->logger->debug(sprintf('ProjectCheck entity %s() failed: %s', $method, $e->getMessage()));
+			return '';
+		}
+		return $value === null ? '' : (string)$value;
 	}
 
 	/**
@@ -65,7 +129,7 @@ class ProjectCheckIntegrationService
 	 */
 	public function getAvailableProjects(string $userId): array
 	{
-		if (!$this->isProjectCheckAvailable()) {
+		if (!$this->isLinkingEnabledForUser($userId)) {
 			return [];
 		}
 
@@ -76,7 +140,7 @@ class ProjectCheckIntegrationService
 		}
 
 		try {
-			if (!method_exists($svc, 'getProjectsForUserTimeEntry')) {
+			if (!is_callable([$svc, 'getProjectsForUserTimeEntry'])) {
 				return [];
 			}
 			/** @var list<object> $projects */
@@ -87,26 +151,45 @@ class ProjectCheckIntegrationService
 			]);
 			$out = [];
 			foreach ($projects as $p) {
-				if (!method_exists($p, 'allowsTimeTracking') || !$p->allowsTimeTracking()) {
+				if (!is_object($p)) {
 					continue;
 				}
-				$pid = (int)$p->getId();
-				$mode = method_exists($p, 'getCostRateMode') ? (string)$p->getCostRateMode() : '';
+				if (!is_callable([$p, 'allowsTimeTracking']) || !$p->allowsTimeTracking()) {
+					continue;
+				}
+				$pid = is_callable([$p, 'getId']) ? (int)$p->getId() : 0;
+				if ($pid <= 0) {
+					continue;
+				}
+				$mode = $this->readStringGetter($p, 'getCostRateMode');
 				if ($mode === self::COST_RATE_MODE_PROJECT_MEMBER) {
-					if (!method_exists($svc, 'isActiveTeamMember') || !$svc->isActiveTeamMember($pid, $userId)) {
+					if (!is_callable([$svc, 'isActiveTeamMember']) || !$svc->isActiveTeamMember($pid, $userId)) {
 						continue;
 					}
 				}
-				$customerName = method_exists($p, 'getCustomerName') ? (string)($p->getCustomerName() ?? '') : '';
-				$name = method_exists($p, 'getName') ? (string)$p->getName() : '';
-				$customerId = method_exists($p, 'getCustomerId') ? $p->getCustomerId() : null;
+				$customerName = $this->readStringGetter($p, 'getCustomerName');
+				$name = $this->readStringGetter($p, 'getName');
+				$customerId = is_callable([$p, 'getCustomerId']) ? $p->getCustomerId() : null;
+				if ($name === '') {
+					$fromDb = $this->getProjectDetails((string)$pid);
+					if ($fromDb !== null) {
+						$name = trim((string)($fromDb['name'] ?? ''));
+						if ($customerName === '' && isset($fromDb['customerName']) && $fromDb['customerName'] !== null) {
+							$customerName = trim((string)$fromDb['customerName']);
+						}
+					}
+				}
+				if ($name === '') {
+					$this->logger->warning('Skipping ProjectCheck project with empty name in picker.', ['projectId' => $pid]);
+					continue;
+				}
 				$display = $customerName !== ''
 					? sprintf('%s (%s)', $name, $customerName)
 					: $name;
 				$out[] = [
 					'id' => (string)$pid,
 					'name' => $name,
-					'customerId' => $customerId,
+					'customerId' => $customerId !== null ? (int)$customerId : null,
 					'customerName' => $customerName !== '' ? $customerName : $this->l10n->t('No Customer'),
 					'displayName' => $display,
 					'costRateMode' => $mode,
@@ -118,7 +201,6 @@ class ProjectCheckIntegrationService
 			return [];
 		}
 	}
-
 	/**
 	 * Projects a manager may assign when creating or correcting an employee's ArbeitszeitCheck entry.
 	 *
@@ -130,7 +212,7 @@ class ProjectCheckIntegrationService
 			return [];
 		}
 		$svc = $this->projectService();
-		if ($svc === null || !\method_exists($svc, 'mayBillArbeitszeitCheckTimeForUser')) {
+		if ($svc === null || !\is_callable([$svc, 'mayBillArbeitszeitCheckTimeForUser'])) {
 			return [];
 		}
 
@@ -156,7 +238,7 @@ class ProjectCheckIntegrationService
 	 */
 	public function managerMayAttachProjectCheckProjectForEmployee(string $managerUserId, string $employeeUserId, string $projectIdStr): bool
 	{
-		if (!$this->isProjectCheckAvailable()) {
+		if (!$this->isProjectCheckAvailable() || !$this->isAdminIntegrationEnabled()) {
 			return false;
 		}
 		$pid = (int)trim($projectIdStr);
@@ -164,7 +246,7 @@ class ProjectCheckIntegrationService
 			return false;
 		}
 		$svc = $this->projectService();
-		if ($svc === null || !\method_exists($svc, 'mayBillArbeitszeitCheckTimeForUser')) {
+		if ($svc === null || !\is_callable([$svc, 'mayBillArbeitszeitCheckTimeForUser'])) {
 			return false;
 		}
 		try {
@@ -183,24 +265,30 @@ class ProjectCheckIntegrationService
 		if (!$this->isProjectCheckAvailable()) {
 			return false;
 		}
+		if (!$this->isLinkingEnabledForUser($userId)) {
+			return false;
+		}
 		$pid = (int)trim($projectIdStr);
 		if ($pid <= 0) {
 			return false;
 		}
 		$svc = $this->projectService();
-		if ($svc === null || !method_exists($svc, 'getProject')) {
-			return $this->projectExistsInDatabase($pid);
+		if ($svc === null || !is_callable([$svc, 'getProject'])) {
+			// Fail closed: without ProjectCheck's ProjectService we cannot verify
+			// team membership, pricing mode, or project status — never trust a raw id.
+			$this->logger->warning('ProjectCheck attach rejected: ProjectService unavailable to ArbeitszeitCheck.');
+			return false;
 		}
 		try {
 			$project = $svc->getProject($pid);
-			if ($project === null || !method_exists($project, 'allowsTimeTracking') || !$project->allowsTimeTracking()) {
+			if ($project === null || !is_callable([$project, 'allowsTimeTracking']) || !$project->allowsTimeTracking()) {
 				return false;
 			}
-			$mode = method_exists($project, 'getCostRateMode') ? (string)$project->getCostRateMode() : '';
+			$mode = $this->readStringGetter($project, 'getCostRateMode');
 			if ($mode === self::COST_RATE_MODE_PROJECT_MEMBER) {
-				return method_exists($svc, 'isActiveTeamMember') && $svc->isActiveTeamMember($pid, $userId);
+				return is_callable([$svc, 'isActiveTeamMember']) && $svc->isActiveTeamMember($pid, $userId);
 			}
-			return method_exists($svc, 'canUserAccessProject') && $svc->canUserAccessProject($userId, $pid);
+			return is_callable([$svc, 'canUserAccessProject']) && $svc->canUserAccessProject($userId, $pid);
 		} catch (\Throwable $e) {
 			$this->logger->warning('ProjectCheck attach validation failed: ' . $e->getMessage(), ['exception' => $e]);
 			return false;

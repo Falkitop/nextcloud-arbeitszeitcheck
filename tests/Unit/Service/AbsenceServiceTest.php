@@ -133,6 +133,23 @@ class AbsenceServiceTest extends TestCase
 		$this->l10n = $this->createMock(IL10N::class);
 		$this->notificationService = $this->createMock(NotificationService::class);
 		$this->holidayCalendarService = $this->createMock(HolidayService::class);
+		$this->holidayCalendarService
+			->method('computeWorkingDaysPerYearForUser')
+			->willReturnCallback(static function (string $userId, \DateTime $start, \DateTime $end): array {
+				unset($userId);
+				$result = [];
+				$cur = (clone $start)->setTime(0, 0, 0);
+				$endNorm = (clone $end)->setTime(0, 0, 0);
+				while ($cur <= $endNorm) {
+					if ((int)$cur->format('N') < 6) {
+						$y = (int)$cur->format('Y');
+						$result[$y] = ($result[$y] ?? 0) + 1.0;
+					}
+					$cur->modify('+1 day');
+				}
+				return $result;
+			});
+		$this->holidayCalendarService->method('computeWorkingDaysForUser')->willReturn(2.0);
 
 		$this->l10n->method('t')
 			->willReturnCallback(function ($text) {

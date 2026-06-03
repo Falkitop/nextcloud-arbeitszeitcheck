@@ -1216,10 +1216,10 @@ class AbsenceService
 	{
 		$requestedWorkingDaysPerYear = $this->computeWorkingDaysPerYear($startDate, $endDate, $userId);
 		if ($requestedWorkingDaysPerYear === []) {
-			$requestedWorkingDaysPerYear = HolidayService::computeWorkingDaysPerYear(
+			$requestedWorkingDaysPerYear = $this->holidayCalendarService->computeWorkingDaysPerYearForUser(
+				$userId,
 				clone $startDate,
-				clone $endDate,
-				[]
+				clone $endDate
 			);
 		}
 		$today = new \DateTime('today');
@@ -1339,10 +1339,10 @@ class AbsenceService
 		if ($type === Absence::TYPE_VACATION) {
 			$requestedWorkingDaysPerYear = $this->computeWorkingDaysPerYear($startDate, $endDate, $userId);
 			if ($requestedWorkingDaysPerYear === []) {
-				$requestedWorkingDaysPerYear = HolidayService::computeWorkingDaysPerYear(
+				$requestedWorkingDaysPerYear = $this->holidayCalendarService->computeWorkingDaysPerYearForUser(
+					$userId,
 					clone $startDate,
-					clone $endDate,
-					[]
+					clone $endDate
 				);
 			}
 			$totalRequested = array_sum($requestedWorkingDaysPerYear);

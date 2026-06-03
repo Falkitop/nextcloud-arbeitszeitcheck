@@ -55,7 +55,7 @@ class UserOvertimeSettingsService
 			$userId,
 			'user_overtime_tracking_from_updated',
 			'user',
-			$userId,
+			null,
 			['tracking_from' => $oldRaw !== '' ? $oldRaw : null],
 			['tracking_from' => $newRaw !== '' ? $newRaw : null],
 			$actorUserId
@@ -77,7 +77,7 @@ class UserOvertimeSettingsService
 				$userId,
 				'user_overtime_opening_balance_updated',
 				'user',
-				$userId,
+				null,
 				['year' => $year, 'opening_balance_hours' => $oldHours],
 				['year' => $year, 'opening_balance_hours' => (float)$entity->getOpeningBalanceHours()],
 				$actorUserId

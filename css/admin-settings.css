@@ -257,71 +257,7 @@
   max-width: 100%;
 }
 
-#admin-settings-form .user-picker,
-#admin-notifications-form .user-picker{
-  position: relative;
-  max-width: 100%;
-}
-
-#admin-settings-form .user-picker__list,
-#admin-notifications-form .user-picker__list{
-  position: absolute;
-  z-index: 50;
-  left: 0;
-  right: 0;
-  margin: var(--space-1, 0.25rem) 0 0;
-  padding: var(--space-1, 0.25rem) 0;
-  max-height: 14rem;
-  overflow-y: auto;
-  list-style: none;
-  background: var(--arbeitszeitcheck-color-main-background, var(--color-main-background));
-  border: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
-  border-radius: var(--border-radius, 6px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-}
-
-#admin-settings-form .user-picker__item,
-#admin-notifications-form .user-picker__item{
-  padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
-  cursor: pointer;
-  line-height: 1.35;
-}
-
-#admin-settings-form .user-picker__item:hover,
-#admin-notifications-form .user-picker__item:hover,
-#admin-settings-form .user-picker__item:focus,
-#admin-notifications-form .user-picker__item:focus{
-  background: var(--arbeitszeitcheck-color-background-hover, var(--color-background-hover));
-  outline: none;
-}
-
-#admin-settings-form .user-picker__item:focus-visible,
-#admin-notifications-form .user-picker__item:focus-visible{
-  outline: 2px solid var(--arbeitszeitcheck-color-primary, var(--color-primary));
-  outline-offset: -2px;
-}
-
-#admin-settings-form .user-picker__item--muted,
-#admin-notifications-form .user-picker__item--muted{
-  cursor: default;
-  color: var(--arbeitszeitcheck-color-text-lighter, var(--color-text-lighter));
-  font-size: 0.875rem;
-}
-
-#admin-settings-form .user-picker__name,
-#admin-notifications-form .user-picker__name{
-  display: block;
-  font-weight: 500;
-  color: var(--arbeitszeitcheck-color-main-text, var(--color-main-text));
-}
-
-#admin-settings-form .user-picker__meta,
-#admin-notifications-form .user-picker__meta{
-  display: block;
-  font-size: 0.8125rem;
-  color: var(--arbeitszeitcheck-color-text-lighter, var(--color-text-lighter));
-  margin-top: 0.125rem;
-}
+/* User picker base styles: css/common/user-picker.css (imported via app.css) */
 
 /* Inline actions inside a fieldset (month reopen) */
 #admin-settings-form .form-fieldset .card-actions--inline,
@@ -347,11 +283,33 @@
 .azc-nc-admin-settings .azc-admin-settings-form__actions {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4, 1rem);
+  gap: var(--azc-space-4, var(--space-4, 1rem));
   width: 100%;
-  margin-top: var(--space-2, 0.5rem);
-  padding-top: var(--space-5, 1.25rem);
-  border-top: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* ProjectCheck block at bottom of Global settings */
+#app-content.azc-app--admin-settings .azc-projectcheck-admin-settings .admin-settings-section__intro,
+.azc-nc-admin-settings .azc-projectcheck-admin-settings .admin-settings-section__intro {
+  margin: 0 0 var(--azc-space-4, 1rem);
+  max-width: 70ch;
+}
+
+#app-content.azc-app--admin-settings .azc-projectcheck-admin-settings .azc-projectcheck-connection,
+.azc-nc-admin-settings .azc-projectcheck-admin-settings .azc-projectcheck-connection {
+  margin: 0;
+  padding: var(--azc-space-4, 1rem);
+  border: 1px solid var(--azc-border, var(--arbeitszeitcheck-color-border, var(--color-border)));
+  border-radius: var(--azc-radius-md, var(--border-radius, 6px));
+  background: var(--azc-bg-soft, var(--arbeitszeitcheck-color-background-hover, var(--color-background-hover)));
+  box-shadow: none;
+}
+
+#app-content.azc-app--admin-settings .azc-projectcheck-admin-settings .azc-callout,
+.azc-nc-admin-settings .azc-projectcheck-admin-settings .azc-callout {
+  margin: 0;
 }
 
 #app-content.azc-app--admin-settings .admin-settings-live,
@@ -370,12 +328,6 @@
   border: 1px solid var(--arbeitszeitcheck-color-border, var(--color-border));
   background: var(--arbeitszeitcheck-color-background-hover, var(--color-background-hover));
   font-weight: 600;
-}
-
-#app-content.azc-app--admin-settings .admin-settings-live--error,
-.azc-nc-admin-settings .admin-settings-live--error {
-  border-color: var(--color-error, #cc4646);
-  color: var(--color-error, #cc4646);
 }
 
 #app-content.azc-app--admin-settings .admin-settings-live--success,

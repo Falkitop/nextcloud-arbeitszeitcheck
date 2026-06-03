@@ -74,6 +74,10 @@ class MobileBootstrapController extends Controller {
 				'features' => [
 					'monthClosure' => MonthClosureFeature::isEnabledFromIConfig($this->config),
 					'overtimeBank' => $this->overtimeBankService->isEnabled(),
+					'timeCapture' => $this->capabilities->getCapabilities()['arbeitszeitcheck']['mobile']['timeCapture'] ?? [
+						'clockStampingEnabled' => true,
+						'manualTimeEntryEnabled' => true,
+					],
 				],
 			],
 		]);

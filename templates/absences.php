@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 use OCA\ArbeitszeitCheck\Service\IconCatalog;
+use OCA\ArbeitszeitCheck\Support\BadgeVariant;
 
 /**
  * Absences template for arbeitszeitcheck app
@@ -48,7 +49,7 @@ $absenceFormEndDisplay = ($mode === 'create')
         <div class="azc-page-stack">
         <?php if ($mode === 'list' && $error): ?>
             <div class="azc-callout azc-callout--danger absences-page__list-error" role="alert">
-                <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('alert-triangle', 'azc-callout__icon-svg')); ?></span>
+                <span class="azc-callout__icon azc-notif-icon-well" aria-hidden="true"><?php print_unescaped(IconCatalog::render('alert-triangle', 'azc-callout__icon-svg')); ?></span>
                 <p class="azc-callout__text"><?php p($error); ?></p>
             </div>
         <?php endif; ?>
@@ -72,7 +73,7 @@ $absenceFormEndDisplay = ($mode === 'create')
         <?php if (in_array($mode, ['create', 'edit'], true) && $useAppTeams): ?>
             <?php if (!$employeeHasAssignableManager): ?>
             <div class="azc-callout azc-callout--info absence-request-callout" role="status" aria-live="polite" aria-labelledby="approval-hint-title">
-                <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('info', 'azc-callout__icon-svg')); ?></span>
+                <span class="azc-callout__icon azc-notif-icon-well" aria-hidden="true"><?php print_unescaped(IconCatalog::render('info', 'azc-callout__icon-svg')); ?></span>
                 <div class="azc-callout__body">
                     <p id="approval-hint-title" class="azc-callout__title"><?php p($l->t('How your request is approved')); ?></p>
                     <p class="azc-callout__text"><?php p($l->t('No approver is assigned to your team in the app. Requests you submit without a substitute are approved automatically when you send them.')); ?></p>
@@ -80,7 +81,7 @@ $absenceFormEndDisplay = ($mode === 'create')
             </div>
             <?php else: ?>
             <div class="azc-callout azc-callout--info absence-request-callout" role="status" aria-labelledby="approval-hint-manager-title">
-                <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('user-check', 'azc-callout__icon-svg')); ?></span>
+                <span class="azc-callout__icon azc-notif-icon-well" aria-hidden="true"><?php print_unescaped(IconCatalog::render('user-check', 'azc-callout__icon-svg')); ?></span>
                 <div class="azc-callout__body">
                     <p id="approval-hint-manager-title" class="azc-callout__title"><?php p($l->t('How your request is approved')); ?></p>
                     <p class="azc-callout__text"><?php p($l->t('After you submit, your manager reviews the request. If you choose a substitute, they must approve first, then your manager.')); ?></p>
@@ -89,7 +90,7 @@ $absenceFormEndDisplay = ($mode === 'create')
             <?php endif; ?>
         <?php elseif ($useAppTeams && !$employeeHasAssignableManager && $mode === 'list'): ?>
             <div class="azc-callout azc-callout--info absence-request-callout" role="status" aria-live="polite" aria-labelledby="approval-hint-list-title">
-                <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('info', 'azc-callout__icon-svg')); ?></span>
+                <span class="azc-callout__icon azc-notif-icon-well" aria-hidden="true"><?php print_unescaped(IconCatalog::render('info', 'azc-callout__icon-svg')); ?></span>
                 <div class="azc-callout__body">
                     <p id="approval-hint-list-title" class="azc-callout__title"><?php p($l->t('How your request is approved')); ?></p>
                     <p class="azc-callout__text"><?php p($l->t('No approver is assigned to your team in the app. Requests you submit without a substitute are approved automatically when you send them.')); ?></p>
@@ -170,7 +171,7 @@ $absenceFormEndDisplay = ($mode === 'create')
                     <?php p($l->t('Required field')); ?>
                 </p>
                 <div class="azc-callout azc-callout--danger" role="alert" id="absence-form-error"<?php echo $error ? '' : ' hidden'; ?>>
-                    <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('alert-triangle', 'azc-callout__icon-svg')); ?></span>
+                    <span class="azc-callout__icon azc-notif-icon-well" aria-hidden="true"><?php print_unescaped(IconCatalog::render('alert-triangle', 'azc-callout__icon-svg')); ?></span>
                     <p id="absence-form-error-text" class="azc-callout__text"><?php echo $error ? htmlspecialchars($error, ENT_QUOTES, 'UTF-8') : ''; ?></p>
                 </div>
 
@@ -187,7 +188,7 @@ $absenceFormEndDisplay = ($mode === 'create')
                         <legend class="absence-form-fieldset__legend"><?php p($l->t('Request details')); ?></legend>
 
                     <div class="azc-callout azc-callout--info absence-past-entry-hint" role="note" aria-labelledby="absence-past-entry-title">
-                        <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('calendar', 'azc-callout__icon-svg')); ?></span>
+                        <span class="azc-callout__icon azc-notif-icon-well" aria-hidden="true"><?php print_unescaped(IconCatalog::render('calendar', 'azc-callout__icon-svg')); ?></span>
                         <div class="azc-callout__body">
                             <p id="absence-past-entry-title" class="azc-callout__title"><?php p($l->t('Past absences are allowed')); ?></p>
                             <p class="azc-callout__text"><?php p($l->t('Use the same form for old vacation, sick leave, migration records, and future requests. Closed months stay protected and cannot be changed unless an administrator reopens them.')); ?></p>
@@ -283,7 +284,7 @@ $absenceFormEndDisplay = ($mode === 'create')
                          role="status"
                          aria-live="polite"
                          hidden>
-                        <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('clock', 'azc-callout__icon-svg')); ?></span>
+                        <span class="azc-callout__icon azc-notif-icon-well" aria-hidden="true"><?php print_unescaped(IconCatalog::render('clock', 'azc-callout__icon-svg')); ?></span>
                         <div class="azc-callout__body">
                             <p class="azc-callout__title"><?php p($l->t('Historical entry – the dates you selected are in the past')); ?></p>
                             <p class="azc-callout__text" id="absence-historical-hint-default-text"><?php p($l->t('You can submit this as a regular request. Your manager will still review and approve or reject it like any other request, and the substitute workflow does not apply to dates that already passed.')); ?></p>
@@ -360,11 +361,16 @@ $absenceFormEndDisplay = ($mode === 'create')
 
                 <?php if ($absence->getStatus() === 'pending' && $useAppTeams && !$employeeHasAssignableManager): ?>
                     <div class="absence-detail-stuck-callout">
-                        <div class="alert alert--warning" role="alert">
-                            <div class="alert-content">
-                                <p class="alert-message"><?php p($l->t('This request is waiting for approval, but no approver is assigned to your team in the app. Contact your administrator to fix the team setup, or wait until the system can process it.')); ?></p>
-                            </div>
-                        </div>
+                        <?php
+                        $calloutVariant = 'warning';
+                        $calloutRole = 'alert';
+                        $calloutBanner = false;
+                        $calloutIcon = 'alert-triangle';
+                        $calloutTitle = $l->t('Waiting for approval');
+                        $calloutText = $l->t('This request is waiting for approval, but no approver is assigned to your team in the app. Contact your administrator to fix the team setup, or wait until the system can process it.');
+                        $calloutHint = '';
+                        include __DIR__ . '/common/alert-callout.php';
+                        ?>
                     </div>
                 <?php endif; ?>
 
@@ -389,17 +395,7 @@ $absenceFormEndDisplay = ($mode === 'create')
                             p($typeLabel);
                             ?>
                         </span>
-                        <span class="badge badge--<?php
-                            echo match($absence->getStatus()) {
-                                'approved' => 'success',
-                                'pending' => 'warning',
-                                'substitute_pending' => 'warning',
-                                'rejected' => 'error',
-                                'substitute_declined' => 'error',
-                                'cancelled' => 'secondary',
-                                default => 'secondary'
-                            };
-                        ?>">
+                        <span class="badge badge--<?php p(BadgeVariant::forAbsenceStatus((string)$absence->getStatus())); ?>">
                             <?php
                             $statusKey = $absence->getStatus();
                             $statusLabel = match($statusKey) {
@@ -646,7 +642,7 @@ $absenceFormEndDisplay = ($mode === 'create')
             <section class="section section--list" aria-labelledby="list-title">
                 <h2 id="list-title" class="section__title visually-hidden"><?php p($l->t('Your absence requests')); ?></h2>
                 <div class="table-container">
-                    <table class="table table--hover absences-table" id="absences-table" role="table" aria-labelledby="list-title">
+                    <table class="table table--hover absences-table azc-table--responsive" id="absences-table" role="table" aria-labelledby="list-title">
                         <thead>
                             <tr>
                                 <th scope="col"><?php p($l->t('Type')); ?></th>
@@ -655,7 +651,7 @@ $absenceFormEndDisplay = ($mode === 'create')
                                 <th scope="col"><?php p($l->t('Days')); ?></th>
                                 <th scope="col"><?php p($l->t('Reason')); ?></th>
                                 <th scope="col"><?php p($l->t('Status')); ?></th>
-                                <th scope="col"><?php p($l->t('Actions')); ?></th>
+                                <th scope="col" class="azc-table-actions-col"><?php p($l->t('Actions')); ?></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -713,16 +709,7 @@ $absenceFormEndDisplay = ($mode === 'create')
                                             <?php endif; ?>
                                         </td>
                                         <td data-label="<?php p($l->t('Status')); ?>">
-                                            <span class="badge badge--<?php 
-                                                echo match($absence->getStatus()) {
-                                                    'approved' => 'success',
-                                                    'pending' => 'warning',
-                                                    'substitute_pending' => 'warning',
-                                                    'rejected' => 'error',
-                                                    'substitute_declined' => 'error',
-                                                    default => 'secondary'
-                                                };
-                                            ?>">
+                                            <span class="badge badge--<?php p(BadgeVariant::forAbsenceStatus((string)$absence->getStatus())); ?>">
                                                 <?php 
                                                 $statusKey = $absence->getStatus();
                                                 $statusLabel = match($statusKey) {
@@ -738,6 +725,7 @@ $absenceFormEndDisplay = ($mode === 'create')
                                             </span>
                                         </td>
                                         <td class="actions-cell" data-label="<?php p($l->t('Actions')); ?>">
+                                            <div class="azc-table-actions" role="group" aria-label="<?php p($l->t('Actions')); ?>">
                                             <?php if (in_array($absence->getStatus(), ['pending', 'substitute_pending', 'substitute_declined'], true)): ?>
                                                 <button type="button" class="btn-icon btn-icon--edit" 
                                                         data-absence-id="<?php p($absence->getId()); ?>"
@@ -759,6 +747,7 @@ $absenceFormEndDisplay = ($mode === 'create')
                                                     <span class="icon icon-details" aria-hidden="true"></span>
                                                 </button>
                                             <?php endif; ?>
+                                            </div>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\ArbeitszeitCheck\Tests\Unit\Controller;
 
 use OCA\ArbeitszeitCheck\Controller\DashboardWidgetController;
+use OCA\ArbeitszeitCheck\Exception\TimeCaptureForbiddenException;
 use OCA\ArbeitszeitCheck\Db\TimeEntry;
 use OCA\ArbeitszeitCheck\Service\DashboardWidgetDataService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
@@ -87,6 +88,27 @@ class DashboardWidgetControllerTest extends TestCase {
 		$this->assertSame(Http::STATUS_OK, $response->getStatus());
 		$this->assertTrue($response->getData()['success']);
 		$this->assertSame('active', $response->getData()['status']['status']);
+	}
+
+	public function testClockInReturnsForbiddenWhenStampingDisabled(): void {
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn('u1');
+		$this->userSession->method('getUser')->willReturn($user);
+
+		$this->timeTrackingService->method('clockIn')
+			->willThrowException(new TimeCaptureForbiddenException(
+				'Clock in/out (stamping) is not enabled for your account.',
+				TimeCaptureForbiddenException::CODE_CLOCK_STAMPING_DISABLED,
+			));
+
+		$response = $this->controller->clockIn();
+		$this->assertSame(Http::STATUS_FORBIDDEN, $response->getStatus());
+		$this->assertFalse($response->getData()['success']);
+		$this->assertStringContainsString('not enabled', $response->getData()['error']);
+		$this->assertSame(
+			TimeCaptureForbiddenException::CODE_CLOCK_STAMPING_DISABLED,
+			$response->getData()['error_code'],
+		);
 	}
 
 	public function testManagerDataClampsLimit(): void {

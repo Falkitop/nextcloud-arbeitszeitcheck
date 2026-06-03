@@ -35,7 +35,7 @@ $models = $_['models'] ?? [];
 
             <!-- Models Table -->
             <div class="table-container" role="region" aria-label="<?php p($l->t('Working time models')); ?>">
-                <table class="table table--hover" id="models-table" role="table" aria-label="<?php p($l->t('Working time models')); ?>">
+                <table class="table table--hover azc-table--responsive" id="models-table" role="table" aria-label="<?php p($l->t('Working time models')); ?>">
                 <thead>
                     <tr>
                         <th scope="col"><?php p($l->t('Name')); ?></th>
@@ -44,7 +44,7 @@ $models = $_['models'] ?? [];
                         <th scope="col"><?php p($l->t('Daily hours')); ?></th>
                         <th scope="col"><?php p($l->t('Work days/week')); ?></th>
                         <th scope="col"><?php p($l->t('Default')); ?></th>
-                        <th scope="col"><?php p($l->t('Actions')); ?></th>
+                        <th scope="col" class="azc-table-actions-col"><?php p($l->t('Actions')); ?></th>
                     </tr>
                 </thead>
                 <tbody id="models-tbody">
@@ -57,8 +57,8 @@ $models = $_['models'] ?? [];
                     <?php else: ?>
                         <?php foreach (($models ?? []) as $model): ?>
                             <tr data-model-id="<?php p($model['id']); ?>">
-                                <td><?php p($model['name']); ?></td>
-                                <td>
+                                <td data-label="<?php p($l->t('Name')); ?>"><?php p($model['name']); ?></td>
+                                <td data-label="<?php p($l->t('Type')); ?>">
                                     <?php
                                     $typeKey = $model['type'] ?? '';
                                     $typeLabel = match ($typeKey) {
@@ -72,17 +72,18 @@ $models = $_['models'] ?? [];
                                     p($typeLabel);
                                     ?>
                                 </td>
-                                <td><?php p($model['weeklyHours']); ?>h</td>
-                                <td><?php p($model['dailyHours']); ?>h</td>
-                                <td><?php p((string)($model['workDaysPerWeek'] ?? 5)); ?></td>
-                                <td>
+                                <td data-label="<?php p($l->t('Weekly hours')); ?>"><?php p($model['weeklyHours']); ?>h</td>
+                                <td data-label="<?php p($l->t('Daily hours')); ?>"><?php p($model['dailyHours']); ?>h</td>
+                                <td data-label="<?php p($l->t('Work days/week')); ?>"><?php p((string)($model['workDaysPerWeek'] ?? 5)); ?></td>
+                                <td data-label="<?php p($l->t('Default')); ?>">
                                     <?php if ($model['isDefault']): ?>
                                         <span class="badge badge--success"><?php p($l->t('Yes')); ?></span>
                                     <?php else: ?>
                                         <span class="badge"><?php p($l->t('No')); ?></span>
                                     <?php endif; ?>
                                 </td>
-                                <td>
+                                <td class="actions-cell" data-label="<?php p($l->t('Actions')); ?>">
+                                    <div class="azc-table-actions" role="group" aria-label="<?php p($l->t('Actions')); ?>">
                                     <button type="button"
                                             class="btn btn--sm btn--secondary"
                                             data-action="duplicate-model"
@@ -107,6 +108,7 @@ $models = $_['models'] ?? [];
                                             title="<?php p($l->t('Click to delete this work schedule. This cannot be undone, so make sure no employees are using it first.')); ?>">
                                         <?php p($l->t('Delete')); ?>
                                     </button>
+                                    </div>
                                 </td>
                             </tr>
                         <?php endforeach; ?>

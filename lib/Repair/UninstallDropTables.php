@@ -37,6 +37,7 @@ final class UninstallDropTables implements IRepairStep
 		'at_audit',
 		'at_entitlement_snapshots',
 		'at_entries',
+		'at_holiday_suppress',
 		'at_holidays',
 		'at_model_vacation_defaults',
 		'at_models',

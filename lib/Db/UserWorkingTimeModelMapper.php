@@ -61,6 +61,42 @@ class UserWorkingTimeModelMapper extends QBMapper
 	}
 
 	/**
+	 * Resolve the single assignment the admin edit dialog should edit in place.
+	 *
+	 * Prefers the assignment active *today* (the same row {@see findCurrentByUser}
+	 * returns). When none is active today — e.g. the assignment starts in the
+	 * future ("Gültig von" set ahead of time) or has already ended — it falls
+	 * back to the most recent assignment by start date. This guarantees the
+	 * dialog edits an existing row instead of inserting a duplicate on every
+	 * save, while leaving the "active today" semantics used by compliance,
+	 * overtime and entitlement calculations untouched.
+	 *
+	 * @param string $userId
+	 * @return UserWorkingTimeModel|null
+	 */
+	public function findEditableByUser(string $userId): ?UserWorkingTimeModel
+	{
+		$current = $this->findCurrentByUser($userId);
+		if ($current !== null) {
+			return $current;
+		}
+
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')
+			->from($this->getTableName())
+			->where($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+			->orderBy('start_date', 'DESC')
+			->addOrderBy('id', 'DESC')
+			->setMaxResults(1);
+
+		try {
+			return $this->findEntity($qb);
+		} catch (DoesNotExistException $e) {
+			return null;
+		}
+	}
+
+	/**
 	 * Find working time model assignment active on a specific date
 	 *
 	 * @param string $userId

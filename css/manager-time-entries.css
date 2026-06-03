@@ -5,8 +5,7 @@
 #app-content.azc-app--manager-time-entries .manager-scope-page,
 #app-content.azc-app--manager-absences .manager-scope-page {
 	width: 100%;
-	max-width: 56rem;
-	margin-inline: auto;
+	min-width: 0;
 }
 
 #app-content.azc-app--manager-time-entries .manager-scope-page__create .azc-card__header {
@@ -42,103 +41,7 @@
 	min-width: 0;
 }
 
-#app-content.azc-app--manager-time-entries .manager-scope-page__toolbar,
-#app-content.azc-app--manager-absences .manager-scope-page__toolbar {
-	padding: 0 0 var(--azc-space-4, 1rem);
-	margin: 0 0 var(--azc-space-4, 1rem);
-	border: none;
-	border-bottom: 1px solid var(--azc-border, var(--color-border));
-	border-radius: 0;
-	background: transparent;
-}
-
-#app-content.azc-app--manager-time-entries .manager-scope-page__filter-form,
-#app-content.azc-app--manager-absences .manager-scope-page__filter-form {
-	display: flex;
-	flex-direction: column;
-	gap: var(--azc-space-3, 0.75rem);
-	margin: 0;
-}
-
-/* Override global subgrid (breaks alignment with date-range row) */
-#app-content.azc-app--manager-time-entries .manager-scope-page__toolbar .manager-scope-page__filter-grid,
-#app-content.azc-app--manager-absences .manager-scope-page__toolbar .manager-scope-page__filter-grid {
-	display: grid;
-	grid-template-rows: auto;
-	align-items: end;
-	column-gap: var(--azc-space-4, 1rem);
-	row-gap: var(--azc-space-4, 1rem);
-	width: 100%;
-}
-
-#app-content.azc-app--manager-time-entries .manager-scope-page__toolbar .manager-scope-page__filter-grid {
-	grid-template-columns:
-		minmax(0, 1.05fr)
-		minmax(0, 1.35fr)
-		minmax(0, 0.9fr)
-		auto;
-}
-
-#app-content.azc-app--manager-absences .manager-scope-page__toolbar .manager-scope-page__filter-grid--extended {
-	grid-template-columns:
-		minmax(0, 1fr)
-		minmax(0, 1.2fr)
-		minmax(0, 0.8fr)
-		minmax(0, 0.8fr)
-		auto;
-}
-
-#app-content.azc-app--manager-time-entries .manager-scope-page__toolbar .azc-filter-field,
-#app-content.azc-app--manager-absences .manager-scope-page__toolbar .azc-filter-field {
-	display: flex;
-	flex-direction: column;
-	grid-row: auto;
-	gap: var(--azc-space-2, 0.5rem);
-	min-width: 0;
-}
-
-#app-content.azc-app--manager-time-entries .manager-scope-page__toolbar .azc-filter-field__control,
-#app-content.azc-app--manager-absences .manager-scope-page__toolbar .azc-filter-field__control {
-	justify-content: flex-start;
-	min-height: 0;
-}
-
-#app-content.azc-app--manager-time-entries .manager-scope-page__toolbar .azc-filter-field--dates .azc-filter-field__control,
-#app-content.azc-app--manager-absences .manager-scope-page__toolbar .azc-filter-field--dates .azc-filter-field__control {
-	min-height: 0;
-}
-
-#app-content.azc-app--manager-time-entries .manager-scope-page__toolbar .azc-filter-actions,
-#app-content.azc-app--manager-absences .manager-scope-page__toolbar .azc-filter-actions {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	align-self: end;
-	gap: var(--azc-space-2, 0.5rem);
-	grid-row: auto;
-	margin: 0;
-	padding-bottom: 0.1rem;
-}
-
-#app-content.azc-app--manager-time-entries .manager-scope-page__toolbar .azc-filter-actions .azc-btn,
-#app-content.azc-app--manager-absences .manager-scope-page__toolbar .azc-filter-actions .azc-btn {
-	flex: 0 1 auto;
-	min-width: 6.5rem;
-}
-
-#app-content.azc-app--manager-time-entries .manager-scope-page__toolbar-feedback,
-#app-content.azc-app--manager-absences .manager-scope-page__toolbar-feedback {
-	margin: 0;
-}
-
-#app-content.azc-app--manager-time-entries .manager-scope-page__toolbar-footnote,
-#app-content.azc-app--manager-absences .manager-scope-page__toolbar-footnote {
-	margin: 0;
-	max-width: 70ch;
-	font-size: var(--azc-fs-sm, 0.875rem);
-	line-height: var(--azc-line-base, 1.45);
-	color: var(--azc-muted, var(--color-text-maxcontrast));
-}
+/* Filter toolbar layout: css/common/manager-scope-filter.css (imported via app.css) */
 
 #app-content.azc-app--manager-time-entries .manager-scope-page__results .azc-empty-state,
 #app-content.azc-app--manager-absences .manager-scope-page__results .azc-empty-state {
@@ -192,50 +95,10 @@
 
 #app-content.azc-app--manager-time-entries .manager-scope-page .badge--past-record,
 #app-content.azc-app--manager-absences .manager-scope-page .badge--past-record {
-	display: inline-flex;
-	align-items: center;
 	margin-left: 0.35rem;
-	padding: 0.1rem 0.45rem;
-	border-radius: 999px;
-	font-size: 0.75rem;
-	font-weight: 600;
-	line-height: 1.25;
-	border: 1px solid color-mix(in srgb, var(--color-primary-element) 45%, var(--color-border));
-	background: color-mix(in srgb, var(--color-primary-element) 12%, var(--color-main-background));
-	color: var(--color-primary-element);
-}
-
-@media (max-width: 1100px) {
-	#app-content.azc-app--manager-absences .manager-scope-page__toolbar .manager-scope-page__filter-grid--extended {
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-	}
-
-	#app-content.azc-app--manager-absences .manager-scope-page__toolbar .azc-filter-actions {
-		grid-column: 1 / -1;
-		justify-content: flex-start;
-	}
 }
 
 @media (max-width: 768px) {
-	#app-content.azc-app--manager-time-entries .manager-scope-page__toolbar .manager-scope-page__filter-grid,
-	#app-content.azc-app--manager-absences .manager-scope-page__toolbar .manager-scope-page__filter-grid--extended {
-		grid-template-columns: 1fr;
-		align-items: stretch;
-	}
-
-	#app-content.azc-app--manager-time-entries .manager-scope-page__toolbar .azc-filter-actions,
-	#app-content.azc-app--manager-absences .manager-scope-page__toolbar .azc-filter-actions {
-		width: 100%;
-		justify-content: stretch;
-	}
-
-	#app-content.azc-app--manager-time-entries .manager-scope-page__toolbar .azc-filter-actions .azc-btn,
-	#app-content.azc-app--manager-absences .manager-scope-page__toolbar .azc-filter-actions .azc-btn {
-		flex: 1 1 auto;
-		min-width: 0;
-		min-height: 46px;
-	}
-
 	#app-content.azc-app--manager-time-entries .manager-scope-page__pagination,
 	#app-content.azc-app--manager-absences .manager-scope-page__pagination {
 		flex-direction: column;
@@ -249,18 +112,55 @@
 	}
 }
 
+/* Responsive results tables: card layout with readable long text columns */
+@media (max-width: 768px) {
+	#app-content.azc-app--manager-time-entries .manager-scope-page__results-table.azc-table--responsive tbody tr,
+	#app-content.azc-app--manager-absences .manager-scope-page__results-table.azc-table--responsive tbody tr {
+		padding: var(--azc-space-4, 1rem);
+		box-shadow: 0 1px 2px color-mix(in srgb, var(--color-main-text, #000) 6%, transparent);
+	}
+
+	#app-content.azc-app--manager-time-entries .manager-scope-page__results-table.azc-table--responsive tbody td,
+	#app-content.azc-app--manager-absences .manager-scope-page__results-table.azc-table--responsive tbody td {
+		align-items: flex-start;
+		gap: var(--azc-space-3, 0.75rem);
+	}
+
+	#app-content.azc-app--manager-time-entries .manager-scope-page__results-table.azc-table--responsive tbody td::before,
+	#app-content.azc-app--manager-absences .manager-scope-page__results-table.azc-table--responsive tbody td::before {
+		font-size: var(--azc-fs-sm, 0.875rem);
+		min-width: 6.5rem;
+		max-width: 45%;
+		padding-top: 0.1rem;
+	}
+
+	#app-content.azc-app--manager-time-entries .manager-scope-page__results-table.azc-table--responsive tbody td.description-cell,
+	#app-content.azc-app--manager-absences .manager-scope-page__results-table.azc-table--responsive tbody td.reason-cell,
+	#app-content.azc-app--manager-time-entries .manager-scope-page__results-table.azc-table--responsive tbody td.actions-cell {
+		flex-direction: column;
+		align-items: stretch;
+		text-align: left;
+	}
+
+	#app-content.azc-app--manager-time-entries .manager-scope-page__results-table.azc-table--responsive tbody td.description-cell::before,
+	#app-content.azc-app--manager-absences .manager-scope-page__results-table.azc-table--responsive tbody td.reason-cell::before,
+	#app-content.azc-app--manager-time-entries .manager-scope-page__results-table.azc-table--responsive tbody td.actions-cell::before {
+		max-width: none;
+	}
+
+	#app-content.azc-app--manager-time-entries .manager-scope-page__results-table.azc-table--responsive tbody td.actions-cell .azc-table-actions,
+	#app-content.azc-app--manager-time-entries .manager-scope-page__results-table.azc-table--responsive tbody td.actions-cell .azc-btn {
+		width: 100%;
+		justify-content: center;
+		min-height: 44px;
+	}
+}
+
 @media (max-width: 576px) {
 	#app-content.azc-app--manager-time-entries .manager-scope-page .table th,
 	#app-content.azc-app--manager-time-entries .manager-scope-page .table td,
 	#app-content.azc-app--manager-absences .manager-scope-page .table th,
 	#app-content.azc-app--manager-absences .manager-scope-page .table td {
 		padding: 0.625rem 0.75rem;
-	}
-}
-
-@media (forced-colors: active) {
-	#app-content.azc-app--manager-time-entries .manager-scope-page__toolbar,
-	#app-content.azc-app--manager-absences .manager-scope-page__toolbar {
-		border-bottom-color: CanvasText;
 	}
 }

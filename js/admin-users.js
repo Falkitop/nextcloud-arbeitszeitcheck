@@ -40,6 +40,162 @@
         return Number.isInteger(parsed) ? String(parsed) : String(Math.round(parsed * 100) / 100);
     }
 
+    function humanEntitlementLayerLabel(code, t) {
+        const key = String(code || '');
+        const labels = {
+            L0: t('organisationDefault', 'Organisation default'),
+            L1: t('workingTimeModelDefault', 'Working time model default'),
+            L2: t('teamPolicy', 'Team policy'),
+            L3: t('individualRule', 'Individual rule'),
+            legacy: t('legacyFallback', 'Legacy fallback (25 d.)'),
+            inherit: t('vacationModeInherit', 'Inherit from team / model / organisation'),
+        };
+        return labels[key] || key;
+    }
+
+    /**
+     * Plain-language summary for HR (never raw JSON).
+     *
+     * @param {object|string|null|undefined} trace
+     * @param {function(string, string): string} t
+     * @returns {string}
+     */
+    function buildEntitlementPreviewSummary(trace, t) {
+        if (!trace) {
+            return '';
+        }
+        if (typeof trace === 'string') {
+            return trace;
+        }
+        if (typeof trace !== 'object') {
+            return '';
+        }
+        if (trace.formula && trace.inputs) {
+            const workDays = trace.inputs.work_days_per_week;
+            const referenceDays = trace.inputs.reference_days;
+            const referenceWeekDays = trace.inputs.reference_week_days;
+            if (workDays && referenceDays && referenceWeekDays) {
+                return `${trace.formula} (${referenceDays}, ${workDays}/${referenceWeekDays})`;
+            }
+            return String(trace.formula);
+        }
+        const matched = trace.matched_layer || trace.winner?.layer;
+        if (matched) {
+            const layerLabel = humanEntitlementLayerLabel(matched, t);
+            const template = t(
+                'previewResolvedByLayer',
+                'Determined by: {layer}.'
+            );
+            return template.replace('{layer}', layerLabel);
+        }
+        const layers = Array.isArray(trace.layers_evaluated) ? trace.layers_evaluated : [];
+        const hit = layers.find((row) => row && row.matched === true);
+        if (hit && hit.layer) {
+            const layerLabel = humanEntitlementLayerLabel(hit.layer, t);
+            const days = hit.days != null ? formatPreviewDays(hit.days) : '';
+            const mode = hit.mode || hit.reason || '';
+            const parts = [t('previewResolvedByLayer', 'Determined by: {layer}.').replace('{layer}', layerLabel)];
+            if (days) {
+                parts.push(`${days} ${t('vacationDays', 'vacation days')}`);
+            }
+            if (mode) {
+                parts.push(String(mode));
+            }
+            return parts.join(' ');
+        }
+        if (trace.degraded) {
+            return t(
+                'previewDegradedHint',
+                'Resolution ran in a degraded state — open technical details or check layered vacation settings.'
+            );
+        }
+        return '';
+    }
+
+    /**
+     * Audit-oriented JSON for the optional &lt;details&gt; block only.
+     *
+     * @param {object|null|undefined} trace
+     * @returns {string}
+     */
+    function buildEntitlementPreviewTechnical(trace) {
+        if (!trace || typeof trace !== 'object') {
+            return '';
+        }
+        try {
+            const json = JSON.stringify(trace, null, 2);
+            return json && json !== '{}' ? json : '';
+        } catch (e) {
+            return '';
+        }
+    }
+
+    /**
+     * @param {number|string} days
+     * @param {string} sourceLabel
+     * @param {string} summaryText
+     * @param {object|string|null|undefined} traceObject
+     * @param {function(string, string): string} t
+     */
+    function paintEntitlementPreview(previewEl, days, sourceLabel, summaryText, traceObject, t) {
+        if (!previewEl) {
+            return;
+        }
+        const value = previewEl.querySelector('.entitlement-preview__value');
+        const meta = previewEl.querySelector('.entitlement-preview__meta');
+        const summary = previewEl.querySelector('.entitlement-preview__summary');
+        const details = previewEl.querySelector('.entitlement-preview__details');
+        const technical = previewEl.querySelector('.entitlement-preview__technical code');
+
+        if (value) {
+            value.textContent = `${formatPreviewDays(days)} ${t('vacationDays', 'vacation days')}`;
+        }
+        if (meta) {
+            meta.textContent = sourceLabel || '';
+        }
+
+        const summaryLine = summaryText
+            || buildEntitlementPreviewSummary(traceObject, t);
+        if (summary) {
+            summary.textContent = summaryLine;
+            summary.hidden = !summaryLine;
+        }
+
+        const technicalJson = buildEntitlementPreviewTechnical(
+            traceObject && typeof traceObject === 'object' ? traceObject : null
+        );
+        if (details) {
+            details.hidden = !technicalJson;
+        }
+        if (technical) {
+            technical.textContent = technicalJson;
+        }
+    }
+
+    function buildEntitlementPreviewHtml(entitlementPreview, t) {
+        const days = entitlementPreview ? formatPreviewDays(entitlementPreview.days) : '';
+        const valueText = entitlementPreview
+            ? `${days} ${t('vacationDays', 'vacation days')}`
+            : t('notAvailable', 'Not available');
+        const metaText = entitlementPreview
+            ? localizedEntitlementSourceLabel(entitlementPreview.source, t)
+            : '';
+        const trace = entitlementPreview?.calculationTrace || null;
+        const summaryText = buildEntitlementPreviewSummary(trace, t);
+        const technicalJson = buildEntitlementPreviewTechnical(trace);
+        const detailsBlock = technicalJson
+            ? `<details class="entitlement-preview__details">
+                    <summary>${Utils.escapeHtml(t('previewTechnicalDetails', 'Technical details (audit)'))}</summary>
+                    <pre class="entitlement-preview__technical"><code>${Utils.escapeHtml(technicalJson)}</code></pre>
+               </details>`
+            : '';
+
+        return `<p class="entitlement-preview__value">${Utils.escapeHtml(valueText)}</p>
+            <p class="entitlement-preview__meta">${Utils.escapeHtml(metaText)}</p>
+            <p class="entitlement-preview__summary"${summaryText ? '' : ' hidden'}>${Utils.escapeHtml(summaryText)}</p>
+            ${detailsBlock}`;
+    }
+
     /** Prefer server-injected l10n; window.t may be unavailable. */
     function auMsg(key, englishFallback) {
         const v = window.ArbeitszeitCheck?.l10n?.[key];
@@ -54,6 +210,15 @@
 
     let searchTimeout = null;
     const USERS_TABLE_COLS = 8;
+    const cfg = window.ArbeitszeitCheck && window.ArbeitszeitCheck.adminUsersConfig
+        ? window.ArbeitszeitCheck.adminUsersConfig
+        : {};
+    const USERS_PAGE_SIZE = Number(cfg.pageSize) > 0 ? Number(cfg.pageSize) : 50;
+    const USERS_MIN_SEARCH = Number(cfg.minSearchLength) >= 0 ? Number(cfg.minSearchLength) : 2;
+    let listOffset = Number(cfg.initialOffset) >= 0 ? Number(cfg.initialOffset) : 0;
+    let listSearch = '';
+    let listTotal = Number(cfg.initialTotal) >= 0 ? Number(cfg.initialTotal) : 0;
+    let listTruncated = false;
 
     function buildApiUrl(path) {
         if (Utils && typeof Utils.resolveUrl === 'function') {
@@ -89,6 +254,10 @@
      */
     function init() {
         bindEvents();
+        const initialShown = Number(cfg.initialShown) >= 0 ? Number(cfg.initialShown) : 0;
+        const initialTotal = Number(cfg.initialTotal) >= 0 ? Number(cfg.initialTotal) : initialShown;
+        listTotal = initialTotal;
+        updateUsersPagination(initialShown, initialTotal, {});
     }
 
     /**
@@ -102,7 +271,36 @@
 
         const refreshBtn = Utils.$('#refresh-users');
         if (refreshBtn) {
-            Utils.on(refreshBtn, 'click', function() { loadUsers(''); });
+            Utils.on(refreshBtn, 'click', function() {
+                const searchInput = Utils.$('#user-search');
+                if (searchInput) {
+                    searchInput.value = '';
+                }
+                listSearch = '';
+                listOffset = 0;
+                loadUsers();
+            });
+        }
+
+        const prevBtn = Utils.$('#users-page-prev');
+        const nextBtn = Utils.$('#users-page-next');
+        if (prevBtn) {
+            Utils.on(prevBtn, 'click', function() {
+                if (listOffset <= 0 || listSearch !== '') {
+                    return;
+                }
+                listOffset = Math.max(0, listOffset - USERS_PAGE_SIZE);
+                loadUsers();
+            });
+        }
+        if (nextBtn) {
+            Utils.on(nextBtn, 'click', function() {
+                if (listSearch !== '' || listOffset + USERS_PAGE_SIZE >= listTotal) {
+                    return;
+                }
+                listOffset += USERS_PAGE_SIZE;
+                loadUsers();
+            });
         }
 
         const editButtons = Utils.$$('[data-action="edit-user"]');
@@ -116,71 +314,116 @@
      */
     function handleSearch(e) {
         const query = e.target.value.trim();
+        listSearch = query;
+        listOffset = 0;
 
-        // Debounce search
         clearTimeout(searchTimeout);
-        searchTimeout = setTimeout(() => {
-            loadUsers(query);
+        searchTimeout = setTimeout(function() {
+            loadUsers();
         }, 300);
     }
 
     /**
-     * Load users from API
+     * Load users from API (paginated browse or search).
      */
-    function loadUsers(search = '') {
+    function loadUsers() {
         const tbody = Utils.$('#users-tbody');
-        if (!tbody) return;
+        if (!tbody) {
+            return;
+        }
 
-        if (search && typeof search === 'object' && typeof search.preventDefault === 'function') {
-            search = '';
+        const search = listSearch.trim();
+        if (search.length > 0 && search.length < USERS_MIN_SEARCH) {
+            tbody.innerHTML = '<tr><td colspan="' + USERS_TABLE_COLS + '" class="text-center">' + Utils.escapeHtml(auMsg('searchMinLength', 'Type at least 2 characters to search.')) + '</td></tr>';
+            updateUsersPagination(0, 0, { searchPending: true });
+            return;
         }
-        if (typeof search !== 'string') {
-            search = String(search || '');
-        }
-        search = search.trim();
 
         tbody.innerHTML = '<tr><td colspan="' + USERS_TABLE_COLS + '" class="text-center">' + auMsg('loadingEllipsis', 'Loading…') + '</td></tr>';
 
-        const url = buildApiUrl('/apps/arbeitszeitcheck/api/admin/users' + (search ? '?search=' + encodeURIComponent(search) : ''));
-        
+        const params = new URLSearchParams({ limit: String(USERS_PAGE_SIZE) });
+        if (search !== '') {
+            params.set('search', search);
+        } else {
+            params.set('offset', String(listOffset));
+        }
+        const url = buildApiUrl('/apps/arbeitszeitcheck/api/admin/users') + '?' + params.toString();
+
         Utils.ajax(url, {
             method: 'GET',
             onSuccess: function(data) {
                 if (data.success && data.users) {
-                    renderUsers(data.users, data.total);
+                    listTotal = Number.isFinite(data.total) ? Number(data.total) : data.users.length;
+                    listTruncated = !!data.truncated;
+                    if (typeof data.offset === 'number' && search === '') {
+                        listOffset = data.offset;
+                    }
+                    renderUsers(data.users, listTotal);
                 } else {
                     tbody.innerHTML = '<tr><td colspan="' + USERS_TABLE_COLS + '" class="text-center">' + auMsg('errorLoadingUsers', 'Error loading users') + '</td></tr>';
+                    updateUsersPagination(0, 0, {});
                 }
             },
-            onError: function(_error) {
+            onError: function() {
                 tbody.innerHTML = '<tr><td colspan="' + USERS_TABLE_COLS + '" class="text-center">' + auMsg('errorLoadingUsers', 'Error loading users') + '</td></tr>';
                 if (Messaging && Messaging.showError) {
                     Messaging.showError(auMsg('failedToLoadUsersRetry', 'Failed to load users. Please try again.'));
                 }
-            }
+                updateUsersPagination(0, 0, {});
+            },
         });
     }
 
-    function formatShowingEmployees(shown, total) {
-        const template = auMsg('showingEmployees', 'Showing {shown} of {total} employees');
-        return template
-            .replace('{shown}', String(shown))
-            .replace('{total}', String(total));
+    function formatPaginationText(shown, total, options) {
+        const opts = options || {};
+        if (opts.searchPending) {
+            return auMsg('searchMinLength', 'Type at least 2 characters to search.');
+        }
+        const count = Number.isFinite(shown) ? shown : 0;
+        const totalCount = Number.isFinite(total) ? total : count;
+        if (listSearch.trim() !== '') {
+            let text = auMsg('searchMatches', '{count} employees match your search')
+                .replace('{count}', String(count));
+            if (listTruncated || count >= USERS_PAGE_SIZE) {
+                text += ' ' + auMsg('searchRefineHint', 'More than {count} matches — refine your search to find a specific person.')
+                    .replace('{count}', String(count));
+            }
+            return text;
+        }
+        if (totalCount <= 0 || count <= 0) {
+            return auMsg('noUsersFound', 'No users found');
+        }
+        const from = listOffset + 1;
+        const to = listOffset + count;
+        return auMsg('showingEmployeesRange', 'Showing employees {from}–{to} of {total}')
+            .replace('{from}', String(from))
+            .replace('{to}', String(to))
+            .replace('{total}', String(totalCount));
     }
 
-    function updateUsersPagination(shown, total) {
+    function updateUsersPagination(shown, total, options) {
         const meta = document.getElementById('users-pagination');
-        if (!meta) {
-            return;
-        }
-        const shownCount = Number.isFinite(shown) ? shown : 0;
-        const totalCount = Number.isFinite(total) ? total : shownCount;
-        const text = formatShowingEmployees(shownCount, totalCount);
-        const p = meta.querySelector('p');
-        if (p) {
-            p.textContent = text;
-        } else {
+        const textEl = document.getElementById('users-pagination-text');
+        const pager = document.getElementById('users-pager');
+        const prevBtn = Utils.$('#users-page-prev');
+        const nextBtn = Utils.$('#users-page-next');
+        const text = formatPaginationText(shown, total, options);
+        if (textEl) {
+            textEl.textContent = text;
+        } else if (meta) {
             meta.textContent = text;
+        }
+
+        const browseMode = listSearch.trim() === '' && !(options && options.searchPending);
+        const showPager = browseMode && total > USERS_PAGE_SIZE;
+        if (pager) {
+            pager.hidden = !showPager;
+        }
+        if (prevBtn) {
+            prevBtn.disabled = !showPager || listOffset <= 0;
+        }
+        if (nextBtn) {
+            nextBtn.disabled = !showPager || listOffset + USERS_PAGE_SIZE >= total;
         }
     }
 
@@ -192,7 +435,7 @@
         if (!tbody) return;
 
         const totalCount = Number.isFinite(total) ? total : users.length;
-        updateUsersPagination(users.length, totalCount);
+        updateUsersPagination(users.length, totalCount, {});
 
         if (users.length === 0) {
             tbody.innerHTML = '<tr><td colspan="' + USERS_TABLE_COLS + '" class="text-center">' + auMsg('noUsersFound', 'No users found') + '</td></tr>';
@@ -215,27 +458,25 @@
             const stichtagCell = stichtag
                 ? `<span class="badge badge--info">${Utils.escapeHtml(formatDate(stichtag))}</span>`
                 : `<span class="badge badge--warning">${Utils.escapeHtml(auMsg('notSet', 'Not set'))}</span>`;
+            const td = (label, html, cls = '') => Utils.responsiveTd
+                ? Utils.responsiveTd(label, html, cls)
+                : `<td${cls ? ` class="${cls}"` : ''}>${html}</td>`;
             return `
             <tr data-user-id="${Utils.escapeHtml(user.userId)}">
-                <td>${Utils.escapeHtml(user.displayName)}</td>
-                <td>${Utils.escapeHtml(user.email || '-')}</td>
-                <td>
-                    ${user.workingTimeModel 
-                        ? Utils.escapeHtml(user.workingTimeModel.name) 
-                        : `<span class="text-muted">${auMsg('notAssigned', 'Not assigned')}</span>`}
-                </td>
-                <td>${Utils.escapeHtml(vacation)}</td>
-                <td>${Utils.escapeHtml(validity)}</td>
-                <td>${stichtagCell}</td>
-                <td>
-                    <span class="badge badge--${user.enabled ? 'success' : 'error'}">
-                        ${user.enabled 
+                ${td(auMsg('colName', 'Name'), Utils.escapeHtml(user.displayName))}
+                ${td(auMsg('colEmail', 'Email'), Utils.escapeHtml(user.email || '-'))}
+                ${td(auMsg('workingTimeModel', 'Working Time Model'), user.workingTimeModel
+                    ? Utils.escapeHtml(user.workingTimeModel.name)
+                    : `<span class="text-muted">${auMsg('notAssigned', 'Not assigned')}</span>`)}
+                ${td(auMsg('vacationDaysCol', 'Vacation days'), Utils.escapeHtml(vacation))}
+                ${td(auMsg('colValidFromTo', 'Valid from / to'), Utils.escapeHtml(validity))}
+                ${td(auMsg('colOvertimeStichtag', 'Overtime Stichtag'), stichtagCell)}
+                ${td(auMsg('status', 'Status'), `<span class="badge badge--${user.enabled ? 'success' : 'error'}">
+                        ${user.enabled
                         ? auMsg('enabled', 'Enabled')
                         : auMsg('disabled', 'Disabled')}
-                    </span>
-                </td>
-                <td class="azc-table-actions-col">
-                    <div class="user-actions azc-table-actions" role="group" aria-label="${Utils.escapeHtml(auMsg('actions', 'Actions'))}">
+                    </span>`)}
+                ${td(auMsg('actions', 'Actions'), `<div class="user-actions azc-table-actions" role="group" aria-label="${Utils.escapeHtml(auMsg('actions', 'Actions'))}">
                         <button type="button" class="btn btn--sm btn--tertiary" 
                             data-action="history-user" 
                             data-user-id="${Utils.escapeHtml(user.userId)}"
@@ -249,8 +490,7 @@
                             aria-label="${Utils.escapeHtml(auMsg('edit', 'Edit'))}">
                             ${Utils.escapeHtml(auMsg('edit', 'Edit'))}
                         </button>
-                    </div>
-                </td>
+                    </div>`, 'actions-cell')}
             </tr>
         `;
         }).join('');
@@ -377,11 +617,20 @@
                         const to = formatDate(item.endDate) || ongoingVal;
                         const status = item.isActive
                             ? '<span class="badge badge--success">' + activeVal + '</span>'
-                            : '<span class="badge">' + endedVal + '</span>';
-                        return '<tr><td>' + model + '</td><td>' + vacation + '</td><td>' + from + '</td><td>' + to + '</td><td>' + status + '</td></tr>';
+                            : '<span class="badge badge--secondary">' + endedVal + '</span>';
+                        const td = (label, html) => Utils.responsiveTd
+                            ? Utils.responsiveTd(label, html)
+                            : '<td>' + html + '</td>';
+                        return '<tr>'
+                            + td(workScheduleHdr, model)
+                            + td(vacationDaysHdr, vacation)
+                            + td(validFromHdr, from)
+                            + td(validToHdr, to)
+                            + td(statusHdr, status)
+                            + '</tr>';
                     }).join('');
                     contentEl.innerHTML = '<div class="table-container" role="region" aria-label="' + Utils.escapeHtml(t('assignmentHistory', 'Assignment history')) + '">' +
-                        '<table class="table table--hover history-modal__table" role="table" aria-label="' + Utils.escapeHtml(t('assignmentHistory', 'Assignment history')) + '">' +
+                        '<table class="table table--hover azc-table--responsive history-modal__table" role="table" aria-label="' + Utils.escapeHtml(t('assignmentHistory', 'Assignment history')) + '">' +
                         '<thead><tr>' +
                         '<th scope="col">' + workScheduleHdr + '</th>' +
                         '<th scope="col">' + vacationDaysHdr + '</th>' +
@@ -431,6 +680,7 @@
         const carryover = user.vacationCarryoverDays != null ? String(user.vacationCarryoverDays) : '0';
         const carryYear = user.vacationCarryoverYear != null ? String(user.vacationCarryoverYear) : String(new Date().getFullYear());
         const overtimeTrackingFrom = user.overtimeTrackingFrom || '';
+        const overtimeTrackingVal = (overtimeTrackingFrom && convertISOToEuropean(overtimeTrackingFrom)) || '';
         const overtimeOpening = user.overtimeOpeningBalanceHours != null ? String(user.overtimeOpeningBalanceHours) : '0';
         const overtimeOpeningYear = user.overtimeOpeningBalanceYear != null ? String(user.overtimeOpeningBalanceYear) : String(new Date().getFullYear());
         const startIso = user.workingTimeModelStartDate ?? user.userWorkingTimeModel?.startDate ?? null;
@@ -440,7 +690,15 @@
         const currentState = user.germanState || '';
         const policy = user.vacationPolicy || {};
         const inheritLowerLayers = !!policy.inheritLowerLayers;
-        const rawMode = policy.vacationMode || 'manual_fixed';
+        // A user without an explicit L3 policy already resolves entitlement by
+        // falling through to the lower layers (team → model → organisation →
+        // legacy default). Reflect that reality by defaulting the dropdown to
+        // "inherit" instead of "manual_fixed": the latter would require a
+        // manual-days value the operator never entered and would make a
+        // no-op "open and save" fail server-side validation (the historic
+        // "Benutzer konnte nicht aktualisiert werden" bug).
+        const hasExplicitPolicy = !!(user.vacationPolicy && user.vacationPolicy.vacationMode);
+        const rawMode = hasExplicitPolicy ? (policy.vacationMode || 'manual_fixed') : 'inherit';
         // REQ-WF-04 — surface the "inherit" sentinel as a first-class option in
         // the dropdown so HR can flip an individual into "follow team/model/org"
         // without having to know that empty fields + manual_fixed magically mean
@@ -451,6 +709,9 @@
         const ruleSetId = policy.tariffRuleSetId != null ? String(policy.tariffRuleSetId) : '';
         const overrideReason = policy.overrideReason || '';
         const entitlementPreview = user.entitlementPreview || null;
+        const timeCapture = user.timeCapture || {};
+        const clockStampingEnabled = timeCapture.clockStampingEnabled !== false;
+        const manualTimeEntryEnabled = timeCapture.manualTimeEntryEnabled !== false;
 
         let modelOptions = `<option value="">${noModelLabel}</option>`;
         models.forEach(model => {
@@ -468,7 +729,7 @@
         let tariffRuleSetOptions = `<option value="">${Utils.escapeHtml(t('notAvailable', 'Not available'))}</option>`;
         (Array.isArray(ruleSets) ? ruleSets : []).forEach(ruleSet => {
             const id = String(ruleSet.id || '');
-            if (!id) {
+            if (!id || !Utils.isAssignableTariffRuleSet(ruleSet, { keepId: ruleSetId })) {
                 return;
             }
             const selected = ruleSetId === id ? 'selected' : '';
@@ -478,9 +739,15 @@
             tariffRuleSetOptions += `<option value="${Utils.escapeHtml(id)}" ${selected}>${Utils.escapeHtml(label)}</option>`;
         });
 
+        const policyId = policy.id != null ? String(policy.id) : '';
+        const policyEffectiveFromIso = policy.effectiveFrom || '';
+
         const formContent = `
             <form id="edit-user-form" class="form">
                 <input type="hidden" id="user-id" name="userId" value="${Utils.escapeHtml(user.userId)}">
+                <input type="hidden" id="user-vacation-policy-id" name="vacationPolicyId" value="${Utils.escapeHtml(policyId)}">
+                <input type="hidden" id="user-loaded-wtm-start" name="loadedWtmStart" value="${Utils.escapeHtml(startIso || '')}">
+                <input type="hidden" id="user-policy-effective-from" name="policyEffectiveFrom" value="${Utils.escapeHtml(policyEffectiveFromIso)}">
                 <div class="user-edit-steps" role="note">
                     <p class="user-edit-steps__title">${Utils.escapeHtml(t('quickSetupTitle', 'Quick setup in 3 steps'))}</p>
                     <ol class="user-edit-steps__list">
@@ -505,6 +772,27 @@
                     </select>
                     <p id="user-german-state-help" class="form-help">${germanStateHelp}</p>
                 </div>
+                </section>
+                <section class="user-edit-section user-edit-section--capture" aria-labelledby="user-edit-capture-heading">
+                    <h3 id="user-edit-capture-heading" class="user-edit-section__heading">${Utils.escapeHtml(t('timeRecordingMethods', 'Time recording'))}</h3>
+                    <p id="user-edit-capture-intro" class="form-help user-edit-capture__intro">${Utils.escapeHtml(t('timeRecordingMethodsIntro', 'Choose how this employee may record working time. At least one method must stay enabled.'))}</p>
+                    <div class="user-edit-capture__grid" role="group" aria-labelledby="user-edit-capture-heading" aria-describedby="user-edit-capture-intro user-edit-capture-error">
+                        <label class="user-edit-capture__card">
+                            <input type="checkbox" id="user-clock-stamping" name="clockStampingEnabled" value="1" class="user-edit-capture__checkbox"${clockStampingEnabled ? ' checked' : ''}>
+                            <span class="user-edit-capture__card-body">
+                                <span class="user-edit-capture__card-title">${Utils.escapeHtml(t('clockStampingLabel', 'Clock in / out (stamping)'))}</span>
+                                <span class="user-edit-capture__card-text">${Utils.escapeHtml(t('clockStampingHelp', 'Live punch clock on the dashboard and in the mobile app.'))}</span>
+                            </span>
+                        </label>
+                        <label class="user-edit-capture__card">
+                            <input type="checkbox" id="user-manual-entry" name="manualTimeEntryEnabled" value="1" class="user-edit-capture__checkbox"${manualTimeEntryEnabled ? ' checked' : ''}>
+                            <span class="user-edit-capture__card-body">
+                                <span class="user-edit-capture__card-title">${Utils.escapeHtml(t('manualTimeEntryLabel', 'Manual time entries'))}</span>
+                                <span class="user-edit-capture__card-text">${Utils.escapeHtml(t('manualTimeEntryHelp', 'Add completed work blocks by date and time in the web app.'))}</span>
+                            </span>
+                        </label>
+                    </div>
+                    <p id="user-edit-capture-error" class="form-error user-edit-capture__error" role="alert" hidden></p>
                 </section>
                 <section class="user-edit-section" aria-labelledby="user-edit-vacation-heading">
                     <h3 id="user-edit-vacation-heading" class="user-edit-section__heading">${Utils.escapeHtml(t('vacationDays', 'Vacation days'))}</h3>
@@ -543,9 +831,7 @@
                 <div class="form-group">
                     <label class="form-label">${t('effectiveEntitlement', 'Effective entitlement preview')}</label>
                     <div id="user-entitlement-preview" class="entitlement-preview" aria-live="polite">
-                        <p class="entitlement-preview__value">${entitlementPreview ? Utils.escapeHtml(formatPreviewDays(entitlementPreview.days) + ' ' + t('vacationDays', 'vacation days')) : Utils.escapeHtml(t('notAvailable', 'Not available'))}</p>
-                        <p class="entitlement-preview__meta">${entitlementPreview ? Utils.escapeHtml(localizedEntitlementSourceLabel(entitlementPreview.source, t)) : ''}</p>
-                        <p class="entitlement-preview__trace">${entitlementPreview?.calculationTrace ? Utils.escapeHtml(JSON.stringify(entitlementPreview.calculationTrace)) : ''}</p>
+                        ${buildEntitlementPreviewHtml(entitlementPreview, t)}
                     </div>
                 </div>
                 <div class="form-group">
@@ -565,8 +851,8 @@
                     <h3 id="user-edit-overtime-heading" class="user-edit-section__heading">${Utils.escapeHtml(t('overtimeSettings', 'Overtime balance'))}</h3>
                 <div class="form-group">
                     <label for="user-overtime-tracking-from" class="form-label">${Utils.escapeHtml(t('overtimeTrackingFrom', 'Overtime tracking from (Stichtag)'))}</label>
-                    <input type="date" id="user-overtime-tracking-from" name="overtimeTrackingFrom" class="form-input" value="${Utils.escapeHtml(overtimeTrackingFrom)}" aria-describedby="user-overtime-tracking-from-help">
-                    <p id="user-overtime-tracking-from-help" class="form-help">${Utils.escapeHtml(t('overtimeTrackingFromHelp', 'Leave empty for legacy calculation from 1 January. When set, year-to-date overtime counts only from this date.'))}</p>
+                    <input type="text" id="user-overtime-tracking-from" name="overtimeTrackingFrom" class="form-input datepicker-input" placeholder="${datePlaceholder}" pattern="\\d{2}\\.\\d{2}\\.\\d{4}" maxlength="10" value="${Utils.escapeHtml(overtimeTrackingVal)}" autocomplete="off" aria-describedby="user-overtime-tracking-from-help">
+                    <p id="user-overtime-tracking-from-help" class="form-help">${Utils.escapeHtml(t('overtimeTrackingFromHelp', 'Leave empty for legacy calculation from 1 January. When set, year-to-date overtime counts only from this date.'))} ${Utils.escapeHtml(t('formatDdmmyyyy', 'Format: dd.mm.yyyy'))}</p>
                 </div>
                 <div class="form-group">
                     <label for="user-overtime-opening" class="form-label">${Utils.escapeHtml(t('overtimeOpeningBalance', 'Opening overtime balance (hours)'))}</label>
@@ -614,10 +900,12 @@
 
         const dp = window.ArbeitszeitCheckDatepicker;
         if (dp && dp.initializeDatepicker) {
-            const startEl = document.getElementById('user-start-date');
-            const endEl = document.getElementById('user-end-date');
-            if (startEl) dp.initializeDatepicker(startEl, {});
-            if (endEl) dp.initializeDatepicker(endEl, {});
+            ['user-start-date', 'user-end-date', 'user-overtime-tracking-from'].forEach((id) => {
+                const el = document.getElementById(id);
+                if (el) {
+                    dp.initializeDatepicker(el, {});
+                }
+            });
         }
 
         const form = document.getElementById('edit-user-form');
@@ -636,25 +924,14 @@
         const previewEl = document.getElementById('user-entitlement-preview');
         const startDateEl = document.getElementById('user-start-date');
         let previewTimer = null;
-        const dpForPreview = window.ArbeitszeitCheckDatepicker;
-        const previewToISO = dpForPreview ? dpForPreview.convertEuropeanToISO : function(s) { return s; };
+        const previewToISO = resolveToISO();
 
-        const renderEntitlementPreview = function(days, sourceLabel, traceText) {
-            if (!previewEl) {
-                return;
-            }
-            const value = previewEl.querySelector('.entitlement-preview__value');
-            const meta = previewEl.querySelector('.entitlement-preview__meta');
-            const trace = previewEl.querySelector('.entitlement-preview__trace');
-            if (value) {
-                value.textContent = `${formatPreviewDays(days)} ${t('vacationDays', 'vacation days')}`;
-            }
-            if (meta) {
-                meta.textContent = sourceLabel || '';
-            }
-            if (trace) {
-                trace.textContent = traceText || '';
-            }
+        const renderEntitlementPreview = function(days, sourceLabel, summaryOrTrace, traceObject) {
+            const summaryText = typeof summaryOrTrace === 'string' ? summaryOrTrace : '';
+            const trace = traceObject != null
+                ? traceObject
+                : (typeof summaryOrTrace === 'object' ? summaryOrTrace : null);
+            paintEntitlementPreview(previewEl, days, sourceLabel, summaryText, trace, t);
         };
 
         const getSelectedModel = function() {
@@ -672,18 +949,33 @@
             // can't predict that, so we always ask the engine.
             if (mode === 'manual_fixed' || mode === 'manual_exception') {
                 const days = Number.isFinite(manualDaysVal) ? manualDaysVal : 0;
-                renderEntitlementPreview(days, localizedEntitlementSourceLabel(mode === 'manual_exception' ? 'manual_exception' : 'manual', t), t('previewTraceManual', 'Uses manually entered annual days.'));
+                renderEntitlementPreview(
+                    days,
+                    localizedEntitlementSourceLabel(mode === 'manual_exception' ? 'manual_exception' : 'manual', t),
+                    t('previewTraceManual', 'Uses manually entered annual days.'),
+                    null
+                );
                 return;
             }
             if (mode === 'model_based_simple') {
                 const selectedModel = getSelectedModel();
                 const workDaysPerWeek = Number(selectedModel?.workDaysPerWeek || 5);
                 const days = 30 * (workDaysPerWeek / 5);
-                renderEntitlementPreview(days, localizedEntitlementSourceLabel('simple_model', t), t('previewTraceModel', 'Formula: 30 × (work days per week ÷ 5).'));
+                renderEntitlementPreview(
+                    days,
+                    localizedEntitlementSourceLabel('simple_model', t),
+                    t('previewTraceModel', 'Formula: 30 × (work days per week ÷ 5).'),
+                    null
+                );
                 return;
             }
             if (mode === 'tariff_rule_based' && !(tariffRuleSetEl?.value)) {
-                renderEntitlementPreview(0, t('sourceTariff', 'Tariff'), t('previewSelectTariffRuleSet', 'Select a tariff rule set to see the preview.'));
+                renderEntitlementPreview(
+                    0,
+                    t('sourceTariff', 'Tariff'),
+                    t('previewSelectTariffRuleSet', 'Select a tariff rule set to see the preview.'),
+                    null
+                );
                 return;
             }
 
@@ -704,26 +996,30 @@
                 data: payload,
                 onSuccess: function(resp) {
                     if (!resp || !resp.success) {
-                        renderEntitlementPreview(0, t('notAvailable', 'Not available'), resp?.error || t('previewTraceError', 'Preview unavailable.'));
+                        renderEntitlementPreview(
+                            0,
+                            t('notAvailable', 'Not available'),
+                            resp?.error || t('previewTraceError', 'Preview unavailable.'),
+                            null
+                        );
                         return;
                     }
                     const src = localizedEntitlementSourceLabel(resp.source, t);
-                    let traceText = '';
-                    const trace = resp.calculationTrace || {};
-                    if (trace?.formula && trace?.inputs) {
-                        const workDays = trace.inputs.work_days_per_week;
-                        const referenceDays = trace.inputs.reference_days;
-                        const referenceWeekDays = trace.inputs.reference_week_days;
-                        if (workDays && referenceDays && referenceWeekDays) {
-                            traceText = `${trace.formula} (${referenceDays}, ${workDays}/${referenceWeekDays})`;
-                        } else {
-                            traceText = String(trace.formula);
-                        }
-                    }
-                    renderEntitlementPreview(resp.effectiveEntitlementDays || 0, src, traceText);
+                    const trace = resp.calculationTrace || null;
+                    renderEntitlementPreview(
+                        resp.effectiveEntitlementDays || 0,
+                        src,
+                        buildEntitlementPreviewSummary(trace, t),
+                        trace
+                    );
                 },
                 onError: function() {
-                    renderEntitlementPreview(0, t('notAvailable', 'Not available'), t('previewTraceError', 'Preview unavailable.'));
+                    renderEntitlementPreview(
+                        0,
+                        t('notAvailable', 'Not available'),
+                        t('previewTraceError', 'Preview unavailable.'),
+                        null
+                    );
                 }
             });
         };
@@ -769,10 +1065,298 @@
         });
         triggerPreview();
 
+        bindTimeCaptureValidation(form);
+
         const cancelBtn = modal.querySelector('[data-action="close-modal"]');
         if (cancelBtn) {
             cancelBtn.addEventListener('click', function() { Components.closeModal(modal); });
         }
+    }
+
+    function bindTimeCaptureValidation(form) {
+        const clockEl = form.querySelector('#user-clock-stamping');
+        const manualEl = form.querySelector('#user-manual-entry');
+        const errorEl = form.querySelector('#user-edit-capture-error');
+        if (!clockEl || !manualEl || !errorEl) {
+            return;
+        }
+        const validate = () => {
+            const ok = clockEl.checked || manualEl.checked;
+            errorEl.hidden = ok;
+            if (!ok) {
+                errorEl.textContent = auMsg(
+                    'timeCaptureAtLeastOne',
+                    'Enable clock in/out or manual time entries — at least one method is required.'
+                );
+            }
+            return ok;
+        };
+        clockEl.addEventListener('change', validate);
+        manualEl.addEventListener('change', validate);
+        form.addEventListener('submit', (event) => {
+            if (!validate()) {
+                event.preventDefault();
+                errorEl.focus();
+            }
+        });
+    }
+
+    function readTimeCapturePayload(form) {
+        const clockEl = form.querySelector('#user-clock-stamping');
+        const manualEl = form.querySelector('#user-manual-entry');
+        return {
+            clockStampingEnabled: !!(clockEl && clockEl.checked),
+            manualTimeEntryEnabled: !!(manualEl && manualEl.checked),
+        };
+    }
+
+    /**
+     * Remove every inline field error previously rendered by {@link setFieldError}
+     * and reset the related ARIA wiring so re-validation starts from a clean slate.
+     */
+    function clearFieldErrors(form) {
+        if (!form) {
+            return;
+        }
+        form.querySelectorAll('.field-error[data-field-error]').forEach((el) => {
+            const ownerId = el.getAttribute('data-field-error');
+            const owner = ownerId ? form.querySelector('#' + escapeSelector(ownerId)) : null;
+            if (owner) {
+                owner.removeAttribute('aria-invalid');
+                owner.classList.remove('form-input--error');
+                const tokens = (owner.getAttribute('aria-describedby') || '')
+                    .split(/\s+/)
+                    .filter((token) => token && token !== el.id);
+                if (tokens.length) {
+                    owner.setAttribute('aria-describedby', tokens.join(' '));
+                } else {
+                    owner.removeAttribute('aria-describedby');
+                }
+            }
+            el.remove();
+        });
+    }
+
+    /** Minimal CSS.escape fallback so we can target generated ids safely. */
+    function escapeSelector(value) {
+        if (window.CSS && typeof window.CSS.escape === 'function') {
+            return window.CSS.escape(value);
+        }
+        return String(value).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
+    }
+
+    /**
+     * Render an accessible, screen-reader-announced error directly beneath the
+     * offending field and link it via aria-describedby. Returns the field so
+     * callers can track the first invalid control for focus management.
+     */
+    function setFieldError(field, message) {
+        if (!field) {
+            return null;
+        }
+        const group = field.closest('.form-group') || field.parentNode;
+        if (!group) {
+            return field;
+        }
+        const fieldId = field.id || ('azc-field-' + Math.random().toString(36).slice(2));
+        if (!field.id) {
+            field.id = fieldId;
+        }
+        const errorId = fieldId + '-field-error';
+        let errorEl = group.querySelector('.field-error[data-field-error="' + fieldId + '"]');
+        if (!errorEl) {
+            errorEl = document.createElement('p');
+            errorEl.className = 'field-error';
+            errorEl.id = errorId;
+            errorEl.setAttribute('role', 'alert');
+            errorEl.setAttribute('data-field-error', fieldId);
+            group.appendChild(errorEl);
+        }
+        errorEl.textContent = message;
+        field.setAttribute('aria-invalid', 'true');
+        field.classList.add('form-input--error');
+        const tokens = (field.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
+        if (!tokens.includes(errorId)) {
+            tokens.push(errorId);
+            field.setAttribute('aria-describedby', tokens.join(' '));
+        }
+        return field;
+    }
+
+    /** Map server-side validation keys to form controls for inline feedback. */
+    const SERVER_FIELD_SELECTORS = {
+        manualDays: '#user-manual-days',
+        tariffRuleSetId: '#user-tariff-rule-set-id',
+        overrideReason: '#user-override-reason',
+        vacationMode: '#user-vacation-mode',
+        effectiveFrom: '#user-start-date',
+        effectiveTo: '#user-end-date',
+        startDate: '#user-start-date',
+        endDate: '#user-end-date',
+        trackingFrom: '#user-overtime-tracking-from',
+        openingBalanceYear: '#user-overtime-opening-year',
+        openingBalanceHours: '#user-overtime-opening',
+    };
+
+    /**
+     * Paint field-level errors returned by PUT …/profile ({ errors: { field: msg } }).
+     *
+     * @returns {HTMLElement|null} first field marked invalid
+     */
+    function applyServerFieldErrors(form, errors) {
+        if (!form || !errors || typeof errors !== 'object') {
+            return null;
+        }
+        let firstInvalid = null;
+        Object.keys(errors).forEach((key) => {
+            const selector = SERVER_FIELD_SELECTORS[key];
+            const field = selector ? form.querySelector(selector) : null;
+            const raw = errors[key];
+            const message = Array.isArray(raw) ? String(raw[0] || '') : String(raw || '');
+            if (!message) {
+                return;
+            }
+            const marked = setFieldError(field, message);
+            if (!firstInvalid && marked) {
+                firstInvalid = marked;
+            }
+        });
+        return firstInvalid;
+    }
+
+    /**
+     * Validate the whole edit-user form on the client BEFORE any request is sent.
+     *
+     * The save uses a single atomic profile endpoint; client validation still
+     * prevents round-trips and surfaces specific, localized, accessible messages.
+     *
+     * @returns {HTMLElement|null} the first invalid field, or null when valid.
+     */
+    function validateUserEditForm(form) {
+        clearFieldErrors(form);
+        let firstInvalid = null;
+        const markInvalid = (field, message) => {
+            const marked = setFieldError(field, message);
+            if (!firstInvalid && marked) {
+                firstInvalid = marked;
+            }
+        };
+
+        // 1. Time recording: at least one method must remain enabled. Reuse the
+        // dedicated capture error region so live and submit feedback stay aligned.
+        const clockEl = form.querySelector('#user-clock-stamping');
+        const manualEl = form.querySelector('#user-manual-entry');
+        const captureErrorEl = form.querySelector('#user-edit-capture-error');
+        if (clockEl && manualEl && !clockEl.checked && !manualEl.checked) {
+            if (captureErrorEl) {
+                captureErrorEl.hidden = false;
+                captureErrorEl.textContent = auMsg('timeCaptureAtLeastOne', 'Enable clock in/out or manual time entries — at least one method is required.');
+            }
+            if (!firstInvalid) {
+                firstInvalid = clockEl;
+            }
+        } else if (captureErrorEl) {
+            captureErrorEl.hidden = true;
+        }
+
+        // 2. Vacation calculation mode cross-field requirements (mirror the server).
+        const modeEl = form.querySelector('#user-vacation-mode');
+        const mode = String(modeEl?.value || 'inherit');
+        const manualDaysEl = form.querySelector('#user-manual-days');
+        const tariffEl = form.querySelector('#user-tariff-rule-set-id');
+        const reasonEl = form.querySelector('#user-override-reason');
+        if (mode === 'manual_fixed' || mode === 'manual_exception') {
+            const days = parseLocalizedDecimal(manualDaysEl?.value);
+            if (days === undefined) {
+                markInvalid(manualDaysEl, auMsg('manualDaysRequired', 'Enter the annual vacation days (e.g. 30 or 24.5).'));
+            } else if (days < 0 || days > 366) {
+                markInvalid(manualDaysEl, auMsg('manualDaysRange', 'Vacation days must be between 0 and 366.'));
+            }
+        }
+        if (mode === 'manual_exception' && !(reasonEl?.value || '').trim()) {
+            markInvalid(reasonEl, auMsg('overrideReasonRequired', 'A reason is required for a manual exception.'));
+        }
+        if (mode === 'tariff_rule_based' && !(tariffEl?.value || '')) {
+            markInvalid(tariffEl, auMsg('tariffRuleSetRequired', 'Select a tariff rule set.'));
+        }
+
+        // 3. Legacy "vacation days per year" assignment field (0–365, integer).
+        const vacationDaysEl = form.querySelector('#user-vacation-days');
+        if (vacationDaysEl && String(vacationDaysEl.value || '').trim() !== '') {
+            const n = Number(vacationDaysEl.value);
+            if (!Number.isFinite(n) || n < 0 || n > 365) {
+                markInvalid(vacationDaysEl, auMsg('vacationDaysRange', 'Vacation days per year must be between 0 and 365.'));
+            }
+        }
+
+        // 4. Vacation carryover (Resturlaub) days + year.
+        const carryoverEl = form.querySelector('#user-vacation-carryover');
+        if (carryoverEl && String(carryoverEl.value || '').trim() !== '') {
+            const carry = parseLocalizedDecimal(carryoverEl.value);
+            if (carry === undefined || carry < 0 || carry > 366) {
+                markInvalid(carryoverEl, auMsg('carryoverRange', 'Carryover must be a number between 0 and 366.'));
+            }
+        }
+        const carryoverYearEl = form.querySelector('#user-vacation-carryover-year');
+        if (carryoverYearEl && String(carryoverYearEl.value || '').trim() !== '') {
+            if (!/^\d{4}$/.test(String(carryoverYearEl.value).trim())) {
+                markInvalid(carryoverYearEl, auMsg('yearFourDigitsHelp', 'Enter a four-digit year (e.g. 2026).'));
+            } else {
+                const y = parseInt(carryoverYearEl.value, 10);
+                if (y < 2000 || y > 2100) {
+                    markInvalid(carryoverYearEl, auMsg('yearRange2000', 'Year must be between 2000 and 2100.'));
+                }
+            }
+        }
+
+        // 5. Overtime opening balance year (required, four digits, 2000–2100) + hours.
+        const otYearEl = form.querySelector('#user-overtime-opening-year');
+        const otYearRaw = String(otYearEl?.value || '').trim();
+        if (!/^\d{4}$/.test(otYearRaw)) {
+            markInvalid(otYearEl, auMsg('yearFourDigitsHelp', 'Enter a four-digit year (e.g. 2026).'));
+        } else {
+            const y = parseInt(otYearRaw, 10);
+            if (y < 2000 || y > 2100) {
+                markInvalid(otYearEl, auMsg('openingBalanceYearRange', 'Opening balance year must be between 2000 and 2100.'));
+            }
+        }
+        const otHoursEl = form.querySelector('#user-overtime-opening');
+        if (otHoursEl && String(otHoursEl.value || '').trim() !== '') {
+            const hours = parseLocalizedDecimal(otHoursEl.value);
+            if (hours === undefined || hours < -9999 || hours > 9999) {
+                markInvalid(otHoursEl, auMsg('openingBalanceHoursRange', 'Opening balance hours must be a number between -9999 and 9999.'));
+            }
+        }
+
+        // 6. Assignment validity window: strict ISO after dd.mm.yyyy conversion (never
+        // send unconverted German dates to the API — see issue #15 / CHANGELOG 1.3.13).
+        const startEl = form.querySelector('#user-start-date');
+        const endEl = form.querySelector('#user-end-date');
+        const toISO = resolveToISO();
+        const isIso = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+        const assertValidOptionalDate = (field, raw) => {
+            const trimmed = String(raw || '').trim();
+            if (!trimmed) {
+                return;
+            }
+            if (!isIso(toISO(trimmed))) {
+                markInvalid(
+                    field,
+                    auMsg('invalidDateDdmmyyyy', 'Please enter a valid date (dd.mm.yyyy).')
+                );
+            }
+        };
+        assertValidOptionalDate(startEl, startEl?.value);
+        assertValidOptionalDate(endEl, endEl?.value);
+        const trackingEl = form.querySelector('#user-overtime-tracking-from');
+        assertValidOptionalDate(trackingEl, trackingEl?.value);
+        const startIso = toISO(String(startEl?.value || '').trim());
+        const endIso = toISO(String(endEl?.value || '').trim());
+        if (isIso(startIso) && isIso(endIso) && endIso < startIso) {
+            markInvalid(endEl, auMsg('endDateAfterStart', 'The end date must be on or after the start date.'));
+        }
+
+        return firstInvalid;
     }
 
     /**
@@ -784,13 +1368,53 @@
         return p[2] + '.' + p[1] + '.' + p[0];
     }
 
-    function handleUpdateUser(form, userId) {
-        const formData = new FormData(form);
+    /**
+     * Resolve a European→ISO date converter. Prefer the shared datepicker module
+     * but fall back to a local implementation so the save never sends an
+     * unconverted `dd.mm.yyyy` value to the strict server-side parser (the
+     * historic cause of the "Benutzer konnte nicht aktualisiert werden" 400 when
+     * the datepicker asset failed to load).
+     */
+    function resolveToISO() {
         const dp = window.ArbeitszeitCheckDatepicker;
-        const toISO = dp ? dp.convertEuropeanToISO : function(s) { return s; };
-        const data = {
-            workingTimeModelId: formData.get('workingTimeModelId') ? parseInt(formData.get('workingTimeModelId')) : null,
-            vacationDaysPerYear: formData.get('vacationDaysPerYear') ? parseInt(formData.get('vacationDaysPerYear')) : null,
+        if (dp && typeof dp.convertEuropeanToISO === 'function') {
+            return dp.convertEuropeanToISO;
+        }
+        return convertEuropeanToISOLocal;
+    }
+
+    function convertEuropeanToISOLocal(value) {
+        const s = String(value == null ? '' : value).trim();
+        if (!s) return '';
+        // Already ISO — leave untouched.
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+        const m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+        if (!m) return s;
+        const day = m[1].padStart(2, '0');
+        const month = m[2].padStart(2, '0');
+        const year = m[3];
+        return year + '-' + month + '-' + day;
+    }
+
+    function todayYmd() {
+        if (window.ArbeitszeitCheckTime && typeof window.ArbeitszeitCheckTime.todayYmd === 'function') {
+            return window.ArbeitszeitCheckTime.todayYmd();
+        }
+        return new Date().toISOString().slice(0, 10);
+    }
+
+    /**
+     * Build the four independent payloads from the validated form. Field-level
+     * validity is assumed (see {@link validateUserEditForm}); this function only
+     * shapes the data for the respective endpoints.
+     */
+    function buildUpdatePayloads(form) {
+        const formData = new FormData(form);
+        const toISO = resolveToISO();
+
+        const workingTimeModel = {
+            workingTimeModelId: formData.get('workingTimeModelId') ? parseInt(formData.get('workingTimeModelId'), 10) : null,
+            vacationDaysPerYear: formData.get('vacationDaysPerYear') ? parseInt(formData.get('vacationDaysPerYear'), 10) : null,
             vacationCarryoverDays: formData.get('vacationCarryoverDays') !== null && formData.get('vacationCarryoverDays') !== ''
                 ? parseLocalizedDecimal(formData.get('vacationCarryoverDays'))
                 : undefined,
@@ -799,94 +1423,112 @@
             endDate: toISO(formData.get('endDate') || '') || null,
             germanState: (formData.get('germanState') || '').toString()
         };
-        const vacationPolicyPayload = {
-            vacationMode: (formData.get('vacationMode') || 'manual_fixed').toString(),
-            inheritLowerLayers: (formData.get('vacationMode') || '').toString() === 'inherit',
-            manualDays: parseLocalizedDecimal(formData.get('manualDays')),
-            tariffRuleSetId: formData.get('tariffRuleSetId') ? parseInt(String(formData.get('tariffRuleSetId')), 10) : null,
-            overrideReason: (formData.get('overrideReason') || '').toString(),
-            effectiveFrom: data.startDate || (window.ArbeitszeitCheckTime ? window.ArbeitszeitCheckTime.todayYmd() : new Date().toISOString().slice(0, 10)),
-            effectiveTo: data.endDate || null
+
+        const mode = (formData.get('vacationMode') || 'inherit').toString();
+        const isInherit = mode === 'inherit';
+        const isManual = mode === 'manual_fixed' || mode === 'manual_exception';
+        const policyIdRaw = formData.get('vacationPolicyId');
+        const policyId = policyIdRaw && String(policyIdRaw).trim() !== ''
+            ? parseInt(String(policyIdRaw), 10)
+            : null;
+        const loadedWtmStart = String(formData.get('loadedWtmStart') || '').trim();
+        const policyEffectiveFrom = String(formData.get('policyEffectiveFrom') || '').trim();
+        const newStartIso = workingTimeModel.startDate || '';
+        // Keep the existing policy row when the assignment start date did not change.
+        // Using only the work-schedule start date would spawn duplicate policy rows on
+        // every no-op save (effective_from drift vs. the row being edited).
+        let vacationEffectiveFrom = newStartIso || todayYmd();
+        if (policyId && policyEffectiveFrom && loadedWtmStart && newStartIso === loadedWtmStart) {
+            vacationEffectiveFrom = policyEffectiveFrom;
+        }
+        const vacationPolicy = {
+            policyId: policyId,
+            vacationMode: mode,
+            inheritLowerLayers: isInherit,
+            manualDays: (!isInherit && isManual) ? (parseLocalizedDecimal(formData.get('manualDays')) ?? null) : null,
+            tariffRuleSetId: (!isInherit && mode === 'tariff_rule_based' && formData.get('tariffRuleSetId'))
+                ? parseInt(String(formData.get('tariffRuleSetId')), 10)
+                : null,
+            overrideReason: (!isInherit && mode === 'manual_exception') ? (formData.get('overrideReason') || '').toString() : '',
+            effectiveFrom: vacationEffectiveFrom,
+            effectiveTo: workingTimeModel.endDate || null
         };
-        // Inherit drops all "concrete" fields — they would be ignored by the
-        // engine and only confuse later operators reading the DB.
-        if (vacationPolicyPayload.inheritLowerLayers) {
-            vacationPolicyPayload.manualDays = null;
-            vacationPolicyPayload.tariffRuleSetId = null;
-            vacationPolicyPayload.overrideReason = '';
-        } else {
-            if (vacationPolicyPayload.vacationMode !== 'manual_fixed' && vacationPolicyPayload.vacationMode !== 'manual_exception') {
-                vacationPolicyPayload.manualDays = null;
+
+        const timeCapture = readTimeCapturePayload(form);
+
+        const trackingRaw = String(form.querySelector('#user-overtime-tracking-from')?.value || '').trim();
+        const trackingIso = trackingRaw ? (toISO(trackingRaw) || null) : null;
+        const overtime = {
+            trackingFrom: trackingIso,
+            openingBalance: {
+                year: parseInt(String(form.querySelector('#user-overtime-opening-year')?.value || '').trim(), 10),
+                hours: form.querySelector('#user-overtime-opening')?.value || '0'
             }
-            if (vacationPolicyPayload.vacationMode !== 'tariff_rule_based') {
-                vacationPolicyPayload.tariffRuleSetId = null;
+        };
+
+        return { workingTimeModel, vacationPolicy, timeCapture, overtime };
+    }
+
+    /**
+     * Issue a PUT and normalise both transport-level (HTTP) and application-level
+     * ({success:false}) failures into a thrown error carrying a user-facing
+     * `.error` message, so the orchestration can surface a specific reason.
+     */
+    async function apiPut(path, data) {
+        const response = await Utils.ajax(buildApiUrl(path), { method: 'PUT', data: data });
+        if (!response || response.success === false) {
+            const err = new Error((response && response.error) || auMsg('failedToUpdateUser', 'Failed to update user'));
+            err.error = (response && response.error) || err.message;
+            throw err;
+        }
+        return response;
+    }
+
+    async function handleUpdateUser(form, userId) {
+        const firstInvalid = validateUserEditForm(form);
+        if (firstInvalid) {
+            if (typeof firstInvalid.focus === 'function') {
+                firstInvalid.focus();
             }
-            if (vacationPolicyPayload.vacationMode !== 'manual_exception') {
-                vacationPolicyPayload.overrideReason = '';
-            }
+            Messaging.showError(auMsg('formHasErrors', 'Please correct the highlighted fields and try again.'));
+            return;
         }
 
-        Utils.ajax(buildApiUrl('/apps/arbeitszeitcheck/api/admin/users/' + encodeURIComponent(userId) + '/working-time-model'), {
-            method: 'PUT',
-            data: data,
-            onSuccess: function(response) {
-                if (response.success) {
-                    Utils.ajax(buildApiUrl('/apps/arbeitszeitcheck/api/admin/users/' + encodeURIComponent(userId) + '/vacation-policy'), {
-                        method: 'PUT',
-                        data: vacationPolicyPayload,
-                        onSuccess: function(policyResponse) {
-                            if (!policyResponse.success) {
-                                Messaging.showError(policyResponse.error || auMsg('failedToUpdateUser', 'Failed to update user'));
-                                return;
-                            }
-                            const openingYearRaw = (document.getElementById('user-overtime-opening-year')?.value || String(new Date().getFullYear())).trim();
-                            if (!/^\d{4}$/.test(openingYearRaw)) {
-                                Messaging.showError(auMsg('yearFourDigitsHelp', 'Enter a four-digit year (e.g. 2026).'));
-                                return;
-                            }
-                            const openingYear = parseInt(openingYearRaw, 10);
-                            if (openingYear < 2000 || openingYear > 2100) {
-                                Messaging.showError(auMsg('openingBalanceYearRange', 'Opening balance year must be between 2000 and 2100.'));
-                                return;
-                            }
-                            const overtimePayload = {
-                                trackingFrom: document.getElementById('user-overtime-tracking-from')?.value || null,
-                                openingBalance: {
-                                    year: openingYear,
-                                    hours: document.getElementById('user-overtime-opening')?.value || '0'
-                                }
-                            };
-                            Utils.ajax(buildApiUrl('/apps/arbeitszeitcheck/api/admin/users/' + encodeURIComponent(userId) + '/overtime-settings'), {
-                                method: 'PUT',
-                                data: overtimePayload,
-                                onSuccess: function(otResponse) {
-                                    if (!otResponse.success) {
-                                        Messaging.showError(otResponse.error || auMsg('failedToUpdateUser', 'Failed to update user'));
-                                        return;
-                                    }
-                                    Messaging.showSuccess(auMsg('userUpdated', 'User updated successfully'));
-                                    Components.closeModal(document.getElementById('edit-user-modal'));
-                                    loadUsers();
-                                },
-                                onError: function() {
-                                    Messaging.showError(auMsg('failedToUpdateUser', 'Failed to update user'));
-                                }
-                            });
-                        },
-                        onError: function(_error) {
-                            Messaging.showError(auMsg('failedToUpdateUser', 'Failed to update user'));
-                        }
-                    });
-                } else {
-                    const errorMsg = response.error || auMsg('failedToUpdateUser', 'Failed to update user');
-                    Messaging.showError(errorMsg);
-                }
-            },
-            onError: function(_error) {
-                const errorMsg = auMsg('failedToUpdateUser', 'Failed to update user');
-                Messaging.showError(errorMsg);
+        const payloads = buildUpdatePayloads(form);
+        const profilePath = '/apps/arbeitszeitcheck/api/admin/users/' + encodeURIComponent(userId) + '/profile';
+        const submitBtn = form.querySelector('button[type="submit"]');
+        const originalLabel = submitBtn ? submitBtn.textContent : '';
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.setAttribute('aria-busy', 'true');
+            submitBtn.textContent = auMsg('saving', 'Saving…');
+        }
+
+        try {
+            await apiPut(profilePath, payloads);
+
+            Messaging.showSuccess(auMsg('userUpdated', 'User updated successfully'));
+            Components.closeModal(document.getElementById('edit-user-modal'));
+            loadUsers();
+        } catch (error) {
+            const serverErrors = error && error.data && error.data.errors;
+            const serverField = applyServerFieldErrors(form, serverErrors);
+            if (serverField && typeof serverField.focus === 'function') {
+                serverField.focus();
             }
-        });
+            const message = (error && error.error) ? error.error : auMsg('failedToUpdateUser', 'Failed to update user');
+            Messaging.showError(
+                serverField
+                    ? auMsg('formHasErrors', 'Please correct the highlighted fields and try again.')
+                    : message
+            );
+        } finally {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.removeAttribute('aria-busy');
+                submitBtn.textContent = originalLabel;
+            }
+        }
     }
 
     // Initialize on DOM ready

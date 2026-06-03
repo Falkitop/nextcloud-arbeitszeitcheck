@@ -15,6 +15,8 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class);
 
 $defaultState = $_['defaultState'] ?? 'NW';
+$statutoryAutoReseed = (bool)($_['statutoryAutoReseed'] ?? true);
+$settingsUrl = $_['settingsUrl'] ?? '';
 $currentYear = (int)date('Y');
 
 $states = [
@@ -54,12 +56,17 @@ $holidaysUiStrings = [
 	'Remove holiday {name} on {date}' => $l->t('Remove holiday {name} on {date}'),
 	'Remove holiday' => $l->t('Remove holiday'),
 	'Do you really want to remove the holiday "{name}" on {date}?' => $l->t('Do you really want to remove the holiday "{name}" on {date}?'),
-	'Statutory holidays are automatically restored when the calendar is viewed, unless "Auto-restore statutory holidays" is disabled in Settings.' => $l->t('Statutory holidays are automatically restored when the calendar is viewed, unless "Auto-restore statutory holidays" is disabled in Settings.'),
+	'Removed statutory holidays are restored automatically while auto-restore is enabled in settings.' => $l->t('Removed statutory holidays are restored automatically while auto-restore is enabled in settings.'),
+	'Statutory holiday removal is permanent because auto-restore is disabled in settings.' => $l->t('Statutory holiday removal is permanent because auto-restore is disabled in settings.'),
+	'Auto-restore statutory holidays' => $l->t('Auto-restore statutory holidays'),
 	'Cancel' => $l->t('Cancel'),
 	'No holidays configured for this year.' => $l->t('No holidays configured for this year.'),
 	'Holiday was removed.' => $l->t('Holiday was removed.'),
+	'Statutory holiday removed. It will be added again automatically because auto-restore is enabled.' => $l->t('Statutory holiday removed. It will be added again automatically because auto-restore is enabled.'),
 	'Holiday could not be removed.' => $l->t('Holiday could not be removed.'),
 	'An error occurred while removing the holiday.' => $l->t('An error occurred while removing the holiday.'),
+	'Default federal state was saved.' => $l->t('Default federal state was saved.'),
+	'The default federal state could not be saved.' => $l->t('The default federal state could not be saved.'),
 ];
 ?>
 
@@ -68,6 +75,12 @@ $holidaysUiStrings = [
 <div class="azc-page-stack">
 	<script type="application/json" nonce="<?php p($_['cspNonce'] ?? ''); ?>" id="arbeitszeitcheck-admin-holidays-ui-strings">
 <?php echo json_encode($holidaysUiStrings, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>
+	</script>
+	<script type="application/json" nonce="<?php p($_['cspNonce'] ?? ''); ?>" id="arbeitszeitcheck-admin-holidays-config">
+<?php echo json_encode([
+	'statutoryAutoReseed' => $statutoryAutoReseed,
+	'settingsUrl' => $settingsUrl,
+], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>
 	</script>
 
 	<div class="admin-holidays">
@@ -93,6 +106,7 @@ $holidaysUiStrings = [
 					</div>
 				</div>
 				<p id="holiday-default-state-help" class="admin-holidays__help">
+					<strong><?php p($l->t('Your selection is saved automatically.')); ?></strong>
 					<?php
 					$usersUrl = $urlGenerator->linkToRoute('arbeitszeitcheck.admin.users');
 					print_unescaped($l->t(
@@ -117,7 +131,31 @@ $holidaysUiStrings = [
 				</div>
 			</header>
 			<div class="azc-card__body">
-				<form class="admin-holidays__toolbar" id="holiday-calendar-filters" novalidate onsubmit="return false;">
+				<?php if (!$statutoryAutoReseed): ?>
+				<?php
+				$calloutVariant = 'warning';
+				$calloutRole = 'status';
+				$calloutAriaLive = 'polite';
+				$calloutExtraClass = 'admin-holidays__auto-reseed-notice';
+				$calloutTitle = '';
+				if ($settingsUrl !== '') {
+					$calloutTextHtml = $l->t(
+						'Auto-restore is off. Deleted statutory holidays stay removed. You can change this under %1$sSettings%2$s → Auto-restore statutory holidays.',
+						[
+							'<a href="' . \OCP\Util::sanitizeHTML($settingsUrl) . '">',
+							'</a>',
+						]
+					);
+					$calloutText = '';
+				} else {
+					$calloutText = $l->t('Auto-restore is off. Deleted statutory holidays stay removed.');
+					$calloutTextHtml = null;
+				}
+				$calloutActions = [];
+				include __DIR__ . '/common/alert-callout.php';
+				?>
+				<?php endif; ?>
+				<form class="admin-holidays__toolbar" id="holiday-calendar-filters" novalidate>
 					<div class="azc-filter-grid admin-holidays__filter-grid" role="group" aria-label="<?php p($l->t('Calendar selection')); ?>">
 						<div class="azc-filter-field">
 							<label for="holiday-state-select" class="azc-filter-field__label"><?php p($l->t('Federal state')); ?></label>
@@ -149,7 +187,7 @@ $holidaysUiStrings = [
 
 				<div class="admin-holidays__results" id="holiday-results" aria-live="polite" aria-busy="false">
 					<div class="table-container" role="region" aria-label="<?php p($l->t('List of holidays for the selected federal state and year')); ?>">
-						<table class="table table--hover" id="holiday-table" aria-label="<?php p($l->t('List of holidays for the selected federal state and year')); ?>">
+						<table class="table table--hover azc-table--responsive" id="holiday-table" aria-label="<?php p($l->t('List of holidays for the selected federal state and year')); ?>">
 							<caption class="visually-hidden"><?php p($l->t('List of holidays for the selected federal state and year, with date, name, type and actions')); ?></caption>
 							<thead>
 								<tr>
@@ -157,7 +195,7 @@ $holidaysUiStrings = [
 									<th scope="col"><?php p($l->t('Holiday name')); ?></th>
 									<th scope="col"><?php p($l->t('Type')); ?></th>
 									<th scope="col"><?php p($l->t('Scope')); ?></th>
-									<th scope="col"><?php p($l->t('Actions')); ?></th>
+									<th scope="col" class="azc-table-actions-col"><?php p($l->t('Actions')); ?></th>
 								</tr>
 							</thead>
 							<tbody id="holiday-tbody"></tbody>

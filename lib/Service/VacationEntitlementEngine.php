@@ -565,7 +565,9 @@ class VacationEntitlementEngine {
 					$rounding = (string)($config['mode'] ?? $rounding);
 					break;
 				case 'pro_rata_rule':
-					$proRata = (string)($config['mode'] ?? $proRata);
+					$proRata = \OCA\ArbeitszeitCheck\Support\TariffRuleModuleValidator::normalizeProRataMode(
+						(string)($config['mode'] ?? $proRata),
+					);
 					break;
 			}
 		}

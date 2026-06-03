@@ -1,0 +1,103 @@
+/**
+ * ProjectCheck connection + project picker (theme-safe NC variables only)
+ *
+ * @copyright Copyright (c) 2026 Software by Design / Alexander Mäule
+ * @license AGPL-3.0-or-later
+ */
+
+/* ---- Admin: pointer to personal ProjectCheck settings ---- */
+.azc-projectcheck-admin-hint {
+	margin-bottom: var(--space-4, 1rem);
+}
+
+.azc-projectcheck-admin-hint .azc-callout__text:last-child {
+	margin-bottom: 0;
+}
+
+/* ---- Settings: connection card ---- */
+.azc-projectcheck-connection {
+	display: flex;
+	flex-direction: column;
+	gap: var(--azc-space-4, var(--space-4, 1rem));
+	padding: var(--azc-space-4, var(--space-4, 1rem));
+	border: 1px solid var(--color-border, var(--arbeitszeitcheck-color-border));
+	border-radius: var(--border-radius-large, 12px);
+	background: var(--color-background-hover, var(--color-main-background));
+}
+
+.azc-projectcheck-connection__status-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2, 0.5rem);
+}
+
+/* Connection status badge: css/common/badges.css (.azc-projectcheck-connection__badge) */
+
+.azc-projectcheck-connection__status-text {
+	margin: 0;
+	font-size: var(--font-size-small, 0.875rem);
+	color: var(--color-text-maxcontrast);
+	line-height: 1.45;
+	flex: 1 1 12rem;
+}
+
+/* Switch field: css/common/switch-field.css */
+
+.azc-projectcheck-connection .form-help {
+	padding-left: 0;
+	margin: 0;
+}
+
+.azc-projectcheck-connection__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-3, 0.75rem);
+	margin-top: var(--space-2, 0.5rem);
+}
+
+.azc-projectcheck-connection__actions .azc-btn {
+	min-height: 44px;
+	min-width: 10rem;
+}
+
+/* ---- Shared project picker (dashboard + time entry) ---- */
+.azc-projectcheck-picker-empty {
+	margin: 0;
+	padding: var(--space-3, 0.75rem);
+	border-radius: var(--border-radius, 8px);
+	border: 1px dashed var(--color-border);
+	background: var(--color-background-hover, var(--color-main-background));
+	color: var(--color-main-text);
+	font-size: var(--font-size-small, 0.875rem);
+	line-height: 1.45;
+}
+
+.azc-projectcheck-picker-empty a {
+	color: var(--color-primary-element, var(--color-primary));
+	font-weight: 600;
+}
+
+.azc-projectcheck-linking-off {
+	margin: 0;
+}
+
+.azc-dashboard-punch__project + .azc-projectcheck-linking-off,
+.azc-dashboard-project-picker-empty + .azc-projectcheck-linking-off {
+	margin-top: var(--space-3, 0.75rem);
+}
+
+.time-entry-form-fieldset--project .azc-projectcheck-linking-off {
+	margin-bottom: var(--space-3, 0.75rem);
+}
+
+@media (max-width: 47.9375rem) {
+	.azc-projectcheck-connection__actions {
+		flex-direction: column;
+	}
+
+	.azc-projectcheck-connection__actions .azc-btn {
+		width: 100%;
+	}
+}
+

@@ -302,4 +302,35 @@ class TimeEntryCorrectionServiceTest extends TestCase
 
 		$this->assertNull($entry->getBreaks());
 	}
+
+	public function testValidateProposalAllowsUnchangedProjectWhenAdminLinkingDisabled(): void
+	{
+		$entry = $this->buildEntry();
+		$entry->setProjectCheckProjectId('42');
+
+		$projectCheck = $this->createMock(\OCA\ArbeitszeitCheck\Service\ProjectCheckIntegrationService::class);
+		$projectCheck->method('isProjectCheckAvailable')->willReturn(true);
+		$projectCheck->expects($this->never())->method('userMayAttachProjectCheckProjectToOwnTime');
+		$projectCheck->expects($this->never())->method('managerMayAttachProjectCheckProjectForEmployee');
+
+		$service = new TimeEntryCorrectionService(
+			$this->timeEntryMapper,
+			$this->monthClosureGuard,
+			$this->complianceService,
+			$this->timeTrackingService,
+			$this->notificationService,
+			$this->auditLogMapper,
+			$this->config,
+			$this->l10n,
+			$projectCheck,
+			$this->createMock(\OCA\ArbeitszeitCheck\Service\ProjectCheckLaborTimeSyncService::class),
+		);
+
+		$error = $service->validateProposal($entry, [
+			'startTime' => '2026-01-15T10:00:00+00:00',
+			'endTime' => '2026-01-15T16:00:00+00:00',
+		], 'manager1');
+
+		$this->assertNull($error);
+	}
 }

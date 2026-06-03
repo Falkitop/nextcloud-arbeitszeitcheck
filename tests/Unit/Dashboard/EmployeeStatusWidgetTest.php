@@ -6,6 +6,7 @@ namespace OCA\ArbeitszeitCheck\Tests\Unit\Dashboard;
 
 use OCA\ArbeitszeitCheck\Dashboard\EmployeeStatusWidget;
 use OCA\ArbeitszeitCheck\Dashboard\WidgetIconHelper;
+use OCA\ArbeitszeitCheck\Service\DashboardDeskletRenderService;
 use OCA\ArbeitszeitCheck\Service\DashboardWidgetDataService;
 use OCA\ArbeitszeitCheck\Service\TimeZoneService;
 use OCA\ArbeitszeitCheck\Support\TimeClientBootstrap;
@@ -15,6 +16,7 @@ use OCP\IConfig;
 use OCP\IDateTimeZone;
 use OCP\IL10N;
 use OCP\IURLGenerator;
+use OCP\IUser;
 use OCP\IUserSession;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -64,6 +66,16 @@ class EmployeeStatusWidgetTest extends TestCase {
 
 	private function createWidget(?IL10N $l10n = null): EmployeeStatusWidget {
 		$iconHelper = new WidgetIconHelper($this->urlGenerator);
+		$userSession = $this->createMock(IUserSession::class);
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn('alice');
+		$userSession->method('getUser')->willReturn($user);
+		$initialState = $this->createMock(IInitialState::class);
+		$deskletRender = $this->createMock(DashboardDeskletRenderService::class);
+		$deskletRender->method('renderForUser')->willReturn([
+			'config' => ['employeeDataUrl' => '/employee'],
+			'workspaceHtml' => '<div data-arbeitszeitcheck-desklet="1"></div>',
+		]);
 
 		return new EmployeeStatusWidget(
 			$l10n ?? $this->l10n,
@@ -71,6 +83,9 @@ class EmployeeStatusWidgetTest extends TestCase {
 			$this->dataService,
 			$this->timeClientBootstrap,
 			$iconHelper,
+			$userSession,
+			$initialState,
+			$deskletRender,
 		);
 	}
 

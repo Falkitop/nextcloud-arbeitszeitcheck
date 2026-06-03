@@ -110,9 +110,7 @@
 		if (isLoading) {
 			state.countBeforeLoad = countEl.textContent;
 			countEl.textContent = t('Loading...', 'Loading...');
-			return;
 		}
-		countEl.textContent = state.countBeforeLoad;
 	}
 
 	function clearFilterFieldErrors() {
@@ -152,6 +150,22 @@
 		}
 	}
 
+	function resolveLoadErrorFocus(error) {
+		const fromHandler = window.ArbeitszeitCheck?.handleManagerListApiError?.(error, {
+			picker: employeeFilterPicker,
+			searchSelector: '#employee-filter-search',
+			clearButtonSelector: '#employee-filter-clear',
+			searchFocusId: 'employee-filter-search',
+		});
+		if (fromHandler) {
+			return fromHandler;
+		}
+		if (error?.status === 400) {
+			return 'start-date-filter';
+		}
+		return null;
+	}
+
 	function europeanToYmd(value) {
 		if (!value || !/^\d{2}\.\d{2}\.\d{4}$/.test(value)) {
 			return '';
@@ -182,6 +196,15 @@
 
 	function validateFilters(filters) {
 		clearFilterFieldErrors();
+		const employeeCheck = window.ArbeitszeitCheck?.validateManagerFilterEmployeeSelection?.(
+			employeeFilterPicker,
+			'#employee-filter-search',
+			'#employee-filter-id'
+		);
+		if (employeeCheck && !employeeCheck.valid) {
+			setFilterError(employeeCheck.message, employeeCheck.focusId);
+			return { valid: false };
+		}
 		if (!filters.startDate || !filters.endDate) {
 			const message = t('Please select start and end date.', 'Please select start and end date.');
 			setFilterError(message, !filters.startDate ? 'start-date-filter' : 'end-date-filter');
@@ -230,19 +253,63 @@
 		return { valid: true, startISO, endISO };
 	}
 
-	function setEmpty(message) {
+	function setResultsPanel(options) {
 		const emptyEl = document.getElementById('employee-time-entries-empty');
 		const tableWrap = document.getElementById('employee-time-entries-table-wrap');
+		const body = document.getElementById('employee-time-entries-body');
 		if (!emptyEl || !tableWrap) {
 			return;
 		}
+		const title = options?.title || '';
+		const text = options?.text || '';
+		const showTable = options?.showTable === true;
+
+		if (showTable) {
+			emptyEl.classList.add('visually-hidden');
+			tableWrap.classList.remove('visually-hidden');
+			return;
+		}
+
 		emptyEl.classList.remove('visually-hidden');
 		tableWrap.classList.add('visually-hidden');
+		if (body) {
+			body.innerHTML = '';
+		}
+		const titleEl = emptyEl.querySelector('.azc-empty-state__title')
+			|| emptyEl.querySelector('.empty-state__title');
 		const desc = emptyEl.querySelector('.azc-empty-state__text')
 			|| emptyEl.querySelector('.empty-state__description');
-		if (desc) {
-			desc.textContent = message;
+		if (titleEl && title) {
+			titleEl.textContent = title;
 		}
+		if (desc) {
+			desc.textContent = text;
+		}
+	}
+
+	function setEmpty(title, text) {
+		setResultsPanel({
+			title: title || t('Select filters first', 'Select filters first'),
+			text: text || t('Choose a date range to load entries.', 'Choose a date range to load entries.'),
+		});
+	}
+
+	function setLoadingResultsPanel() {
+		setResultsPanel({
+			title: t('Loading results…', 'Loading results…'),
+			text: t('Loading...', 'Loading...'),
+		});
+	}
+
+	function statusBadgeHtml(status) {
+		const label = status || '-';
+		const variant = Utils.badgeVariantForTimeEntryStatus
+			? Utils.badgeVariantForTimeEntryStatus(status)
+			: 'secondary';
+		if (Utils.renderBadgeHtml) {
+			return Utils.renderBadgeHtml(label, variant);
+		}
+		return `<span class="badge badge--${escapeHtml(variant)}">${escapeHtml(label)}</span>`;
 	}
 
 	function renderEntries(entries) {
@@ -254,7 +321,10 @@
 		}
 
 		if (!entries.length) {
-			setEmpty(t('No entries found for the selected filters.', 'No entries found for the selected filters.'));
+			setResultsPanel({
+				title: t('No matching time entries', 'No matching time entries'),
+				text: t('No entries found for the selected filters.', 'No entries found for the selected filters.'),
+			});
 			body.innerHTML = '';
 			return;
 		}
@@ -274,24 +344,25 @@
 			const actionCell = canCorrect
 				? `<button type="button" class="azc-btn azc-btn--secondary azc-btn--sm btn-manager-correct" data-entry-id="${escapeHtml(String(entry.id))}" data-entry-updated="${escapeHtml(entry.updatedAt || '')}" data-entry-summary="${summaryJson}" aria-label="${escapeHtml(t('Correct time entry', 'Correct time entry'))}">${escapeHtml(t('Correct', 'Correct'))}</button>`
 				: '<span class="text-muted">–</span>';
+			const td = (label, html, cls = '') => Utils.responsiveTd
+				? Utils.responsiveTd(label, html, cls)
+				: `<td${cls ? ` class="${cls}"` : ''}>${html}</td>`;
 			return [
 				'<tr>',
-				`<td>${escapeHtml(entry.displayName || entry.userId || '-')}</td>`,
-				`<td>${escapeHtml(formatDateTime(entry.startTime, 'date'))}</td>`,
-				`<td>${escapeHtml(formatDateTime(entry.startTime, 'time'))}</td>`,
-				`<td>${escapeHtml(formatDateTime(entry.endTime, 'time'))}</td>`,
-				`<td>${escapeHtml(formatHours(entry.workingDurationHours))}</td>`,
-				`<td>${escapeHtml(formatBreaks(entry))}</td>`,
-				`<td><span class="badge badge--primary">${escapeHtml(entry.status || '-')}</span></td>`,
-				`<td>${escapeHtml(entry.description || t('No description', 'No description'))}</td>`,
-				`<td class="azc-table-actions-col"><div class="azc-table-actions" role="group">${actionCell}</div></td>`,
+				td(t('Name', 'Name'), escapeHtml(entry.displayName || entry.userId || '-')),
+				td(t('Date', 'Date'), escapeHtml(formatDateTime(entry.startTime, 'date'))),
+				td(t('Start', 'Start'), escapeHtml(formatDateTime(entry.startTime, 'time'))),
+				td(t('End', 'End'), escapeHtml(formatDateTime(entry.endTime, 'time'))),
+				td(t('Working Hours', 'Working Hours'), escapeHtml(formatHours(entry.workingDurationHours))),
+				td(t('Break', 'Break'), escapeHtml(formatBreaks(entry))),
+				td(t('Status', 'Status'), statusBadgeHtml(entry.status)),
+				td(t('Description', 'Description'), escapeHtml(entry.description || t('No description', 'No description')), 'description-cell'),
+				td(t('Actions', 'Actions'), `<div class="azc-table-actions" role="group" aria-label="${escapeHtml(t('Actions', 'Actions'))}">${actionCell}</div>`, 'actions-cell'),
 				'</tr>',
 			].join('');
 		}).join('');
-		bindManagerCorrectButtons();
 
-		emptyEl.classList.add('visually-hidden');
-		tableWrap.classList.remove('visually-hidden');
+		setResultsPanel({ showTable: true });
 	}
 
 	function updatePagination() {
@@ -329,28 +400,54 @@
 		state.countBeforeLoad = text;
 	}
 
-	function populateEmployees(employees) {
-		const select = document.getElementById('employee-filter');
-		if (!select) {
+	let employeeFilterPicker = null;
+
+	function syncEmployeeFilterPicker(employees) {
+		if (!employeeFilterPicker || !Array.isArray(employees)) {
 			return;
 		}
-		const current = select.value;
-		select.innerHTML = '';
-		const defaultOption = document.createElement('option');
-		defaultOption.value = '';
-		defaultOption.textContent = t('All in my scope', 'All in my scope');
-		select.appendChild(defaultOption);
-
-		employees.forEach((employee) => {
-			const option = document.createElement('option');
-			option.value = employee.userId;
-			option.textContent = employee.displayName || employee.userId;
-			select.appendChild(option);
-		});
-
-		if (current) {
-			select.value = current;
+		const selectedId = employeeFilterPicker.getUserId();
+		if (!selectedId) {
+			return;
 		}
+		const match = employees.find((employee) => employee.userId === selectedId);
+		if (match) {
+			employeeFilterPicker.setSelection(match.userId, match.displayName || match.userId);
+		}
+	}
+
+	function initEmployeeFilterPicker() {
+		const initPicker = window.ArbeitszeitCheck?.initManagerScopedEmployeePicker;
+		if (!initPicker || !document.getElementById('employee-filter-search')) {
+			return;
+		}
+		employeeFilterPicker = initPicker({
+			hiddenSelector: '#employee-filter-id',
+			searchSelector: '#employee-filter-search',
+			listSelector: '#employee-filter-listbox',
+			wrapSelector: '#employee-filter-wrap',
+			statusSelector: '#employee-filter-status',
+			clearButtonSelector: '#employee-filter-clear',
+			idPrefix: 'employee-filter',
+			allowAll: true,
+		});
+	}
+
+	function readFiltersFromForm() {
+		const form = document.getElementById('employee-time-entries-filter-form');
+		if (!form) {
+			return null;
+		}
+		const formData = new FormData(form);
+		const startEl = document.getElementById('start-date-filter');
+		const endEl = document.getElementById('end-date-filter');
+		const hiddenEl = document.getElementById('employee-filter-id');
+		return {
+			employeeId: String(formData.get('employee_id') || hiddenEl?.value || '').trim(),
+			startDate: String(formData.get('start_date') || startEl?.value || '').trim(),
+			endDate: String(formData.get('end_date') || endEl?.value || '').trim(),
+			status: String(formData.get('status') || '').trim(),
+		};
 	}
 
 	function buildQuery(filters, isoDates) {
@@ -371,21 +468,26 @@
 	}
 
 	function loadEntries() {
-		const form = document.getElementById('employee-time-entries-filter-form');
-		if (!form) {
+		if (typeof Utils.ajax !== 'function') {
+			const message = t('Could not load employee time entries.', 'Could not load employee time entries.');
+			setFilterError(message);
+			Messaging?.showError?.(message);
+			setEmpty(t('Check your filters', 'Check your filters'), message);
 			return;
 		}
 
-		const formData = new FormData(form);
-		const filters = {
-			employeeId: String(formData.get('employee_id') || ''),
-			startDate: String(formData.get('start_date') || ''),
-			endDate: String(formData.get('end_date') || ''),
-			status: String(formData.get('status') || ''),
-		};
+		const filters = readFiltersFromForm();
+		if (!filters) {
+			return;
+		}
+
 		const validation = validateFilters(filters);
 		if (!validation.valid) {
-			setEmpty(t('Choose a date range to load entries.', 'Choose a date range to load entries.'));
+			state.lastFilters = null;
+			const message = document.getElementById('employee-time-entries-filter-error')
+				?.querySelector('.azc-callout__text')?.textContent
+				|| t('Choose a date range to load entries.', 'Choose a date range to load entries.');
+			setEmpty(t('Check your filters', 'Check your filters'), message);
 			updateCount();
 			updatePagination();
 			return;
@@ -397,29 +499,72 @@
 
 		state.lastFilters = filters;
 		setLoading(true);
+		setLoadingResultsPanel();
 		const query = buildQuery(filters, validation);
-		Utils.ajax(`/apps/arbeitszeitcheck/api/manager/employee-time-entries?${query}`, {
+		const ajaxPromise = Utils.ajax(`/apps/arbeitszeitcheck/api/manager/employee-time-entries?${query}`, {
 			method: 'GET',
 			onSuccess: (data) => {
-				clearFilterFieldErrors();
-				state.total = Number(data.total || 0);
-				populateEmployees(Array.isArray(data.employees) ? data.employees : []);
-				renderEntries(Array.isArray(data.entries) ? data.entries : []);
-				updateCount();
-				state.countBeforeLoad = document.getElementById('employee-time-entries-count')?.textContent || '';
-				updatePagination();
+				try {
+					if (!data || data.success === false) {
+						const message = data?.error || t('Could not load employee time entries.', 'Could not load employee time entries.');
+						setFilterError(message);
+						Messaging?.showError?.(message);
+						setEmpty(t('Check your filters', 'Check your filters'), message);
+						state.total = 0;
+						updateCount();
+						updatePagination();
+						return;
+					}
+
+					if (data.requiresFilters) {
+						const message = t('Please select start and end date.', 'Please select start and end date.');
+						setFilterError(
+							message,
+							!filters.startDate ? 'start-date-filter' : 'end-date-filter'
+						);
+						state.lastFilters = null;
+						state.total = 0;
+						setEmpty(t('Check your filters', 'Check your filters'), message);
+						updateCount();
+						updatePagination();
+						return;
+					}
+
+					clearFilterFieldErrors();
+					state.total = Number(data.total || 0);
+					syncEmployeeFilterPicker(Array.isArray(data.employees) ? data.employees : []);
+					renderEntries(Array.isArray(data.entries) ? data.entries : []);
+					updateCount();
+					state.countBeforeLoad = document.getElementById('employee-time-entries-count')?.textContent || '';
+					updatePagination();
+				} catch (err) {
+					state.total = 0;
+					const message = err?.message || t('Could not load employee time entries.', 'Could not load employee time entries.');
+					setFilterError(message);
+					Messaging?.showError?.(message);
+					setEmpty(t('Check your filters', 'Check your filters'), message);
+					updateCount();
+					updatePagination();
+				}
 			},
 			onError: (error) => {
-				const message = error?.error || t('Could not load employee time entries.', 'Could not load employee time entries.');
-				setFilterError(message);
-				Messaging.showError(message);
-				setEmpty(message);
+				state.total = 0;
+				const message = error?.error || error?.message || t('Could not load employee time entries.', 'Could not load employee time entries.');
+				const focusId = resolveLoadErrorFocus(error);
+				setFilterError(message, focusId);
+				Messaging?.showError?.(message);
+				setEmpty(t('Check your filters', 'Check your filters'), message);
 				updateCount();
 				updatePagination();
 			},
-		}).finally(() => {
-			setLoading(false);
 		});
+		if (ajaxPromise && typeof ajaxPromise.finally === 'function') {
+			ajaxPromise.finally(() => {
+				setLoading(false);
+			});
+		} else {
+			setLoading(false);
+		}
 	}
 
 	function bindPagination() {
@@ -463,20 +608,30 @@
 			state.total = 0;
 			state.lastFilters = null;
 			state.countBeforeLoad = '';
-			setDefaultDateRange();
-			setEmpty(t('Choose a date range to load entries.', 'Choose a date range to load entries.'));
+			setDefaultDateRange(true);
+			setEmpty(
+				t('Select filters first', 'Select filters first'),
+				t('Choose a date range to load entries.', 'Choose a date range to load entries.')
+			);
 			const countEl = document.getElementById('employee-time-entries-count');
 			if (countEl) {
 				countEl.textContent = '';
 			}
 			updatePagination();
-			const employeeSelect = document.getElementById('employee-filter');
-			if (employeeSelect && employeeSelect.options.length <= 1) {
-				employeeSelect.innerHTML = '';
-				const option = document.createElement('option');
-				option.value = '';
-				option.textContent = t('All in my scope', 'All in my scope');
-				employeeSelect.appendChild(option);
+			if (employeeFilterPicker) {
+				employeeFilterPicker.clear();
+			}
+			const searchEl = document.getElementById('employee-filter-search');
+			if (searchEl) {
+				searchEl.focus();
+			}
+			const tbody = document.getElementById('employee-time-entries-body');
+			const tableWrap = document.getElementById('employee-time-entries-table-wrap');
+			if (tbody) {
+				tbody.innerHTML = '';
+			}
+			if (tableWrap) {
+				tableWrap.classList.add('visually-hidden');
 			}
 		});
 
@@ -492,15 +647,14 @@
 		return `${day}.${month}.${year}`;
 	}
 
-	function setDefaultDateRange() {
+	function setDefaultDateRange(force) {
 		const startInput = document.getElementById('start-date-filter');
 		const endInput = document.getElementById('end-date-filter');
 		if (!startInput || !endInput) {
 			return;
 		}
 
-		// Only apply defaults when fields are empty to avoid overwriting user input.
-		if (startInput.value || endInput.value) {
+		if (!force && (startInput.value || endInput.value)) {
 			return;
 		}
 
@@ -528,25 +682,34 @@
 	}
 
 
-	function bindManagerCorrectButtons() {
-		const MgrCorrection = window.ArbeitszeitCheckManagerCorrection;
-		document.querySelectorAll('.btn-manager-correct').forEach((btn) => {
-			btn.addEventListener('click', () => {
-				const id = btn.getAttribute('data-entry-id');
-				const updatedAt = btn.getAttribute('data-entry-updated') || '';
-				const summary = MgrCorrection
-					? MgrCorrection.parseEntrySummary(btn.getAttribute('data-entry-summary'))
-					: null;
-				if (id && MgrCorrection) {
-					MgrCorrection.open(id, updatedAt, summary || {});
-				}
-			});
+	function initManagerCorrectDelegation() {
+		const body = document.getElementById('employee-time-entries-body');
+		if (!body || body.dataset.managerCorrectBound === '1') {
+			return;
+		}
+		body.dataset.managerCorrectBound = '1';
+		body.addEventListener('click', (event) => {
+			const btn = event.target.closest('.btn-manager-correct');
+			if (!btn || !body.contains(btn)) {
+				return;
+			}
+			const MgrCorrection = window.ArbeitszeitCheckManagerCorrection;
+			const id = btn.getAttribute('data-entry-id');
+			const updatedAt = btn.getAttribute('data-entry-updated') || '';
+			const summary = MgrCorrection
+				? MgrCorrection.parseEntrySummary(btn.getAttribute('data-entry-summary'))
+				: null;
+			if (id && MgrCorrection) {
+				MgrCorrection.open(id, updatedAt, summary || {});
+			}
 		});
 	}
 
 
 	function init() {
-		setDefaultDateRange();
+		initEmployeeFilterPicker();
+		initManagerCorrectDelegation();
+		setDefaultDateRange(false);
 		bindForm();
 		bindPagination();
 		updatePagination();

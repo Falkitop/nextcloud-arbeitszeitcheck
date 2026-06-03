@@ -54,7 +54,7 @@ class AdminSettings implements ISettings
 	 */
 	public function getForm(): TemplateResponse
 	{
-		FrontEndAssetService::registerPage('admin-settings', 'admin-settings');
+		FrontEndAssetService::registerPage('admin-settings', 'admin-settings', ['common/projectcheck']);
 
 		$requireSubstituteJson = $this->appConfig->getAppValueString('require_substitute_types', '[]');
 		$requireSubstituteTypes = json_decode($requireSubstituteJson, true);
@@ -85,7 +85,11 @@ class AdminSettings implements ISettings
 			'defaultWorkingHours' => (float)$this->appConfig->getAppValueString('default_working_hours', '8'),
 			'accessAllowedGroups' => $this->readAccessAllowedGroups(),
 			'appAdminUserIds' => $this->readConfiguredAppAdminUserIds(),
+			'projectCheckIntegrationEnabled' => $this->appManager->isEnabledForUser('projectcheck')
+				&& $this->appConfig->getAppValueString(Constants::CONFIG_PROJECTCHECK_INTEGRATION_ENABLED, Constants::CONFIG_PROJECTCHECK_INTEGRATION_DEFAULT) === '1',
 		];
+
+		$projectCheckAvailable = $this->appManager->isEnabledForUser('projectcheck');
 
 		return new TemplateResponse('arbeitszeitcheck', 'admin-settings', [
 			'settings' => $settings,
@@ -95,6 +99,7 @@ class AdminSettings implements ISettings
 			'urlGenerator' => $this->urlGenerator,
 			'settingsShell' => 'nextcloud',
 			'inAppAdminSettingsUrl' => $this->urlGenerator->linkToRoute('arbeitszeitcheck.admin.settings'),
+			'projectCheckAvailable' => $projectCheckAvailable,
 			'requesttoken' => Util::callRegister(),
 		]);
 	}

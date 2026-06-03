@@ -33,8 +33,10 @@
     }
 
     const HOLIDAYS_UI_JSON_ID = 'arbeitszeitcheck-admin-holidays-ui-strings';
+    const HOLIDAYS_CONFIG_JSON_ID = 'arbeitszeitcheck-admin-holidays-config';
 
     let holidaysUiStringsFromDomApplied = false;
+    let holidaysPageConfig = null;
 
     /**
      * Load translated strings from the JSON script at the bottom of admin-holidays.php.
@@ -58,6 +60,33 @@
         } catch (e) {
             console.error('[admin-holidays] Could not parse holidays UI translations', e);
         }
+    }
+
+    function getHolidaysPageConfig() {
+        if (holidaysPageConfig !== null) {
+            return holidaysPageConfig;
+        }
+        holidaysPageConfig = { statutoryAutoReseed: true, settingsUrl: '' };
+        const el = document.getElementById(HOLIDAYS_CONFIG_JSON_ID);
+        if (el && el.textContent && el.textContent.trim()) {
+            try {
+                const parsed = JSON.parse(el.textContent);
+                if (parsed && typeof parsed === 'object') {
+                    holidaysPageConfig = {
+                        statutoryAutoReseed: parsed.statutoryAutoReseed !== false,
+                        settingsUrl: typeof parsed.settingsUrl === 'string' ? parsed.settingsUrl : '',
+                    };
+                }
+            } catch (e) {
+                console.error('[admin-holidays] Could not parse holidays page config', e);
+            }
+        }
+        return holidaysPageConfig;
+    }
+
+    function isStatutoryAutoReseedEnabled() {
+        const cfg = getHolidaysPageConfig();
+        return cfg.statutoryAutoReseed !== false;
     }
 
     /** Prefer server-injected strings; window.t is not always available in this view. */
@@ -100,6 +129,12 @@
     }
 
     function bindEvents() {
+        const filterForm = Utils.$('#holiday-calendar-filters');
+        if (filterForm) {
+            Utils.on(filterForm, 'submit', function(event) {
+                event.preventDefault();
+            });
+        }
         const addBtn = Utils.$('#holiday-add-entry');
         if (addBtn) {
             Utils.on(addBtn, 'click', handleAddHolidayClick);
@@ -112,6 +147,62 @@
         if (yearSelect) {
             Utils.on(yearSelect, 'change', loadExistingHolidays);
         }
+        const defaultStateSelect = Utils.$('#holiday-default-state');
+        if (defaultStateSelect) {
+            // Remember the last persisted value so we can roll back on failure.
+            defaultStateSelect.setAttribute('data-last-value', defaultStateSelect.value);
+            Utils.on(defaultStateSelect, 'change', function() {
+                saveDefaultState(defaultStateSelect);
+            });
+        }
+    }
+
+    let savingDefaultState = false;
+
+    function saveDefaultState(select) {
+        if (!select || savingDefaultState) {
+            return;
+        }
+        const value = select.value;
+        const previous = select.getAttribute('data-last-value') || value;
+        if (value === previous) {
+            return;
+        }
+
+        savingDefaultState = true;
+        select.disabled = true;
+        select.setAttribute('aria-busy', 'true');
+
+        const url = OC.generateUrl('/apps/arbeitszeitcheck/api/admin/settings');
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'requesttoken': OC.requestToken
+            },
+            body: JSON.stringify({ germanState: value })
+        }).then(function(response) {
+            return response.json().catch(function() { return null; });
+        }).then(function(data) {
+            savingDefaultState = false;
+            select.disabled = false;
+            select.removeAttribute('aria-busy');
+
+            if (data && data.success) {
+                select.setAttribute('data-last-value', value);
+                showUserSuccess(tAzc('Default federal state was saved.'));
+            } else {
+                select.value = previous;
+                const errorMsg = (data && data.error) || tAzc('The default federal state could not be saved.');
+                showUserError(errorMsg);
+            }
+        }).catch(function() {
+            savingDefaultState = false;
+            select.disabled = false;
+            select.removeAttribute('aria-busy');
+            select.value = previous;
+            showUserError(tAzc('The default federal state could not be saved.'));
+        });
     }
 
     function handleAddHolidayClick(e) {
@@ -125,6 +216,7 @@
 
         // Datum
         const dateCell = document.createElement('td');
+        dateCell.setAttribute('data-label', tAzc('Date'));
         const dateInput = document.createElement('input');
         dateInput.type = 'text';
         dateInput.name = 'date';
@@ -137,6 +229,7 @@
 
         // Name
         const nameCell = document.createElement('td');
+        nameCell.setAttribute('data-label', tAzc('Holiday name'));
         const nameInput = document.createElement('input');
         nameInput.type = 'text';
         nameInput.name = 'name';
@@ -146,6 +239,7 @@
 
         // Art (voll / halb)
         const typeCell = document.createElement('td');
+        typeCell.setAttribute('data-label', tAzc('Type'));
         const typeSelect = document.createElement('select');
         typeSelect.name = 'kind';
         typeSelect.className = 'form-select';
@@ -161,6 +255,7 @@
 
         // Geltungsbereich (scope)
         const scopeCell = document.createElement('td');
+        scopeCell.setAttribute('data-label', tAzc('Scope'));
         const scopeSelect = document.createElement('select');
         scopeSelect.name = 'scope';
         scopeSelect.className = 'form-select';
@@ -179,6 +274,8 @@
 
         // Aktionen (Speichern / Löschen)
         const actionsCell = document.createElement('td');
+        actionsCell.className = 'actions-cell';
+        actionsCell.setAttribute('data-label', tAzc('Actions'));
         const saveBtn = document.createElement('button');
         saveBtn.type = 'button';
         saveBtn.className = 'azc-btn azc-btn--primary azc-btn--sm';
@@ -196,7 +293,8 @@
         });
 
         const actionsWrap = document.createElement('div');
-        actionsWrap.className = 'admin-holidays__row-actions';
+        actionsWrap.className = 'azc-table-actions admin-holidays__row-actions';
+        actionsWrap.setAttribute('role', 'group');
         actionsWrap.appendChild(saveBtn);
         actionsWrap.appendChild(deleteBtn);
         actionsCell.appendChild(actionsWrap);
@@ -311,6 +409,11 @@
                 return;
             }
 
+            if (data.statutoryAutoReseed !== undefined) {
+                holidaysPageConfig = holidaysPageConfig || { statutoryAutoReseed: true, settingsUrl: '' };
+                holidaysPageConfig.statutoryAutoReseed = data.statutoryAutoReseed !== false;
+            }
+
             if (data.holidays.length === 0) {
                 renderEmptyHolidaysRow(tbody);
                 return;
@@ -330,6 +433,7 @@
         const row = document.createElement('tr');
 
         const dateCell = document.createElement('td');
+        dateCell.setAttribute('data-label', tAzc('Date'));
         let displayDate = item.date || '';
         if (window.ArbeitszeitCheckDatepicker && window.ArbeitszeitCheckDatepicker.convertISOToEuropean) {
             displayDate = window.ArbeitszeitCheckDatepicker.convertISOToEuropean(displayDate);
@@ -340,9 +444,11 @@
         dateCell.textContent = displayDate;
 
         const nameCell = document.createElement('td');
+        nameCell.setAttribute('data-label', tAzc('Holiday name'));
         nameCell.textContent = item.name || '';
 
         const typeCell = document.createElement('td');
+        typeCell.setAttribute('data-label', tAzc('Type'));
         const kindLabel = item.kind === 'half'
             ? tAzc('Half-day holiday')
             : tAzc('Full-day holiday');
@@ -352,6 +458,7 @@
         typeCell.appendChild(typeBadge);
 
         const scopeCell = document.createElement('td');
+        scopeCell.setAttribute('data-label', tAzc('Scope'));
         let scopeLabel = '';
         let scopeBadgeClass = 'admin-holidays-badge--custom';
         if (item.scope === 'statutory') {
@@ -370,6 +477,8 @@
         scopeCell.appendChild(scopeBadge);
 
         const actionsCell = document.createElement('td');
+        actionsCell.className = 'actions-cell';
+        actionsCell.setAttribute('data-label', tAzc('Actions'));
         {
             const deleteBtn = document.createElement('button');
             deleteBtn.type = 'button';
@@ -390,7 +499,9 @@
 
                 let extra = '';
                 if (item.scope === 'statutory') {
-                    extra = tAzc('Statutory holidays are automatically restored when the calendar is viewed, unless "Auto-restore statutory holidays" is disabled in Settings.');
+                    extra = isStatutoryAutoReseedEnabled()
+                        ? tAzc('Removed statutory holidays are restored automatically while auto-restore is enabled in settings.')
+                        : tAzc('Statutory holiday removal is permanent because auto-restore is disabled in settings.');
                 }
 
                 const body = extra ? (extra + '<br><br>' + baseMessage) : baseMessage;
@@ -448,7 +559,7 @@
                     if (confirmBtn) {
                         confirmBtn.addEventListener('click', function() {
                             Components.closeModal(modalEl);
-                            deleteHoliday(item.id, row);
+                            deleteHoliday(item.id, row, item.scope);
                         });
                         confirmBtn.focus();
                     }
@@ -464,12 +575,13 @@
                         })
                         : null;
                     if (confirmed) {
-                        deleteHoliday(item.id, row);
+                        deleteHoliday(item.id, row, item.scope);
                     }
                 }
             });
             const actionsWrap = document.createElement('div');
-            actionsWrap.className = 'admin-holidays__row-actions';
+            actionsWrap.className = 'azc-table-actions admin-holidays__row-actions';
+            actionsWrap.setAttribute('role', 'group');
             actionsWrap.appendChild(deleteBtn);
             actionsCell.appendChild(actionsWrap);
         }
@@ -496,7 +608,7 @@
         tbody.appendChild(row);
     }
 
-    function deleteHoliday(id, row) {
+    function deleteHoliday(id, row, scope) {
         if (!id) {
             row.remove();
             return;
@@ -512,10 +624,13 @@
             return response.json();
         }).then(function(data) {
             if (data && data.success) {
-                row.remove();
-                if (Messaging && Messaging.showSuccess) {
-                    const msg = tAzc('Holiday was removed.');
-                    Messaging.showSuccess(msg);
+                loadExistingHolidays();
+                // Be honest: with auto-restore enabled a statutory day is added
+                // back on the next calendar view, so it will reappear here too.
+                if (scope === 'statutory' && isStatutoryAutoReseedEnabled()) {
+                    showUserSuccess(tAzc('Statutory holiday removed. It will be added again automatically because auto-restore is enabled.'));
+                } else {
+                    showUserSuccess(tAzc('Holiday was removed.'));
                 }
             } else {
                 const errorMsg = (data && data.error) || tAzc('Holiday could not be removed.');

@@ -138,6 +138,17 @@
         setPeriodSelectBusy(periodSel, true);
     }
 
+    function setMonthClosureStatus(text, statusKey) {
+        const statusEl = $('month-closure-status');
+        if (!statusEl) {
+            return;
+        }
+        statusEl.textContent = text || '';
+        if (Utils.applyMonthClosureBadgeVariant) {
+            Utils.applyMonthClosureBadgeVariant(statusEl, statusKey || 'neutral');
+        }
+    }
+
     function refreshStatus() {
         const periodEl = $('month-closure-period');
         if (!periodEl) {
@@ -149,13 +160,13 @@
             return;
         }
         if (!Number.isInteger(y) || !Number.isInteger(m) || m < 1 || m > 12) {
-            statusEl.textContent = '';
+            setMonthClosureStatus('', 'neutral');
             return;
         }
         const btn = $('month-closure-finalize');
         const deadlineEl = $('month-closure-deadline');
         const blockedEl = $('month-closure-blocked');
-        statusEl.textContent = mcT('monthClosureLoading', '…');
+        setMonthClosureStatus(mcT('monthClosureLoading', '…'), 'neutral');
         if (deadlineEl) {
             deadlineEl.hidden = true;
             deadlineEl.textContent = '';
@@ -171,7 +182,7 @@
             method: 'GET',
             onSuccess: function (data) {
                 if (!data || !data.success) {
-                    statusEl.textContent = '';
+                    setMonthClosureStatus('', 'neutral');
                     if (btn) {
                         btn.disabled = true;
                     }
@@ -179,7 +190,7 @@
                     return;
                 }
                 if (!data.featureEnabled) {
-                    statusEl.textContent = '';
+                    setMonthClosureStatus('', 'neutral');
                     if (btn) {
                         btn.disabled = true;
                     }
@@ -214,9 +225,9 @@
                 const lockNotice = $('month-closure-finalized-notice');
                 if (isFinalized) {
                     if (data.autoFinalized) {
-                        statusEl.textContent = mcT('monthClosureStatusFinalizedAuto', 'Finalized automatically');
+                        setMonthClosureStatus(mcT('monthClosureStatusFinalizedAuto', 'Finalized automatically'), 'finalized');
                     } else {
-                        statusEl.textContent = mcT('monthClosureStatusFinalized', 'Finalized');
+                        setMonthClosureStatus(mcT('monthClosureStatusFinalized', 'Finalized'), 'finalized');
                     }
                     if (btn) {
                         btn.disabled = true;
@@ -232,7 +243,7 @@
                     if (lockNotice) {
                         lockNotice.hidden = true;
                     }
-                    statusEl.textContent = mcT('monthClosureStatusOpen', 'Open (month status)');
+                    setMonthClosureStatus(mcT('monthClosureStatusOpen', 'Open (month status)'), 'open');
                     if (btn) {
                         btn.disabled = !canFinalize;
                     }
@@ -240,7 +251,7 @@
                 }
             },
             onError: function () {
-                statusEl.textContent = '';
+                setMonthClosureStatus('', 'neutral');
                 if (deadlineEl) {
                     deadlineEl.hidden = true;
                 }

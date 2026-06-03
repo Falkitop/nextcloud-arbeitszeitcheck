@@ -87,12 +87,58 @@ class TableConventionTest extends TestCase
 		$content = (string)file_get_contents(__DIR__ . '/../../css/common/page-patterns.css');
 		$this->assertStringContainsString('#app-content.azc-app .table-container', $content);
 		$this->assertStringContainsString('.azc-table-actions-col', $content);
+		$this->assertStringContainsString('min-width: max-content', $content);
+		$this->assertStringContainsString('overflow-x: auto', $content);
+		$this->assertStringNotContainsString('width: 1%', $content);
+		$this->assertStringContainsString('.azc-table--responsive', $content);
+	}
+
+	public function testDenseListTablesUseResponsiveCardReflow(): void
+	{
+		$paths = [
+			'time-entries.php',
+			'absences.php',
+			'manager-time-entries.php',
+			'manager-absences.php',
+			'admin-users.php',
+			'admin-holidays.php',
+			'working-time-models.php',
+			'compliance-dashboard.php',
+			'compliance-reports.php',
+			'dashboard.php',
+		];
+		foreach ($paths as $file) {
+			$content = (string)file_get_contents(__DIR__ . '/../../templates/' . $file);
+			$this->assertStringContainsString(
+				'azc-table--responsive',
+				$content,
+				$file . ' should use responsive table card reflow'
+			);
+		}
+		$timeEntries = (string)file_get_contents(__DIR__ . '/../../templates/time-entries.php');
+		$absences = (string)file_get_contents(__DIR__ . '/../../templates/absences.php');
+		$this->assertStringContainsString('class="azc-table-actions"', $timeEntries);
+		$this->assertStringContainsString('class="azc-table-actions"', $absences);
+	}
+
+	public function testUtilsExposeResponsiveTableHelpers(): void
+	{
+		$content = (string)file_get_contents(__DIR__ . '/../../js/common/utils.js');
+		$this->assertStringContainsString('dataLabelAttr', $content);
+		$this->assertStringContainsString('responsiveTd', $content);
+	}
+
+	public function testAdminDashboardJsUsesResponsiveDrilldownTable(): void
+	{
+		$content = (string)file_get_contents(__DIR__ . '/../../js/admin-dashboard.js');
+		$this->assertStringContainsString('azc-table--responsive', $content);
+		$this->assertStringContainsString('Utils.responsiveTd', $content);
 	}
 
 	public function testReportsJsWrapsDynamicTables(): void
 	{
 		$content = (string)file_get_contents(__DIR__ . '/../../js/reports.js');
 		$this->assertStringContainsString('table-container', $content);
-		$this->assertStringContainsString('table table--hover report-table', $content);
+		$this->assertStringContainsString('azc-table--responsive', $content);
 	}
 }

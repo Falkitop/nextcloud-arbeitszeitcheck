@@ -12,6 +12,7 @@ $pageId = isset($_['pageId']) ? (string)$_['pageId'] : 'dashboard';
 $shellWidth = (string)($_['shellWidth'] ?? 'standard');
 $shellWidthClass = match ($shellWidth) {
 	'wide' => ' azc-shell--wide',
+	'constrained' => ' azc-shell--constrained',
 	'minimal' => ' azc-shell--minimal',
 	default => '',
 };

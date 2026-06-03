@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace OCA\ArbeitszeitCheck\Dashboard;
 
 use OCA\ArbeitszeitCheck\AppInfo\Application;
+use OCA\ArbeitszeitCheck\Service\DashboardDeskletRenderService;
 use OCA\ArbeitszeitCheck\Service\DashboardWidgetDataService;
 use OCA\ArbeitszeitCheck\Support\TimeClientBootstrap;
+use OCP\AppFramework\Services\IInitialState;
 use OCP\Dashboard\IAPIWidgetV2;
 use OCP\Dashboard\IButtonWidget;
 use OCP\Dashboard\IIconWidget;
@@ -16,10 +18,13 @@ use OCP\Dashboard\Model\WidgetItem;
 use OCP\Dashboard\Model\WidgetItems;
 use OCP\IL10N;
 use OCP\IURLGenerator;
+use OCP\IUserSession;
 use OCP\Util;
 
 class EmployeeStatusWidget implements IAPIWidgetV2, IButtonWidget, IIconWidget, IReloadableWidget {
 	use RegistersTimeClientTrait;
+
+	private const INITIAL_STATE_DESKLET = 'desklet';
 	/** In-request cache: Nextcloud may call getItemsV2 and getWidgetButtons in one request. */
 	private ?string $cachedWidgetUserId = null;
 
@@ -32,6 +37,9 @@ class EmployeeStatusWidget implements IAPIWidgetV2, IButtonWidget, IIconWidget, 
 		private readonly DashboardWidgetDataService $widgetDataService,
 		private readonly TimeClientBootstrap $timeClientBootstrap,
 		private readonly WidgetIconHelper $widgetIconHelper,
+		private readonly IUserSession $userSession,
+		private readonly IInitialState $initialState,
+		private readonly DashboardDeskletRenderService $deskletRenderService,
 	) {
 	}
 
@@ -64,6 +72,14 @@ class EmployeeStatusWidget implements IAPIWidgetV2, IButtonWidget, IIconWidget, 
 		$this->registerDeskletStylesForWidget();
 		Util::addScript(Application::APP_ID, 'dashboard-widgets');
 		Util::addStyle(Application::APP_ID, 'dashboard-widgets');
+
+		$user = $this->userSession->getUser();
+		if ($user !== null) {
+			$this->initialState->provideInitialState(
+				self::INITIAL_STATE_DESKLET,
+				$this->deskletRenderService->renderForUser($user->getUID()),
+			);
+		}
 	}
 
 	public function getItemsV2(string $userId, ?string $since = null, int $limit = 7): WidgetItems {
@@ -158,12 +174,14 @@ class EmployeeStatusWidget implements IAPIWidgetV2, IButtonWidget, IIconWidget, 
 	public function getWidgetButtons(string $userId): array {
 		$data = $this->getEmployeeDataSafe($userId);
 		$status = (string)$data['status'];
+		$timeCapture = is_array($data['timeCapture'] ?? null) ? $data['timeCapture'] : [];
+		$clockStampingEnabled = (bool)($timeCapture['clockStampingEnabled'] ?? true);
 
 		return [
 			new WidgetButton(
 				WidgetButton::TYPE_NEW,
 				$this->dashboardQuickActionsUrl(),
-				$this->primaryActionLabel($status)
+				$this->primaryActionLabel($status, $clockStampingEnabled)
 			),
 			new WidgetButton(
 				WidgetButton::TYPE_MORE,
@@ -208,11 +226,18 @@ class EmployeeStatusWidget implements IAPIWidgetV2, IButtonWidget, IIconWidget, 
 		};
 	}
 
-	private function primaryActionLabel(string $status): string {
+	private function primaryActionLabel(string $status, bool $clockStampingEnabled): string {
+		if (!$clockStampingEnabled) {
+			return match ($status) {
+				'paused' => $this->l10n->t('Open dashboard to finish session'),
+				default => $this->l10n->t('Open time tracking'),
+			};
+		}
+
 		return match ($status) {
 			'active' => $this->l10n->t('Start Break'),
 			'break' => $this->l10n->t('End Break'),
-			'paused' => $this->l10n->t('Clock In'),
+			'paused' => $this->l10n->t('Resume after break'),
 			default => $this->l10n->t('Clock In'),
 		};
 	}
@@ -263,6 +288,10 @@ class EmployeeStatusWidget implements IAPIWidgetV2, IButtonWidget, IIconWidget, 
 			'vacationUsed' => 0.0,
 			'vacationCarryover' => 0.0,
 			'vacationCarryoverUsable' => 0.0,
+			'timeCapture' => [
+				'clockStampingEnabled' => true,
+				'manualTimeEntryEnabled' => true,
+			],
 		];
 	}
 }

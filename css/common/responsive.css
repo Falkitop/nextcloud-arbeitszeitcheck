@@ -231,10 +231,10 @@
     margin: 0;
   }
 
-  .table-responsive .table,
-  .table-responsive .arbeitszeitcheck-table,
-  .table-container .table,
-  .table-container .arbeitszeitcheck-table {
+  .table-responsive .table:not(.azc-table--responsive),
+  .table-responsive .arbeitszeitcheck-table:not(.azc-table--responsive),
+  .table-container .table:not(.azc-table--responsive),
+  .table-container .arbeitszeitcheck-table:not(.azc-table--responsive) {
     min-width: 520px;
   }
 
@@ -310,16 +310,21 @@
   }
 
   img,
-  svg:not(.azc-icon),
+  svg:not(.azc-icon):not(.inline-notice__glyph):not([class*='__icon-svg']):not([class*='__glyph']):not(.azc-page-header__icon-svg),
   video,
   iframe {
     max-width: 100%;
     height: auto;
   }
 
-  /* Catalogue icons keep fixed dimensions (see common/icons.css) */
-  svg.azc-icon {
+  /* Catalogue / status icons keep fixed dimensions (see common/icons.css) */
+  svg.azc-icon,
+  svg.inline-notice__glyph,
+  svg[class*='__icon-svg'],
+  svg[class*='__glyph'],
+  svg.azc-page-header__icon-svg {
     max-width: none;
+    height: auto;
   }
 
   /* Ensure containers don't overflow */

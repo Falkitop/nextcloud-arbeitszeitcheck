@@ -153,7 +153,7 @@
 			'</div>',
 			'<div class="admin-drilldown-status" role="status" aria-live="polite">' + escapeHtml(t('Loading…', 'Loading…')) + '</div>',
 			'<div class="table-container admin-drilldown-table-wrap" hidden>',
-			'<table class="table table--hover admin-drilldown-table">',
+			'<table class="table table--hover azc-table--responsive admin-drilldown-table">',
 			'<thead><tr>',
 			'<th scope="col">' + escapeHtml(t('Name', 'Name')) + '</th>',
 			'<th scope="col">' + escapeHtml(t('User ID', 'User ID')) + '</th>',
@@ -194,14 +194,21 @@
 			if (!filtered.length) {
 				tbody.innerHTML = '<tr><td colspan="4">' + escapeHtml(t('No employees found.', 'No employees found.')) + '</td></tr>';
 			} else {
+				const nameHdr = t('Name', 'Name');
+				const userIdHdr = t('User ID', 'User ID');
+				const activeTodayHdr = t('Active today', 'Active today');
+				const overtimeHdr = t('Overtime tracking set', 'Overtime tracking set');
+				const td = (label, html) => Utils.responsiveTd
+					? Utils.responsiveTd(label, html)
+					: '<td>' + html + '</td>';
 				tbody.innerHTML = filtered.map((row) => {
 					const yes = t('Yes', 'Yes');
 					const no = t('No', 'No');
 					return '<tr>'
-						+ '<td>' + escapeHtml(row.displayName || row.userId) + '</td>'
-						+ '<td>' + escapeHtml(row.userId) + '</td>'
-						+ '<td>' + escapeHtml(row.hasTimeEntriesToday ? yes : no) + '</td>'
-						+ '<td>' + escapeHtml(row.hasOvertimeTrackingFrom ? yes : no) + '</td>'
+						+ td(nameHdr, escapeHtml(row.displayName || row.userId))
+						+ td(userIdHdr, escapeHtml(row.userId))
+						+ td(activeTodayHdr, escapeHtml(row.hasTimeEntriesToday ? yes : no))
+						+ td(overtimeHdr, escapeHtml(row.hasOvertimeTrackingFrom ? yes : no))
 						+ '</tr>';
 				}).join('');
 			}

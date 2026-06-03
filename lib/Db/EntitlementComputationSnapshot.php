@@ -53,6 +53,13 @@ class EntitlementComputationSnapshot extends Entity {
 		$this->addType('computedAt', 'datetime');
 		$this->addType('computedBy', 'string');
 		$this->addType('policyFingerprint', 'string');
+		// Typed \DateTime properties must be initialized before Entity::setter()
+		// compares them; otherwise the first setAsOfDate()/setComputedAt() call
+		// throws "must not be accessed before initialization".
+		$today = new \DateTime('today');
+		$this->asOfDate = clone $today;
+		$now = new \DateTime();
+		$this->computedAt = clone $now;
 	}
 
 	public function getCalculationTrace(): array {
@@ -62,6 +69,7 @@ class EntitlementComputationSnapshot extends Entity {
 
 	public function setCalculationTrace(array $trace): void {
 		$this->calculationTraceJson = (string)json_encode($trace);
+		$this->markFieldUpdated('calculationTraceJson');
 	}
 }
 

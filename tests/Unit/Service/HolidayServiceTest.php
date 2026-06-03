@@ -34,7 +34,12 @@ class HolidayServiceTest extends TestCase
 		$start = new \DateTime('2024-12-23');
 		$end = new \DateTime('2025-01-03');
 
-		$workingDays = HolidayService::computeWorkingDays($start, $end);
+		$weights = [
+			'2024-12-25' => 1.0,
+			'2024-12-26' => 1.0,
+			'2025-01-01' => 1.0,
+		];
+		$workingDays = HolidayService::computeWorkingDaysFromWeights($start, $end, $weights);
 
 		// Manually expected working days:
 		// 23.12. (Mon)  workday
@@ -58,7 +63,12 @@ class HolidayServiceTest extends TestCase
 		$start = new \DateTime('2024-12-23');
 		$end = new \DateTime('2025-01-03');
 
-		$perYear = HolidayService::computeWorkingDaysPerYear($start, $end);
+		$weights = [
+			'2024-12-25' => 1.0,
+			'2024-12-26' => 1.0,
+			'2025-01-01' => 1.0,
+		];
+		$perYear = HolidayService::computeWorkingDaysPerYearFromWeights($start, $end, $weights);
 
 		// From 23.12.2024 to 31.12.2024:
 		// Working days: 23, 24, 27, 30, 31  => 5 days (25/26 holidays, weekend ignored)

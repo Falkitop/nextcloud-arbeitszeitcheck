@@ -28,6 +28,9 @@ $recentEntries = $_['recentEntries'] ?? [];
 $dashboardError = isset($_['error']) && is_string($_['error']) ? trim($_['error']) : '';
 $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class);
 $dashStats = $_['stats'] ?? [];
+$timeCapture = is_array($_['timeCapture'] ?? null) ? $_['timeCapture'] : [];
+$clockStampingEnabled = (bool)($timeCapture['clockStampingEnabled'] ?? true);
+$manualTimeEntryEnabled = (bool)($timeCapture['manualTimeEntryEnabled'] ?? true);
 
 // Single source of truth for storage TZ, user display TZ and the server-clock
 // anchor the JS timer pins itself to. Defines $arbeitszeitCheckStorageTimeZone,
@@ -86,51 +89,58 @@ $arbeitszeitCheckFormatHours = static function (float $hours): string {
         <div class="azc-page-stack">
         <div class="azc-dashboard-alerts">
         <?php if ($dashboardError !== ''): ?>
-            <div class="azc-callout azc-callout--danger" role="alert" aria-live="assertive">
-                <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('alert-triangle', 'azc-callout__icon-svg')); ?></span>
-                <div class="azc-callout__body">
-                    <p class="azc-callout__title"><?php p($l->t('Some dashboard data could not be loaded.')); ?></p>
-                    <p class="azc-callout__text"><?php p($dashboardError); ?></p>
-                </div>
-            </div>
+            <?php
+            $calloutVariant = 'danger';
+            $calloutRole = 'alert';
+            $calloutAriaLive = 'assertive';
+            $calloutBanner = false;
+            $calloutIcon = 'alert-triangle';
+            $calloutTitle = $l->t('Some dashboard data could not be loaded.');
+            $calloutText = $dashboardError;
+            unset($calloutAriaLive);
+            include __DIR__ . '/common/alert-callout.php';
+            ?>
         <?php endif; ?>
 
         <?php if (!empty($_['workingTimeModelMissing'])): ?>
-            <div class="azc-callout azc-callout--warning" role="status" aria-labelledby="dashboard-wtm-missing-title">
-                <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('alert-triangle', 'azc-callout__icon-svg')); ?></span>
-                <div class="azc-callout__body">
-                    <p id="dashboard-wtm-missing-title" class="azc-callout__title"><?php p($l->t('Working time model missing')); ?></p>
-                    <p class="azc-callout__text">
-                        <?php p($l->t('No working time model is assigned to your account. Ask your administrator to assign one in employee settings. Until then, break rules and compliance checks may use default values only.')); ?>
-                    </p>
-                </div>
-            </div>
+            <?php
+            $calloutVariant = 'warning';
+            $calloutRole = 'status';
+            $calloutBanner = false;
+            $calloutTitleId = 'dashboard-wtm-missing-title';
+            $calloutIcon = 'alert-triangle';
+            $calloutTitle = $l->t('Working time model missing');
+            $calloutText = $l->t('No working time model is assigned to your account. Ask your administrator to assign one in employee settings. Until then, break rules and compliance checks may use default values only.');
+            include __DIR__ . '/common/alert-callout.php';
+            ?>
         <?php endif; ?>
 
         <?php
         $pendingCorrectionCount = (int)($_['pendingCorrectionCount'] ?? 0);
         if ($pendingCorrectionCount > 0):
             $timeEntriesUrl = $urlGenerator->linkToRoute('arbeitszeitcheck.page.timeEntries');
+            $calloutVariant = 'warning';
+            $calloutRole = 'status';
+            $calloutElement = 'div';
+            $calloutBanner = true;
+            $calloutTitleId = 'dashboard-pending-correction-title';
+            $calloutIcon = 'user-check';
+            $calloutTitle = $l->n(
+                '%n of your time entries is waiting for manager approval.',
+                '%n of your time entries are waiting for manager approval.',
+                $pendingCorrectionCount
+            );
+            $calloutText = $l->t('Open your time entries to see proposed times or withdraw the request.');
+            $calloutActions = [
+                [
+                    'href' => $timeEntriesUrl,
+                    'label' => $l->t('View time entries'),
+                    'class' => 'azc-btn azc-btn--secondary azc-btn--sm',
+                ],
+            ];
+            include __DIR__ . '/common/alert-callout.php';
+        endif;
         ?>
-            <div class="azc-callout azc-callout--warning" role="status" aria-labelledby="dashboard-pending-correction-title">
-                <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('user-check', 'azc-callout__icon-svg')); ?></span>
-                <div class="azc-callout__body">
-                    <p id="dashboard-pending-correction-title" class="azc-callout__title">
-                        <?php p($l->n(
-                            '%n of your time entries is waiting for manager approval.',
-                            '%n of your time entries are waiting for manager approval.',
-                            $pendingCorrectionCount
-                        )); ?>
-                    </p>
-                    <p class="azc-callout__text">
-                        <?php p($l->t('Open your time entries to see proposed times or withdraw the request.')); ?>
-                    </p>
-                    <div class="azc-callout__actions">
-                        <a href="<?php p($timeEntriesUrl); ?>" class="azc-btn azc-btn--secondary azc-btn--sm"><?php p($l->t('View time entries')); ?></a>
-                    </div>
-                </div>
-            </div>
-        <?php endif; ?>
         </div>
 
         <?php if (($_['isFirstTimeUser'] ?? false) === true): ?>
@@ -143,17 +153,24 @@ $arbeitszeitCheckFormatHours = static function (float $hours): string {
                 </header>
                 <div class="azc-card__body">
                     <ol class="azc-dashboard-welcome__steps">
+                        <?php if ($clockStampingEnabled): ?>
                         <li><?php p($l->t('Click the "Clock In" button below when you start work')); ?></li>
                         <li><?php p($l->t('Click "Clock Out" when you finish work')); ?></li>
                         <li><?php p($l->t('The system will automatically track your hours and remind you to take breaks')); ?></li>
-                        <li><?php p($l->t('You can also add time entries manually or request vacation days in the "Absences" section')); ?></li>
+                        <?php endif; ?>
+                        <?php if ($manualTimeEntryEnabled): ?>
+                        <li><?php p($l->t('You can add time entries manually under Time entries when you need to record hours by hand')); ?></li>
+                        <?php endif; ?>
+                        <li><?php p($l->t('Request vacation and other absences in the Absences section')); ?></li>
                     </ol>
                     <div class="azc-dashboard-welcome__actions">
+                        <?php if ($manualTimeEntryEnabled): ?>
                         <a href="<?php print_unescaped($urlGenerator->linkToRoute('arbeitszeitcheck.page.timeEntries')); ?>"
                             class="azc-btn azc-btn--primary"
                             aria-label="<?php p($l->t('Go to time entries to see how to add entries manually')); ?>">
                             <?php p($l->t('Learn More About Time Entries')); ?>
                         </a>
+                        <?php endif; ?>
                         <button type="button" class="azc-btn azc-btn--secondary" id="dismiss-welcome"
                             aria-label="<?php p($l->t('Dismiss this welcome message')); ?>">
                             <?php p($l->t('Got it, thanks!')); ?>
@@ -166,7 +183,17 @@ $arbeitszeitCheckFormatHours = static function (float $hours): string {
         <section class="azc-dashboard-overview dashboard-key-metrics" aria-labelledby="dashboard-overview-title">
             <header class="azc-dashboard-overview__intro">
                 <h2 id="dashboard-overview-title" class="azc-dashboard-overview__title"><?php p($l->t('At a glance')); ?></h2>
-                <p class="azc-dashboard-overview__lead"><?php p($l->t('Clock in and out here, then check your hours, overtime, and vacation below.')); ?></p>
+                <p class="azc-dashboard-overview__lead"><?php
+                    if ($clockStampingEnabled && $manualTimeEntryEnabled) {
+                        p($l->t('Clock in and out here, then check your hours, overtime, and vacation below.'));
+                    } elseif ($clockStampingEnabled) {
+                        p($l->t('Clock in and out here, then review your hours, overtime, and vacation below.'));
+                    } elseif ($manualTimeEntryEnabled) {
+                        p($l->t('Your hours are recorded under Time entries. Review overtime and vacation below.'));
+                    } else {
+                        p($l->t('Review your recorded hours, overtime, and vacation below.'));
+                    }
+                ?></p>
             </header>
 
             <div class="azc-dashboard-overview__grid">
@@ -174,6 +201,12 @@ $arbeitszeitCheckFormatHours = static function (float $hours): string {
                 <?php
 			$statusKey = $status['status'] ?? 'clocked_out';
 			$statusKeySafe = in_array($statusKey, ['active', 'break', 'clocked_out', 'paused'], true) ? $statusKey : 'clocked_out';
+			$pausedEntryId = ($statusKeySafe === 'paused') ? ($status['current_entry']['id'] ?? null) : null;
+			$showResumeButton = $clockStampingEnabled && $statusKeySafe === 'paused';
+			$showClockInButton = $clockStampingEnabled && $statusKeySafe === 'clocked_out';
+			$showCompletePausedButton = $statusKeySafe === 'paused' && $pausedEntryId !== null;
+			$showSessionStampActions = in_array($statusKeySafe, ['active', 'break'], true);
+			$showPunchActionGroup = $showClockInButton || $showResumeButton || $showCompletePausedButton || $showSessionStampActions;
 			$statusLabel = match ($statusKeySafe) {
 				'active' => $l->t('Clocked In'),
 				'break' => $l->t('On Break'),
@@ -189,8 +222,14 @@ $arbeitszeitCheckFormatHours = static function (float $hours): string {
 			$statusSubtitle = match ($statusKeySafe) {
 				'active' => $l->t('Your working time is being recorded.'),
 				'break' => $l->t('You are on a break. End the break or clock out when you are done.'),
-				'paused' => $l->t('Your session is paused. Resume work or complete the session.'),
-				default => $l->t('You are not clocked in. Press the button below when you start work.'),
+				'paused' => $clockStampingEnabled
+					? $l->t('Your session is paused. Resume work or complete the session.')
+					: $l->t('Your session is paused. Use “Complete session” to finish recording this day.'),
+				default => $clockStampingEnabled
+					? $l->t('You are not clocked in. Press the button below when you start work.')
+					: ($manualTimeEntryEnabled
+						? $l->t('Clock in/out is not enabled for your account. Record your hours under Time entries instead.')
+						: $l->t('Clock in/out is not enabled for your account. Contact your administrator if you need to record time.')),
 			};
 			$showNextHint = in_array($statusKeySafe, ['active', 'break'], true);
                 $startedAt = null;
@@ -269,7 +308,7 @@ $arbeitszeitCheckFormatHours = static function (float $hours): string {
 
                         <?php if ($isOvernightSession): ?>
                             <div class="azc-callout azc-callout--info azc-dashboard-overnight" role="status">
-                                <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('clock', 'azc-callout__icon-svg')); ?></span>
+                                <span class="azc-callout__icon azc-notif-icon-well" aria-hidden="true"><?php print_unescaped(IconCatalog::render('clock', 'azc-callout__icon-svg')); ?></span>
                                 <div class="azc-callout__body">
                                     <p class="azc-callout__title"><?php p($l->t('Night shift across midnight')); ?></p>
                                     <p class="azc-callout__text"><?php p($l->t('Your session continues from yesterday. “Worked today” counts only the hours since midnight on the current calendar day (German labor law, ArbZG §3). The session timer shows your total working time since clock-in.')); ?></p>
@@ -289,46 +328,90 @@ $arbeitszeitCheckFormatHours = static function (float $hours): string {
 
                         <?php
                         $projectCheckEnabled = !empty($_['projectCheckEnabled']);
+                        $projectCheckAvailable = !empty($_['projectCheckAvailable']);
                         $projectCheckProjects = is_array($_['projectCheckProjects'] ?? null) ? $_['projectCheckProjects'] : [];
+                        $hasProjectCheckProjects = !empty($projectCheckProjects);
                         $showClockInProjectPicker = $projectCheckEnabled
-                            && !empty($projectCheckProjects)
-                            && in_array($statusKeySafe, ['clocked_out', 'paused'], true);
+                            && $hasProjectCheckProjects
+                            && $showClockInButton;
+                        $showProjectCheckEmptyHint = $projectCheckEnabled
+                            && !$hasProjectCheckProjects
+                            && $showClockInButton;
+                        $showProjectCheckLinkingOffHint = $projectCheckAvailable
+                            && !$projectCheckEnabled
+                            && $showClockInButton;
                         ?>
+                        <?php if ($showProjectCheckLinkingOffHint): ?>
+                            <?php $azcProjectCheckCalloutContext = 'dashboard'; include __DIR__ . '/partials/projectcheck-linking-disabled-callout.php'; ?>
+                        <?php endif; ?>
+                        <?php if ($showProjectCheckEmptyHint): ?>
+                        <div class="azc-callout azc-callout--info azc-dashboard-project-picker-empty" role="status">
+                            <span class="azc-callout__icon azc-notif-icon-well" aria-hidden="true"><?php print_unescaped(IconCatalog::render('briefcase', 'azc-callout__icon-svg')); ?></span>
+                            <div class="azc-callout__body">
+                                <p class="azc-callout__title"><?php p($l->t('No projects available for you')); ?></p>
+                                <p class="azc-callout__text"><?php p($l->t('ProjectCheck is enabled, but you have no customer projects to choose from. Ask your project manager to add you to a project team, or clock in without a project.')); ?></p>
+                            </div>
+                        </div>
+                        <?php endif; ?>
                         <?php if ($showClockInProjectPicker): ?>
                         <div class="azc-dashboard-punch__project azc-dashboard-project-picker" role="group" aria-labelledby="dashboard-clock-in-project-label">
                             <label for="dashboard-clock-in-project" id="dashboard-clock-in-project-label" class="azc-dashboard-project-picker__label">
-                                <?php p($l->t('Clock-in project (optional)')); ?>
+                                <span class="azc-dashboard-project-picker__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('briefcase', 'azc-dashboard-project-picker__icon-svg')); ?></span>
+                                <span class="azc-dashboard-project-picker__label-text"><?php p($l->t('Project for this session')); ?></span>
+                                <span class="azc-dashboard-project-picker__optional"><?php p($l->t('optional')); ?></span>
                             </label>
                             <select id="dashboard-clock-in-project"
                                 class="form-select azc-dashboard-project-picker__select"
                                 aria-describedby="dashboard-clock-in-project-help">
-                                <option value=""><?php p($l->t('No project selected')); ?></option>
-                                <?php foreach ($projectCheckProjects as $pcProject):
-                                    $pid = (string)($pcProject['id'] ?? '');
-                                    if ($pid === '') {
-                                        continue;
-                                    }
-                                    ?>
-                                    <option value="<?php p($pid); ?>"><?php p($pcProject['displayName'] ?? $pcProject['name'] ?? $pid); ?></option>
-                                <?php endforeach; ?>
+                                <?php
+                                $azcPickerProjects = $projectCheckProjects;
+                                $azcPickerSelectedId = '';
+                                include __DIR__ . '/common/projectcheck-picker-options.php';
+                                ?>
                             </select>
-                            <p id="dashboard-clock-in-project-help" class="form-help azc-dashboard-project-picker__help"><?php p($l->t('ProjectCheck links your hours to a customer project when both apps are enabled. Projects with per-person pricing only appear if you are on the team.')); ?></p>
+                            <p id="dashboard-clock-in-project-help" class="form-help azc-dashboard-project-picker__help"><?php p($l->t('Link these hours to a ProjectCheck customer project. Leave it on “No project” to just track your time. Projects with per-person pricing only appear if you are on the project team.')); ?></p>
                         </div>
                         <?php endif; ?>
 
-                        <div class="azc-dashboard-punch__actions azc-dashboard-status__actions<?php echo $statusKeySafe === 'clocked_out' ? ' azc-dashboard-punch__actions--solo' : ''; ?>" role="group" aria-label="<?php p($l->t('Time tracking actions')); ?>">
-                            <?php if ($statusKeySafe === 'clocked_out' || $statusKeySafe === 'paused'): ?>
+                        <?php if (!$clockStampingEnabled && in_array($statusKeySafe, ['clocked_out', 'paused'], true) && !$showSessionStampActions): ?>
+                            <div class="azc-callout azc-callout--info azc-dashboard-capture-disabled" role="status">
+                                <span class="azc-callout__icon azc-notif-icon-well" aria-hidden="true"><?php print_unescaped(IconCatalog::render('info', 'azc-callout__icon-svg')); ?></span>
+                                <div class="azc-callout__body">
+                                    <p class="azc-callout__title"><?php p($l->t('Clock in/out is turned off for you')); ?></p>
+                                    <p class="azc-callout__text"><?php
+                                        if ($statusKeySafe === 'paused') {
+                                            p($l->t('You cannot start a new stamp session. Finish the paused session with “Complete session” below, or contact your administrator.'));
+                                        } elseif ($manualTimeEntryEnabled) {
+                                            p($l->t('Your administrator disabled stamping. Add your working hours manually under Time entries.'));
+                                        } else {
+                                            p($l->t('Your administrator disabled stamping. Contact HR if you need to record time.'));
+                                        }
+                                    ?></p>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+
+                        <?php if ($showPunchActionGroup): ?>
+                        <div class="azc-dashboard-punch__actions azc-dashboard-status__actions<?php echo ($statusKeySafe === 'clocked_out' && $showClockInButton && !$showCompletePausedButton) ? ' azc-dashboard-punch__actions--solo' : ''; ?>" role="group" aria-label="<?php p($l->t('Time tracking actions')); ?>">
+                            <?php if ($showClockInButton): ?>
                                 <button id="btn-clock-in"
                                     class="azc-btn azc-btn--primary azc-dashboard-punch__cta"
                                     type="button"
-                                    aria-label="<?php p($statusKeySafe === 'paused' ? $l->t('Resume working – continues your paused time entry') : $l->t('Clock in to start tracking your working time')); ?>"
-                                    title="<?php p($statusKeySafe === 'paused' ? $l->t('Resume working – continues your paused time entry') : $l->t('Click to clock in and start tracking your working time')); ?>">
-                                    <?php p($statusKeySafe === 'paused' ? $l->t('Resume after break') : $l->t('Clock In')); ?>
+                                    aria-label="<?php p($l->t('Clock in to start tracking your working time')); ?>"
+                                    title="<?php p($l->t('Click to clock in and start tracking your working time')); ?>">
+                                    <?php p($l->t('Clock In')); ?>
                                 </button>
-                                <?php
-                                $pausedEntryId = $statusKeySafe === 'paused' ? ($status['current_entry']['id'] ?? null) : null;
-                                if ($pausedEntryId !== null):
-                                ?>
+                            <?php endif; ?>
+                            <?php if ($showResumeButton): ?>
+                                <button id="btn-clock-in"
+                                    class="azc-btn azc-btn--primary azc-dashboard-punch__cta"
+                                    type="button"
+                                    aria-label="<?php p($l->t('Resume working – continues your paused time entry')); ?>"
+                                    title="<?php p($l->t('Resume working – continues your paused time entry')); ?>">
+                                    <?php p($l->t('Resume after break')); ?>
+                                </button>
+                            <?php endif; ?>
+                            <?php if ($showCompletePausedButton): ?>
                                     <button class="azc-btn azc-btn--secondary btn-complete-entry"
                                         type="button"
                                         data-entry-id="<?php p((string)$pausedEntryId); ?>"
@@ -337,8 +420,8 @@ $arbeitszeitCheckFormatHours = static function (float $hours): string {
                                         <span class="btn__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('check', 'btn__icon-svg')); ?></span>
                                         <?php p($l->t('Complete session')); ?>
                                     </button>
-                                <?php endif; ?>
-                            <?php elseif ($statusKeySafe === 'active'): ?>
+                            <?php endif; ?>
+                            <?php if ($statusKeySafe === 'active'): ?>
                                 <button id="btn-start-break"
                                     class="azc-btn azc-btn--secondary"
                                     type="button"
@@ -368,6 +451,7 @@ $arbeitszeitCheckFormatHours = static function (float $hours): string {
                                 </button>
                             <?php endif; ?>
                         </div>
+                        <?php endif; ?>
 
                         <p class="azc-dashboard-punch__tz"
                            aria-label="<?php p($l->t('Times are shown in your timezone (%s).', [$arbeitszeitCheckUserDisplayTz->getName()])); ?>">
@@ -558,7 +642,7 @@ $arbeitszeitCheckFormatHours = static function (float $hours): string {
                                 <div class="dashboard-overtime-payout-history" role="region" aria-labelledby="dashboard-payout-history-heading">
                                     <h4 id="dashboard-payout-history-heading" class="dashboard-overtime-card__bank-title"><?php p($l->t('Payout history')); ?></h4>
                                     <div class="table-container">
-                                        <table class="table table--hover report-table dashboard-overtime-payout-history__table">
+                                        <table class="table table--hover azc-table--responsive report-table dashboard-overtime-payout-history__table">
                                             <caption class="visually-hidden"><?php p($l->t('Recorded overtime payouts')); ?></caption>
                                             <thead>
                                                 <tr>
@@ -570,9 +654,9 @@ $arbeitszeitCheckFormatHours = static function (float $hours): string {
                                             <tbody>
                                                 <?php foreach ($payoutItems as $payoutRow): ?>
                                                 <tr>
-                                                    <td><?php p(sprintf('%04d-%02d', (int)($payoutRow['calendar_year'] ?? 0), (int)($payoutRow['calendar_month'] ?? 0))); ?></td>
-                                                    <td><?php p(number_format((float)($payoutRow['hours_paid'] ?? 0), 2)); ?> <?php p($l->t('h')); ?></td>
-                                                    <td><?php p(number_format((float)($payoutRow['effective_balance_after'] ?? 0), 2)); ?> <?php p($l->t('h')); ?></td>
+                                                    <td data-label="<?php p($l->t('Month')); ?>"><?php p(sprintf('%04d-%02d', (int)($payoutRow['calendar_year'] ?? 0), (int)($payoutRow['calendar_month'] ?? 0))); ?></td>
+                                                    <td data-label="<?php p($l->t('Hours paid')); ?>"><?php p(number_format((float)($payoutRow['hours_paid'] ?? 0), 2)); ?> <?php p($l->t('h')); ?></td>
+                                                    <td data-label="<?php p($l->t('Balance after')); ?>"><?php p(number_format((float)($payoutRow['effective_balance_after'] ?? 0), 2)); ?> <?php p($l->t('h')); ?></td>
                                                 </tr>
                                                 <?php endforeach; ?>
                                             </tbody>

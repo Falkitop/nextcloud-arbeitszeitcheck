@@ -11,14 +11,57 @@ declare(strict_types=1);
 
 namespace OCA\ArbeitszeitCheck\Tests\Unit\Service;
 
+use OCA\ArbeitszeitCheck\Constants;
 use OCA\ArbeitszeitCheck\Service\ProjectCheckIntegrationService;
 use OCP\App\IAppManager;
+use OCP\AppFramework\Services\IAppConfig;
 use OCP\DB\IResult;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
 use OCP\IL10N;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
+
+/**
+ * Minimal stand-in for a ProjectCheck `Project` entity.
+ *
+ * Crucially, the column getters are served through `__call()` magic exactly
+ * like the real {@see \OCP\AppFramework\Db\Entity}, while a couple of helper
+ * methods are declared concretely. This reproduces the real runtime shape so
+ * the test catches the `method_exists()` vs `is_callable()` regression that
+ * previously blanked every project label in the picker.
+ *
+ * @method int getId()
+ * @method string getName()
+ * @method string getCustomerName()
+ */
+class MagicGetterProjectStub
+{
+	/** @param array<string, mixed> $data */
+	public function __construct(private array $data)
+	{
+	}
+
+	public function __call(string $name, array $arguments): mixed
+	{
+		if (str_starts_with($name, 'get')) {
+			$key = lcfirst(substr($name, 3));
+			return $this->data[$key] ?? null;
+		}
+		throw new \BadMethodCallException($name);
+	}
+
+	// Declared concretely on the real entity, so these must keep working too.
+	public function allowsTimeTracking(): bool
+	{
+		return (bool)($this->data['allowsTimeTracking'] ?? true);
+	}
+
+	public function getCostRateMode(): string
+	{
+		return (string)($this->data['costRateMode'] ?? 'project');
+	}
+}
 
 /**
  * Class ProjectCheckIntegrationServiceTest
@@ -40,11 +83,18 @@ class ProjectCheckIntegrationServiceTest extends TestCase
 	/** @var LoggerInterface|\PHPUnit\Framework\MockObject\MockObject */
 	private $logger;
 
+	/** @var IAppConfig|\PHPUnit\Framework\MockObject\MockObject */
+	private $appConfig;
+
+	private string $integrationConfigValue = '1';
+	private bool $integrationConfigUsesDefault = false;
+
 	protected function setUp(): void
 	{
 		parent::setUp();
 
 		$this->appManager = $this->createMock(IAppManager::class);
+		$this->appConfig = $this->createMock(IAppConfig::class);
 		$this->db = $this->createMock(IDBConnection::class);
 		$this->l10n = $this->createMock(IL10N::class);
 		$this->logger = $this->createMock(LoggerInterface::class);
@@ -54,14 +104,37 @@ class ProjectCheckIntegrationServiceTest extends TestCase
 				return $text;
 			});
 
+		$this->appConfig->method('getAppValueString')
+			->willReturnCallback(function (string $key, string $default = ''): string {
+				if ($key === Constants::CONFIG_PROJECTCHECK_INTEGRATION_ENABLED) {
+					if ($this->integrationConfigUsesDefault) {
+						return $default;
+					}
+					return $this->integrationConfigValue;
+				}
+				return $default;
+			});
+
 		$this->service = new ProjectCheckIntegrationService(
 			$this->appManager,
+			$this->appConfig,
 			$this->db,
 			$this->l10n,
 			$this->logger,
 			null,
 			null,
 		);
+	}
+
+	private function configureAppConfigIntegration(string $value): void
+	{
+		$this->integrationConfigUsesDefault = false;
+		$this->integrationConfigValue = $value;
+	}
+
+	private function configureAppConfigIntegrationUnset(): void
+	{
+		$this->integrationConfigUsesDefault = true;
 	}
 
 	/**
@@ -143,6 +216,7 @@ class ProjectCheckIntegrationServiceTest extends TestCase
 
 		$service = new ProjectCheckIntegrationService(
 			$this->appManager,
+			$this->appConfig,
 			$this->db,
 			$this->l10n,
 			$this->logger,
@@ -155,6 +229,139 @@ class ProjectCheckIntegrationServiceTest extends TestCase
 		$this->assertCount(1, $projects);
 		$this->assertEquals('1', $projects[0]['id']);
 		$this->assertEquals('Project 1 (Customer A)', $projects[0]['displayName']);
+	}
+
+	/**
+	 * Regression test: project labels must render for entities whose getters are
+	 * provided through Entity `__call()` magic (the real ProjectCheck Project).
+	 *
+	 * With the previous `method_exists()` guards this produced empty <option>
+	 * labels because `method_exists()` does not see magic methods.
+	 */
+	public function testGetAvailableProjectsRendersLabelsForMagicGetterEntities(): void
+	{
+		$userId = 'user1';
+
+		$this->appManager->method('isEnabledForUser')->willReturn(true);
+
+		$project = new MagicGetterProjectStub([
+			'id' => 6,
+			'name' => 'KKK',
+			'customerName' => 'Fritz Cola',
+			'customerId' => 4,
+			'costRateMode' => 'project',
+			'allowsTimeTracking' => true,
+		]);
+
+		$projectService = $this->createMock(\OCA\ProjectCheck\Service\ProjectService::class);
+		$projectService->method('getProjectsForUserTimeEntry')->willReturn([$project]);
+
+		$service = new ProjectCheckIntegrationService(
+			$this->appManager,
+			$this->appConfig,
+			$this->db,
+			$this->l10n,
+			$this->logger,
+			$projectService,
+			null,
+		);
+
+		$projects = $service->getAvailableProjects($userId);
+
+		$this->assertCount(1, $projects);
+		$this->assertSame('6', $projects[0]['id']);
+		$this->assertSame('KKK', $projects[0]['name']);
+		$this->assertSame('Fritz Cola', $projects[0]['customerName']);
+		$this->assertSame('KKK (Fritz Cola)', $projects[0]['displayName']);
+		$this->assertSame(4, $projects[0]['customerId']);
+	}
+
+	/**
+	 * When entity getters return an empty name, fall back to the database row.
+	 */
+	public function testGetAvailableProjectsFallsBackToDatabaseName(): void
+	{
+		$this->appManager->method('isEnabledForUser')->willReturn(true);
+
+		$project = new MagicGetterProjectStub([
+			'id' => 6,
+			'name' => '',
+			'customerName' => '',
+			'costRateMode' => 'project',
+			'allowsTimeTracking' => true,
+		]);
+
+		$projectService = $this->createMock(\OCA\ProjectCheck\Service\ProjectService::class);
+		$projectService->method('getProjectsForUserTimeEntry')->willReturn([$project]);
+
+		$queryResult = $this->createMock(\OCP\DB\IResult::class);
+		$queryResult->method('fetch')->willReturn([
+			'id' => 6,
+			'name' => 'KKK',
+			'customer_name' => 'Fritz Cola',
+			'customer_id' => 4,
+			'status' => 'Active',
+		]);
+		$queryResult->method('closeCursor');
+
+		$query = $this->createMock(\OCP\DB\QueryBuilder\IQueryBuilder::class);
+		$query->method('select')->willReturnSelf();
+		$query->method('from')->willReturnSelf();
+		$query->method('leftJoin')->willReturnSelf();
+		$query->method('where')->willReturnSelf();
+		$query->method('expr')->willReturn($this->createMock(\OCP\DB\QueryBuilder\IExpressionBuilder::class));
+		$query->method('createNamedParameter')->willReturn('p');
+		$query->method('executeQuery')->willReturn($queryResult);
+
+		$this->db->method('getQueryBuilder')->willReturn($query);
+
+		$service = new ProjectCheckIntegrationService(
+			$this->appManager,
+			$this->appConfig,
+			$this->db,
+			$this->l10n,
+			$this->logger,
+			$projectService,
+			null,
+		);
+
+		$projects = $service->getAvailableProjects('user1');
+		$this->assertCount(1, $projects);
+		$this->assertSame('6', $projects[0]['id']);
+		$this->assertSame('KKK', $projects[0]['name']);
+		$this->assertSame('Fritz Cola', $projects[0]['customerName']);
+	}
+
+	/**
+	 * Defensive: a project whose name is empty must be skipped, never rendered
+	 * as a blank, unreadable option.
+	 */
+	public function testGetAvailableProjectsSkipsProjectsWithEmptyName(): void
+	{
+		$this->appManager->method('isEnabledForUser')->willReturn(true);
+
+		$blank = new MagicGetterProjectStub([
+			'id' => 7,
+			'name' => '',
+			'customerName' => 'Fritz Cola',
+			'costRateMode' => 'project',
+			'allowsTimeTracking' => true,
+		]);
+
+		$projectService = $this->createMock(\OCA\ProjectCheck\Service\ProjectService::class);
+		$projectService->method('getProjectsForUserTimeEntry')->willReturn([$blank]);
+
+		$service = new ProjectCheckIntegrationService(
+			$this->appManager,
+			$this->appConfig,
+			$this->db,
+			$this->l10n,
+			$this->logger,
+			$projectService,
+			null,
+		);
+
+		$this->assertSame([], $service->getAvailableProjects('user1'));
 	}
 
 	/**
@@ -182,6 +389,7 @@ class ProjectCheckIntegrationServiceTest extends TestCase
 
 		$service = new ProjectCheckIntegrationService(
 			$this->appManager,
+			$this->appConfig,
 			$this->db,
 			$this->l10n,
 			$this->logger,
@@ -209,6 +417,7 @@ class ProjectCheckIntegrationServiceTest extends TestCase
 
 		$service = new ProjectCheckIntegrationService(
 			$this->appManager,
+			$this->appConfig,
 			$this->db,
 			$this->l10n,
 			$this->logger,
@@ -816,5 +1025,100 @@ class ProjectCheckIntegrationServiceTest extends TestCase
 		$exists = $this->service->projectExists('999');
 
 		$this->assertFalse($exists);
+	}
+
+	/**
+	 * Admin integration defaults to OFF when the config key has never been stored.
+	 */
+	public function testIsLinkingDisabledDefaultsOffWhenAdminConfigUnset(): void
+	{
+		$this->appManager->method('isEnabledForUser')->willReturn(true);
+		$this->configureAppConfigIntegrationUnset();
+
+		$this->assertFalse($this->service->isLinkingEnabledForUser('user1'));
+		$this->assertFalse($this->service->isAdminIntegrationEnabled());
+	}
+
+	/**
+	 * Admin stores literal '0' to disable linking for everyone.
+	 */
+	public function testIsLinkingDisabledWhenAdminConfigIsZero(): void
+	{
+		$this->appManager->method('isEnabledForUser')->willReturn(true);
+		$this->configureAppConfigIntegration('0');
+
+		$this->assertFalse($this->service->isLinkingEnabledForUser('user1'));
+	}
+
+	/**
+	 * Linking is never enabled when ProjectCheck itself is unavailable.
+	 */
+	public function testIsLinkingDisabledWhenProjectCheckUnavailable(): void
+	{
+		$this->appManager->method('isEnabledForUser')->willReturn(false);
+		$this->configureAppConfigIntegration('1');
+
+		$this->assertFalse($this->service->isLinkingEnabledForUser('user1'));
+	}
+
+	/**
+	 * Security: when ProjectService is unavailable, attach is rejected even if the id exists in pc_projects.
+	 */
+	public function testUserMayAttachFailsClosedWhenProjectServiceUnavailable(): void
+	{
+		$this->appManager->method('isEnabledForUser')->willReturn(true);
+
+		$this->db->expects($this->never())->method('getQueryBuilder');
+
+		$this->assertFalse($this->service->userMayAttachProjectCheckProjectToOwnTime('user1', '42'));
+	}
+
+	/**
+	 * Security: when the admin switch is off, users cannot attach a project via API.
+	 */
+	public function testUserMayAttachReturnsFalseWhenAdminIntegrationDisabled(): void
+	{
+		$this->appManager->method('isEnabledForUser')->willReturn(true);
+		$this->configureAppConfigIntegration('0');
+
+		$projectService = $this->createMock(\OCA\ProjectCheck\Service\ProjectService::class);
+		$projectService->expects($this->never())->method('getProject');
+
+		$service = new ProjectCheckIntegrationService(
+			$this->appManager,
+			$this->appConfig,
+			$this->db,
+			$this->l10n,
+			$this->logger,
+			$projectService,
+			null,
+		);
+
+		$this->assertFalse($service->userMayAttachProjectCheckProjectToOwnTime('user1', '6'));
+	}
+
+	/**
+	 * Security: admin "connection off" blocks manager on-behalf project links too.
+	 */
+	public function testManagerMayAttachReturnsFalseWhenAdminIntegrationDisabled(): void
+	{
+		$this->appManager->method('isEnabledForUser')->willReturn(true);
+		$this->configureAppConfigIntegration('0');
+
+		$projectService = $this->createMock(\OCA\ProjectCheck\Service\ProjectService::class);
+		$projectService->expects($this->never())->method('mayBillArbeitszeitCheckTimeForUser');
+
+		$service = new ProjectCheckIntegrationService(
+			$this->appManager,
+			$this->appConfig,
+			$this->db,
+			$this->l10n,
+			$this->logger,
+			$projectService,
+			null,
+		);
+
+		$this->assertFalse($service->managerMayAttachProjectCheckProjectForEmployee('mgr1', 'emp1', '6'));
+		$this->assertSame([], $service->getAssignableProjectsForManagerOnBehalfOfEmployee('mgr1', 'emp1'));
 	}
 }

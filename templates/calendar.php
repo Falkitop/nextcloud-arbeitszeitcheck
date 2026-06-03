@@ -88,14 +88,14 @@ $currentMonth = $_['currentMonth'] ?? date('Y-m');
                         <span class="legend-label"><?php p($l->t('Day with absence (type and status shown on the day)')); ?></span>
                     </div>
                     <div class="legend-item" role="listitem">
-                        <span class="legend-sample-chip legend-sample-chip--approved" aria-hidden="true">
-                            <span class="legend-sample-chip__status legend-sample-chip__status--approved"><?php p($l->t('Approved')); ?></span>
+                        <span class="legend-sample-chip" aria-hidden="true">
+                            <span class="badge badge--success"><?php p($l->t('Approved')); ?></span>
                         </span>
                         <span class="legend-label"><?php p($l->t('Approved absence')); ?></span>
                     </div>
                     <div class="legend-item" role="listitem">
-                        <span class="legend-sample-chip legend-sample-chip--pending" aria-hidden="true">
-                            <span class="legend-sample-chip__status legend-sample-chip__status--pending"><?php p($l->t('Pending')); ?></span>
+                        <span class="legend-sample-chip" aria-hidden="true">
+                            <span class="badge badge--warning"><?php p($l->t('Pending')); ?></span>
                         </span>
                         <span class="legend-label"><?php p($l->t('Absence awaiting approval')); ?></span>
                     </div>

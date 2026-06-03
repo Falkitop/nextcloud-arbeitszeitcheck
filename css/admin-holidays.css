@@ -9,8 +9,6 @@
 	flex-direction: column;
 	gap: var(--azc-space-5, 1.25rem);
 	width: 100%;
-	max-width: 64rem;
-	margin-inline: auto;
 	min-width: 0;
 }
 
@@ -55,6 +53,15 @@
 	margin: 0;
 }
 
+#app-content.azc-app--admin-holidays .admin-holidays__auto-reseed-notice {
+	margin: 0 0 var(--azc-space-4, 1rem);
+}
+
+#app-content.azc-app--admin-holidays .admin-holidays__auto-reseed-notice a {
+	color: var(--color-primary-element, #0082c9);
+	text-decoration: underline;
+}
+
 #app-content.azc-app--admin-holidays .admin-holidays__legend {
 	margin: 0;
 }
@@ -63,48 +70,7 @@
 	margin-top: var(--azc-space-2, 0.5rem);
 }
 
-/* Type / scope badges in table */
-#app-content.azc-app--admin-holidays .admin-holidays-badge {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	padding: 0.15rem 0.55rem;
-	border-radius: 999px;
-	font-size: var(--azc-fs-xs, 0.75rem);
-	font-weight: 600;
-	line-height: 1.35;
-	white-space: nowrap;
-}
-
-#app-content.azc-app--admin-holidays .admin-holidays-badge--full {
-	background: color-mix(in srgb, var(--color-success, #46ba61) 14%, var(--color-main-background));
-	color: var(--color-success, #46ba61);
-	border: 1px solid color-mix(in srgb, var(--color-success, #46ba61) 35%, transparent);
-}
-
-#app-content.azc-app--admin-holidays .admin-holidays-badge--half {
-	background: color-mix(in srgb, var(--color-warning, #c98600) 12%, var(--color-main-background));
-	color: var(--color-warning, #c98600);
-	border: 1px solid color-mix(in srgb, var(--color-warning, #c98600) 35%, transparent);
-}
-
-#app-content.azc-app--admin-holidays .admin-holidays-badge--statutory {
-	background: color-mix(in srgb, var(--color-primary-element, #0082c9) 12%, var(--color-main-background));
-	color: var(--color-primary-element, #0082c9);
-	border: 1px solid color-mix(in srgb, var(--color-primary-element, #0082c9) 35%, transparent);
-}
-
-#app-content.azc-app--admin-holidays .admin-holidays-badge--company {
-	background: var(--azc-bg-soft, var(--color-background-dark));
-	color: var(--azc-text, var(--color-main-text));
-	border: 1px solid var(--azc-border, var(--color-border));
-}
-
-#app-content.azc-app--admin-holidays .admin-holidays-badge--custom {
-	background: color-mix(in srgb, var(--color-warning, #c98600) 10%, var(--color-main-background));
-	color: var(--color-main-text);
-	border: 1px solid var(--azc-border, var(--color-border));
-}
+/* Table badges: css/common/badges.css (.admin-holidays-badge) */
 
 #app-content.azc-app--admin-holidays .admin-holidays-empty {
 	text-align: center;

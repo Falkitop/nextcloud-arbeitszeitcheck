@@ -578,6 +578,30 @@ const ArbeitszeitCheckUtils = {
   },
 
   /**
+   * data-label attribute for .azc-table--responsive card reflow (WCAG 2.1).
+   *
+   * @param {string} label Column header text (escaped for attribute value)
+   * @returns {string} e.g. ' data-label="Name"'
+   */
+  dataLabelAttr(label) {
+    return ' data-label="' + this.escapeHtml(String(label ?? '')) + '"';
+  },
+
+  /**
+   * Table cell with data-label for responsive card layout.
+   * innerHtml must already be escaped when it contains user/API data.
+   *
+   * @param {string} label
+   * @param {string} innerHtml
+   * @param {string} [className]
+   * @returns {string}
+   */
+  responsiveTd(label, innerHtml, className = '') {
+    const cls = className ? ' class="' + this.escapeHtml(className) + '"' : '';
+    return '<td' + this.dataLabelAttr(label) + cls + '>' + innerHtml + '</td>';
+  },
+
+  /**
    * Encode JSON for safe embedding in HTML double-quoted attributes.
    * Mirrors PHP `json_encode($x, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)`.
    *
@@ -769,7 +793,196 @@ const ArbeitszeitCheckUtils = {
     document.body.style.setProperty('--azc-overlay-top', `${top}px`);
     document.body.style.setProperty('--azc-overlay-height', `calc(100dvh - ${top}px)`);
     return top;
-  }
+  },
+
+  // ===== BADGE VARIANTS (mirrors lib/Support/BadgeVariant.php) =====
+
+  /**
+   * @param {string|null|undefined} status
+   * @returns {string} badge variant suffix (success, warning, …)
+   */
+  badgeVariantForTimeEntryStatus(status) {
+    const key = status ? String(status) : '';
+    switch (key) {
+      case 'completed':
+        return 'success';
+      case 'active':
+        return 'primary';
+      case 'break':
+      case 'paused':
+      case 'pending_approval':
+        return 'warning';
+      case 'rejected':
+        return 'error';
+      default:
+        return 'secondary';
+    }
+  },
+
+  /**
+   * @param {string|null|undefined} status
+   * @returns {string}
+   */
+  badgeVariantForAbsenceStatus(status) {
+    const key = status ? String(status) : 'pending';
+    switch (key) {
+      case 'approved':
+        return 'success';
+      case 'pending':
+      case 'substitute_pending':
+        return 'warning';
+      case 'rejected':
+      case 'substitute_declined':
+        return 'error';
+      case 'cancelled':
+        return 'secondary';
+      default:
+        return 'secondary';
+    }
+  },
+
+  /**
+   * @param {string|null|undefined} status
+   * @returns {string}
+   */
+  badgeVariantForClockStatus(status) {
+    const key = status ? String(status) : '';
+    switch (key) {
+      case 'active':
+        return 'success';
+      case 'break':
+        return 'warning';
+      case 'clocked_out':
+        return 'secondary';
+      default:
+        return 'secondary';
+    }
+  },
+
+  /**
+   * @param {string|null|undefined} severity
+   * @returns {string}
+   */
+  badgeVariantForComplianceSeverity(severity) {
+    const key = severity ? String(severity) : '';
+    if (key === 'error') {
+      return 'error';
+    }
+    if (key === 'warning') {
+      return 'warning';
+    }
+    return 'primary';
+  },
+
+  /**
+   * @param {string|null|undefined} status
+   * @returns {string}
+   */
+  badgeVariantForTariffRuleSetStatus(status) {
+    const key = status ? String(status) : '';
+    switch (key) {
+      case 'active':
+        return 'success';
+      case 'draft':
+        return 'warning';
+      case 'retired':
+        return 'secondary';
+      default:
+        return 'secondary';
+    }
+  },
+
+  /**
+   * Whether a tariff rule set may be assigned to a person or vacation layer.
+   * Keeps the currently selected id visible when editing legacy assignments.
+   *
+   * @param {{id?: number|string, status?: string, assignable?: boolean}|null|undefined} ruleSet
+   * @param {{keepId?: number|string|null|undefined}|null|undefined} [options]
+   * @returns {boolean}
+   */
+  isAssignableTariffRuleSet(ruleSet, options) {
+    if (!ruleSet || ruleSet.id == null || ruleSet.id === '') {
+      return false;
+    }
+    const keepId = options && options.keepId != null ? String(options.keepId) : null;
+    if (keepId && String(ruleSet.id) === keepId) {
+      return true;
+    }
+    if (typeof ruleSet.assignable === 'boolean') {
+      return ruleSet.assignable;
+    }
+    return String(ruleSet.status || '').toLowerCase() === 'active';
+  },
+
+  /**
+   * @param {string|null|undefined} status
+   * @returns {string}
+   */
+  badgeVariantForOvertimePayoutStatus(status) {
+    const key = status ? String(status) : '';
+    if (key === 'paid') {
+      return 'success';
+    }
+    if (key === 'pending') {
+      return 'warning';
+    }
+    return 'secondary';
+  },
+
+  /**
+   * @param {string|null|undefined} status
+   * @returns {string}
+   */
+  badgeVariantForMonthClosureStatus(status) {
+    const key = status ? String(status) : '';
+    if (key === 'finalized') {
+      return 'success';
+    }
+    if (key === 'open') {
+      return 'warning';
+    }
+    return 'neutral';
+  },
+
+  /**
+   * Build a status badge HTML string (escaped label).
+   *
+   * @param {string} label
+   * @param {string} variant badge variant suffix
+   * @param {{ title?: string, extraClass?: string }} [options]
+   * @returns {string}
+   */
+  renderBadgeHtml(label, variant, options) {
+    const opts = options || {};
+    const safeLabel = this.escapeHtml(label);
+    const variantClass = variant ? ` badge--${variant}` : '';
+    const extraClass = opts.extraClass ? ` ${opts.extraClass}` : '';
+    const titleAttr = opts.title
+      ? ` title="${this.escapeHtml(opts.title)}"`
+      : '';
+    return `<span class="badge${variantClass}${extraClass}"${titleAttr}>${safeLabel}</span>`;
+  },
+
+  /**
+   * Apply month-closure badge variant classes on a live element.
+   *
+   * @param {HTMLElement|null} el
+   * @param {string} status finalized|open|neutral
+   */
+  applyMonthClosureBadgeVariant(el, status) {
+    if (!el) {
+      return;
+    }
+    const variant = this.badgeVariantForMonthClosureStatus(status);
+    el.classList.remove(
+      'month-closure-badge--success',
+      'month-closure-badge--warning',
+      'month-closure-badge--neutral',
+    );
+    if (variant) {
+      el.classList.add(`month-closure-badge--${variant}`);
+    }
+  },
 };
 
 /**

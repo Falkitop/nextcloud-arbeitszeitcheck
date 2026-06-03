@@ -115,13 +115,17 @@
 	}
 
 	function statusBadge(status) {
-		if (status === 'paid') {
-			return '<span class="badge badge--success">' + escapeHtml(i18n.paid || 'Paid') + '</span>';
-		}
-		if (status === 'pending') {
-			return '<span class="badge badge--warning">' + escapeHtml(i18n.pending || 'Pending') + '</span>';
-		}
-		return '<span class="badge">' + escapeHtml(i18n.none || '—') + '</span>';
+		const variant = Utils.badgeVariantForOvertimePayoutStatus
+			? Utils.badgeVariantForOvertimePayoutStatus(status)
+			: 'secondary';
+		const label = status === 'paid'
+			? (i18n.paid || 'Paid')
+			: status === 'pending'
+				? (i18n.pending || 'Pending')
+				: (i18n.none || '—');
+		return Utils.renderBadgeHtml
+			? Utils.renderBadgeHtml(label, variant)
+			: `<span class="badge badge--${variant}">${escapeHtml(label)}</span>`;
 	}
 
 	function renderTable(items) {
@@ -155,12 +159,16 @@
 				paidH = Number(row.hours_paid || 0).toFixed(2);
 			}
 
+			const Utils = window.ArbeitszeitCheckUtils || {};
+			const td = (label, html, cls) => Utils.responsiveTd
+				? Utils.responsiveTd(label, html, cls)
+				: '<td' + (cls ? ' class="' + cls + '"' : '') + '>' + html + '</td>';
 			return '<tr>'
-				+ '<th scope="row">' + escapeHtml(row.display_name || row.user_id) + '</th>'
-				+ '<td>' + statusBadge(status) + '</td>'
-				+ '<td>' + escapeHtml(eligible) + '</td>'
-				+ '<td>' + escapeHtml(paidH) + '</td>'
-				+ '<td>' + action + '</td>'
+				+ td(i18n.colEmployee || 'Employee', escapeHtml(row.display_name || row.user_id))
+				+ td(i18n.colStatus || 'Status', statusBadge(status))
+				+ td(i18n.colEligible || 'Eligible (h)', escapeHtml(eligible))
+				+ td(i18n.colPaid || 'Paid (h)', escapeHtml(paidH))
+				+ td(i18n.colActions || 'Actions', action, 'actions-cell')
 				+ '</tr>';
 		}).join('');
 

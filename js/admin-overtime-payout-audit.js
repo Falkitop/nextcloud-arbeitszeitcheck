@@ -243,12 +243,15 @@
 						const timeCell = processed.datetime
 							? '<time datetime="' + escapeHtml(processed.datetime) + '">' + escapeHtml(processed.display) + '</time>'
 							: escapeHtml(processed.display);
+						const td = (label, html, cls) => Utils.responsiveTd
+							? Utils.responsiveTd(label, html, cls)
+							: '<td' + (cls ? ' class="' + cls + '"' : '') + '>' + html + '</td>';
 						return '<tr>'
-							+ '<td>' + escapeHtml(period) + '</td>'
-							+ '<th scope="row">' + escapeHtml(name) + '</th>'
-							+ '<td class="admin-ot-audit__num">' + escapeHtml(hours) + '</td>'
-							+ '<td>' + timeCell + '</td>'
-							+ '<td class="admin-ot-audit__actions">' + actionsHtml + '</td>'
+							+ td(i18n.colPeriod || 'Period', escapeHtml(period))
+							+ td(i18n.colEmployee || 'Employee', escapeHtml(name))
+							+ td(i18n.colHoursPaid || 'Hours paid', escapeHtml(hours), 'admin-ot-audit__num')
+							+ td(i18n.colProcessed || 'Processed', timeCell)
+							+ td(i18n.colActions || 'Actions', actionsHtml, 'admin-ot-audit__actions')
 							+ '</tr>';
 					}).join('');
 				}
@@ -283,6 +286,8 @@
 			statusSelector: '#ot-audit-employee-status',
 			searchUrl: cfg.adminUserSearchUrl || '',
 			limit: 20,
+			minQueryLength: 2,
+			idPrefix: 'ot-audit-employee',
 			l10n: i18n,
 			onChange: function (userId) {
 				const clearBtn = $('#ot-audit-clear-employee');

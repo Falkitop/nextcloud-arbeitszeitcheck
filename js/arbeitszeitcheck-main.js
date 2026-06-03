@@ -2172,7 +2172,7 @@
                             <span class="timeline-item-duration">${escapeHtml(durationStr)}</span>
                         </div>
                         <div class="timeline-item-status">
-                            <span class="badge badge--${status === 'completed' ? 'success' : status === 'active' ? 'primary' : 'warning'}">${escapeHtml(statusLabel)}</span>
+                            <span class="badge badge--${this.getTimeEntryStatusBadgeClass(status)}">${escapeHtml(statusLabel)}</span>
                         </div>
                     </div>
                 </div>
@@ -2242,13 +2242,35 @@
             return status;
         },
 
+        getTimeEntryStatusBadgeClass: function(status) {
+            const normalized = status ? String(status) : 'completed';
+            if (typeof window.ArbeitszeitCheckUtils !== 'undefined'
+                && typeof window.ArbeitszeitCheckUtils.badgeVariantForTimeEntryStatus === 'function') {
+                return window.ArbeitszeitCheckUtils.badgeVariantForTimeEntryStatus(normalized);
+            }
+            if (normalized === 'completed') {
+                return 'success';
+            }
+            if (normalized === 'active') {
+                return 'primary';
+            }
+            return 'warning';
+        },
+
         getAbsenceStatusBadgeClass: function(absence) {
             const status = absence && absence.status ? String(absence.status) : 'pending';
+            if (typeof ArbeitszeitCheckUtils !== 'undefined'
+                && typeof ArbeitszeitCheckUtils.badgeVariantForAbsenceStatus === 'function') {
+                return ArbeitszeitCheckUtils.badgeVariantForAbsenceStatus(status);
+            }
             if (status === 'approved') {
                 return 'success';
             }
             if (status === 'rejected' || status === 'substitute_declined') {
                 return 'error';
+            }
+            if (status === 'cancelled') {
+                return 'secondary';
             }
             return 'warning';
         },

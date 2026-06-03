@@ -6,6 +6,12 @@
 /* ── Shell width ───────────────────────────────────────────── */
 #app-content.azc-app #app-content-wrapper.azc-shell--wide {
 	max-width: none;
+	margin-inline: 0;
+}
+
+#app-content.azc-app #app-content-wrapper.azc-shell--constrained {
+	max-width: 72rem;
+	margin-inline: auto;
 }
 
 #app-content.azc-app #app-content-wrapper.azc-shell--minimal {
@@ -315,7 +321,12 @@
 	margin: 0;
 	width: 100%;
 	min-width: 0;
+	max-width: 100%;
 	box-sizing: border-box;
+	overflow-x: auto;
+	overflow-y: visible;
+	-webkit-overflow-scrolling: touch;
+	scroll-padding-inline-end: var(--azc-space-4, 1rem);
 }
 
 #app-content.azc-app .azc-card__body > .table-container,
@@ -334,6 +345,21 @@
 #app-content.azc-app .azc-table-wrap .grid-table {
 	margin-bottom: 0;
 	width: 100%;
+	table-layout: auto;
+}
+
+/* Desktop: fill available width; scroll horizontally only when columns need more space */
+@media (min-width: 769px) {
+	#app-content.azc-app .table-container .table:not(.azc-table--matrix),
+	#app-content.azc-app .table-container .grid-table:not(.azc-table--matrix),
+	#app-content.azc-app .table-container .arbeitszeitcheck-table:not(.azc-table--matrix),
+	#app-content.azc-app .table-responsive .table:not(.azc-table--matrix),
+	#app-content.azc-app .table-responsive .grid-table:not(.azc-table--matrix),
+	#app-content.azc-app .azc-table-wrap .table:not(.azc-table--matrix),
+	#app-content.azc-app .azc-table-wrap .grid-table:not(.azc-table--matrix) {
+		width: 100%;
+		min-width: max-content;
+	}
 }
 
 #app-content.azc-app .table thead th,
@@ -370,8 +396,7 @@
 
 #app-content.azc-app .table .azc-table-actions,
 #app-content.azc-app .grid-table .azc-table-actions,
-#app-content.azc-app .table .actions-cell,
-#app-content.azc-app .grid-table .actions-cell {
+#app-content.azc-app .table .admin-holidays__row-actions {
 	display: flex;
 	flex-wrap: wrap;
 	gap: var(--azc-space-2, 0.5rem);
@@ -379,11 +404,51 @@
 	justify-content: flex-end;
 }
 
+/* Actions column: never shrink below button labels (avoid width:1% clipping) */
 #app-content.azc-app .table th.azc-table-actions-col,
+#app-content.azc-app .table th.actions-col,
+#app-content.azc-app .table td.actions-cell,
 #app-content.azc-app .table td.azc-table-actions-col,
+#app-content.azc-app .table td.admin-ot-audit__actions,
+#app-content.azc-app .table td.admin-tariff-rules__row-actions,
+#app-content.azc-app .table td.layer-card__history-actions,
 #app-content.azc-app .grid-table th.azc-table-actions-col,
+#app-content.azc-app .grid-table td.actions-cell,
 #app-content.azc-app .grid-table td.azc-table-actions-col {
 	text-align: right;
+	vertical-align: middle;
+	white-space: nowrap;
+	width: auto;
+	min-width: max-content;
+	max-width: none;
+	overflow: visible;
+}
+
+#app-content.azc-app .table td.actions-cell,
+#app-content.azc-app .table td.azc-table-actions-col,
+#app-content.azc-app .table td.admin-ot-audit__actions,
+#app-content.azc-app .table td.admin-tariff-rules__row-actions,
+#app-content.azc-app .table td.layer-card__history-actions,
+#app-content.azc-app .grid-table td.actions-cell,
+#app-content.azc-app .grid-table td.azc-table-actions-col {
+	display: table-cell;
+}
+
+#app-content.azc-app .table td.azc-table-actions-col .btn,
+#app-content.azc-app .table td.actions-cell .btn,
+#app-content.azc-app .table .azc-table-actions .btn,
+#app-content.azc-app .grid-table td.actions-cell .btn,
+#app-content.azc-app .grid-table .azc-table-actions .btn {
+	flex-shrink: 0;
+	white-space: nowrap;
+}
+
+/* Truncated text columns — do not steal space from actions */
+#app-content.azc-app .table td.description-cell,
+#app-content.azc-app .table td.reason-cell {
+	max-width: min(20rem, 30vw);
+	overflow: hidden;
+	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
@@ -426,14 +491,128 @@
 }
 
 @media (max-width: 768px) {
+	/* Dense list tables without card reflow: horizontal scroll */
 	#app-content.azc-app .table-container .table:not(.azc-table--matrix):not(.azc-table--responsive),
 	#app-content.azc-app .table-container .grid-table:not(.azc-table--matrix):not(.azc-table--responsive) {
 		min-width: 36rem;
 	}
 
-	#app-content.azc-app .table .azc-table-actions,
-	#app-content.azc-app .table .actions-cell {
+	#app-content.azc-app .table .azc-table-actions {
 		justify-content: flex-start;
+	}
+
+	/* Card reflow: every field + action reachable without sideways scrolling */
+	#app-content.azc-app .table-container:has(.azc-table--responsive) {
+		overflow-x: visible;
+	}
+
+	#app-content.azc-app .table.azc-table--responsive,
+	#app-content.azc-app .table.azc-table--responsive tbody,
+	#app-content.azc-app .table.azc-table--responsive tr,
+	#app-content.azc-app .table.azc-table--responsive td {
+		display: block;
+		width: 100%;
+	}
+
+	#app-content.azc-app .table.azc-table--responsive {
+		min-width: 0;
+		border-collapse: collapse;
+	}
+
+	#app-content.azc-app .table.azc-table--responsive thead {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+		border: 0;
+	}
+
+	#app-content.azc-app .table.azc-table--responsive tbody tr {
+		margin-bottom: var(--azc-space-4, 1rem);
+		padding: var(--azc-space-3, 0.75rem) var(--azc-space-4, 1rem);
+		border: 1px solid var(--azc-border, var(--color-border));
+		border-radius: var(--azc-radius-sm, 8px);
+		background: var(--azc-bg-card, var(--color-main-background));
+	}
+
+	#app-content.azc-app .table.azc-table--responsive tbody tr:last-child {
+		margin-bottom: 0;
+	}
+
+	#app-content.azc-app .table.azc-table--responsive tbody td {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+		gap: var(--azc-space-4, 1rem);
+		padding: var(--azc-space-2, 0.5rem) 0;
+		border-bottom: 1px solid var(--azc-border, var(--color-border));
+		text-align: right;
+		max-width: none;
+		overflow: visible;
+		white-space: normal;
+		text-overflow: clip;
+	}
+
+	#app-content.azc-app .table.azc-table--responsive tbody td:last-child {
+		border-bottom: none;
+		padding-bottom: 0;
+	}
+
+	#app-content.azc-app .table.azc-table--responsive tbody td::before {
+		content: attr(data-label);
+		flex: 0 0 auto;
+		text-align: left;
+		font-weight: 600;
+		color: var(--azc-muted, var(--color-text-maxcontrast));
+	}
+
+	#app-content.azc-app .table.azc-table--responsive tbody td.description-cell,
+	#app-content.azc-app .table.azc-table--responsive tbody td.reason-cell,
+	#app-content.azc-app .table.azc-table--responsive tbody td.actions-cell,
+	#app-content.azc-app .table.azc-table--responsive tbody td.admin-ot-audit__actions,
+	#app-content.azc-app .table.azc-table--responsive tbody td.admin-tariff-rules__row-actions,
+	#app-content.azc-app .table.azc-table--responsive tbody td.layer-card__history-actions {
+		flex-direction: column;
+		align-items: stretch;
+		text-align: left;
+	}
+
+	#app-content.azc-app .table.azc-table--responsive tbody td.actions-cell .azc-table-actions {
+		width: 100%;
+		justify-content: stretch;
+		flex-direction: column;
+	}
+
+	#app-content.azc-app .table.azc-table--responsive tbody td.actions-cell .azc-table-actions .btn,
+	#app-content.azc-app .table.azc-table--responsive tbody td.actions-cell .btn,
+	#app-content.azc-app .table.azc-table--responsive tbody td.admin-ot-audit__actions .btn,
+	#app-content.azc-app .table.azc-table--responsive tbody td.admin-tariff-rules__row-actions .btn,
+	#app-content.azc-app .table.azc-table--responsive tbody td.layer-card__history-actions .btn {
+		width: 100%;
+		justify-content: center;
+		min-height: 44px;
+	}
+
+	#app-content.azc-app .table.azc-table--responsive tbody td.actions-cell .btn-icon {
+		width: 46px;
+		height: 46px;
+		min-width: 46px;
+		min-height: 46px;
+		align-self: flex-end;
+	}
+
+	#app-content.azc-app .table.azc-table--responsive tbody td[colspan] {
+		display: block;
+		justify-content: center;
+		text-align: center;
+	}
+
+	#app-content.azc-app .table.azc-table--responsive tbody td[colspan]::before {
+		content: none;
 	}
 }
 

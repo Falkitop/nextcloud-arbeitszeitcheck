@@ -17,6 +17,10 @@
 	width: 100%;
 }
 
+#app-content.azc-app--admin-dashboard .admin-overtime-onboarding {
+	margin: 0;
+}
+
 /* Statistics */
 #app-content.azc-app--admin-dashboard .admin-dashboard__stats-grid {
 	display: grid;

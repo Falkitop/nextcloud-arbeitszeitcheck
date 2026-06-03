@@ -85,23 +85,34 @@ class AdminGlobalStatusWidget implements IAPIWidgetV2, IButtonWidget, IIconWidge
 			'other_absent' => 0,
 			'total_absent' => 0,
 		];
+		$footer = $this->l10n->t(
+			'Total:%1$d, Working:%2$d, Break:%3$d, Paused:%4$d, Clocked out:%5$d. Absent:%6$d (Vacation:%7$d, Sick:%8$d, Other:%9$d).',
+			[
+				(int)$summary['total'],
+				(int)$summary['active'],
+				(int)$summary['break'],
+				(int)$summary['paused'],
+				(int)$summary['clocked_out'],
+				(int)$absenceSummary['total_absent'],
+				(int)$absenceSummary['vacation'],
+				(int)$absenceSummary['sick'],
+				(int)$absenceSummary['other_absent'],
+			]
+		);
+		if (!empty($data['summaryTruncated'])) {
+			$footer .= ' ' . $this->l10n->t(
+				'Totals cover up to %1$d accounts (%2$d in the directory). Open Employees for the full list.',
+				[
+					(int)($data['summaryScopeLimit'] ?? 0),
+					(int)($data['directoryTotal'] ?? 0),
+				]
+			);
+		}
+
 		return new WidgetItems(
 			$items,
 			$this->l10n->t('No users found.'),
-			$this->l10n->t(
-				'Total:%1$d, Working:%2$d, Break:%3$d, Paused:%4$d, Clocked out:%5$d. Absent:%6$d (Vacation:%7$d, Sick:%8$d, Other:%9$d).',
-				[
-					(int)$summary['total'],
-					(int)$summary['active'],
-					(int)$summary['break'],
-					(int)$summary['paused'],
-					(int)$summary['clocked_out'],
-					(int)$absenceSummary['total_absent'],
-					(int)$absenceSummary['vacation'],
-					(int)$absenceSummary['sick'],
-					(int)$absenceSummary['other_absent'],
-				]
-			)
+			$footer
 		);
 	}
 

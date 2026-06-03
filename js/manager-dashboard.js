@@ -530,6 +530,7 @@
             return;
         }
 
+        loadingEl.classList.remove('visually-hidden');
         loadingEl.setAttribute('aria-hidden', 'false');
         summaryEl.classList.add('visually-hidden');
         summaryEl.setAttribute('aria-hidden', 'true');
@@ -537,6 +538,7 @@
         Utils.ajax('/apps/arbeitszeitcheck/api/manager/team-overtime-alerts', {
             method: 'GET',
             onSuccess: function (data) {
+                loadingEl.classList.add('visually-hidden');
                 loadingEl.setAttribute('aria-hidden', 'true');
                 summaryEl.classList.remove('visually-hidden');
                 summaryEl.setAttribute('aria-hidden', 'false');
@@ -584,6 +586,7 @@
                     + '</p><ul class="team-overtime-list">' + rows + '</ul>';
             },
             onError: function () {
+                loadingEl.classList.add('visually-hidden');
                 loadingEl.setAttribute('aria-hidden', 'true');
                 summaryEl.classList.remove('visually-hidden');
                 summaryEl.setAttribute('aria-hidden', 'false');

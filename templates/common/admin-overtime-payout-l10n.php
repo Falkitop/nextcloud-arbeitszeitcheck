@@ -32,6 +32,11 @@ $payoutMessageIds = [
 	'confirmBulkTitle' => 'Pay out all pending',
 	'truncatedWarning' => 'Warning: employee list was truncated; contact support.',
 	'scopeCount' => '(%1$s employees in scope)',
+	'colEmployee' => 'Employee',
+	'colStatus' => 'Status',
+	'colEligible' => 'Eligible (h)',
+	'colPaid' => 'Paid (h)',
+	'colActions' => 'Actions',
 ];
 
 $auditMessageIds = [
@@ -54,11 +59,16 @@ $auditMessageIds = [
 	'noActions' => 'No links',
 	'employeeLabel' => 'Employee (optional)',
 	'employeePlaceholder' => 'Search by name or user ID…',
-	'employeeHelp' => 'Leave empty to show all employees. Type to search, then pick from the list.',
+	'employeeHelp' => 'Leave empty to show all employees. Type at least 2 characters, then pick from the list.',
+	'typeToSearch' => 'Type at least 2 characters to search for a person.',
 	'noUsersFound' => 'No matching employees found.',
 	'clearEmployee' => 'Clear employee',
 	'resetFilters' => 'Reset filters',
-	'allEmployees' => 'All employees',
+	'colPeriod' => 'Period',
+	'colEmployee' => 'Employee',
+	'colHoursPaid' => 'Hours paid',
+	'colProcessed' => 'Processed',
+	'colActions' => 'Actions',
 ];
 
 $otPayoutI18n = [];

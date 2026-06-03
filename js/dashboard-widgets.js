@@ -1,24 +1,103 @@
 (function () {
 	'use strict';
 
-	// ── Bootstrap ──────────────────────────────────────────────────────────────
-	// Config is embedded as non-executable JSON (no CSP nonce required).
-	const configEl = document.getElementById('dz-config');
-	if (!configEl) {
-		return;
+	function loadDeskletInitialState() {
+		try {
+			if (window.OCP?.InitialState && typeof window.OCP.InitialState.loadState === 'function') {
+				return window.OCP.InitialState.loadState('arbeitszeitcheck', 'desklet');
+			}
+			if (window.OC?.initialState && typeof window.OC.initialState.loadState === 'function') {
+				return window.OC.initialState.loadState('arbeitszeitcheck', 'desklet');
+			}
+		} catch (_e) {
+			// Missing state on non-dashboard pages.
+		}
+		return null;
 	}
 
-	let config;
-	try {
-		config = JSON.parse(configEl.textContent);
-	} catch (_e) {
-		return;
+	function findDeskletMountPoint() {
+		const root = document.getElementById('app-dashboard');
+		if (!root) {
+			return null;
+		}
+		const panels = root.querySelectorAll('.panel');
+		for (let i = 0; i < panels.length; i++) {
+			const panel = panels[i];
+			if (panel.querySelector('a[href*="/apps/arbeitszeitcheck/"]')) {
+				return panel.querySelector('.panel--content') || panel;
+			}
+		}
+		return null;
 	}
 
-	if (!config || typeof config !== 'object') {
-		return;
+	function mountDeskletWorkspaceFromInitialState() {
+		const state = loadDeskletInitialState();
+		if (!state || typeof state !== 'object') {
+			return null;
+		}
+		const html = typeof state.workspaceHtml === 'string' ? state.workspaceHtml.trim() : '';
+		if (!html) {
+			return null;
+		}
+		const mount = findDeskletMountPoint();
+		if (!mount || mount.querySelector('[data-arbeitszeitcheck-desklet]')) {
+			return null;
+		}
+		const wrap = document.createElement('div');
+		wrap.className = 'dz-mount';
+		wrap.setAttribute('data-arbeitszeitcheck-desklet-mount', '1');
+		wrap.innerHTML = html;
+		mount.appendChild(wrap);
+		return document.getElementById('dz-config');
 	}
 
+	function resolveConfigElement() {
+		let el = document.getElementById('dz-config');
+		if (!el) {
+			el = mountDeskletWorkspaceFromInitialState();
+		}
+		return el;
+	}
+
+	function bootDesklet(configEl) {
+		let config;
+		try {
+			config = JSON.parse(configEl.textContent);
+		} catch (_e) {
+			return;
+		}
+
+		if (!config || typeof config !== 'object') {
+			return;
+		}
+
+		runDesklet(config);
+	}
+
+	function scheduleDeskletBoot() {
+		const configEl = resolveConfigElement();
+		if (configEl) {
+			bootDesklet(configEl);
+			return;
+		}
+		const state = loadDeskletInitialState();
+		if (!state?.workspaceHtml) {
+			return;
+		}
+		let attempts = 0;
+		const timer = window.setInterval(() => {
+			attempts++;
+			const el = resolveConfigElement();
+			if (el) {
+				window.clearInterval(timer);
+				bootDesklet(el);
+			} else if (attempts >= 40) {
+				window.clearInterval(timer);
+			}
+		}, 250);
+	}
+
+	function runDesklet(config) {
 	// l10n is guaranteed to be an object after the guard above
 	const l10n = (config.l10n && typeof config.l10n === 'object') ? config.l10n : {};
 
@@ -62,6 +141,8 @@
 		status: 'clocked_out',
 		workingTodayHours: 0,
 		currentSessionDuration: 0,
+		clockStampingEnabled: true,
+		manualTimeEntryEnabled: true,
 	};
 	let mutationInFlight = false;
 
@@ -157,8 +238,17 @@
 	// widget API (camelCase) or a raw clock-action response (snake_case).
 	const normaliseStatus = (raw) => {
 		if (!raw || typeof raw !== 'object') {
-			return { status: 'clocked_out', workingTodayHours: 0, currentSessionDuration: 0 };
+			return {
+				status: 'clocked_out',
+				workingTodayHours: 0,
+				currentSessionDuration: 0,
+				clockStampingEnabled: true,
+				manualTimeEntryEnabled: true,
+			};
 		}
+		const capture = (raw.timeCapture && typeof raw.timeCapture === 'object')
+			? raw.timeCapture
+			: {};
 		return {
 			status: String(raw.status ?? 'clocked_out'),
 			workingTodayHours: parseFloat(
@@ -168,7 +258,17 @@
 				raw.currentSessionDuration ?? raw.current_session_duration ?? 0,
 				10
 			),
+			clockStampingEnabled: capture.clockStampingEnabled !== false,
+			manualTimeEntryEnabled: capture.manualTimeEntryEnabled !== false,
 		};
+	};
+
+	const getEffectiveButtonStates = (status, clockStampingEnabled) => {
+		const states = { ...(BUTTON_STATES[status] ?? BUTTON_STATES.clocked_out) };
+		if (!clockStampingEnabled) {
+			states['dz-clock-in'] = false;
+		}
+		return states;
 	};
 
 	// ── Loading state ──────────────────────────────────────────────────────────
@@ -210,26 +310,76 @@
 		completed:   { 'dz-clock-in': true,  'dz-start-break': false, 'dz-end-break': false, 'dz-clock-out': false },
 	};
 
-	const updateButtonStates = (status) => {
+	const captureNoticeEl = document.getElementById('dz-capture-notice');
+
+	const updateCaptureNotice = (data) => {
+		if (!captureNoticeEl) {
+			return;
+		}
+		const stampingOff = data.clockStampingEnabled === false;
+		const showNotice = stampingOff
+			&& (data.status === 'clocked_out' || data.status === 'paused');
+		if (!showNotice) {
+			captureNoticeEl.setAttribute('hidden', '');
+			captureNoticeEl.textContent = '';
+			return;
+		}
+		const title = l10n.stampingDisabledTitle || 'Clock in/out is turned off';
+		const body = data.status === 'paused'
+			? (l10n.stampingDisabledPausedBody
+				|| 'Finish the paused session on the dashboard, or contact your administrator.')
+			: (data.manualTimeEntryEnabled
+				? (l10n.stampingDisabledBodyManual
+					|| 'Add your hours under Time entries in the app.')
+				: (l10n.stampingDisabledBody
+					|| 'Contact HR if you need to record time.'));
+		captureNoticeEl.removeAttribute('hidden');
+		captureNoticeEl.innerHTML = '';
+		const titleEl = document.createElement('p');
+		titleEl.className = 'dz-capture-notice__title';
+		titleEl.textContent = title;
+		const textEl = document.createElement('p');
+		textEl.className = 'dz-capture-notice__text';
+		textEl.textContent = body;
+		captureNoticeEl.appendChild(titleEl);
+		captureNoticeEl.appendChild(textEl);
+		captureNoticeEl.setAttribute('role', 'status');
+	};
+
+	const updateButtonStates = (status, clockStampingEnabled = true) => {
 		if (mutationInFlight) {
 			setButtonsLocked(true);
 			return;
 		}
-		const states = BUTTON_STATES[status] ?? BUTTON_STATES.clocked_out;
+		const states = getEffectiveButtonStates(status, clockStampingEnabled);
 		Object.entries(states).forEach(([id, enabled]) => {
 			const btn = document.getElementById(id);
 			if (!btn) {
 				return;
 			}
+			const visible = enabled || (id !== 'dz-clock-in');
+			btn.hidden = !visible;
 			btn.disabled = !enabled;
 			btn.setAttribute('aria-disabled', enabled ? 'false' : 'true');
 		});
+		// Hide clock-in completely when stamping is off (not merely disabled).
+		const clockInBtn = document.getElementById('dz-clock-in');
+		if (clockInBtn && !clockStampingEnabled) {
+			clockInBtn.hidden = true;
+			clockInBtn.disabled = true;
+			clockInBtn.setAttribute('aria-disabled', 'true');
+		}
 	};
 
 	// ── Render functions ───────────────────────────────────────────────────────
 	const renderEmployee = (rawData) => {
 		const data = normaliseStatus(rawData);
-		const { status, workingTodayHours, currentSessionDuration } = data;
+		const {
+			status,
+			workingTodayHours,
+			currentSessionDuration,
+			clockStampingEnabled,
+		} = data;
 		lastKnown = data;
 
 		// Status badge: visual indicator with data-status for CSS colour coding
@@ -261,7 +411,8 @@
 			statusCardEl.dataset.status = status;
 		}
 
-		updateButtonStates(status);
+		updateButtonStates(status, clockStampingEnabled);
+		updateCaptureNotice(data);
 	};
 
 	// Clears and re-renders a people list (team or company overview).
@@ -414,13 +565,16 @@
 
 				if (!resp.ok || !json.success) {
 					const errMsg = json.error || l10n.actionFailed || 'Action failed';
+					if (resp.status === 403 && json.error_code === 'clock_stamping_disabled') {
+						await loadData();
+					}
 					showError(errMsg);
 					if (window.AzcMessaging?.announceAssertive) {
 						window.AzcMessaging.announceAssertive(errMsg);
 					} else {
 						announce(errMsg);
 					}
-					updateButtonStates(lastKnown.status);
+					updateButtonStates(lastKnown.status, lastKnown.clockStampingEnabled);
 					return;
 				}
 
@@ -440,10 +594,10 @@
 				showError(l10n.networkError ||
 					'Could not load status. Please check your connection.');
 				announce(l10n.networkError || 'Could not load status. Please check your connection.');
-				updateButtonStates(lastKnown.status);
+				updateButtonStates(lastKnown.status, lastKnown.clockStampingEnabled);
 			} finally {
 				mutationInFlight = false;
-				updateButtonStates(lastKnown.status);
+				updateButtonStates(lastKnown.status, lastKnown.clockStampingEnabled);
 			}
 		});
 	};
@@ -461,4 +615,7 @@
 	window.addEventListener('beforeunload', () => {
 		clearInterval(refreshTimer);
 	});
+	}
+
+	scheduleDeskletBoot();
 })();

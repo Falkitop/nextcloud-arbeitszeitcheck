@@ -641,6 +641,10 @@
     color: var(--azc-muted, var(--color-text-maxcontrast));
 }
 
+#app-content.azc-app--dashboard .azc-dashboard-capture-disabled {
+    margin: var(--azc-space-4, 1rem) 0 0;
+}
+
 #app-content.azc-app--dashboard .azc-dashboard-punch__hint {
     margin: 0;
     padding: var(--azc-space-3, 0.75rem) var(--azc-space-4, 1rem);
@@ -798,18 +802,9 @@
     color: var(--azc-muted, var(--color-text-maxcontrast));
 }
 
+/* Timezone chips: css/common/badges.css (.timezone-badge) */
 .timezone-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
     margin-left: 0.5rem;
-    padding: 0.2rem 0.6rem;
-    font-size: 0.75rem;
-    font-weight: 600;
-    border-radius: 999px;
-    color: var(--arbeitszeitcheck-color-text-maxcontrast);
-    background: color-mix(in srgb, var(--status-accent) 14%, transparent);
-    border: 1px solid color-mix(in srgb, var(--status-accent) 28%, transparent);
 }
 
 .timezone-badge__icon {
@@ -831,14 +826,7 @@
     border: 1px solid color-mix(in srgb, var(--status-accent) 28%, transparent);
 }
 
-.dashboard-status-card .badge {
-    padding: 0.35rem 0.6rem;
-    font-size: 0.8rem;
-    font-weight: 600;
-    border-radius: var(--radius-full, 9999px);
-    background-color: var(--color-primary-element);
-    color: var(--color-primary-element-text);
-}
+/* Status badges on dashboard cards: css/common/badges.css */
 
 /* Legacy quickstats removed from template — metrics use .azc-dashboard-metric */
 
@@ -1310,25 +1298,52 @@
     padding: var(--space-3);
     border: 1px solid var(--color-border);
     border-radius: var(--border-radius-large);
-    background: var(--color-main-background);
+    background: var(--color-background-hover, var(--color-main-background));
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
 }
 
 .azc-dashboard-project-picker__label {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-1, 4px) var(--space-2);
     font-weight: 600;
     color: var(--color-main-text);
     margin: 0;
 }
 
+.azc-dashboard-project-picker__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-primary-element, var(--color-primary));
+    flex: 0 0 auto;
+}
+
+.azc-dashboard-project-picker__icon-svg {
+    width: 1.25rem;
+    height: 1.25rem;
+}
+
+.azc-dashboard-project-picker__optional {
+    font-weight: 400;
+    font-size: var(--font-size-small, 0.875rem);
+    color: var(--color-text-maxcontrast);
+    /* Visually reads as a quiet badge next to the label */
+    padding: 0 var(--space-1, 4px);
+}
+
 .azc-dashboard-project-picker__select {
     width: 100%;
     max-width: 100%;
+    min-height: 44px; /* comfortable touch target (WCAG 2.5.5) */
 }
 
 .azc-dashboard-project-picker__help {
     margin: 0;
     color: var(--color-text-maxcontrast);
     font-size: var(--font-size-small);
+    line-height: 1.4;
 }

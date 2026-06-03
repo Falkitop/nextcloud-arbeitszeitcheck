@@ -6,6 +6,7 @@ namespace OCA\ArbeitszeitCheck\Tests\Unit\Service;
 
 use OCA\ArbeitszeitCheck\Db\Holiday;
 use OCA\ArbeitszeitCheck\Db\HolidayMapper;
+use OCA\ArbeitszeitCheck\Db\HolidaySuppressionMapper;
 use OCA\ArbeitszeitCheck\Db\UserSettingsMapper;
 use OCA\ArbeitszeitCheck\Service\HolidayService;
 use OCP\ICache;
@@ -23,6 +24,9 @@ class HolidayServiceSeedingTest extends TestCase
 {
 	/** @var HolidayMapper|MockObject */
 	private $holidayMapper;
+
+	/** @var HolidaySuppressionMapper|MockObject */
+	private $suppressionMapper;
 
 	/** @var UserSettingsMapper|MockObject */
 	private $userSettingsMapper;
@@ -48,11 +52,38 @@ class HolidayServiceSeedingTest extends TestCase
 	/** @var array<string,string> */
 	private $configStore = [];
 
+	/** @var string[] "STATE|Y-m-d" entries currently suppressed */
+	private $suppressedDates = [];
+
+	/** @var string[] "STATE|Y-m-d" entries passed to removeSuppression() */
+	private $removedSuppressions = [];
+
 	protected function setUp(): void
 	{
 		parent::setUp();
 
 		$this->holidayMapper = $this->createMock(HolidayMapper::class);
+		$this->suppressionMapper = $this->createMock(HolidaySuppressionMapper::class);
+		$this->suppressedDates = [];
+		$this->removedSuppressions = [];
+		// A single mutable stub: tests set $this->suppressedDates instead of
+		// re-stubbing (re-stubbing the same method does not override the first
+		// configuration in PHPUnit 9).
+		$this->suppressionMapper
+			->method('isSuppressed')
+			->willReturnCallback(function (string $state, string $date): bool {
+				return in_array($state . '|' . $date, $this->suppressedDates, true);
+			});
+		$this->suppressionMapper
+			->method('removeSuppression')
+			->willReturnCallback(function (string $state, string $date): void {
+				$key = $state . '|' . $date;
+				$this->removedSuppressions[] = $key;
+				$this->suppressedDates = array_values(array_filter(
+					$this->suppressedDates,
+					static fn (string $x): bool => $x !== $key
+				));
+			});
 		$this->userSettingsMapper = $this->createMock(UserSettingsMapper::class);
 		$this->config = $this->createMock(IConfig::class);
 		$this->cacheFactory = $this->createMock(ICacheFactory::class);
@@ -95,6 +126,7 @@ class HolidayServiceSeedingTest extends TestCase
 
 		$this->service = new HolidayService(
 			$this->holidayMapper,
+			$this->suppressionMapper,
 			$this->userSettingsMapper,
 			$this->config,
 			$this->cacheFactory,
@@ -145,5 +177,324 @@ class HolidayServiceSeedingTest extends TestCase
 			new \DateTime("$year-12-31")
 		);
 		$this->assertNotEmpty($result2);
+	}
+
+	public function testAutoReseedOffSkipsReseedWhenYearInitialized(): void
+	{
+		$state = 'NW';
+		$year = 2031;
+		$this->configStore['statutory_auto_reseed'] = '0';
+		$this->configStore['holidays_initialized_state_years'] = json_encode([sprintf('%s-%04d', $state, $year)]);
+
+		$this->holidayMapper
+			->method('hasStatutoryHolidaysForStateAndYear')
+			->with($state, $year)
+			->willReturn(false);
+
+		$this->holidayMapper
+			->expects($this->never())
+			->method('insert');
+
+		$this->holidayMapper
+			->method('findByStateAndYear')
+			->with($state, $year)
+			->willReturn([]);
+
+		$result = $this->service->getHolidaysForRange(
+			$state,
+			new \DateTime("$year-01-01"),
+			new \DateTime("$year-12-31")
+		);
+
+		$this->assertSame([], $result);
+	}
+
+	public function testAutoReseedOnRestoresMissingStatutoryEvenWhenSomeRemain(): void
+	{
+		$state = 'NW';
+		$year = 2032;
+		$this->configStore['statutory_auto_reseed'] = '1';
+
+		$remaining = new Holiday();
+		$remaining->setState($state);
+		$remaining->setName('Labour Day');
+		$remaining->setKind(Holiday::KIND_FULL);
+		$remaining->setScope(Holiday::SCOPE_STATUTORY);
+		$remaining->setSource(Holiday::SOURCE_GENERATED);
+		$remaining->setDate(new \DateTime("$year-05-01"));
+		$remaining->setCreatedAt(new \DateTime());
+		$remaining->setUpdatedAt(new \DateTime());
+
+		$this->holidayMapper
+			->method('hasStatutoryHolidaysForStateAndYear')
+			->willReturn(true);
+
+		$this->holidayMapper
+			->expects($this->atLeastOnce())
+			->method('insert');
+
+		$this->holidayMapper
+			->method('findByStateAndYear')
+			->with($state, $year)
+			->willReturn([$remaining]);
+
+		$this->cache
+			->expects($this->atLeastOnce())
+			->method('remove');
+
+		$result = $this->service->getHolidaysForRange(
+			$state,
+			new \DateTime("$year-01-01"),
+			new \DateTime("$year-12-31")
+		);
+
+		$this->assertNotEmpty($result);
+	}
+
+	public function testAutoReseedOnIgnoresAndClearsStaleSuppression(): void
+	{
+		$state = 'NW';
+		$year = 2034;
+		$this->configStore['statutory_auto_reseed'] = '1';
+
+		// A date that was suppressed while auto-restore was OFF.
+		$suppressedDate = "$year-01-01"; // New Year — always statutory
+		$this->suppressedDates = [$state . '|' . $suppressedDate];
+
+		// The previously deleted statutory row is gone from the DB.
+		$this->holidayMapper
+			->method('existsForStateDateScope')
+			->willReturn(false);
+
+		$this->holidayMapper
+			->method('hasStatutoryHolidaysForStateAndYear')
+			->willReturn(true);
+
+		$this->holidayMapper
+			->method('findByStateAndYear')
+			->willReturn([]);
+
+		// … and re-insert the statutory date (along with the rest of the catalog).
+		$this->holidayMapper
+			->expects($this->atLeastOnce())
+			->method('insert');
+
+		$this->service->getHolidaysForRange(
+			$state,
+			new \DateTime("$year-01-01"),
+			new \DateTime("$year-12-31")
+		);
+
+		// Auto-restore ON must clear the stale opt-out for the restored date.
+		$this->assertContains(
+			$state . '|' . $suppressedDate,
+			$this->removedSuppressions,
+			'Stale suppression must be cleared when auto-restore is on.'
+		);
+	}
+
+	/**
+	 * Sachsen-Anhalt must not keep Corpus Christi / All Saints from legacy nationwide seed (issue #13).
+	 */
+	public function testAutoReseedOnPrunesStaleCorpusChristiForSaxonyAnhalt(): void
+	{
+		$state = 'ST';
+		$year = 2026;
+
+		$this->configStore['statutory_auto_reseed'] = '1';
+
+		$staleCorpus = new Holiday();
+		$staleCorpus->setId(6001);
+		$staleCorpus->setState($state);
+		$staleCorpus->setName('Corpus Christi');
+		$staleCorpus->setKind(Holiday::KIND_FULL);
+		$staleCorpus->setScope(Holiday::SCOPE_STATUTORY);
+		$staleCorpus->setSource(Holiday::SOURCE_GENERATED);
+		$staleCorpus->setDate(new \DateTime('2026-06-04'));
+		$staleCorpus->setCreatedAt(new \DateTime());
+		$staleCorpus->setUpdatedAt(new \DateTime());
+
+		$staleAllSaints = new Holiday();
+		$staleAllSaints->setId(6002);
+		$staleAllSaints->setState($state);
+		$staleAllSaints->setName('All Saints');
+		$staleAllSaints->setKind(Holiday::KIND_FULL);
+		$staleAllSaints->setScope(Holiday::SCOPE_STATUTORY);
+		$staleAllSaints->setSource(Holiday::SOURCE_GENERATED);
+		$staleAllSaints->setDate(new \DateTime('2026-11-01'));
+		$staleAllSaints->setCreatedAt(new \DateTime());
+		$staleAllSaints->setUpdatedAt(new \DateTime());
+
+		$this->holidayMapper
+			->method('hasStatutoryHolidaysForStateAndYear')
+			->willReturn(true);
+
+		$this->holidayMapper
+			->method('existsForStateDateScope')
+			->willReturn(true);
+
+		$this->holidayMapper
+			->method('findByStateAndYear')
+			->willReturn([$staleCorpus, $staleAllSaints]);
+
+		$deletedIds = [];
+		$this->holidayMapper
+			->method('deleteById')
+			->willReturnCallback(static function (int $id) use (&$deletedIds): void {
+				$deletedIds[] = $id;
+			});
+
+		$this->service->getHolidaysForRange(
+			$state,
+			new \DateTime('2026-01-01'),
+			new \DateTime('2026-12-31')
+		);
+
+		$this->assertContains(6001, $deletedIds);
+		$this->assertContains(6002, $deletedIds);
+	}
+
+	public function testAutoReseedOnPrunesGeneratedStatutoryNotInStateCatalog(): void
+	{
+		$state = 'NW';
+		$year = 2035;
+		$this->configStore['statutory_auto_reseed'] = '1';
+
+		// Reformation Day is NOT a NW statutory holiday — stale generated row
+		// from before the catalog became Bundesland-aware.
+		$stale = new Holiday();
+		$stale->setId(4242);
+		$stale->setState($state);
+		$stale->setName('Reformation Day');
+		$stale->setKind(Holiday::KIND_FULL);
+		$stale->setScope(Holiday::SCOPE_STATUTORY);
+		$stale->setSource(Holiday::SOURCE_GENERATED);
+		$stale->setDate(new \DateTime("$year-10-31"));
+		$stale->setCreatedAt(new \DateTime());
+		$stale->setUpdatedAt(new \DateTime());
+
+		// A legitimately added manual statutory entry must NOT be pruned even if
+		// it is not in the catalog (admin intent is respected).
+		$manual = new Holiday();
+		$manual->setId(99);
+		$manual->setState($state);
+		$manual->setName('Local custom statutory');
+		$manual->setKind(Holiday::KIND_FULL);
+		$manual->setScope(Holiday::SCOPE_STATUTORY);
+		$manual->setSource(Holiday::SOURCE_MANUAL);
+		$manual->setDate(new \DateTime("$year-11-15"));
+		$manual->setCreatedAt(new \DateTime());
+		$manual->setUpdatedAt(new \DateTime());
+
+		$this->holidayMapper
+			->method('hasStatutoryHolidaysForStateAndYear')
+			->willReturn(true);
+
+		$this->holidayMapper
+			->method('existsForStateDateScope')
+			->willReturn(true); // catalog dates already present; only pruning matters here
+
+		$this->holidayMapper
+			->method('findByStateAndYear')
+			->willReturn([$stale, $manual]);
+
+		$deletedIds = [];
+		$this->holidayMapper
+			->method('deleteById')
+			->willReturnCallback(static function (int $id) use (&$deletedIds): void {
+				$deletedIds[] = $id;
+			});
+
+		$this->service->getHolidaysForRange(
+			$state,
+			new \DateTime("$year-01-01"),
+			new \DateTime("$year-12-31")
+		);
+
+		$this->assertContains(4242, $deletedIds, 'Stale generated statutory row must be pruned.');
+		$this->assertNotContains(99, $deletedIds, 'Manual statutory entry must never be auto-pruned.');
+	}
+
+	public function testSuppressedStatutoryDateCountsAsWorkingDayWhenAutoReseedOff(): void
+	{
+		$state = 'NW';
+		$year = 2033;
+		$labourDay = "$year-05-01"; // suppressed; working-day probe uses Tuesday 05-03
+		$this->configStore['statutory_auto_reseed'] = '0';
+		$this->configStore['holidays_initialized_state_years'] = json_encode([sprintf('%s-%04d', $state, $year)]);
+
+		$this->suppressedDates = [$state . '|' . $labourDay];
+
+		$companyOnly = new Holiday();
+		$companyOnly->setState($state);
+		$companyOnly->setName('Company day');
+		$companyOnly->setKind(Holiday::KIND_FULL);
+		$companyOnly->setScope(Holiday::SCOPE_COMPANY);
+		$companyOnly->setSource(Holiday::SOURCE_MANUAL);
+		$companyOnly->setDate(new \DateTime("$year-04-30"));
+		$companyOnly->setCreatedAt(new \DateTime());
+		$companyOnly->setUpdatedAt(new \DateTime());
+
+		$this->holidayMapper
+			->method('hasStatutoryHolidaysForStateAndYear')
+			->willReturn(true);
+
+		$this->holidayMapper
+			->method('findByStateAndYear')
+			->willReturn([$companyOnly]);
+
+		$this->holidayMapper
+			->expects($this->never())
+			->method('insert');
+
+		$userId = 'user-a';
+		$this->userSettingsMapper
+			->method('getStringSetting')
+			->willReturn($state);
+
+		// 2033-05-03 is a Tuesday (Labour Day 2033-05-01 is a Sunday).
+		$start = new \DateTime("$year-05-03");
+		$end = new \DateTime("$year-05-03");
+		$days = $this->service->computeWorkingDaysForUser($userId, $start, $end);
+
+		$this->assertSame(1.0, $days);
+	}
+
+	public function testPerDayHolidayProbesReconcileOnlyOncePerStateYear(): void
+	{
+		$state = 'NW';
+		$year = 2036;
+		$this->configStore['statutory_auto_reseed'] = '1';
+
+		$labourDay = new Holiday();
+		$labourDay->setState($state);
+		$labourDay->setName('Labour Day');
+		$labourDay->setKind(Holiday::KIND_FULL);
+		$labourDay->setScope(Holiday::SCOPE_STATUTORY);
+		$labourDay->setSource(Holiday::SOURCE_GENERATED);
+		$labourDay->setDate(new \DateTime("$year-05-01"));
+		$labourDay->setCreatedAt(new \DateTime());
+		$labourDay->setUpdatedAt(new \DateTime());
+
+		$this->holidayMapper
+			->method('hasStatutoryHolidaysForStateAndYear')
+			->willReturn(true);
+
+		// Reconcile (prune) + load = at most 2 DB reads per state/year per request.
+		// Without request memo, 30 per-day probes would cause 30+ reads.
+		$this->holidayMapper
+			->expects($this->exactly(2))
+			->method('findByStateAndYear')
+			->with($state, $year)
+			->willReturn([$labourDay]);
+
+		// Simulate ReportingService / ComplianceService per-day loops (30 days).
+		$start = new \DateTime("$year-06-01");
+		$end = new \DateTime("$year-06-30");
+		$cursor = clone $start;
+		while ($cursor <= $end) {
+			$this->service->isHolidayForState($state, $cursor);
+			$cursor->modify('+1 day');
+		}
 	}
 }

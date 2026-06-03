@@ -20,10 +20,12 @@ use OCA\ArbeitszeitCheck\Db\WorkingTimeModelMapper;
 use OCA\ArbeitszeitCheck\Service\ComplianceService;
 use OCA\ArbeitszeitCheck\Service\DailyWorkingHoursCalculator;
 use OCA\ArbeitszeitCheck\Service\TimeTrackingService;
+use OCA\ArbeitszeitCheck\Service\TimeCaptureMethodService;
 use OCA\ArbeitszeitCheck\Service\TimeZoneService;
 use OCA\ArbeitszeitCheck\Service\ProjectCheckIntegrationService;
 use OCA\ArbeitszeitCheck\Service\MonthClosureGuard;
 use OCA\ArbeitszeitCheck\Db\TimeEntry;
+use OCA\ArbeitszeitCheck\Exception\BusinessRuleException;
 use OCP\IConfig;
 use OCP\IDBConnection;
 use OCP\IDateTimeZone;
@@ -55,6 +57,12 @@ class TimeTrackingServiceTest extends TestCase {
 
 	/** @var IL10N|\PHPUnit\Framework\MockObject\MockObject */
 	private $l10n;
+
+	/** @var DailyWorkingHoursCalculator */
+	private $dailyHoursCalculator;
+
+	/** @var TimeZoneService */
+	private $timeZoneService;
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -91,7 +99,13 @@ class TimeTrackingServiceTest extends TestCase {
 		$userSession = $this->createMock(IUserSession::class);
 		$userSession->method('getUser')->willReturn(null);
 		$timeZoneService = new TimeZoneService($config, $dateTimeZone, $userSession, new NullLogger());
+		$this->timeZoneService = $timeZoneService;
 		$dailyHoursCalculator = new DailyWorkingHoursCalculator($this->timeEntryMapper, $timeZoneService);
+		$this->dailyHoursCalculator = $dailyHoursCalculator;
+
+		$timeCaptureMethodService = $this->createMock(TimeCaptureMethodService::class);
+		$timeCaptureMethodService->method('assertClockStampingAllowed')->willReturnCallback(static function (): void {
+		});
 
 		$this->service = new TimeTrackingService(
 			$this->timeEntryMapper,
@@ -109,6 +123,8 @@ class TimeTrackingServiceTest extends TestCase {
 			$lockingProvider,
 			$timeZoneService,
 			$dailyHoursCalculator,
+			null,
+			$timeCaptureMethodService,
 		);
 
 		$this->timeEntryMapper->method('findStalePausedAutomaticEntries')->willReturn([]);
@@ -339,6 +355,42 @@ class TimeTrackingServiceTest extends TestCase {
 		$this->assertNotNull($result->getBreaks());
 	}
 
+	public function testClockInDoesNotResumePausedEntryWhenStampingDisabled(): void
+	{
+		$userId = 'testuser';
+
+		$this->timeEntryMapper->method('findActiveByUser')->willReturn(null);
+		$this->timeEntryMapper->method('findOnBreakByUser')->willReturn(null);
+
+		$pausedEntry = new TimeEntry();
+		$pausedEntry->setId(123);
+		$pausedEntry->setUserId($userId);
+		$pausedEntry->setStatus(TimeEntry::STATUS_PAUSED);
+		$pausedEntry->setStartTime((new \DateTime())->setTime(9, 0, 0));
+		$pausedEntry->setUpdatedAt(new \DateTime());
+		$pausedEntry->setCreatedAt(new \DateTime());
+
+		$this->timeEntryMapper->method('findPausedOrUnfinishedTodayByUser')->willReturn($pausedEntry);
+		$this->timeEntryMapper->expects($this->never())->method('update');
+
+		$timeCapture = $this->createMock(TimeCaptureMethodService::class);
+		$timeCapture->expects($this->once())
+			->method('assertClockStampingAllowed')
+			->with($userId)
+			->willThrowException(new \OCA\ArbeitszeitCheck\Exception\TimeCaptureForbiddenException(
+				'Clock in/out (stamping) is not enabled for your account.',
+				\OCA\ArbeitszeitCheck\Exception\TimeCaptureForbiddenException::CODE_CLOCK_STAMPING_DISABLED,
+			));
+
+		$ref = new \ReflectionClass($this->service);
+		$prop = $ref->getProperty('timeCaptureMethodService');
+		$prop->setAccessible(true);
+		$prop->setValue($this->service, $timeCapture);
+
+		$this->expectException(\OCA\ArbeitszeitCheck\Exception\TimeCaptureForbiddenException::class);
+		$this->service->clockIn($userId);
+	}
+
 	public function testClockInWithPausedEntryFromPreviousDayStartsNewEntry(): void
 	{
 		$userId = 'testuser';
@@ -418,13 +470,18 @@ class TimeTrackingServiceTest extends TestCase {
 	 *  - mark the entry as completed,
 	 *  - record the audit-trail reason ENDED_REASON_AUTO_DAILY_MAX, and
 	 *  - record the policy 'arbzg_daily_maximum'.
+	 *
+	 * Uses fixed storage-TZ instants (not wall-clock-relative offsets) so the
+	 * suite is deterministic at any hour of the day.
 	 */
 	public function testCompleteEntryIfDailyMaximumReachedSetsAuditFields(): void
 	{
 		$userId = 'testuser';
+		$tz = new \DateTimeZone('Europe/Berlin');
 
-		// Entry started 11 hours ago → already past the 10h ceiling.
-		$start = (new \DateTime())->modify('-11 hours');
+		// Same calendar day: 06:00–17:00 → 11 h on 2026-05-20, above the 10 h §3 cap.
+		$start = new \DateTime('2026-05-20 06:00:00', $tz);
+		$referenceNow = new \DateTime('2026-05-20 17:00:00', $tz);
 
 		$entry = new TimeEntry();
 		$entry->setId(42);
@@ -434,8 +491,8 @@ class TimeTrackingServiceTest extends TestCase {
 		$entry->setEndTime(null);
 		$entry->setBreaks(json_encode([]));
 		$entry->setIsManualEntry(false);
-		$entry->setCreatedAt(new \DateTime());
-		$entry->setUpdatedAt(new \DateTime());
+		$entry->setCreatedAt(clone $start);
+		$entry->setUpdatedAt(clone $referenceNow);
 
 		// No other overlapping entries on today's calendar day
 		$this->timeEntryMapper->method('findOverlapping')->willReturn([$entry]);
@@ -460,7 +517,7 @@ class TimeTrackingServiceTest extends TestCase {
 				'system'
 			);
 
-		$result = $this->service->completeEntryIfDailyMaximumReached($entry);
+		$result = $this->service->completeEntryIfDailyMaximumReached($entry, $referenceNow);
 
 		$this->assertTrue($result, 'Entry must be reported as auto-completed.');
 		$this->assertInstanceOf(TimeEntry::class, $capturedEntry);
@@ -471,8 +528,67 @@ class TimeTrackingServiceTest extends TestCase {
 		$endTime = $capturedEntry->getEndTime();
 		$this->assertInstanceOf(\DateTime::class, $endTime, 'End time must be set.');
 
-		$netWorkingHours = $capturedEntry->getWorkingDurationHours() ?? 0.0;
-		$this->assertLessThanOrEqual(10.001, $netWorkingHours, 'Net working time must respect ArbZG §3 daily cap.');
+		// ArbZG §3 is evaluated per calendar day — never via raw entry span alone.
+		[$dayStart, $dayEnd] = $this->timeZoneService->dayWindowInStorage($referenceNow);
+		$calendarDayHours = $this->dailyHoursCalculator->getEntryWorkingHoursOnCalendarDay(
+			$capturedEntry,
+			$dayStart,
+			$dayEnd,
+			$endTime,
+		);
+		$this->assertLessThanOrEqual(
+			10.001,
+			$calendarDayHours,
+			'Calendar-day working time must respect ArbZG §3 daily cap.'
+		);
+	}
+
+	/**
+	 * Overnight sessions must cap only today's portion (midnight clip), not the
+	 * full entry span from yesterday evening.
+	 */
+	public function testCompleteEntryIfDailyMaximumReachedCapsOvernightSessionOnTodayOnly(): void
+	{
+		$userId = 'testuser';
+		$tz = new \DateTimeZone('Europe/Berlin');
+
+		// Monday 22:00 – still running; "now" is Tuesday 12:00 → 12 h on Tuesday.
+		$start = new \DateTime('2026-05-19 22:00:00', $tz);
+		$referenceNow = new \DateTime('2026-05-20 12:00:00', $tz);
+
+		$entry = new TimeEntry();
+		$entry->setId(43);
+		$entry->setUserId($userId);
+		$entry->setStatus(TimeEntry::STATUS_ACTIVE);
+		$entry->setStartTime($start);
+		$entry->setEndTime(null);
+		$entry->setBreaks(json_encode([]));
+		$entry->setIsManualEntry(false);
+		$entry->setCreatedAt(clone $start);
+		$entry->setUpdatedAt(clone $referenceNow);
+
+		$this->timeEntryMapper->method('findOverlapping')->willReturn([$entry]);
+		$this->timeEntryMapper->expects($this->once())->method('update');
+		$this->auditLogMapper->expects($this->once())->method('logAction');
+
+		$result = $this->service->completeEntryIfDailyMaximumReached($entry, $referenceNow);
+
+		$this->assertTrue($result);
+		$endTime = $entry->getEndTime();
+		$this->assertInstanceOf(\DateTime::class, $endTime);
+
+		[$tueStart, $tueEnd] = $this->timeZoneService->dayWindowInStorage($referenceNow);
+		$tuesdayHours = $this->dailyHoursCalculator->getEntryWorkingHoursOnCalendarDay(
+			$entry,
+			$tueStart,
+			$tueEnd,
+			$endTime,
+		);
+		$this->assertLessThanOrEqual(10.001, $tuesdayHours, 'Tuesday portion must respect §3 cap.');
+
+		// Entry span crosses midnight — total row duration may exceed 10 h legally.
+		$entrySpanHours = $entry->getWorkingDurationHours() ?? 0.0;
+		$this->assertGreaterThan(10.0, $entrySpanHours, 'Overnight row span may exceed 10 h.');
 	}
 
 	/**
@@ -481,9 +597,10 @@ class TimeTrackingServiceTest extends TestCase {
 	public function testCompleteEntryIfDailyMaximumReachedIsNoOpBelowMax(): void
 	{
 		$userId = 'testuser';
+		$tz = new \DateTimeZone('Europe/Berlin');
 
-		// Entry started 4 hours ago → well below the 10h ceiling.
-		$start = (new \DateTime())->modify('-4 hours');
+		$start = new \DateTime('2026-05-20 08:00:00', $tz);
+		$referenceNow = new \DateTime('2026-05-20 12:00:00', $tz); // 4 h on the day
 
 		$entry = new TimeEntry();
 		$entry->setId(7);
@@ -493,8 +610,8 @@ class TimeTrackingServiceTest extends TestCase {
 		$entry->setEndTime(null);
 		$entry->setBreaks(json_encode([]));
 		$entry->setIsManualEntry(false);
-		$entry->setCreatedAt(new \DateTime());
-		$entry->setUpdatedAt(new \DateTime());
+		$entry->setCreatedAt(clone $start);
+		$entry->setUpdatedAt(clone $referenceNow);
 
 		$this->timeEntryMapper->method('findOverlapping')->willReturn([$entry]);
 
@@ -502,7 +619,7 @@ class TimeTrackingServiceTest extends TestCase {
 		$this->timeEntryMapper->expects($this->never())->method('update');
 		$this->auditLogMapper->expects($this->never())->method('logAction');
 
-		$result = $this->service->completeEntryIfDailyMaximumReached($entry);
+		$result = $this->service->completeEntryIfDailyMaximumReached($entry, $referenceNow);
 
 		$this->assertFalse($result, 'Below the daily maximum, no auto-completion may occur.');
 		$this->assertNull($entry->getEndedReason(), 'Reason must remain unset below the threshold.');

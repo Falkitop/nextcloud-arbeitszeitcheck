@@ -53,7 +53,7 @@ $endDate = $_['endDate'] ?? date('Y-m-d');
                         <p><?php p($l->t('See what kinds of working time problems occurred')); ?></p>
                     </div>
                     <div class="table-container" role="region" aria-label="<?php p($l->t('Problems by Type')); ?>">
-                        <table class="table table--hover" role="table" aria-label="<?php p($l->t('Problems by Type')); ?>">
+                        <table class="table table--hover azc-table--responsive" role="table" aria-label="<?php p($l->t('Problems by Type')); ?>">
                             <thead>
                                 <tr>
                                     <th scope="col"><?php p($l->t('Type')); ?></th>
@@ -76,8 +76,8 @@ $endDate = $_['endDate'] ?? date('Y-m-d');
                                     };
                                     ?>
                                     <tr>
-                                        <td><?php p($typeLabel); ?></td>
-                                        <td><?php p((string)$count); ?></td>
+                                        <td data-label="<?php p($l->t('Type')); ?>"><?php p($typeLabel); ?></td>
+                                        <td data-label="<?php p($l->t('Count')); ?>"><?php p((string)$count); ?></td>
                                     </tr>
                                 <?php endforeach; ?>
                             </tbody>
@@ -94,7 +94,7 @@ $endDate = $_['endDate'] ?? date('Y-m-d');
                         <p><?php p($l->t('See how serious the problems were')); ?></p>
                     </div>
                     <div class="table-container" role="region" aria-label="<?php p($l->t('Problems by How Serious')); ?>">
-                        <table class="table table--hover" role="table" aria-label="<?php p($l->t('Problems by How Serious')); ?>">
+                        <table class="table table--hover azc-table--responsive" role="table" aria-label="<?php p($l->t('Problems by How Serious')); ?>">
                             <thead>
                                 <tr>
                                     <th scope="col"><?php p($l->t('How Serious')); ?></th>
@@ -118,12 +118,12 @@ $endDate = $_['endDate'] ?? date('Y-m-d');
                                     };
                                     ?>
                                     <tr>
-                                        <td>
+                                        <td data-label="<?php p($l->t('How Serious')); ?>">
                                             <span class="badge badge--<?php p($severityBadge); ?>">
                                                 <?php p($severityLabel); ?>
                                             </span>
                                         </td>
-                                        <td><?php p($count); ?></td>
+                                        <td data-label="<?php p($l->t('Count')); ?>"><?php p($count); ?></td>
                                     </tr>
                                 <?php endforeach; ?>
                             </tbody>

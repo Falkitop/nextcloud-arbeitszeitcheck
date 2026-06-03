@@ -16,6 +16,7 @@ use OCA\ArbeitszeitCheck\Db\TimeEntryMapper;
 use OCA\ArbeitszeitCheck\Db\ComplianceViolationMapper;
 use OCA\ArbeitszeitCheck\Db\UserWorkingTimeModelMapper;
 use OCA\ArbeitszeitCheck\Db\WorkingTimeModelMapper;
+use OCA\ArbeitszeitCheck\Db\AuditLog;
 use OCA\ArbeitszeitCheck\Db\AuditLogMapper;
 use OCA\ArbeitszeitCheck\Db\UserSettingsMapper;
 use OCA\ArbeitszeitCheck\Db\VacationYearBalanceMapper;
@@ -29,9 +30,14 @@ use OCA\ArbeitszeitCheck\Db\TariffRuleSet;
 use OCA\ArbeitszeitCheck\Db\TariffRuleSetMapper;
 use OCA\ArbeitszeitCheck\Db\UserVacationPolicyAssignment;
 use OCA\ArbeitszeitCheck\Db\UserVacationPolicyAssignmentMapper;
+use OCA\ArbeitszeitCheck\Exception\AdminUserProfileUpdateException;
+use OCA\ArbeitszeitCheck\Exception\BusinessRuleException;
+use OCA\ArbeitszeitCheck\Service\AdminUserProfileUpdateService;
+use OCA\ArbeitszeitCheck\Service\AuditLogPresenter;
 use OCA\ArbeitszeitCheck\Service\CSPService;
 use OCA\ArbeitszeitCheck\Db\Holiday;
 use OCA\ArbeitszeitCheck\Db\HolidayMapper;
+use OCA\ArbeitszeitCheck\Service\HolidayAdminService;
 use OCA\ArbeitszeitCheck\Service\HolidayService;
 use OCA\ArbeitszeitCheck\Service\LayeredVacationConflictException;
 use OCA\ArbeitszeitCheck\Service\LayeredVacationDefaultsService;
@@ -40,13 +46,18 @@ use OCA\ArbeitszeitCheck\Service\LayeredVacationValidationException;
 use OCA\ArbeitszeitCheck\Service\VacationAllocationService;
 use OCA\ArbeitszeitCheck\Service\VacationEntitlementEngine;
 use OCA\ArbeitszeitCheck\Service\UserOvertimeSettingsService;
+use OCA\ArbeitszeitCheck\Service\TimeCaptureMethodService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use OCA\ArbeitszeitCheck\Support\OpeningBalanceYearValidator;
 use OCA\ArbeitszeitCheck\Support\StrictYmdDates;
+use OCA\ArbeitszeitCheck\Support\TariffRuleModuleValidator;
+use OCA\ArbeitszeitCheck\Support\UserDirectorySearch;
 use OCP\App\IAppManager;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Db\DoesNotExistException;
+use OCP\AppFramework\Db\TTransactional;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\DataDownloadResponse;
@@ -54,6 +65,7 @@ use OCP\AppFramework\Http\JSONResponse;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\AppFramework\Services\IAppConfig;
 use OCP\DB\Exception as DBException;
+use OCP\IDBConnection;
 use OCP\IGroupManager;
 use OCP\IRequest;
 use OCP\IUserManager;
@@ -73,6 +85,7 @@ class AdminController extends Controller
 {
 	use CSPTrait;
 	use PageShellTrait;
+	use TTransactional;
 	private const MAX_NOTIFICATION_RECIPIENTS = 20;
 	private const MAX_NOTIFICATION_RECIPIENT_LENGTH = 254;
 	private const MAX_NOTIFICATION_RECIPIENTS_RAW_LENGTH = 4000;
@@ -104,6 +117,7 @@ class AdminController extends Controller
 	protected LocaleFormatService $localeFormat;
 	private HolidayMapper $holidayMapper;
 	private HolidayService $holidayCalendarService;
+	private HolidayAdminService $holidayAdminService;
 	private VacationYearBalanceMapper $vacationYearBalanceMapper;
 	private VacationAllocationService $vacationAllocationService;
 	private TariffRuleSetMapper $tariffRuleSetMapper;
@@ -112,6 +126,12 @@ class AdminController extends Controller
 	private VacationEntitlementEngine $vacationEntitlementEngine;
 	private LayeredVacationDefaultsService $layeredVacationDefaultsService;
 	private UserOvertimeSettingsService $userOvertimeSettingsService;
+	private TimeCaptureMethodService $timeCaptureMethodService;
+	private AdminUserProfileUpdateService $adminUserProfileUpdateService;
+	private AuditLogPresenter $auditLogPresenter;
+	private IDBConnection $db;
+
+	private const AUDIT_LOG_PAGE_SIZE = 50;
 
 	public function __construct(
 		string $appName,
@@ -135,6 +155,7 @@ class AdminController extends Controller
 		IURLGenerator $urlGenerator,
 		HolidayMapper $holidayMapper,
 		HolidayService $holidayCalendarService,
+		HolidayAdminService $holidayAdminService,
 		VacationYearBalanceMapper $vacationYearBalanceMapper,
 		VacationAllocationService $vacationAllocationService,
 		TariffRuleSetMapper $tariffRuleSetMapper,
@@ -143,8 +164,12 @@ class AdminController extends Controller
 		VacationEntitlementEngine $vacationEntitlementEngine,
 		LayeredVacationDefaultsService $layeredVacationDefaultsService,
 		UserOvertimeSettingsService $userOvertimeSettingsService,
+		TimeCaptureMethodService $timeCaptureMethodService,
+		AdminUserProfileUpdateService $adminUserProfileUpdateService,
+		AuditLogPresenter $auditLogPresenter,
 		PermissionService $permissionService,
 		LocaleFormatService $localeFormat,
+		IDBConnection $db,
 	) {
 		parent::__construct($appName, $request);
 		$this->timeEntryMapper = $timeEntryMapper;
@@ -165,6 +190,7 @@ class AdminController extends Controller
 		$this->urlGenerator = $urlGenerator;
 		$this->holidayMapper = $holidayMapper;
 		$this->holidayCalendarService = $holidayCalendarService;
+		$this->holidayAdminService = $holidayAdminService;
 		$this->vacationYearBalanceMapper = $vacationYearBalanceMapper;
 		$this->vacationAllocationService = $vacationAllocationService;
 		$this->tariffRuleSetMapper = $tariffRuleSetMapper;
@@ -173,8 +199,12 @@ class AdminController extends Controller
 		$this->vacationEntitlementEngine = $vacationEntitlementEngine;
 		$this->layeredVacationDefaultsService = $layeredVacationDefaultsService;
 		$this->userOvertimeSettingsService = $userOvertimeSettingsService;
+		$this->timeCaptureMethodService = $timeCaptureMethodService;
+		$this->adminUserProfileUpdateService = $adminUserProfileUpdateService;
+		$this->auditLogPresenter = $auditLogPresenter;
 		$this->permissionService = $permissionService;
 		$this->localeFormat = $localeFormat;
+		$this->db = $db;
 		$this->setCspService($cspService);
 	}
 
@@ -364,6 +394,71 @@ class AdminController extends Controller
 		return $this->parseStrictYmdDateParam($trimmed);
 	}
 
+	private function profileUpdateExceptionResponse(AdminUserProfileUpdateException $e): JSONResponse
+	{
+		$payload = [
+			'success' => false,
+			'error' => $e->userMessage,
+		];
+		if ($e->fieldErrors !== []) {
+			$payload['errors'] = $e->fieldErrors;
+		}
+
+		return new JSONResponse($payload, $e->httpStatus);
+	}
+
+	/**
+	 * Vacation policy row shown in the employee edit dialog. For assignments that
+	 * start in the future, lookup must use that start date — not only "today" —
+	 * or the dialog mis-defaults to "inherit" and the next save fails validation
+	 * or overwrites the intended individual rule.
+	 */
+	private function findVacationPolicyForAdminEdit(string $userId, ?\DateTime $assignmentStart): ?UserVacationPolicyAssignment
+	{
+		$asOf = new \DateTimeImmutable('today');
+		if ($assignmentStart !== null) {
+			$start = \DateTimeImmutable::createFromMutable($assignmentStart)->setTime(0, 0, 0);
+			if ($start > $asOf) {
+				$asOf = $start;
+			}
+		}
+
+		return $this->userVacationPolicyAssignmentMapper->findCurrentByUser($userId, $asOf);
+	}
+
+	/**
+	 * Atomically update all employee profile sections (work schedule, vacation
+	 * policy, time capture, overtime) in a single DB transaction.
+	 */
+	public function updateUserProfile(string $userId): JSONResponse
+	{
+		try {
+			$params = $this->request->getParams();
+			$payload = [
+				'workingTimeModel' => is_array($params['workingTimeModel'] ?? null) ? $params['workingTimeModel'] : [],
+				'vacationPolicy' => is_array($params['vacationPolicy'] ?? null) ? $params['vacationPolicy'] : [],
+				'timeCapture' => is_array($params['timeCapture'] ?? null) ? $params['timeCapture'] : [],
+				'overtime' => is_array($params['overtime'] ?? null) ? $params['overtime'] : [],
+			];
+			$result = $this->adminUserProfileUpdateService->updateProfile(
+				$userId,
+				$payload,
+				$this->getPerformedBy()
+			);
+
+			return new JSONResponse($result);
+		} catch (AdminUserProfileUpdateException $e) {
+			return $this->profileUpdateExceptionResponse($e);
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error('updateUserProfile failed', ['exception' => $e]);
+
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.'),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
 	private function resolveActivationStartDate(string $activationMode, \DateTimeImmutable $today): \DateTimeImmutable
 	{
 		return match ($activationMode) {
@@ -470,7 +565,7 @@ class AdminController extends Controller
 	#[NoCSRFRequired]
 	public function users(): TemplateResponse
 	{
-		$this->registerFrontEndAssets('admin-users', 'admin-users', ['common/datepicker']);
+		$this->registerFrontEndAssets('admin-users', 'admin-users', [], ['common/datepicker']);
 
 
 
@@ -512,16 +607,19 @@ class AdminController extends Controller
 			$totalCount = count($usersData);
 		}
 
-		$response = new TemplateResponse('arbeitszeitcheck', 'admin-users', [
-			'users' => $usersData,
-			'total' => $totalCount,
-			'urlGenerator' => $this->urlGenerator,
-			'l' => $this->l10n,
-			'showSubstitutionLink' => false,
-			'showManagerLink' => true,
-			'showReportsLink' => true,
-			'showAdminNav' => true,
-		]);
+		$response = new TemplateResponse('arbeitszeitcheck', 'admin-users', array_merge(
+			$this->buildAdminShellParams(
+				'admin-users',
+				$this->l10n->t('Employees'),
+				$this->l10n->t('Manage employees and working time models'),
+			),
+			[
+				'users' => $usersData,
+				'total' => $totalCount,
+				'urlGenerator' => $this->urlGenerator,
+				'l' => $this->l10n,
+			],
+		));
 		return $this->configureCSP($response, 'admin');
 	}
 
@@ -532,7 +630,7 @@ class AdminController extends Controller
 	#[NoCSRFRequired]
 	public function settings(): TemplateResponse
 	{
-		$this->registerFrontEndAssets('admin-settings', 'admin-settings', [], ['common/settings-jump-nav']);
+		$this->registerFrontEndAssets('admin-settings', 'admin-settings', ['common/projectcheck'], ['common/settings-jump-nav', 'common/admin-user-picker']);
 
 
 
@@ -576,7 +674,11 @@ class AdminController extends Controller
 			'manualTimeEntriesRequireApproval' => $this->appConfig->getAppValueString(Constants::CONFIG_MANUAL_TIME_ENTRIES_REQUIRE_APPROVAL, '0') === '1',
 			'accessAllowedGroups' => $this->getAllowedAccessGroupsFromConfig(),
 			'appAdminUserIds' => $this->getConfiguredAppAdminUserIds(),
+			'projectCheckIntegrationEnabled' => $this->appManager->isEnabledForUser('projectcheck')
+				&& $this->appConfig->getAppValueString(Constants::CONFIG_PROJECTCHECK_INTEGRATION_ENABLED, Constants::CONFIG_PROJECTCHECK_INTEGRATION_DEFAULT) === '1',
 		];
+
+		$projectCheckAvailable = $this->appManager->isEnabledForUser('projectcheck');
 
 		$response = new TemplateResponse('arbeitszeitcheck', 'admin-settings', array_merge(
 			$this->buildAdminShellParams(
@@ -591,6 +693,7 @@ class AdminController extends Controller
 				'urlGenerator' => $this->urlGenerator,
 				'settingsShell' => 'app',
 				'inAppAdminSettingsUrl' => $this->urlGenerator->linkToRoute('arbeitszeitcheck.admin.settings'),
+				'projectCheckAvailable' => $projectCheckAvailable,
 				'requesttoken' => Util::callRegister(),
 			],
 		));
@@ -635,9 +738,10 @@ class AdminController extends Controller
 		// One-time legacy migration: import old company_holidays JSON into at_holidays
 		$this->migrateLegacyCompanyHolidaysIfNeeded();
 
-		$this->registerFrontEndAssets('admin-holidays', 'admin-holidays', ['common/datepicker']);
+		$this->registerFrontEndAssets('admin-holidays', 'admin-holidays', [], ['common/datepicker']);
 
 		$defaultState = $this->appConfig->getAppValueString('german_state', 'NW');
+		$statutoryAutoReseed = $this->appConfig->getAppValueString('statutory_auto_reseed', '1') === '1';
 
 		$response = new TemplateResponse('arbeitszeitcheck', 'admin-holidays', array_merge(
 			$this->buildAdminShellParams(
@@ -647,6 +751,8 @@ class AdminController extends Controller
 			),
 			[
 				'defaultState' => $defaultState,
+				'statutoryAutoReseed' => $statutoryAutoReseed,
+				'settingsUrl' => $this->urlGenerator->linkToRoute('arbeitszeitcheck.admin.settings'),
 				'urlGenerator' => $this->urlGenerator,
 				'l' => $this->l10n,
 			],
@@ -858,53 +964,11 @@ class AdminController extends Controller
 				new \DateTime($end->format('Y-m-d'))
 			);
 
-			// Sicherheitsnetz: Stelle sicher, dass alle gesetzlichen
-			// Basis-Feiertage des Jahres immer sichtbar sind, selbst wenn es
-			// einmal zu Problemen beim Seeding oder manuellen Änderungen kam.
-			// Gesetzliche Feiertage werden hier NICHT aus der DB gelöscht,
-			// sondern bei Bedarf nur "virtuell" ergänzt.
-			$existingStatutoryByDate = [];
-			foreach ($dtoList as $item) {
-				if (
-					isset($item['scope'], $item['date'])
-					&& $item['scope'] === Holiday::SCOPE_STATUTORY
-					&& is_string($item['date'])
-				) {
-					$existingStatutoryByDate[$item['date']] = true;
-				}
-			}
-
-			try {
-				$baseHolidays = HolidayService::getGermanPublicHolidaysForYear($year);
-			} catch (\Throwable $e) {
-				$baseHolidays = [];
-			}
-
-			foreach ($baseHolidays as $dateStr => $name) {
-				if (isset($existingStatutoryByDate[$dateStr])) {
-					continue;
-				}
-				$dtoList[] = [
-					'id' => null,
-					'state' => $state,
-					'date' => $dateStr,
-					'name' => $this->l10n->t($name),
-					'kind' => Holiday::KIND_FULL,
-					'scope' => Holiday::SCOPE_STATUTORY,
-					'source' => Holiday::SOURCE_GENERATED,
-					'weight' => 1.0,
-				];
-			}
-
-			// Konsistente Sortierung nach Datum
-			usort($dtoList, static function (array $a, array $b): int {
-				return strcmp((string)($a['date'] ?? ''), (string)($b['date'] ?? ''));
-			});
-
 			return new JSONResponse([
 				'success' => true,
 				'state' => $state,
 				'year' => $year,
+				'statutoryAutoReseed' => $this->appConfig->getAppValueString('statutory_auto_reseed', '1') === '1',
 				'holidays' => $dtoList,
 				'period' => [
 					'start' => $start->format('Y-m-d'),
@@ -974,6 +1038,12 @@ class AdminController extends Controller
 				$scope = Holiday::SCOPE_COMPANY;
 			}
 
+			// Statutory holidays are always treated as full-day in the working-day
+			// engine, so persist them as full-day to keep the badge honest.
+			if ($scope === Holiday::SCOPE_STATUTORY) {
+				$kind = Holiday::KIND_FULL;
+			}
+
 			$holiday = new Holiday();
 			$oldValues = null;
 			if ($id > 0) {
@@ -1011,6 +1081,10 @@ class AdminController extends Controller
 			} else {
 				$holiday = $this->holidayMapper->insert($holiday);
 				$action = 'state_holiday_created';
+			}
+
+			if ($scope === Holiday::SCOPE_STATUTORY) {
+				$this->holidayAdminService->onStatutoryHolidaySaved($state, $dateObj->format('Y-m-d'));
 			}
 
 			// Ensure subsequent reads see the updated set of holidays
@@ -1065,36 +1139,26 @@ class AdminController extends Controller
 				], Http::STATUS_BAD_REQUEST);
 			}
 
-			// Resolve state/year before deletion so we can clear the cache precisely.
-			$state = '';
-			$year = null;
 			$oldValues = null;
 			try {
 				$existing = $this->holidayMapper->findById($id);
-				if ($existing !== null) {
-					$oldValues = $this->holidayToAuditValues($existing);
-					$state = $existing->getState();
-					$date = $existing->getDate();
-					if ($date !== null) {
-						$year = (int)$date->format('Y');
-					}
-				}
+				$oldValues = $this->holidayToAuditValues($existing);
 			} catch (DoesNotExistException $e) {
-				// Idempotent delete: if the holiday is already gone, treat this
-				// as success to keep the admin UI robust and avoid confusing 404s.
 				return new JSONResponse([
 					'success' => true,
 				]);
 			}
 
-			$this->holidayMapper->deleteById($id);
-
-			if ($state !== '' && $year !== null) {
-				$this->holidayCalendarService->clearCacheForStateYear($state, $year);
+			$performedBy = $this->getPerformedBy();
+			$deleteResult = $this->holidayAdminService->deleteStateHolidayById($id, $performedBy);
+			if (($deleteResult['success'] ?? false) !== true) {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('Holiday could not be removed.'),
+				], Http::STATUS_BAD_REQUEST);
 			}
 
 			// Audit log: deletion
-			$performedBy = $this->getPerformedBy();
 			$this->auditLogMapper->logAction(
 				$performedBy,
 				'state_holiday_deleted',
@@ -1215,7 +1279,7 @@ class AdminController extends Controller
 	#[NoCSRFRequired]
 	public function workingTimeModels(): TemplateResponse
 	{
-		$this->registerFrontEndAssets('working-time-models', 'None');
+		$this->registerFrontEndAssets('working-time-models');
 
 
 
@@ -1234,15 +1298,18 @@ class AdminController extends Controller
 			];
 		}
 
-		$response = new TemplateResponse('arbeitszeitcheck', 'working-time-models', [
-			'models' => $modelsData,
-			'urlGenerator' => $this->urlGenerator,
-			'l' => $this->l10n,
-			'showSubstitutionLink' => false,
-			'showManagerLink' => true,
-			'showReportsLink' => true,
-			'showAdminNav' => true,
-		]);
+		$response = new TemplateResponse('arbeitszeitcheck', 'working-time-models', array_merge(
+			$this->buildAdminShellParams(
+				'admin-working-time-models',
+				$this->l10n->t('Working time models'),
+				$this->l10n->t('Configure working time models'),
+			),
+			[
+				'models' => $modelsData,
+				'urlGenerator' => $this->urlGenerator,
+				'l' => $this->l10n,
+			],
+		));
 		return $this->configureCSP($response, 'admin');
 	}
 
@@ -1258,7 +1325,7 @@ class AdminController extends Controller
 	#[NoCSRFRequired]
 	public function tariffRuleSets(): TemplateResponse
 	{
-		$this->registerFrontEndAssets('admin-tariff-rules', 'admin-tariff-rules', ['common/datepicker']);
+		$this->registerFrontEndAssets('admin-tariff-rules', 'admin-tariff-rules', [], ['common/datepicker']);
 
 		$response = new TemplateResponse('arbeitszeitcheck', 'admin-tariff-rules', array_merge(
 			$this->buildAdminShellParams(
@@ -1281,37 +1348,22 @@ class AdminController extends Controller
 	#[NoCSRFRequired]
 	public function auditLog(): TemplateResponse
 	{
-		$this->registerFrontEndAssets('audit-log-viewer', 'audit-log', ['common/datepicker']);
+		$this->registerFrontEndAssets('audit-log-viewer', 'audit-log', [], ['common/datepicker']);
 
-
-
-		// Get recent audit logs (last 30 days, first 50)
 		$endDate = new \DateTime();
 		$endDate->setTime(23, 59, 59);
 		$startDate = clone $endDate;
 		$startDate->modify('-30 days');
 		$startDate->setTime(0, 0, 0);
 
-		$logs = $this->auditLogMapper->findByDateRange($startDate, $endDate, null, null, null);
-		$logs = array_slice($logs, 0, 50);
+		$searchFilters = [];
+		$total = $this->auditLogMapper->countByDateRange($startDate, $endDate, $searchFilters);
+		$logs = $this->auditLogMapper->searchByDateRange($startDate, $endDate, array_merge($searchFilters, [
+			'limit' => self::AUDIT_LOG_PAGE_SIZE,
+			'offset' => 0,
+		]));
 
-		$logsData = [];
-		foreach ($logs as $log) {
-			$user = $this->userManager->get($log->getUserId());
-			$performedBy = $log->getPerformedBy() ? $this->userManager->get($log->getPerformedBy()) : null;
-
-			$logsData[] = [
-				'id' => $log->getId(),
-				'userId' => $log->getUserId(),
-				'userDisplayName' => $user ? $user->getDisplayName() : $log->getUserId(),
-				'action' => $this->l10n->t($log->getAction()),
-				'entityType' => $this->translateAuditEntityType($log->getEntityType()),
-				'entityId' => $log->getEntityId(),
-				'performedBy' => $log->getPerformedBy(),
-				'performedByDisplayName' => $performedBy ? $performedBy->getDisplayName() : ($log->getPerformedBy() ?? $log->getUserId()),
-				'createdAt' => ($createdAt = $log->getCreatedAt()) ? $createdAt->format('Y-m-d H:i:s') : null
-			];
-		}
+		$logsData = array_map(fn (AuditLog $log): array => $this->formatAuditLogEntry($log), $logs);
 
 		$response = new TemplateResponse('arbeitszeitcheck', 'audit-log', array_merge(
 			$this->buildAdminShellParams(
@@ -1321,9 +1373,14 @@ class AdminController extends Controller
 			),
 			[
 				'logs' => $logsData,
-				'total' => count($logs),
+				'total' => $total,
+				'limit' => self::AUDIT_LOG_PAGE_SIZE,
+				'offset' => 0,
 				'startDate' => $startDate->format('d.m.Y'),
 				'endDate' => $endDate->format('d.m.Y'),
+				'actionCategoryOptions' => $this->auditLogPresenter->getActionCategoryFilterOptions(),
+				'entityTypeOptions' => $this->auditLogPresenter->getEntityTypeFilterOptions(),
+				'maxDateRangeDays' => Constants::MAX_EXPORT_DATE_RANGE_DAYS,
 				'urlGenerator' => $this->urlGenerator,
 				'l' => $this->l10n,
 			],
@@ -1332,13 +1389,142 @@ class AdminController extends Controller
 	}
 
 	/**
-	 * Translate audit log entity_type for UI/export (msgid "user" is reserved for a generic word elsewhere).
+	 * @return array<string, mixed>|JSONResponse
 	 */
-	private function translateAuditEntityType(string $entityType): string {
-		if ($entityType === 'user') {
-			return $this->l10n->t('User (audit log entity)');
+	private function parseAuditLogDateFilters(array $params): array|JSONResponse
+	{
+		$startDate = null;
+		$endDate = null;
+		if (isset($params['start_date']) && $params['start_date']) {
+			try {
+				$startDate = new \DateTime((string)$params['start_date']);
+				$startDate->setTime(0, 0, 0);
+			} catch (\Throwable) {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('Invalid start date'),
+				], Http::STATUS_BAD_REQUEST);
+			}
 		}
-		return $this->l10n->t($entityType);
+		if (isset($params['end_date']) && $params['end_date']) {
+			try {
+				$endDate = new \DateTime((string)$params['end_date']);
+				$endDate->setTime(23, 59, 59);
+			} catch (\Throwable) {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('Invalid end date'),
+				], Http::STATUS_BAD_REQUEST);
+			}
+		}
+
+		if ($startDate === null && $endDate === null) {
+			$endDate = new \DateTime();
+			$endDate->setTime(23, 59, 59);
+			$startDate = clone $endDate;
+			$startDate->modify('-30 days');
+			$startDate->setTime(0, 0, 0);
+		} elseif ($startDate === null || $endDate === null) {
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('Please provide both a start date and an end date.'),
+			], Http::STATUS_BAD_REQUEST);
+		}
+
+		if ($startDate > $endDate) {
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('Start date must be before or equal to end date'),
+			], Http::STATUS_BAD_REQUEST);
+		}
+
+		$diff = $startDate->diff($endDate);
+		$days = (int)$diff->format('%a');
+		if ($days > Constants::MAX_EXPORT_DATE_RANGE_DAYS) {
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('Date range must not exceed %d days. Please narrow the range.', [Constants::MAX_EXPORT_DATE_RANGE_DAYS]),
+			], Http::STATUS_BAD_REQUEST);
+		}
+
+		return [
+			'startDate' => $startDate,
+			'endDate' => $endDate,
+		];
+	}
+
+	/**
+	 * @return array<string, mixed>|JSONResponse
+	 */
+	private function buildAuditLogSearchFilters(array $params): array|JSONResponse
+	{
+		$filters = [];
+
+		$userQuery = isset($params['user_id']) ? trim((string)$params['user_id']) : '';
+		if ($userQuery !== '') {
+			if (strlen($userQuery) > 200) {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('User filter is too long.'),
+				], Http::STATUS_BAD_REQUEST);
+			}
+			$filters['user_id_like'] = $userQuery;
+		}
+
+		$exactAction = isset($params['action']) ? trim((string)$params['action']) : '';
+		if ($exactAction !== '') {
+			$filters['action'] = $exactAction;
+		} else {
+			$actionCategory = isset($params['action_category']) ? trim((string)$params['action_category']) : '';
+			if ($actionCategory === '' && isset($params['action_type'])) {
+				$actionCategory = trim((string)$params['action_type']);
+			}
+			if ($actionCategory !== '') {
+				if (!$this->auditLogPresenter->isValidActionCategory($actionCategory)) {
+					return new JSONResponse([
+						'success' => false,
+						'error' => $this->l10n->t('Unknown action category.'),
+					], Http::STATUS_BAD_REQUEST);
+				}
+				$categoryActions = $this->auditLogPresenter->resolveCategoryActions($actionCategory);
+				if ($categoryActions === []) {
+					$filters['actions_in'] = ['__no_matching_actions__'];
+				} elseif ($categoryActions !== null) {
+					$filters['actions_in'] = $categoryActions;
+				}
+			}
+		}
+
+		$entityType = isset($params['entity_type']) ? trim((string)$params['entity_type']) : '';
+		if ($entityType !== '') {
+			$filters['entity_type'] = $entityType;
+		}
+
+		return $filters;
+	}
+
+	/**
+	 * @return array<string, mixed>
+	 */
+	private function formatAuditLogEntry(AuditLog $log): array
+	{
+		$user = $this->userManager->get($log->getUserId());
+		$performedByUser = $log->getPerformedBy() ? $this->userManager->get($log->getPerformedBy()) : null;
+
+		return [
+			'id' => $log->getId(),
+			'userId' => $log->getUserId(),
+			'userDisplayName' => $this->auditLogPresenter->formatActor($log->getUserId(), $user ?: null),
+			'action' => $this->auditLogPresenter->formatAction($log->getAction()),
+			'actionKey' => $log->getAction(),
+			'entityType' => $this->auditLogPresenter->formatEntityType($log->getEntityType()),
+			'entityTypeKey' => $log->getEntityType(),
+			'entityId' => $log->getEntityId(),
+			'performedBy' => $log->getPerformedBy(),
+			'performedByDisplayName' => $this->auditLogPresenter->formatActor($log->getPerformedBy() ?? $log->getUserId(), $performedByUser ?: null),
+			'createdAt' => $this->auditLogPresenter->formatCreatedAt($log->getCreatedAt()),
+			'createdAtIso' => ($createdAt = $log->getCreatedAt()) ? $createdAt->format('c') : null,
+		];
 	}
 
 	/**
@@ -1464,6 +1650,7 @@ class AdminController extends Controller
 				'vacationRolloverIncludeUnusedAnnual' => Constants::CONFIG_VACATION_ROLLOVER_INCLUDE_UNUSED_ANNUAL,
 				'timeEntryChangesRequireApproval' => Constants::CONFIG_TIME_ENTRY_CHANGES_REQUIRE_APPROVAL,
 				'manualTimeEntriesRequireApproval' => Constants::CONFIG_MANUAL_TIME_ENTRIES_REQUIRE_APPROVAL,
+				'projectCheckIntegrationEnabled' => Constants::CONFIG_PROJECTCHECK_INTEGRATION_ENABLED,
 			];
 
 			$updatedSettings = [];
@@ -1484,8 +1671,15 @@ class AdminController extends Controller
 						'statutoryAutoReseed',
 						'vacationRolloverEnabled', 'vacationRolloverIncludeUnusedAnnual',
 						'timeEntryChangesRequireApproval', 'manualTimeEntriesRequireApproval',
+						'projectCheckIntegrationEnabled',
 					], true)) {
 						$value = ($value === true || $value === 'true' || $value === '1') ? '1' : '0';
+						if ($paramKey === 'projectCheckIntegrationEnabled' && $value === '1' && !$this->appManager->isEnabledForUser('projectcheck')) {
+							return new JSONResponse([
+								'success' => false,
+								'error' => $this->l10n->t('Enable the ProjectCheck app before turning on this connection.'),
+							], Http::STATUS_BAD_REQUEST);
+						}
 					} elseif ($paramKey === 'maxDailyHours' || $paramKey === 'minRestPeriod' || $paramKey === 'defaultWorkingHours') {
 						$value = (string)max(0, (float)$value);
 						// Validate ranges
@@ -2271,7 +2465,16 @@ class AdminController extends Controller
 			);
 
 			$scanCap = self::DASHBOARD_EMPLOYEES_MAX_SCAN;
-			$candidateUsers = $this->userManager->search($search, $scanCap + 1, 0);
+			if ($search !== '') {
+				// Match by user id OR display name (issue #14) before the
+				// in-PHP filter/sort/paginate below.
+				$candidateUsers = UserDirectorySearch::mergeUnique(
+					$this->userManager->search($search, $scanCap + 1, 0),
+					$this->userManager->searchDisplayName($search, $scanCap + 1, 0),
+				);
+			} else {
+				$candidateUsers = $this->userManager->search($search, $scanCap + 1, 0);
+			}
 			$truncated = count($candidateUsers) > $scanCap;
 			if ($truncated) {
 				$candidateUsers = array_slice($candidateUsers, 0, $scanCap);
@@ -2369,11 +2572,39 @@ class AdminController extends Controller
 	public function getUsers(?string $search = null, ?int $limit = 50, ?int $offset = 0): JSONResponse
 	{
 		try {
+			$pickerMode = $this->request->getParam('picker') === '1'
+				|| $this->request->getParam('picker') === 'true';
+			if ($pickerMode) {
+				return $this->getUsersForPicker($search, $limit);
+			}
+
 			$activeTodayOnly = $this->request->getParam('active_today') === '1'
 				|| $this->request->getParam('active_today') === 'true';
 
-			// Get all users from Nextcloud
-			$users = $this->userManager->search($search ?? '', $limit, $offset);
+			$normalizedLimit = max(1, min((int)($limit ?? 50), Constants::MAX_LIST_LIMIT));
+			$normalizedOffset = max(0, (int)($offset ?? 0));
+			$searchTerm = $search !== null ? trim($search) : '';
+			if (mb_strlen($searchTerm) > self::DASHBOARD_EMPLOYEES_MAX_SEARCH_LENGTH) {
+				$searchTerm = mb_substr($searchTerm, 0, self::DASHBOARD_EMPLOYEES_MAX_SEARCH_LENGTH);
+			}
+
+			// Get all users from Nextcloud. A non-empty search must match by
+			// user id OR display name (issue #14); empty search keeps the
+			// directory-ordered, offset-paginated browse used for counting.
+			$searchResultTruncated = null;
+			if ($searchTerm !== '') {
+				$searchResult = UserDirectorySearch::searchByIdOrName(
+					$this->userManager,
+					$searchTerm,
+					$normalizedLimit,
+					$normalizedOffset,
+					false,
+				);
+				$users = $searchResult['users'];
+				$searchResultTruncated = $searchResult['truncated'];
+			} else {
+				$users = $this->userManager->search($searchTerm, $normalizedLimit, $normalizedOffset);
+			}
 
 			$usersData = [];
 			$currentYear = (int)date('Y');
@@ -2456,13 +2687,17 @@ class AdminController extends Controller
 				}
 			}
 
-			// Get total count for pagination
-			if ($activeTodayOnly) {
+			// Total for pagination: full directory uses countUsersTotal; search uses page size only.
+			$searchTruncated = false;
+			if ($searchTerm !== '') {
+				$totalCount = count($usersData);
+				$searchTruncated = $searchResultTruncated ?? (count($users) >= $normalizedLimit);
+			} elseif ($activeTodayOnly) {
 				$totalCount = count($this->timeEntryMapper->findDistinctUserIdsByDate($todayFilter));
 			} else {
 				$totalCount = $this->userManager->countUsersTotal(0, false);
 				if ($totalCount === false) {
-					$totalCount = count($users);
+					$totalCount = count($usersData);
 				}
 			}
 
@@ -2470,6 +2705,9 @@ class AdminController extends Controller
 				'success' => true,
 				'users' => $usersData,
 				'total' => $totalCount,
+				'limit' => $normalizedLimit,
+				'offset' => $normalizedOffset,
+				'truncated' => $searchTruncated,
 				'filter' => $activeTodayOnly ? 'active_today' : 'all',
 			]);
 		} catch (\Throwable $e) {
@@ -2481,6 +2719,98 @@ class AdminController extends Controller
 				'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.')
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
+	}
+
+	/**
+	 * Lightweight user list for combobox pickers (teams, filters, etc.).
+	 *
+	 * Triggered via {@see getUsers()} when query param {@code picker=1} is set.
+	 * Does not load vacation entitlements or working-time-model joins per user.
+	 *
+	 * @param string|null $search
+	 * @param int|null $limit
+	 */
+	private function getUsersForPicker(?string $search, ?int $limit): JSONResponse
+	{
+		$searchTerm = $search !== null ? trim($search) : trim((string)($this->request->getParam('search') ?? ''));
+		if (mb_strlen($searchTerm) > self::DASHBOARD_EMPLOYEES_MAX_SEARCH_LENGTH) {
+			$searchTerm = mb_substr($searchTerm, 0, self::DASHBOARD_EMPLOYEES_MAX_SEARCH_LENGTH);
+		}
+
+		$requestLimit = $this->request->getParam('limit');
+		$normalizedLimit = max(1, min((int)($requestLimit ?? $limit ?? 20), Constants::PICKER_MAX_RESULTS));
+
+		if (mb_strlen($searchTerm) < Constants::PICKER_MIN_SEARCH_LENGTH) {
+			return new JSONResponse([
+				'success' => true,
+				'users' => [],
+				'picker' => true,
+				'limit' => $normalizedLimit,
+				'requiresMinSearch' => Constants::PICKER_MIN_SEARCH_LENGTH,
+			]);
+		}
+
+		// People already assigned (members/managers of this team) are excluded
+		// server-side so a heavily-staffed unit cannot fill the whole capped
+		// page with already-assigned people and hide everyone still available.
+		$excludeUserIds = $this->readExcludeUserIdsParam();
+
+		// Match by user id OR display name (issue #14): admins search by name,
+		// but many instances key accounts by email/UUID/employee number.
+		$result = UserDirectorySearch::searchByIdOrName(
+			$this->userManager,
+			$searchTerm,
+			$normalizedLimit,
+			0,
+			true,
+			$excludeUserIds,
+		);
+
+		$usersData = array_map(static function (IUser $user): array {
+			return [
+				'userId' => (string)$user->getUID(),
+				'displayName' => (string)$user->getDisplayName(),
+			];
+		}, $result['users']);
+
+		return new JSONResponse([
+			'success' => true,
+			'users' => $usersData,
+			'picker' => true,
+			'limit' => $normalizedLimit,
+			'truncated' => $result['truncated'],
+		]);
+	}
+
+	/**
+	 * Read the optional `exclude`/`exclude[]` query parameter for people
+	 * pickers (already-assigned user ids). Bounded to keep the request safe.
+	 *
+	 * @return list<string>
+	 */
+	private function readExcludeUserIdsParam(): array
+	{
+		$raw = $this->request->getParam('exclude');
+		if ($raw === null || $raw === '') {
+			return [];
+		}
+		if (is_string($raw)) {
+			$raw = [$raw];
+		}
+		if (!is_array($raw)) {
+			return [];
+		}
+		$ids = [];
+		foreach ($raw as $value) {
+			$id = trim((string)$value);
+			if ($id !== '') {
+				$ids[$id] = true;
+			}
+			if (count($ids) >= Constants::MAX_LIST_LIMIT) {
+				break;
+			}
+		}
+		return array_keys($ids);
 	}
 
 	/**
@@ -2500,8 +2830,11 @@ class AdminController extends Controller
 				], Http::STATUS_NOT_FOUND);
 			}
 
-			// Get current working time model assignment
-			$currentModel = $this->userWorkingTimeModelMapper->findCurrentByUser($userId);
+			// Resolve the assignment the edit dialog will edit in place. This
+			// matches AdminUserProfileUpdateService so a future-dated or ended
+			// assignment is shown (and updated), instead of appearing empty and
+			// then being duplicated on save.
+			$currentModel = $this->userWorkingTimeModelMapper->findEditableByUser($userId);
 
 			// Get working time model details if assigned
 			$workingTimeModel = null;
@@ -2524,7 +2857,7 @@ class AdminController extends Controller
 			$startDate = $currentModel ? $currentModel->getStartDate() : null;
 			$endDate = $currentModel ? $currentModel->getEndDate() : null;
 			$currentYear = (int)date('Y');
-			$policy = $this->userVacationPolicyAssignmentMapper->findCurrentByUser($userId);
+			$policy = $this->findVacationPolicyForAdminEdit($userId, $startDate);
 			$entitlementPreview = $this->vacationEntitlementEngine->computeForDate($userId, new \DateTimeImmutable('today'));
 
 			return new JSONResponse([
@@ -2568,6 +2901,7 @@ class AdminController extends Controller
 						'ruleSetId' => $entitlementPreview['ruleSetId'],
 						'calculationTrace' => $entitlementPreview['trace'],
 					],
+					'timeCapture' => $this->timeCaptureMethodService->getSettings($userId),
 					'availableWorkingTimeModels' => array_map(function ($model) {
 						return [
 							'id' => $model->getId(),
@@ -2597,203 +2931,19 @@ class AdminController extends Controller
 	public function updateUserWorkingTimeModel(string $userId): JSONResponse
 	{
 		try {
-			$params = $this->request->getParams();
-			$workingTimeModelIdRaw = $params['workingTimeModelId'] ?? null;
-			$workingTimeModelId = ($workingTimeModelIdRaw !== null && $workingTimeModelIdRaw !== '')
-				? (int)$workingTimeModelIdRaw
-				: null;
-			$vacationDaysPerYear = isset($params['vacationDaysPerYear']) ? (int)$params['vacationDaysPerYear'] : null;
-			$startDate = $params['startDate'] ?? null;
-			$endDate = $params['endDate'] ?? null;
-			$germanState = isset($params['germanState']) ? (string)$params['germanState'] : null;
-
-			if ($vacationDaysPerYear !== null && ($vacationDaysPerYear < 0 || $vacationDaysPerYear > 366)) {
-				return new JSONResponse([
-					'success' => false,
-					'error' => $this->l10n->t('Vacation days per year must be between 0 and 366')
-				], Http::STATUS_BAD_REQUEST);
-			}
-
-			// Validate user exists
-			$user = $this->userManager->get($userId);
-			if (!$user) {
-				return new JSONResponse([
-					'success' => false,
-					'error' => $this->l10n->t('User not found')
-				], Http::STATUS_NOT_FOUND);
-			}
-
-			// Validate working time model exists if provided
-			if ($workingTimeModelId !== null) {
-				try {
-					$this->workingTimeModelMapper->find($workingTimeModelId);
-				} catch (DoesNotExistException $e) {
-					return new JSONResponse([
-						'success' => false,
-						'error' => $this->l10n->t('Working time model not found')
-					], Http::STATUS_NOT_FOUND);
-				} catch (\Throwable $e) {
-					\OCP\Log\logger('arbeitszeitcheck')->error('Error validating working time model: ' . $e->getMessage(), ['exception' => $e]);
-					return new JSONResponse([
-						'success' => false,
-						'error' => $this->l10n->t('Validation failed. Please check your input.')
-					], Http::STATUS_BAD_REQUEST);
-				}
-			}
-
-			// Validate germanState if provided (optional; empty string means "use global default")
-			if ($germanState !== null && $germanState !== '') {
-				$validStates = ['NW', 'BY', 'BW', 'HE', 'NI', 'RP', 'SL', 'BE', 'BB', 'HB', 'HH', 'MV', 'SN', 'ST', 'SH', 'TH'];
-				if (!in_array($germanState, $validStates, true)) {
-					return new JSONResponse([
-						'success' => false,
-						'error' => $this->l10n->t('Invalid German state code')
-					], Http::STATUS_BAD_REQUEST);
-				}
-			}
-
-			// Get current assignment
-			$currentModel = $this->userWorkingTimeModelMapper->findCurrentByUser($userId);
-
-			$oldValues = $currentModel ? $this->userWorkingTimeModelToAuditValues($currentModel) : null;
-
-			if ($currentModel && $workingTimeModelId !== null && $workingTimeModelId > 0) {
-				// Update existing assignment
-				if ($startDate) {
-					$currentModel->setStartDate(new \DateTime($startDate));
-				}
-				if ($endDate !== null) {
-					$currentModel->setEndDate($endDate ? new \DateTime($endDate) : null);
-				}
-				$currentModel->setWorkingTimeModelId($workingTimeModelId);
-				if ($vacationDaysPerYear !== null) {
-					$currentModel->setVacationDaysPerYear($vacationDaysPerYear);
-				}
-				$currentModel->setUpdatedAt(new \DateTime());
-
-				// Validate
-				$errors = $currentModel->validate();
-				if (!empty($errors)) {
-					// Translate validation errors
-					$translatedErrors = [];
-					foreach ($errors as $field => $message) {
-						$translatedErrors[$field] = $this->l10n->t($message);
-					}
-					return new JSONResponse([
-						'success' => false,
-						'error' => $this->l10n->t('Validation failed'),
-						'errors' => $translatedErrors
-					], Http::STATUS_BAD_REQUEST);
-				}
-
-				$updated = $this->userWorkingTimeModelMapper->update($currentModel);
-				$newValues = $this->userWorkingTimeModelToAuditValues($updated);
-				$this->auditLogMapper->logAction(
-					$userId,
-					'user_working_time_model_updated',
-					'user_working_time_model',
-					$updated->getId(),
-					$oldValues,
-					$newValues,
-					$this->getPerformedBy()
-				);
-			} elseif ($workingTimeModelId !== null && $workingTimeModelId > 0) {
-				// Create new assignment
-				$newModel = new \OCA\ArbeitszeitCheck\Db\UserWorkingTimeModel();
-				$newModel->setUserId($userId);
-				$newModel->setWorkingTimeModelId($workingTimeModelId);
-				$newModel->setVacationDaysPerYear($vacationDaysPerYear ?? Constants::DEFAULT_VACATION_DAYS_PER_YEAR);
-				$newModel->setStartDate(new \DateTime($startDate ?? 'now'));
-				if ($endDate) {
-					$newModel->setEndDate(new \DateTime($endDate));
-				}
-				$newModel->setCreatedAt(new \DateTime());
-				$newModel->setUpdatedAt(new \DateTime());
-
-				// Validate
-				$errors = $newModel->validate();
-				if (!empty($errors)) {
-					return new JSONResponse([
-						'success' => false,
-						'error' => 'Validation failed',
-						'errors' => $errors
-					], Http::STATUS_BAD_REQUEST);
-				}
-
-				$updated = $this->userWorkingTimeModelMapper->insert($newModel);
-				$newValues = $this->userWorkingTimeModelToAuditValues($updated);
-				$this->auditLogMapper->logAction(
-					$userId,
-					'user_working_time_model_created',
-					'user_working_time_model',
-					$updated->getId(),
-					null,
-					$newValues,
-					$this->getPerformedBy()
-				);
-			} elseif ($workingTimeModelId === null || $workingTimeModelId === 0) {
-				// Remove assignment: end current assignment when user selects "No Model Assigned"
-				if ($currentModel) {
-					$endDateForRemoval = $endDate ? new \DateTime($endDate) : new \DateTime();
-					$updated = $this->userWorkingTimeModelMapper->endCurrentAssignment($userId, $endDateForRemoval);
-					$newValues = $updated ? $this->userWorkingTimeModelToAuditValues($updated) : null;
-					$this->auditLogMapper->logAction(
-						$userId,
-						'user_working_time_model_ended',
-						'user_working_time_model',
-						$currentModel->getId(),
-						$oldValues,
-						$newValues,
-						$this->getPerformedBy()
-					);
-				} else {
-					$updated = null;
-				}
-			} else {
-				return new JSONResponse([
-					'success' => false,
-					'error' => $this->l10n->t('Working time model ID is required')
-				], Http::STATUS_BAD_REQUEST);
-			}
-
-			// Persist per-user Bundesland / holiday calendar selection.
-			// Empty string clears the user-specific setting and falls back to global default.
-			if ($germanState !== null) {
-				if ($germanState === '') {
-					$this->userSettingsMapper->deleteSetting($userId, 'german_state');
-				} else {
-					$this->userSettingsMapper->setSetting($userId, 'german_state', $germanState);
-				}
-			}
-
-			// Vacation carryover (Resturlaub) for a calendar year — admin-only via this API.
-			if (array_key_exists('vacationCarryoverDays', $params) && $params['vacationCarryoverDays'] !== '' && $params['vacationCarryoverDays'] !== null) {
-				$carryoverYear = isset($params['vacationCarryoverYear']) ? (int)$params['vacationCarryoverYear'] : (int)date('Y');
-				if ($carryoverYear < 2000 || $carryoverYear > 2100) {
-					return new JSONResponse([
-						'success' => false,
-						'error' => $this->l10n->t('Invalid year for vacation carryover')
-					], Http::STATUS_BAD_REQUEST);
-				}
-				$carryoverVal = $this->parseDecimalInput($params['vacationCarryoverDays'], 0.0);
-				if ($carryoverVal < 0 || $carryoverVal > 366) {
-					return new JSONResponse([
-						'success' => false,
-						'error' => $this->l10n->t('Vacation carryover must be between 0 and 366 days')
-					], Http::STATUS_BAD_REQUEST);
-				}
-				$carryoverVal = $this->vacationAllocationService->applyCapToOpeningBalance($carryoverVal);
-				$this->vacationYearBalanceMapper->upsert($userId, $carryoverYear, $carryoverVal);
-			}
-
-			return new JSONResponse([
-				'success' => true,
-				'userWorkingTimeModel' => $updated !== null ? $updated->getSummary() : null
-			]);
+			$data = $this->adminUserProfileUpdateService->applyWorkingTimeModel(
+				$userId,
+				$this->request->getParams(),
+				$this->getPerformedBy()
+			);
+			return new JSONResponse(array_merge(['success' => true], $data));
+		} catch (AdminUserProfileUpdateException $e) {
+			return $this->profileUpdateExceptionResponse($e);
 		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error('updateUserWorkingTimeModel failed', ['exception' => $e]);
 			return new JSONResponse([
 				'success' => false,
-				'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.')
+				'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.'),
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}
@@ -3183,6 +3333,14 @@ class AdminController extends Controller
 					(string)$ruleSet->getVersion(),
 					$ruleSet->getJurisdiction() ? ' - ' . (string)$ruleSet->getJurisdiction() : ''
 				));
+				$storedModules = [];
+				foreach ($this->tariffRuleModuleMapper->findByRuleSetId($ruleSet->getId()) as $module) {
+					$storedModules[] = [
+						'moduleType' => $module->getModuleType(),
+						'config' => $module->getConfig(),
+					];
+				}
+				$isComplete = TariffRuleModuleValidator::validateList($storedModules) === [];
 				$all[] = [
 					'id' => $ruleSet->getId(),
 					'tariffCode' => $ruleSet->getTariffCode(),
@@ -3195,7 +3353,10 @@ class AdminController extends Controller
 					'statusLabel' => $this->formatTariffRuleSetStatusLabel($ruleSet->getStatus()),
 					'activationMode' => $ruleSet->getActivationMode(),
 					'referenceModel' => $ruleSet->getReferenceModel(),
-					'modulesCount' => count($this->tariffRuleModuleMapper->findByRuleSetId($ruleSet->getId())),
+					'modulesCount' => count($storedModules),
+					'isComplete' => $isComplete,
+					'canActivate' => $ruleSet->getStatus() === Constants::TARIFF_RULE_SET_STATUS_DRAFT && $isComplete,
+					'assignable' => $ruleSet->getStatus() === Constants::TARIFF_RULE_SET_STATUS_ACTIVE && $isComplete,
 				];
 			}
 			return new JSONResponse(['success' => true, 'ruleSets' => $all]);
@@ -3240,6 +3401,12 @@ class AdminController extends Controller
 			$ruleSet->getJurisdiction() ? ' - ' . (string)$ruleSet->getJurisdiction() : ''
 		));
 
+		$storedForValidation = array_map(static fn ($m) => [
+			'moduleType' => $m['moduleType'],
+			'config' => $m['config'],
+		], $modules);
+		$isComplete = TariffRuleModuleValidator::validateList($storedForValidation) === [];
+
 		return new JSONResponse(['success' => true, 'ruleSet' => [
 			'id' => $ruleSet->getId(),
 			'tariffCode' => $ruleSet->getTariffCode(),
@@ -3252,6 +3419,9 @@ class AdminController extends Controller
 			'statusLabel' => $this->formatTariffRuleSetStatusLabel($ruleSet->getStatus()),
 			'activationMode' => $ruleSet->getActivationMode(),
 			'modules' => $modules,
+			'isComplete' => $isComplete,
+			'canActivate' => $ruleSet->getStatus() === Constants::TARIFF_RULE_SET_STATUS_DRAFT && $isComplete,
+			'assignable' => $ruleSet->getStatus() === Constants::TARIFF_RULE_SET_STATUS_ACTIVE && $isComplete,
 		]]);
 	}
 
@@ -3279,18 +3449,20 @@ class AdminController extends Controller
 
 		try {
 			$oldValues = $this->tariffRuleSetToAuditValues($ruleSet);
-			$this->tariffRuleModuleMapper->deleteByRuleSetId($ruleSet->getId());
-			$this->tariffRuleSetMapper->delete($ruleSet);
-			$performedBy = $this->getPerformedBy();
-			$this->auditLogMapper->logAction(
-				$performedBy,
-				'tariff_rule_set_deleted',
-				'tariff_rule_set',
-				$id,
-				$oldValues,
-				null,
-				$performedBy
-			);
+			$this->atomic(function () use ($ruleSet, $id, $oldValues): void {
+				$this->tariffRuleModuleMapper->deleteByRuleSetId($ruleSet->getId());
+				$this->tariffRuleSetMapper->delete($ruleSet);
+				$performedBy = $this->getPerformedBy();
+				$this->auditLogMapper->logAction(
+					$performedBy,
+					'tariff_rule_set_deleted',
+					'tariff_rule_set',
+					$id,
+					$oldValues,
+					null,
+					$performedBy
+				);
+			}, $this->db);
 			return new JSONResponse(['success' => true]);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in AdminController::deleteTariffRuleSet: ' . $e->getMessage(), ['exception' => $e]);
@@ -3302,63 +3474,78 @@ class AdminController extends Controller
 	{
 		try {
 			$params = $this->request->getParams();
+			$rejected = $this->rejectForbiddenTariffRuleSetRequestFields(
+				$params,
+				['status', 'createdAt', 'updatedAt'],
+				$this->l10n->t('Some request fields are not allowed when creating a tariff rule set.'),
+			);
+			if ($rejected !== null) {
+				return $rejected;
+			}
 			$ruleSet = new TariffRuleSet();
-			$ruleSet->setTariffCode(trim((string)($params['tariffCode'] ?? '')));
-			$ruleSet->setVersion(trim((string)($params['version'] ?? '')));
-			$ruleSet->setJurisdiction(isset($params['jurisdiction']) ? trim((string)$params['jurisdiction']) : null);
+			$ruleSet->setTariffCode($this->normalizeTariffIdentity((string)($params['tariffCode'] ?? '')));
+			$ruleSet->setVersion($this->normalizeTariffIdentity((string)($params['version'] ?? '')));
+			$ruleSet->setJurisdiction(isset($params['jurisdiction']) ? $this->normalizeTariffIdentity((string)$params['jurisdiction']) : null);
+			if ($ruleSet->getJurisdiction() === '') {
+				$ruleSet->setJurisdiction(null);
+			}
 			$ruleSet->setValidFrom(new \DateTime((string)($params['validFrom'] ?? date('Y-01-01'))));
 			$ruleSet->setValidTo(!empty($params['validTo']) ? new \DateTime((string)$params['validTo']) : null);
 			$ruleSet->setActivationMode((string)($params['activationMode'] ?? 'immediate'));
-			$ruleSet->setStatus((string)($params['status'] ?? Constants::TARIFF_RULE_SET_STATUS_DRAFT));
+			// New rule sets are always created as drafts. Status transitions are
+			// only allowed through activate/retire so module completeness and
+			// overlapping-active-set handling cannot be bypassed via POST.
+			$ruleSet->setStatus(Constants::TARIFF_RULE_SET_STATUS_DRAFT);
 			$ruleSet->setReferenceModel(isset($params['referenceModel']) ? json_encode($params['referenceModel']) : null);
 			$ruleSet->setCreatedAt(new \DateTime());
 			$ruleSet->setUpdatedAt(new \DateTime());
 			$errors = $ruleSet->validate();
+			$modules = $this->normalizeTariffModulesPayload(is_array($params['modules'] ?? null) ? $params['modules'] : []);
+			$moduleErrors = TariffRuleModuleValidator::validateList($modules);
+			$errors = array_merge($errors, $moduleErrors);
 			if (!empty($errors)) {
-				$translatedErrors = [];
-				foreach ($errors as $field => $message) {
-					$translatedErrors[$field] = $this->l10n->t($message);
+				$translatedErrors = $this->translateFieldErrors($errors);
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->summarizeLayeredValidationUserMessage($translatedErrors, 'Validation failed'),
+					'errors' => $translatedErrors,
+				], Http::STATUS_BAD_REQUEST);
+			}
+			$duplicate = $this->tariffRuleSetMapper->findByCodeAndVersion($ruleSet->getTariffCode(), $ruleSet->getVersion());
+			if ($duplicate !== null) {
+				return $this->duplicateTariffRuleSetResponse($duplicate);
+			}
+			try {
+				// Rule set + its modules + the audit entry are written as one
+				// atomic unit: if module persistence fails, the rule set row is
+				// rolled back instead of being left as an orphan draft that
+				// blocks every later retry with a 409.
+				return $this->atomic(function () use ($ruleSet, $modules): JSONResponse {
+					$saved = $this->tariffRuleSetMapper->insert($ruleSet);
+					$moduleSnapshot = $this->persistTariffRuleModules($saved->getId(), $modules);
+					$performedBy = $this->getPerformedBy();
+					$this->auditLogMapper->logAction(
+						$performedBy,
+						'tariff_rule_set_created',
+						'tariff_rule_set',
+						$saved->getId(),
+						null,
+						$this->tariffRuleSetToAuditValues($saved) + ['modules' => $moduleSnapshot],
+						$performedBy
+					);
+					return new JSONResponse(['success' => true, 'ruleSetId' => $saved->getId()], Http::STATUS_CREATED);
+				}, $this->db);
+			} catch (\Throwable $insertException) {
+				// Re-query only after the transaction has been rolled back, so
+				// the lookup never runs inside an aborted transaction (Postgres).
+				if ($this->isUniqueConstraintViolation($insertException)) {
+					$raceDuplicate = $this->tariffRuleSetMapper->findByCodeAndVersion($ruleSet->getTariffCode(), $ruleSet->getVersion());
+					if ($raceDuplicate !== null) {
+						return $this->duplicateTariffRuleSetResponse($raceDuplicate);
+					}
 				}
-				return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Validation failed'), 'errors' => $translatedErrors], Http::STATUS_BAD_REQUEST);
+				throw $insertException;
 			}
-			if ($this->tariffRuleSetMapper->findByCodeAndVersion($ruleSet->getTariffCode(), $ruleSet->getVersion()) !== null) {
-				return new JSONResponse(['success' => false, 'error' => $this->l10n->t('A tariff rule set with this code/version already exists')], Http::STATUS_CONFLICT);
-			}
-			$saved = $this->tariffRuleSetMapper->insert($ruleSet);
-
-			$modules = is_array($params['modules'] ?? null) ? $params['modules'] : [];
-			$moduleSnapshot = [];
-			$sort = 0;
-			foreach ($modules as $module) {
-				if (!is_array($module) || empty($module['moduleType'])) {
-					continue;
-				}
-				$entity = new TariffRuleModule();
-				$entity->setRuleSetId($saved->getId());
-				$entity->setModuleType((string)$module['moduleType']);
-				$entity->setConfig(is_array($module['config'] ?? null) ? $module['config'] : []);
-				$entity->setSortOrder($sort++);
-				$entity->setCreatedAt(new \DateTime());
-				$entity->setUpdatedAt(new \DateTime());
-				$this->tariffRuleModuleMapper->insert($entity);
-				$moduleSnapshot[] = [
-					'moduleType' => $entity->getModuleType(),
-					'sortOrder' => $entity->getSortOrder(),
-				];
-			}
-
-			$performedBy = $this->getPerformedBy();
-			$this->auditLogMapper->logAction(
-				$performedBy,
-				'tariff_rule_set_created',
-				'tariff_rule_set',
-				$saved->getId(),
-				null,
-				$this->tariffRuleSetToAuditValues($saved) + ['modules' => $moduleSnapshot],
-				$performedBy
-			);
-
-			return new JSONResponse(['success' => true, 'ruleSetId' => $saved->getId()], Http::STATUS_CREATED);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in AdminController::createTariffRuleSet: ' . $e->getMessage(), ['exception' => $e]);
 			return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Failed to create tariff rule set')], Http::STATUS_INTERNAL_SERVER_ERROR);
@@ -3377,8 +3564,13 @@ class AdminController extends Controller
 			}
 			$oldValues = $this->tariffRuleSetToAuditValues($ruleSet);
 			$params = $this->request->getParams();
-			if (isset($params['jurisdiction'])) {
-				$ruleSet->setJurisdiction(trim((string)$params['jurisdiction']));
+			$rejected = $this->rejectForbiddenTariffRuleSetRequestFields(
+				$params,
+				['status', 'tariffCode', 'version', 'createdAt', 'updatedAt'],
+				$this->l10n->t('Some request fields cannot be changed when updating a tariff rule set.'),
+			);
+			if ($rejected !== null) {
+				return $rejected;
 			}
 			if (isset($params['validFrom'])) {
 				$ruleSet->setValidFrom(new \DateTime((string)$params['validFrom']));
@@ -3389,54 +3581,56 @@ class AdminController extends Controller
 			if (isset($params['activationMode'])) {
 				$ruleSet->setActivationMode((string)$params['activationMode']);
 			}
-			if (isset($params['status'])) {
-				$ruleSet->setStatus((string)$params['status']);
-			}
+			// Status transitions are deliberately NOT editable here: a draft can
+			// only become active/retired through the dedicated activate/retire
+			// endpoints, which enforce module completeness and close the validity
+			// window of any overlapping active set. Allowing a raw status change
+			// via PUT would let an admin create two simultaneously-active sets
+			// for the same tariff code (ambiguous, audit-breaking entitlement).
 			if (isset($params['referenceModel'])) {
 				$ruleSet->setReferenceModel(json_encode($params['referenceModel']));
 			}
+			if (isset($params['jurisdiction'])) {
+				$jurisdiction = $this->normalizeTariffIdentity((string)$params['jurisdiction']);
+				$ruleSet->setJurisdiction($jurisdiction !== '' ? $jurisdiction : null);
+			}
 			$ruleSet->setUpdatedAt(new \DateTime());
 			$errors = $ruleSet->validate();
+			$replaceModules = isset($params['modules']) && is_array($params['modules']);
+			$modules = [];
+			if ($replaceModules) {
+				$modules = $this->normalizeTariffModulesPayload($params['modules']);
+				$moduleErrors = TariffRuleModuleValidator::validateList($modules);
+				$errors = array_merge($errors, $moduleErrors);
+			}
 			if (!empty($errors)) {
-				$translatedErrors = [];
-				foreach ($errors as $field => $message) {
-					$translatedErrors[$field] = $this->l10n->t($message);
-				}
-				return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Validation failed'), 'errors' => $translatedErrors], Http::STATUS_BAD_REQUEST);
+				$translatedErrors = $this->translateFieldErrors($errors);
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->summarizeLayeredValidationUserMessage($translatedErrors, 'Validation failed'),
+					'errors' => $translatedErrors,
+				], Http::STATUS_BAD_REQUEST);
 			}
-			$this->tariffRuleSetMapper->update($ruleSet);
-			$moduleSnapshot = [];
-			if (isset($params['modules']) && is_array($params['modules'])) {
-				$this->tariffRuleModuleMapper->deleteByRuleSetId($ruleSet->getId());
-				$sort = 0;
-				foreach ($params['modules'] as $module) {
-					if (!is_array($module) || empty($module['moduleType'])) {
-						continue;
-					}
-					$entity = new TariffRuleModule();
-					$entity->setRuleSetId($ruleSet->getId());
-					$entity->setModuleType((string)$module['moduleType']);
-					$entity->setConfig(is_array($module['config'] ?? null) ? $module['config'] : []);
-					$entity->setSortOrder($sort++);
-					$entity->setCreatedAt(new \DateTime());
-					$entity->setUpdatedAt(new \DateTime());
-					$this->tariffRuleModuleMapper->insert($entity);
-					$moduleSnapshot[] = [
-						'moduleType' => $entity->getModuleType(),
-						'sortOrder' => $entity->getSortOrder(),
-					];
+			// Header changes and the full module replacement must commit together,
+			// so a mid-write failure can never leave a draft without its modules.
+			$this->atomic(function () use ($ruleSet, $replaceModules, $modules, $oldValues): void {
+				$this->tariffRuleSetMapper->update($ruleSet);
+				$moduleSnapshot = [];
+				if ($replaceModules) {
+					$this->tariffRuleModuleMapper->deleteByRuleSetId($ruleSet->getId());
+					$moduleSnapshot = $this->persistTariffRuleModules($ruleSet->getId(), $modules);
 				}
-			}
-			$performedBy = $this->getPerformedBy();
-			$this->auditLogMapper->logAction(
-				$performedBy,
-				'tariff_rule_set_updated',
-				'tariff_rule_set',
-				$ruleSet->getId(),
-				$oldValues,
-				$this->tariffRuleSetToAuditValues($ruleSet) + ($moduleSnapshot ? ['modules' => $moduleSnapshot] : []),
-				$performedBy
-			);
+				$performedBy = $this->getPerformedBy();
+				$this->auditLogMapper->logAction(
+					$performedBy,
+					'tariff_rule_set_updated',
+					'tariff_rule_set',
+					$ruleSet->getId(),
+					$oldValues,
+					$this->tariffRuleSetToAuditValues($ruleSet) + ($moduleSnapshot ? ['modules' => $moduleSnapshot] : []),
+					$performedBy
+				);
+			}, $this->db);
 			return new JSONResponse(['success' => true]);
 		} catch (\OCP\AppFramework\Db\DoesNotExistException $e) {
 			return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Tariff rule set not found')], Http::STATUS_NOT_FOUND);
@@ -3456,6 +3650,22 @@ class AdminController extends Controller
 					'error' => $this->l10n->t('Only draft tariff rule sets can be activated.'),
 				], Http::STATUS_CONFLICT);
 			}
+			$storedModules = [];
+			foreach ($this->tariffRuleModuleMapper->findByRuleSetId($ruleSet->getId()) as $module) {
+				$storedModules[] = [
+					'moduleType' => $module->getModuleType(),
+					'config' => $module->getConfig(),
+				];
+			}
+			$moduleErrors = TariffRuleModuleValidator::validateList($storedModules);
+			if ($moduleErrors !== []) {
+				$translatedErrors = $this->translateFieldErrors($moduleErrors);
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->summarizeLayeredValidationUserMessage($translatedErrors, 'Cannot activate an incomplete tariff rule set'),
+					'errors' => $translatedErrors,
+				], Http::STATUS_BAD_REQUEST);
+			}
 			$now = new \DateTimeImmutable('today');
 			$activationStartDate = $this->resolveActivationStartDate($ruleSet->getActivationMode(), $now);
 			$validFrom = $ruleSet->getValidFrom();
@@ -3470,38 +3680,51 @@ class AdminController extends Controller
 				], Http::STATUS_BAD_REQUEST);
 			}
 
-			$activeWithSameCode = $this->tariffRuleSetMapper->findActiveByTariffCode($ruleSet->getTariffCode());
-			foreach ($activeWithSameCode as $activeRuleSet) {
-				if ($activeRuleSet->getId() === $ruleSet->getId()) {
-					continue;
-				}
-				$endBeforeActivation = $activationStartDate->modify('-1 day');
-				if ($activeRuleSet->getValidTo() === null || $activeRuleSet->getValidTo() >= new \DateTime($activationStartDate->format('Y-m-d'))) {
-					if ($endBeforeActivation < new \DateTimeImmutable($activeRuleSet->getValidFrom()->format('Y-m-d'))) {
-						$activeRuleSet->setStatus(Constants::TARIFF_RULE_SET_STATUS_RETIRED);
-						$activeRuleSet->setValidTo(new \DateTime($activeRuleSet->getValidFrom()->format('Y-m-d')));
-					} else {
-						$activeRuleSet->setValidTo(new \DateTime($endBeforeActivation->format('Y-m-d')));
-					}
-					$activeRuleSet->setUpdatedAt(new \DateTime());
-					$this->tariffRuleSetMapper->update($activeRuleSet);
-				}
-			}
+			// The handoff boundary is the new set's *effective* start, i.e. its
+			// (possibly forward-adjusted) validFrom — never the bare activation
+			// date. With a future-dated validFrom this keeps the outgoing set in
+			// force right up to the day before the new one begins, leaving no
+			// coverage gap and no overlap.
+			$effectiveStart = new \DateTimeImmutable($ruleSet->getValidFrom()->format('Y-m-d'));
 
-			$oldValues = $this->tariffRuleSetToAuditValues($ruleSet);
-			$ruleSet->setStatus(Constants::TARIFF_RULE_SET_STATUS_ACTIVE);
-			$ruleSet->setUpdatedAt(new \DateTime());
-			$this->tariffRuleSetMapper->update($ruleSet);
-			$performedBy = $this->getPerformedBy();
-			$this->auditLogMapper->logAction(
-				$performedBy,
-				'tariff_rule_set_activated',
-				'tariff_rule_set',
-				$ruleSet->getId(),
-				$oldValues,
-				$this->tariffRuleSetToAuditValues($ruleSet),
-				$performedBy
-			);
+			// Closing the validity window of any overlapping active rule set and
+			// promoting this draft to active must happen together: a partial
+			// failure here would otherwise leave two active rule sets for the
+			// same tariff code (an ambiguous, security-relevant state).
+			$this->atomic(function () use ($ruleSet, $effectiveStart): void {
+				$activeWithSameCode = $this->tariffRuleSetMapper->findActiveByTariffCode($ruleSet->getTariffCode());
+				foreach ($activeWithSameCode as $activeRuleSet) {
+					if ($activeRuleSet->getId() === $ruleSet->getId()) {
+						continue;
+					}
+					$endBeforeActivation = $effectiveStart->modify('-1 day');
+					if ($activeRuleSet->getValidTo() === null || $activeRuleSet->getValidTo() >= $effectiveStart) {
+						if ($endBeforeActivation < new \DateTimeImmutable($activeRuleSet->getValidFrom()->format('Y-m-d'))) {
+							$activeRuleSet->setStatus(Constants::TARIFF_RULE_SET_STATUS_RETIRED);
+							$activeRuleSet->setValidTo(new \DateTime($activeRuleSet->getValidFrom()->format('Y-m-d')));
+						} else {
+							$activeRuleSet->setValidTo(new \DateTime($endBeforeActivation->format('Y-m-d')));
+						}
+						$activeRuleSet->setUpdatedAt(new \DateTime());
+						$this->tariffRuleSetMapper->update($activeRuleSet);
+					}
+				}
+
+				$oldValues = $this->tariffRuleSetToAuditValues($ruleSet);
+				$ruleSet->setStatus(Constants::TARIFF_RULE_SET_STATUS_ACTIVE);
+				$ruleSet->setUpdatedAt(new \DateTime());
+				$this->tariffRuleSetMapper->update($ruleSet);
+				$performedBy = $this->getPerformedBy();
+				$this->auditLogMapper->logAction(
+					$performedBy,
+					'tariff_rule_set_activated',
+					'tariff_rule_set',
+					$ruleSet->getId(),
+					$oldValues,
+					$this->tariffRuleSetToAuditValues($ruleSet),
+					$performedBy
+				);
+			}, $this->db);
 			return new JSONResponse(['success' => true]);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in AdminController::activateTariffRuleSet: ' . $e->getMessage(), ['exception' => $e]);
@@ -3522,17 +3745,19 @@ class AdminController extends Controller
 			$oldValues = $this->tariffRuleSetToAuditValues($ruleSet);
 			$ruleSet->setStatus(Constants::TARIFF_RULE_SET_STATUS_RETIRED);
 			$ruleSet->setUpdatedAt(new \DateTime());
-			$this->tariffRuleSetMapper->update($ruleSet);
-			$performedBy = $this->getPerformedBy();
-			$this->auditLogMapper->logAction(
-				$performedBy,
-				'tariff_rule_set_retired',
-				'tariff_rule_set',
-				$ruleSet->getId(),
-				$oldValues,
-				$this->tariffRuleSetToAuditValues($ruleSet),
-				$performedBy
-			);
+			$this->atomic(function () use ($ruleSet, $oldValues): void {
+				$this->tariffRuleSetMapper->update($ruleSet);
+				$performedBy = $this->getPerformedBy();
+				$this->auditLogMapper->logAction(
+					$performedBy,
+					'tariff_rule_set_retired',
+					'tariff_rule_set',
+					$ruleSet->getId(),
+					$oldValues,
+					$this->tariffRuleSetToAuditValues($ruleSet),
+					$performedBy
+				);
+			}, $this->db);
 			return new JSONResponse(['success' => true]);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in AdminController::retireTariffRuleSet: ' . $e->getMessage(), ['exception' => $e]);
@@ -3543,123 +3768,16 @@ class AdminController extends Controller
 	public function assignVacationPolicy(string $userId): JSONResponse
 	{
 		try {
-			$params = $this->request->getParams();
-			$user = $this->userManager->get($userId);
-			if ($user === null) {
-				return new JSONResponse(['success' => false, 'error' => $this->l10n->t('User not found')], Http::STATUS_NOT_FOUND);
-			}
-
-			$vacationMode = (string)($params['vacationMode'] ?? Constants::VACATION_MODE_MANUAL_FIXED);
-			// REQ-WF-04: admins may flip an L3 row into "inherit" via either
-			// the explicit `inheritLowerLayers` boolean or the `vacation_mode = 'inherit'`
-			// sentinel. Both representations route through the same engine
-			// fallthrough (see `UserVacationPolicyAssignment::isInherit()`),
-			// so we accept either at the API boundary and normalise both
-			// columns to be in sync on persist.
-			$inheritLowerLayers = !empty($params['inheritLowerLayers'])
-				|| $vacationMode === Constants::VACATION_MODE_INHERIT;
-			// REQ-WF-04 / audit parity: persist the `inherit` sentinel whenever the
-			// effective decision is "defer to lower layers", so SQL/reporting
-			// that filters on `vacation_mode = 'inherit'` stays aligned with the
-			// engine (which already uses `isInherit()` for behaviour).
-			if ($inheritLowerLayers) {
-				$vacationMode = Constants::VACATION_MODE_INHERIT;
-			}
-			$manualDays = isset($params['manualDays']) ? $this->parseDecimalInput($params['manualDays'], 0.0) : null;
-			$tariffRuleSetId = isset($params['tariffRuleSetId']) && $params['tariffRuleSetId'] !== null && $params['tariffRuleSetId'] !== ''
-				? (int)$params['tariffRuleSetId']
-				: null;
-			$overrideReason = isset($params['overrideReason']) ? trim((string)$params['overrideReason']) : null;
-			[$effectiveFrom, $fromErr] = $this->parseStrictYmdDateParam((string)($params['effectiveFrom'] ?? date('Y-m-d')));
-			if ($fromErr !== null) {
-				return $fromErr;
-			}
-			[$effectiveTo, $toErr] = $this->parseOptionalEffectiveToParam($params['effectiveTo'] ?? null);
-			if ($toErr !== null) {
-				return $toErr;
-			}
-			// Defensive cross-field consistency: an `inherit` row cannot also
-			// carry manual days or a tariff rule set (those would be silently
-			// ignored by the engine and confuse later operators who saw the
-			// numbers in the DB).
-			if ($inheritLowerLayers) {
-				$manualDays = null;
-				$tariffRuleSetId = null;
-				$overrideReason = $overrideReason !== null && $overrideReason !== '' ? $overrideReason : null;
-			}
-
-			if ($vacationMode === Constants::VACATION_MODE_TARIFF_RULE_BASED && $tariffRuleSetId !== null) {
-				try {
-					$ruleSet = $this->tariffRuleSetMapper->find($tariffRuleSetId);
-					if ($ruleSet->getStatus() !== Constants::TARIFF_RULE_SET_STATUS_ACTIVE) {
-						return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Only active tariff rule sets can be assigned')], Http::STATUS_BAD_REQUEST);
-					}
-					if ($ruleSet->getValidFrom() > $effectiveFrom) {
-						return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Tariff rule set starts after policy effective date')], Http::STATUS_BAD_REQUEST);
-					}
-					$ruleValidTo = $ruleSet->getValidTo();
-					if ($ruleValidTo !== null && $ruleValidTo < $effectiveFrom) {
-						return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Tariff rule set is no longer valid for the selected policy date')], Http::STATUS_BAD_REQUEST);
-					}
-				} catch (DoesNotExistException $e) {
-					return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Tariff rule set not found')], Http::STATUS_NOT_FOUND);
-				}
-			}
-
-			// Prevent overlapping policy ranges for deterministic entitlement resolution.
-			$currentPolicy = $this->userVacationPolicyAssignmentMapper->findCurrentByUser($userId, $effectiveFrom);
-			if ($currentPolicy !== null && $currentPolicy->getId() !== null) {
-				if ($currentPolicy->getEffectiveFrom()->format('Y-m-d') === $effectiveFrom->format('Y-m-d')) {
-					$currentPolicy->setVacationMode($vacationMode);
-					$currentPolicy->setManualDays($manualDays);
-					$currentPolicy->setTariffRuleSetId($tariffRuleSetId);
-					$currentPolicy->setOverrideReason($overrideReason);
-					$currentPolicy->setEffectiveTo($effectiveTo);
-					$currentPolicy->setInheritLowerLayers($inheritLowerLayers);
-					$currentPolicy->setUpdatedAt(new \DateTime());
-					$errors = $currentPolicy->validate();
-					if (!empty($errors)) {
-						$translatedErrors = [];
-						foreach ($errors as $field => $message) {
-							$translatedErrors[$field] = $this->l10n->t($message);
-						}
-						return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Validation failed'), 'errors' => $translatedErrors], Http::STATUS_BAD_REQUEST);
-					}
-					$updated = $this->userVacationPolicyAssignmentMapper->update($currentPolicy);
-					return new JSONResponse(['success' => true, 'policyId' => $updated->getId()]);
-				}
-				$startOfNewPolicy = new \DateTimeImmutable($effectiveFrom->format('Y-m-d'));
-				$endOfCurrent = $startOfNewPolicy->modify('-1 day');
-				$currentStart = $currentPolicy->getEffectiveFrom();
-				if ($currentStart <= new \DateTime($endOfCurrent->format('Y-m-d'))) {
-					$currentPolicy->setEffectiveTo(new \DateTime($endOfCurrent->format('Y-m-d')));
-					$currentPolicy->setUpdatedAt(new \DateTime());
-					$this->userVacationPolicyAssignmentMapper->update($currentPolicy);
-				}
-			}
-
-			$assignment = new UserVacationPolicyAssignment();
-			$assignment->setUserId($userId);
-			$assignment->setVacationMode($vacationMode);
-			$assignment->setManualDays($manualDays);
-			$assignment->setTariffRuleSetId($tariffRuleSetId);
-			$assignment->setOverrideReason($overrideReason);
-			$assignment->setEffectiveFrom($effectiveFrom);
-			$assignment->setEffectiveTo($effectiveTo);
-			$assignment->setInheritLowerLayers($inheritLowerLayers);
-			$assignment->setCreatedBy($this->getPerformedBy());
-			$assignment->setCreatedAt(new \DateTime());
-			$assignment->setUpdatedAt(new \DateTime());
-			$errors = $assignment->validate();
-			if (!empty($errors)) {
-				$translatedErrors = [];
-				foreach ($errors as $field => $message) {
-					$translatedErrors[$field] = $this->l10n->t($message);
-				}
-				return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Validation failed'), 'errors' => $translatedErrors], Http::STATUS_BAD_REQUEST);
-			}
-			$saved = $this->userVacationPolicyAssignmentMapper->insert($assignment);
-			return new JSONResponse(['success' => true, 'policyId' => $saved->getId()], Http::STATUS_CREATED);
+			$data = $this->adminUserProfileUpdateService->applyVacationPolicy(
+				$userId,
+				$this->request->getParams(),
+				$this->getPerformedBy()
+			);
+			$status = !empty($data['created']) ? Http::STATUS_CREATED : Http::STATUS_OK;
+			unset($data['created'], $data['updated']);
+			return new JSONResponse(array_merge(['success' => true], $data), $status);
+		} catch (AdminUserProfileUpdateException $e) {
+			return $this->profileUpdateExceptionResponse($e);
 		} catch (\Throwable $e) {
 			return new JSONResponse(['success' => false, 'error' => $this->l10n->t('Failed to assign vacation policy')], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
@@ -3671,64 +3789,44 @@ class AdminController extends Controller
 	public function updateUserOvertimeSettings(string $userId): JSONResponse
 	{
 		try {
-			$user = $this->userManager->get($userId);
-			if ($user === null) {
-				return new JSONResponse(['success' => false, 'error' => $this->l10n->t('User not found')], Http::STATUS_NOT_FOUND);
-			}
-
-			$params = $this->request->getParams();
-			$actor = $this->getPerformedBy();
-
-			if (array_key_exists('trackingFrom', $params)) {
-				$raw = $params['trackingFrom'];
-				if ($raw === null || $raw === '') {
-					$this->userOvertimeSettingsService->setTrackingFrom($userId, null, $actor);
-				} else {
-					[$date, $err] = $this->parseStrictYmdDateParam((string)$raw);
-					if ($err !== null) {
-						return $err;
-					}
-					$this->userOvertimeSettingsService->setTrackingFrom(
-						$userId,
-						\DateTimeImmutable::createFromMutable($date),
-						$actor
-					);
-				}
-			}
-
-			$openingBalance = $params['openingBalance'] ?? null;
-			if (is_array($openingBalance) && isset($openingBalance['year'], $openingBalance['hours'])) {
-				[$year, $yearErr] = OpeningBalanceYearValidator::parse($openingBalance['year']);
-				if ($yearErr !== null) {
-					return new JSONResponse([
-						'success' => false,
-						'error' => $yearErr === 'range'
-							? $this->l10n->t('Opening balance year must be between 2000 and 2100')
-							: $this->l10n->t('Opening balance year must be a four-digit year (e.g. 2026).'),
-					], Http::STATUS_BAD_REQUEST);
-				}
-				$hours = $this->parseDecimalInput($openingBalance['hours'], 0.0);
-				if ($hours < -9999 || $hours > 9999) {
-					return new JSONResponse([
-						'success' => false,
-						'error' => $this->l10n->t('Opening balance hours must be between -9999 and 9999')
-					], Http::STATUS_BAD_REQUEST);
-				}
-				$this->userOvertimeSettingsService->setOpeningBalance($userId, $year, $hours, $actor);
-			}
-
-			$currentYear = (int)date('Y');
-			return new JSONResponse([
-				'success' => true,
-				'overtimeTrackingFrom' => $this->userOvertimeSettingsService->getTrackingFrom($userId)?->format('Y-m-d'),
-				'overtimeOpeningBalanceHours' => $this->userOvertimeSettingsService->getOpeningBalanceHours($userId, $currentYear),
-				'overtimeOpeningBalanceYear' => $currentYear,
-			]);
+			$data = $this->adminUserProfileUpdateService->applyOvertimeSettings(
+				$userId,
+				$this->request->getParams(),
+				$this->getPerformedBy()
+			);
+			return new JSONResponse(array_merge(['success' => true], $data));
+		} catch (AdminUserProfileUpdateException $e) {
+			return $this->profileUpdateExceptionResponse($e);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('updateUserOvertimeSettings failed', ['exception' => $e]);
 			return new JSONResponse([
 				'success' => false,
-				'error' => $this->l10n->t('Failed to update overtime settings')
+				'error' => $this->l10n->t('Failed to update overtime settings'),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	/**
+	 * Update per-user time recording methods (clock stamping / manual entries).
+	 */
+	public function updateUserTimeCaptureSettings(string $userId): JSONResponse
+	{
+		try {
+			$data = $this->adminUserProfileUpdateService->applyTimeCaptureSettings(
+				$userId,
+				$this->request->getParams(),
+				$this->getPerformedBy()
+			);
+			return new JSONResponse(array_merge(['success' => true], $data));
+		} catch (AdminUserProfileUpdateException $e) {
+			return $this->profileUpdateExceptionResponse($e);
+		} catch (BusinessRuleException $e) {
+			return new JSONResponse(['success' => false, 'error' => $e->getMessage()], Http::STATUS_BAD_REQUEST);
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error('updateUserTimeCaptureSettings failed', ['exception' => $e]);
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('Failed to update time recording settings'),
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}
@@ -4003,11 +4101,10 @@ class AdminController extends Controller
 	}
 
 	/**
-	 * Lightweight user-search endpoint for the vacation-layers simulator.
+	 * Legacy user-search endpoint (vacation-layers simulator and older integrations).
 	 *
-	 * Unlike {@see self::getUsers()} this does **not** compute entitlement
-	 * previews or working-time-model joins for each candidate, so it remains
-	 * cheap when invoked from keystroke-driven autocompletes.
+	 * Delegates to {@see getUsersForPicker()} so behaviour matches
+	 * {@code GET /api/admin/users?picker=1} (enabled users only, min search length).
 	 *
 	 * Authorisation: admin-only (no `NoAdminRequired` on the class).
 	 */
@@ -4016,16 +4113,8 @@ class AdminController extends Controller
 		try {
 			$search = trim((string)($this->request->getParam('search') ?? ''));
 			$limit = (int)($this->request->getParam('limit') ?? 10);
-			$limit = max(1, min($limit, 25));
-			$users = $this->userManager->search($search, $limit, 0);
-			$out = [];
-			foreach ($users as $user) {
-				$out[] = [
-					'userId' => (string)$user->getUID(),
-					'displayName' => (string)$user->getDisplayName(),
-				];
-			}
-			return new JSONResponse(['success' => true, 'users' => $out]);
+
+			return $this->getUsersForPicker($search, $limit);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('searchVacationLayersUsers failed: ' . $e->getMessage(), ['exception' => $e]);
 			return new JSONResponse(['success' => false, 'error' => $this->l10n->t('User search failed')], Http::STATUS_INTERNAL_SERVER_ERROR);
@@ -4072,6 +4161,137 @@ class AdminController extends Controller
 			Constants::TARIFF_RULE_SET_STATUS_RETIRED => $this->l10n->t('Retired'),
 			default => $this->l10n->t('Unknown tariff rule set status (%s)', [$status]),
 		};
+	}
+
+	/**
+	 * Reject payloads that attempt to set fields owned by other workflow steps
+	 * (status transitions, immutable identity, system timestamps).
+	 *
+	 * @param list<string> $forbiddenFields
+	 */
+	private function rejectForbiddenTariffRuleSetRequestFields(
+		array $params,
+		array $forbiddenFields,
+		string $summaryMessage,
+	): ?JSONResponse {
+		$fieldErrors = [];
+		foreach ($forbiddenFields as $field) {
+			if (!array_key_exists($field, $params)) {
+				continue;
+			}
+			$fieldErrors[$field] = match ($field) {
+				'status' => $this->l10n->t('Status can only be changed via Activate or Retire.'),
+				'tariffCode', 'version' => $this->l10n->t('Tariff code and version are fixed after creation.'),
+				'createdAt', 'updatedAt' => $this->l10n->t('Timestamps are managed by the system.'),
+				default => $this->l10n->t('This field cannot be set through this endpoint.'),
+			};
+		}
+		if ($fieldErrors === []) {
+			return null;
+		}
+
+		return new JSONResponse([
+			'success' => false,
+			'error' => $summaryMessage,
+			'errors' => $fieldErrors,
+		], Http::STATUS_BAD_REQUEST);
+	}
+
+	private function normalizeTariffIdentity(string $value): string
+	{
+		$trimmed = trim($value);
+		if ($trimmed === '') {
+			return '';
+		}
+		return (string)preg_replace('/\s+/u', ' ', $trimmed);
+	}
+
+	/**
+	 * @param list<array<string, mixed>> $modules
+	 * @return list<array<string, mixed>>
+	 */
+	private function normalizeTariffModulesPayload(array $modules): array
+	{
+		$normalized = [];
+		foreach ($modules as $module) {
+			if (!is_array($module) || empty($module['moduleType'])) {
+				continue;
+			}
+			$config = is_array($module['config'] ?? null) ? $module['config'] : [];
+			$normalized[] = [
+				'moduleType' => trim((string)$module['moduleType']),
+				'config' => $config,
+			];
+		}
+		return $normalized;
+	}
+
+	/**
+	 * @param list<array<string, mixed>> $modules
+	 * @return list<array{moduleType: string, sortOrder: int}>
+	 */
+	private function persistTariffRuleModules(int $ruleSetId, array $modules): array
+	{
+		$moduleSnapshot = [];
+		$sort = 0;
+		foreach ($modules as $module) {
+			$entity = new TariffRuleModule();
+			$entity->setRuleSetId($ruleSetId);
+			$entity->setModuleType((string)$module['moduleType']);
+			$entity->setConfig(is_array($module['config'] ?? null) ? $module['config'] : []);
+			$entity->setSortOrder($sort++);
+			$entity->setCreatedAt(new \DateTime());
+			$entity->setUpdatedAt(new \DateTime());
+			$this->tariffRuleModuleMapper->insert($entity);
+			$moduleSnapshot[] = [
+				'moduleType' => $entity->getModuleType(),
+				'sortOrder' => $entity->getSortOrder(),
+			];
+		}
+		return $moduleSnapshot;
+	}
+
+	/**
+	 * Detect a unique-constraint violation regardless of which exception layer
+	 * surfaced it (Doctrine DBAL directly, or Nextcloud's wrapping
+	 * OCP\DB\Exception with REASON_UNIQUE_CONSTRAINT_VIOLATION).
+	 */
+	private function isUniqueConstraintViolation(\Throwable $e): bool
+	{
+		if ($e instanceof UniqueConstraintViolationException) {
+			return true;
+		}
+		if ($e instanceof DBException && $e->getReason() === DBException::REASON_UNIQUE_CONSTRAINT_VIOLATION) {
+			return true;
+		}
+		$previous = $e->getPrevious();
+		return $previous instanceof UniqueConstraintViolationException;
+	}
+
+	private function duplicateTariffRuleSetResponse(TariffRuleSet $duplicate): JSONResponse
+	{
+		return new JSONResponse([
+			'success' => false,
+			'code' => 'duplicate_code_version',
+			'error' => $this->l10n->t(
+				'A tariff rule set with tariff code "%1$s" and version "%2$s" already exists.',
+				[
+					$duplicate->getTariffCode(),
+					$duplicate->getVersion(),
+				],
+			),
+			'errors' => [
+				'tariffCode' => $this->l10n->t('This tariff code is already used with this version.'),
+				'version' => $this->l10n->t('Choose a different version label, or open the existing rule set.'),
+			],
+			'existing' => [
+				'id' => $duplicate->getId(),
+				'tariffCode' => $duplicate->getTariffCode(),
+				'version' => $duplicate->getVersion(),
+				'status' => $duplicate->getStatus(),
+				'statusLabel' => $this->formatTariffRuleSetStatusLabel($duplicate->getStatus()),
+			],
+		], Http::STATUS_CONFLICT);
 	}
 
 	/**
@@ -4269,107 +4489,64 @@ class AdminController extends Controller
 		try {
 			$params = $this->request->getParams();
 
-			// Parse date filters
-			$startDate = null;
-			$endDate = null;
-			if (isset($params['start_date']) && $params['start_date']) {
-				$startDate = new \DateTime($params['start_date']);
-				$startDate->setTime(0, 0, 0);
-			}
-			if (isset($params['end_date']) && $params['end_date']) {
-				$endDate = new \DateTime($params['end_date']);
-				$endDate->setTime(23, 59, 59);
+			$dates = $this->parseAuditLogDateFilters($params);
+			if ($dates instanceof JSONResponse) {
+				return $dates;
 			}
 
-			// Default to last 30 days if no dates provided
-			if ($startDate === null && $endDate === null) {
-				$endDate = new \DateTime();
-				$endDate->setTime(23, 59, 59);
-				$startDate = clone $endDate;
-				$startDate->modify('-30 days');
-				$startDate->setTime(0, 0, 0);
+			$searchFilters = $this->buildAuditLogSearchFilters($params);
+			if ($searchFilters instanceof JSONResponse) {
+				return $searchFilters;
 			}
 
-			if ($startDate > $endDate) {
-				return new JSONResponse([
-					'success' => false,
-					'error' => $this->l10n->t('Start date must be before or equal to end date')
-				], Http::STATUS_BAD_REQUEST);
-			}
+			$limit = isset($params['limit']) ? max(1, min(100, (int)$params['limit'])) : self::AUDIT_LOG_PAGE_SIZE;
+			$offset = isset($params['offset']) ? max(0, (int)$params['offset']) : 0;
 
-			// Enforce max date range to prevent heavy queries
-			$diff = $startDate->diff($endDate);
-			$days = (int) $diff->format('%a');
-			if ($days > Constants::MAX_EXPORT_DATE_RANGE_DAYS) {
-				return new JSONResponse([
-					'success' => false,
-					'error' => $this->l10n->t('Date range must not exceed %d days. Please narrow the range.', [Constants::MAX_EXPORT_DATE_RANGE_DAYS])
-				], Http::STATUS_BAD_REQUEST);
-			}
+			$startDate = $dates['startDate'];
+			$endDate = $dates['endDate'];
 
-			// Build filters
-			$filters = [];
-			if (isset($params['user_id']) && $params['user_id']) {
-				$filters['user_id'] = $params['user_id'];
-			}
-			if (isset($params['action']) && $params['action']) {
-				$filters['action'] = $params['action'];
-			}
-			if (isset($params['entity_type']) && $params['entity_type']) {
-				$filters['entity_type'] = $params['entity_type'];
-			}
+			$totalCount = $this->auditLogMapper->countByDateRange($startDate, $endDate, $searchFilters);
+			$paginatedLogs = $this->auditLogMapper->searchByDateRange($startDate, $endDate, array_merge($searchFilters, [
+				'limit' => $limit,
+				'offset' => $offset,
+			]));
 
-			// Get pagination
-			$limit = isset($params['limit']) ? (int)$params['limit'] : 50;
-			$offset = isset($params['offset']) ? (int)$params['offset'] : 0;
-
-			// Fetch audit logs
-			$logs = $this->auditLogMapper->findByDateRange(
-				$startDate,
-				$endDate,
-				$filters['user_id'] ?? null,
-				$filters['action'] ?? null,
-				$filters['entity_type'] ?? null
-			);
-
-			// Apply pagination
-			$totalCount = count($logs);
-			$paginatedLogs = array_slice($logs, $offset, $limit);
-
-			// Format logs for response
-			$formattedLogs = [];
-			foreach ($paginatedLogs as $log) {
+			$formattedLogs = array_map(function (AuditLog $log): array {
+				$entry = $this->formatAuditLogEntry($log);
 				$user = $this->userManager->get($log->getUserId());
-				$performedBy = $log->getPerformedBy() ? $this->userManager->get($log->getPerformedBy()) : null;
+				$performedByUser = $log->getPerformedBy() ? $this->userManager->get($log->getPerformedBy()) : null;
 
-				$formattedLogs[] = [
-					'id' => $log->getId(),
-					'user_id' => $log->getUserId(),
-					'user_display_name' => $user ? $user->getDisplayName() : $log->getUserId(),
-					'action' => $this->l10n->t($log->getAction()),
-					'entity_type' => $this->translateAuditEntityType($log->getEntityType()),
-					'entity_id' => $log->getEntityId(),
+				return [
+					'id' => $entry['id'],
+					'user_id' => $entry['userId'],
+					'user_display_name' => $entry['userDisplayName'],
+					'action' => $entry['action'],
+					'action_key' => $entry['actionKey'],
+					'entity_type' => $entry['entityType'],
+					'entity_type_key' => $entry['entityTypeKey'],
+					'entity_id' => $entry['entityId'],
 					'old_values' => $log->getOldValues() ? json_decode($log->getOldValues(), true) : null,
 					'new_values' => $log->getNewValues() ? json_decode($log->getNewValues(), true) : null,
-					'performed_by' => $log->getPerformedBy(),
-					'performed_by_display_name' => $performedBy ? $performedBy->getDisplayName() : ($log->getPerformedBy() ?? $log->getUserId()),
+					'performed_by' => $entry['performedBy'],
+					'performed_by_display_name' => $entry['performedByDisplayName'],
 					'ip_address' => $log->getIpAddress(),
 					'user_agent' => $log->getUserAgent(),
-					'created_at' => ($createdAt = $log->getCreatedAt()) ? $createdAt->format('c') : null
+					'created_at' => $entry['createdAtIso'],
+					'created_at_display' => $entry['createdAt'],
 				];
-			}
+			}, $paginatedLogs);
 
 			return new JSONResponse([
 				'success' => true,
 				'logs' => $formattedLogs,
 				'total' => $totalCount,
 				'limit' => $limit,
-				'offset' => $offset
+				'offset' => $offset,
 			]);
 		} catch (\Throwable $e) {
 			return new JSONResponse([
 				'success' => false,
-				'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.')
+				'error' => $this->l10n->t('An unexpected error occurred. Please try again. If the problem continues, contact your administrator.'),
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 	}
@@ -4419,75 +4596,41 @@ class AdminController extends Controller
 		try {
 			$params = $this->request->getParams();
 
-			// Parse date filters
-			$startDate = null;
-			$endDate = null;
-			if (isset($params['start_date']) && $params['start_date']) {
-				$startDate = new \DateTime($params['start_date']);
-				$startDate->setTime(0, 0, 0);
-			}
-			if (isset($params['end_date']) && $params['end_date']) {
-				$endDate = new \DateTime($params['end_date']);
-				$endDate->setTime(23, 59, 59);
+			$dates = $this->parseAuditLogDateFilters($params);
+			if ($dates instanceof JSONResponse) {
+				throw new \Exception((string)$dates->getData()['error']);
 			}
 
-			// Default to last 30 days if no dates provided
-			if ($startDate === null && $endDate === null) {
-				$endDate = new \DateTime();
-				$endDate->setTime(23, 59, 59);
-				$startDate = clone $endDate;
-				$startDate->modify('-30 days');
-				$startDate->setTime(0, 0, 0);
+			$searchFilters = $this->buildAuditLogSearchFilters($params);
+			if ($searchFilters instanceof JSONResponse) {
+				throw new \Exception((string)$searchFilters->getData()['error']);
 			}
 
-			if ($startDate > $endDate) {
-				throw new \Exception($this->l10n->t('Start date must be before or equal to end date'));
-			}
+			$startDate = $dates['startDate'];
+			$endDate = $dates['endDate'];
 
-			// Enforce max date range to prevent heavy queries
-			$diff = $startDate->diff($endDate);
-			$days = (int) $diff->format('%a');
-			if ($days > Constants::MAX_EXPORT_DATE_RANGE_DAYS) {
-				throw new \Exception($this->l10n->t(
-					'Export date range must not exceed %d days. Please narrow the range.',
-					[Constants::MAX_EXPORT_DATE_RANGE_DAYS]
-				));
-			}
+			$logs = $this->auditLogMapper->searchByDateRange($startDate, $endDate, $searchFilters);
 
-			// Build filters
-			$userId = isset($params['user_id']) && $params['user_id'] ? $params['user_id'] : null;
-			$action = isset($params['action']) && $params['action'] ? $params['action'] : null;
-			$entityType = isset($params['entity_type']) && $params['entity_type'] ? $params['entity_type'] : null;
-
-			// Fetch all audit logs (no pagination for export)
-			$logs = $this->auditLogMapper->findByDateRange(
-				$startDate,
-				$endDate,
-				$userId,
-				$action,
-				$entityType
-			);
-
-			// Format logs for export
 			$exportData = [];
 			foreach ($logs as $log) {
-				$user = $this->userManager->get($log->getUserId());
-				$performedBy = $log->getPerformedBy() ? $this->userManager->get($log->getPerformedBy()) : null;
+				$entry = $this->formatAuditLogEntry($log);
 
 				$exportData[] = [
 					'id' => $log->getId(),
-					'date_time' => ($createdAt = $log->getCreatedAt()) ? $createdAt->format('Y-m-d H:i:s') : '',
+					'date_time' => $entry['createdAt'],
 					'user_id' => $log->getUserId(),
-					'user_display_name' => $user ? $user->getDisplayName() : $log->getUserId(),
-					'action' => $this->l10n->t($log->getAction()),
-					'entity_type' => $this->translateAuditEntityType($log->getEntityType()),
+					'user_display_name' => $entry['userDisplayName'],
+					'action' => $entry['action'],
+					'action_key' => $entry['actionKey'],
+					'entity_type' => $entry['entityType'],
+					'entity_type_key' => $entry['entityTypeKey'],
 					'entity_id' => $log->getEntityId(),
 					'performed_by' => $log->getPerformedBy() ?? $log->getUserId(),
-					'performed_by_display_name' => $performedBy ? $performedBy->getDisplayName() : ($log->getPerformedBy() ?? $log->getUserId()),
+					'performed_by_display_name' => $entry['performedByDisplayName'],
 					'ip_address' => $log->getIpAddress() ?? '',
 					'user_agent' => $log->getUserAgent() ?? '',
 					'old_values' => $log->getOldValues() ?? '',
-					'new_values' => $log->getNewValues() ?? ''
+					'new_values' => $log->getNewValues() ?? '',
 				];
 			}
 
@@ -4496,10 +4639,10 @@ class AdminController extends Controller
 			return match ($format) {
 				'csv' => $this->exportAsCsv($exportData, $filename),
 				'json' => $this->exportAsJson($exportData, $filename),
-				default => $this->exportAsCsv($exportData, $filename)
+				default => $this->exportAsCsv($exportData, $filename),
 			};
 		} catch (\Throwable $e) {
-			\OCP\Log\logger('arbeitszeitcheck')->error('Error in AdminController::exportAuditLogs: ' . $e->getMessage(), ["exception" => $e]);
+			\OCP\Log\logger('arbeitszeitcheck')->error('Error in AdminController::exportAuditLogs: ' . $e->getMessage(), ['exception' => $e]);
 			throw new \Exception($this->l10n->t('Failed to export audit logs.'));
 		}
 	}
@@ -4509,7 +4652,7 @@ class AdminController extends Controller
 	#[NoCSRFRequired]
 	public function teams(): TemplateResponse
 	{
-		$this->registerFrontEndAssets('admin-teams', 'admin-teams');
+		$this->registerFrontEndAssets('admin-teams', 'admin-teams', [], ['common/admin-user-picker']);
 		$useAppTeams = $this->appConfig->getAppValueString('use_app_teams', '0') === '1';
 
 		$response = new TemplateResponse('arbeitszeitcheck', 'admin-teams', $this->buildAdminShellParams(
@@ -4519,6 +4662,7 @@ class AdminController extends Controller
 		) + [
 			'useAppTeams' => $useAppTeams,
 			'adminTeamsUrl' => $this->urlGenerator->linkToRoute('arbeitszeitcheck.admin.teams'),
+			'adminUserSearchUrl' => $this->urlGenerator->linkToRoute('arbeitszeitcheck.admin.getUsers'),
 		]);
 		return $this->configureCSP($response, 'admin');
 	}
@@ -4760,8 +4904,12 @@ class AdminController extends Controller
 				return new JSONResponse(['success' => false, 'error' => $this->l10n->t('User is required')], Http::STATUS_BAD_REQUEST);
 			}
 			$team = $this->teamMapper->find($id);
-			if ($this->userManager->get($userId) === null) {
+			$user = $this->userManager->get($userId);
+			if ($user === null) {
 				return new JSONResponse(['success' => false, 'error' => $this->l10n->t('User not found')], Http::STATUS_BAD_REQUEST);
+			}
+			if (!$user->isEnabled()) {
+				return new JSONResponse(['success' => false, 'error' => $this->l10n->t('User account is disabled')], Http::STATUS_BAD_REQUEST);
 			}
 			$existing = $this->teamMemberMapper->findByTeamId($id);
 			foreach ($existing as $m) {
@@ -4836,8 +4984,12 @@ class AdminController extends Controller
 				return new JSONResponse(['success' => false, 'error' => $this->l10n->t('User is required')], Http::STATUS_BAD_REQUEST);
 			}
 			$team = $this->teamMapper->find($id);
-			if ($this->userManager->get($userId) === null) {
+			$user = $this->userManager->get($userId);
+			if ($user === null) {
 				return new JSONResponse(['success' => false, 'error' => $this->l10n->t('User not found')], Http::STATUS_BAD_REQUEST);
+			}
+			if (!$user->isEnabled()) {
+				return new JSONResponse(['success' => false, 'error' => $this->l10n->t('User account is disabled')], Http::STATUS_BAD_REQUEST);
 			}
 			$existing = $this->teamManagerMapper->findByTeamId($id);
 			foreach ($existing as $m) {

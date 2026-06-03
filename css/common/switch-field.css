@@ -1,0 +1,119 @@
+/**
+ * Accessible switch (checkbox + visual track). Used in admin settings and teams.
+ */
+
+#app-content.azc-app .azc-switch-field,
+.modal-backdrop .azc-switch-field {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--azc-space-3, 0.75rem);
+}
+
+#app-content.azc-app .azc-switch-field__input,
+.modal-backdrop .azc-switch-field__input {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+	border: 0;
+}
+
+#app-content.azc-app .azc-switch-field__input:focus-visible + .azc-switch-field__label .azc-switch-field__track,
+.modal-backdrop .azc-switch-field__input:focus-visible + .azc-switch-field__label .azc-switch-field__track {
+	outline: 3px solid var(--color-primary-element, #0082c9);
+	outline-offset: 2px;
+}
+
+#app-content.azc-app .azc-switch-field__label,
+.modal-backdrop .azc-switch-field__label {
+	display: flex;
+	align-items: center;
+	gap: var(--azc-space-3, 0.75rem);
+	cursor: pointer;
+	margin: 0;
+	min-height: 44px;
+	flex: 1;
+	min-width: 0;
+}
+
+#app-content.azc-app .azc-switch-field__track,
+.modal-backdrop .azc-switch-field__track {
+	position: relative;
+	flex: 0 0 3rem;
+	width: 3rem;
+	height: 1.625rem;
+	border-radius: var(--azc-radius-pill, 999px);
+	background: var(--color-background-darker, var(--color-background-dark));
+	border: 1px solid var(--color-border, var(--azc-border));
+	transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+#app-content.azc-app .azc-switch-field__track::after,
+.modal-backdrop .azc-switch-field__track::after {
+	content: '';
+	position: absolute;
+	top: 2px;
+	inset-inline-start: 2px;
+	width: 1.25rem;
+	height: 1.25rem;
+	border-radius: 50%;
+	background: var(--color-main-background);
+	box-shadow: 0 1px 2px color-mix(in srgb, var(--color-main-text) 25%, transparent);
+	transition: transform 0.15s ease;
+}
+
+#app-content.azc-app .azc-switch-field__input:checked + .azc-switch-field__label .azc-switch-field__track,
+.modal-backdrop .azc-switch-field__input:checked + .azc-switch-field__label .azc-switch-field__track {
+	background: var(--color-primary-element, #0082c9);
+	border-color: var(--color-primary-element, #0082c9);
+}
+
+#app-content.azc-app .azc-switch-field__input:checked + .azc-switch-field__label .azc-switch-field__track::after,
+.modal-backdrop .azc-switch-field__input:checked + .azc-switch-field__label .azc-switch-field__track::after {
+	transform: translateX(1.375rem);
+}
+
+#app-content.azc-app .azc-switch-field__input:disabled + .azc-switch-field__label,
+.modal-backdrop .azc-switch-field__input:disabled + .azc-switch-field__label {
+	cursor: not-allowed;
+	opacity: 0.72;
+}
+
+#app-content.azc-app .azc-switch-field__text,
+.modal-backdrop .azc-switch-field__text {
+	font-size: var(--azc-fs-md, 1rem);
+	font-weight: 600;
+	color: var(--color-main-text, var(--azc-text));
+	line-height: var(--azc-line-base, 1.45);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	#app-content.azc-app .azc-switch-field__track,
+	#app-content.azc-app .azc-switch-field__track::after,
+	.modal-backdrop .azc-switch-field__track,
+	.modal-backdrop .azc-switch-field__track::after {
+		transition: none;
+	}
+}
+
+@media (forced-colors: active) {
+	#app-content.azc-app .azc-switch-field__track,
+	.modal-backdrop .azc-switch-field__track {
+		border: 2px solid CanvasText;
+	}
+
+	#app-content.azc-app .azc-switch-field__input:checked + .azc-switch-field__label .azc-switch-field__track,
+	.modal-backdrop .azc-switch-field__input:checked + .azc-switch-field__label .azc-switch-field__track {
+		background: Highlight;
+		border-color: Highlight;
+	}
+
+	#app-content.azc-app .azc-switch-field__track::after,
+	.modal-backdrop .azc-switch-field__track::after {
+		background: Canvas;
+	}
+}

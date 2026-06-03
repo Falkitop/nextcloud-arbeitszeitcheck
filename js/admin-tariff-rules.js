@@ -12,6 +12,9 @@
 
 	const API_LIST = '/apps/arbeitszeitcheck/api/admin/tariff-rule-sets';
 
+	/** @type {Array<{id:number|string,tariffCode?:string,version?:string,status?:string}>} */
+	let cachedRuleSets = [];
+
 	const MODULE_DEFINITIONS = [
 		{
 			type: 'base_formula',
@@ -47,6 +50,7 @@
 					defaultValue: 'commercial',
 					options: [
 						{ value: 'commercial', labelKey: 'roundingCommercial' },
+						{ value: 'half_day', labelKey: 'roundingHalfDay' },
 						{ value: 'ceil', labelKey: 'roundingCeil' },
 						{ value: 'floor', labelKey: 'roundingFloor' },
 					],
@@ -64,8 +68,8 @@
 					defaultValue: 'none',
 					options: [
 						{ value: 'none', labelKey: 'proRataNone' },
-						{ value: 'month', labelKey: 'proRataMonth' },
-						{ value: 'day', labelKey: 'proRataDay' },
+						{ value: 'monthly', labelKey: 'proRataMonth' },
+						{ value: 'daily', labelKey: 'proRataDay' },
 					],
 				},
 			],
@@ -78,6 +82,16 @@
 			return String(map[key]);
 		}
 		return key;
+	}
+
+	function l10nParams(key, ...params) {
+		let text = l10n(key);
+		params.forEach((val, index) => {
+			const n = index + 1;
+			text = text.split(`%${n}$s`).join(String(val));
+			text = text.split(`%${n}$d`).join(String(val));
+		});
+		return text;
 	}
 
 	function escapeHtml(value) {
@@ -145,12 +159,35 @@
 	}
 
 	function statusBadgeClass(status) {
-		switch (status) {
-			case 'active': return 'badge badge--success';
-			case 'draft': return 'badge badge--warning';
-			case 'retired': return 'badge';
-			default: return 'badge';
+		const variant = Utils.badgeVariantForTariffRuleSetStatus
+			? Utils.badgeVariantForTariffRuleSetStatus(status)
+			: 'secondary';
+		return `badge badge--${variant}`;
+	}
+
+	function canActivateRuleSet(ruleSet) {
+		if (!ruleSet || ruleSet.status !== 'draft') {
+			return false;
 		}
+		if (typeof ruleSet.canActivate === 'boolean') {
+			return ruleSet.canActivate;
+		}
+		if (typeof ruleSet.isComplete === 'boolean') {
+			return ruleSet.isComplete;
+		}
+		return typeof ruleSet.modulesCount === 'number' && ruleSet.modulesCount > 0;
+	}
+
+	function modulesCellHtml(ruleSet) {
+		const count = typeof ruleSet.modulesCount === 'number' ? ruleSet.modulesCount : null;
+		const countText = count === null ? '—' : String(count);
+		if (ruleSet.status === 'draft' && !canActivateRuleSet(ruleSet)) {
+			return `
+				<span class="admin-tariff-rules__modules-count">${escapeHtml(countText)}</span>
+				<span class="badge badge--warning admin-tariff-rules__incomplete-badge">${escapeHtml(l10n('incompleteDraft'))}</span>
+				<span class="sr-only">${escapeHtml(l10n('incompleteDraftHelp'))}</span>`;
+		}
+		return escapeHtml(countText);
 	}
 
 	function renderTable(ruleSets) {
@@ -177,7 +214,11 @@
 			const actions = [];
 			if (rs.status === 'draft') {
 				actions.push(`<button type="button" class="azc-btn azc-btn--secondary azc-btn--sm" data-action="edit" data-id="${escapeHtml(id)}">${escapeHtml(l10n('edit'))}</button>`);
-				actions.push(`<button type="button" class="azc-btn azc-btn--primary azc-btn--sm" data-action="activate" data-id="${escapeHtml(id)}">${escapeHtml(l10n('activate'))}</button>`);
+				if (canActivateRuleSet(rs)) {
+					actions.push(`<button type="button" class="azc-btn azc-btn--primary azc-btn--sm" data-action="activate" data-id="${escapeHtml(id)}">${escapeHtml(l10n('activate'))}</button>`);
+				} else {
+					actions.push(`<button type="button" class="azc-btn azc-btn--primary azc-btn--sm" data-action="activate" data-id="${escapeHtml(id)}" disabled aria-disabled="true" aria-label="${escapeHtml(l10n('activateIncompleteHint'))}">${escapeHtml(l10n('activate'))}</button>`);
+				}
 				actions.push(`<button type="button" class="azc-btn azc-btn--danger azc-btn--sm" data-action="delete" data-id="${escapeHtml(id)}">${escapeHtml(l10n('delete'))}</button>`);
 			} else if (rs.status === 'active') {
 				actions.push(`<button type="button" class="azc-btn azc-btn--secondary azc-btn--sm" data-action="view" data-id="${escapeHtml(id)}">${escapeHtml(l10n('view'))}</button>`);
@@ -185,16 +226,19 @@
 			} else {
 				actions.push(`<button type="button" class="azc-btn azc-btn--secondary azc-btn--sm" data-action="view" data-id="${escapeHtml(id)}">${escapeHtml(l10n('view'))}</button>`);
 			}
+			const td = (label, html, cls) => Utils.responsiveTd
+				? Utils.responsiveTd(label, html, cls)
+				: `<td${cls ? ` class="${cls}"` : ''}>${html}</td>`;
 			return `
 				<tr data-rule-set-id="${escapeHtml(id)}">
-					<th scope="row">${escapeHtml(rs.tariffCode || '')}</th>
-					<td>${escapeHtml(rs.version || '')}</td>
-					<td>${escapeHtml(rs.jurisdiction || '—')}</td>
-					<td><span class="${statusBadgeClass(rs.status)}">${escapeHtml(statusLabel(rs.status))}</span></td>
-					<td>${escapeHtml(rs.validFrom || '—')}</td>
-					<td>${escapeHtml(rs.validTo || '—')}</td>
-					<td>${escapeHtml(typeof rs.modulesCount === 'number' ? String(rs.modulesCount) : '—')}</td>
-					<td class="admin-tariff-rules__row-actions">${actions.join(' ')}</td>
+					${td(l10n('tariffCode'), escapeHtml(rs.tariffCode || ''))}
+					${td(l10n('version'), escapeHtml(rs.version || ''))}
+					${td(l10n('jurisdiction'), escapeHtml(rs.jurisdiction || '—'))}
+					${td(l10n('status'), `<span class="${statusBadgeClass(rs.status)}">${escapeHtml(statusLabel(rs.status))}</span>`)}
+					${td(l10n('validFrom'), escapeHtml(rs.validFrom || '—'))}
+					${td(l10n('validTo'), escapeHtml(rs.validTo || '—'))}
+					${td(l10n('modulesCol'), modulesCellHtml(rs))}
+					${td(l10n('actions'), `<div class="azc-table-actions" role="group">${actions.join(' ')}</div>`, 'admin-tariff-rules__row-actions actions-cell')}
 				</tr>`;
 		}).join('');
 
@@ -223,7 +267,88 @@
 			}
 			return;
 		}
-		renderTable(payload.ruleSets || []);
+		cachedRuleSets = Array.isArray(payload.ruleSets) ? payload.ruleSets : [];
+		renderTable(cachedRuleSets);
+	}
+
+	function normalizeIdentity(value) {
+		return String(value || '').trim().replace(/\s+/g, ' ');
+	}
+
+	function normalizeProRataMode(mode) {
+		const m = String(mode || '');
+		if (m === 'month') {
+			return 'monthly';
+		}
+		if (m === 'day') {
+			return 'daily';
+		}
+		return m;
+	}
+
+	function findDuplicateRuleSet(tariffCode, version) {
+		const code = normalizeIdentity(tariffCode);
+		const ver = normalizeIdentity(version);
+		if (!code || !ver) {
+			return null;
+		}
+		return cachedRuleSets.find((rs) => (
+			normalizeIdentity(rs.tariffCode) === code
+			&& normalizeIdentity(rs.version) === ver
+		)) || null;
+	}
+
+	function isDuplicateConflictResponse(response) {
+		if (!response || response.status !== 409) {
+			return false;
+		}
+		const payload = response.payload;
+		if (!payload) {
+			return false;
+		}
+		return payload.code === 'duplicate_code_version'
+			|| (payload.existing && payload.existing.id != null);
+	}
+
+	function suggestNextVersion(version) {
+		const ver = normalizeIdentity(version);
+		if (!ver) {
+			return '';
+		}
+		const dotted = ver.match(/^(.+)\.(\d+)$/);
+		if (dotted) {
+			return `${dotted[1]}.${parseInt(dotted[2], 10) + 1}`;
+		}
+		const trailingYear = ver.match(/^(.+?)(\d{4})$/);
+		if (trailingYear) {
+			return `${trailingYear[1]}${parseInt(trailingYear[2], 10) + 1}`;
+		}
+		return `${ver}-2`;
+	}
+
+	function updateSubmitDisabled(modal, disabled) {
+		const submitBtn = modal.querySelector('#tariff-rules-submit');
+		if (submitBtn) {
+			submitBtn.disabled = !!disabled;
+			submitBtn.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+		}
+	}
+
+	function highlightRowInTable(id) {
+		const tbody = document.getElementById('tariff-rules-tbody');
+		if (!tbody) {
+			return;
+		}
+		tbody.querySelectorAll('tr[data-rule-set-id]').forEach((row) => {
+			row.classList.remove('admin-tariff-rules__row--highlight');
+		});
+		const row = tbody.querySelector(`tr[data-rule-set-id="${String(id)}"]`);
+		if (!row) {
+			return;
+		}
+		row.classList.add('admin-tariff-rules__row--highlight');
+		row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+		setTimeout(() => row.classList.remove('admin-tariff-rules__row--highlight'), 6000);
 	}
 
 	async function handleRowAction(action, id) {
@@ -252,6 +377,13 @@
 				},
 			);
 		} else if (action === 'activate') {
+			const row = cachedRuleSets.find((rs) => rs.id === id);
+			if (row && !canActivateRuleSet(row)) {
+				Messaging.showError && Messaging.showError(l10n('activateIncompleteHint'));
+				announce(l10n('activateIncompleteHint'));
+				openEditModal(id);
+				return;
+			}
 			await confirmAndCall(
 				l10n('confirmActivateTitle'),
 				l10n('confirmActivateMessage'),
@@ -264,7 +396,12 @@
 						announce(l10n('activated'));
 						loadRuleSets();
 					} else {
-						Messaging.showError && Messaging.showError((r.payload && r.payload.error) || l10n('activateError'));
+						const errMsg = (r.payload && r.payload.error) || l10n('activateError');
+						Messaging.showError && Messaging.showError(errMsg);
+						announce(errMsg);
+						if (r.payload && r.payload.errors && r.payload.errors.modules) {
+							openEditModal(id);
+						}
 					}
 				},
 			);
@@ -342,21 +479,30 @@
 		}).join('');
 	}
 
+	function moduleLegendLabel(moduleIndex, type) {
+		const def = findModuleDefinition(type) || MODULE_DEFINITIONS[0];
+		return l10nParams('moduleLegend', moduleIndex + 1, l10n(def.labelKey));
+	}
+
 	function moduleRowHtml(moduleIndex, type, config, readOnly) {
 		const def = findModuleDefinition(type) || MODULE_DEFINITIONS[0];
+		const normalizedConfig = Object.assign({}, config || {});
+		if (def.type === 'pro_rata_rule' && normalizedConfig.mode) {
+			normalizedConfig.mode = normalizeProRataMode(normalizedConfig.mode);
+		}
 		const removeBtn = readOnly ? '' : `<button type="button" class="azc-btn azc-btn--danger azc-btn--sm admin-tariff-rules__remove-module">${escapeHtml(l10n('remove'))}</button>`;
 		const typeDisabled = readOnly ? ' disabled' : '';
 		return `
 			<fieldset class="admin-tariff-rules__module" data-module-index="${moduleIndex}">
-				<legend>${escapeHtml(l10n('moduleType'))}</legend>
-				<div class="form-group">
-					<label class="azc-sr-only" for="module-type-${moduleIndex}">${escapeHtml(l10n('moduleType'))}</label>
+				<legend>${escapeHtml(moduleLegendLabel(moduleIndex, def.type))}</legend>
+				<div class="form-group admin-tariff-rules__module-type-row">
+					<label for="module-type-${moduleIndex}" class="form-label">${escapeHtml(l10n('moduleType'))}</label>
 					<select id="module-type-${moduleIndex}" class="form-input admin-tariff-rules__module-type"${typeDisabled}>
 						${moduleTypeOptionsHtml(def.type)}
 					</select>
 				</div>
 				<div class="admin-tariff-rules__module-fields">
-					${moduleFieldsHtml(moduleIndex, def, config || {})}
+					${moduleFieldsHtml(moduleIndex, def, normalizedConfig)}
 				</div>
 				${removeBtn}
 			</fieldset>`;
@@ -366,8 +512,13 @@
 		modulesHost.querySelectorAll('.admin-tariff-rules__module').forEach((fs, idx) => {
 			fs.setAttribute('data-module-index', String(idx));
 			const typeSelect = fs.querySelector('.admin-tariff-rules__module-type');
+			const moduleType = typeSelect ? typeSelect.value : 'base_formula';
 			if (typeSelect) {
 				typeSelect.id = `module-type-${idx}`;
+			}
+			const legend = fs.querySelector('legend');
+			if (legend) {
+				legend.textContent = moduleLegendLabel(idx, moduleType);
 			}
 			fs.querySelectorAll('[data-field-name]').forEach((el) => {
 				const name = el.getAttribute('data-field-name');
@@ -406,50 +557,62 @@
 				</div>
 				<form id="tariff-rules-form" class="modal-body" novalidate>
 					${readOnlyNote}
-					<div class="form-grid admin-tariff-rules__form-grid">
-						<div class="form-group">
-							<label for="tariff-rules-code" class="form-label">${escapeHtml(l10n('tariffCode'))}</label>
-							<input type="text" id="tariff-rules-code" class="form-input" required maxlength="64" value="${escapeHtml(code)}"${lockAttr} aria-describedby="tariff-rules-code-help">
-							<p id="tariff-rules-code-help" class="form-help">${escapeHtml(l10n('tariffCodeHelp'))}</p>
+					<section class="admin-tariff-rules__form-section" aria-labelledby="tariff-rules-section-identity">
+						<h3 id="tariff-rules-section-identity" class="admin-tariff-rules__form-section-title">${escapeHtml(l10n('sectionIdentity'))}</h3>
+						<div class="form-grid admin-tariff-rules__form-grid">
+							<div class="form-group">
+								<label for="tariff-rules-code" class="form-label">${escapeHtml(l10n('tariffCode'))}</label>
+								<input type="text" id="tariff-rules-code" class="form-input" required maxlength="64" value="${escapeHtml(code)}"${lockAttr} aria-describedby="tariff-rules-code-help tariff-rules-code-error" autocomplete="off">
+								<p id="tariff-rules-code-help" class="form-help">${escapeHtml(l10n('tariffCodeHelp'))}</p>
+								<p id="tariff-rules-code-error" class="form-help form-help--error admin-tariff-rules__field-error" role="alert" hidden></p>
+							</div>
+							<div class="form-group">
+								<label for="tariff-rules-version" class="form-label">${escapeHtml(l10n('version'))}</label>
+								<input type="text" id="tariff-rules-version" class="form-input" required maxlength="32" value="${escapeHtml(version)}"${lockAttr} aria-describedby="tariff-rules-version-help tariff-rules-version-error" autocomplete="off">
+								<p id="tariff-rules-version-help" class="form-help">${escapeHtml(l10n('versionHelp'))}</p>
+								<p id="tariff-rules-version-error" class="form-help form-help--error admin-tariff-rules__field-error" role="alert" hidden></p>
+							</div>
+							<div class="form-group admin-tariff-rules__form-grid--full">
+								<label for="tariff-rules-jurisdiction" class="form-label">${escapeHtml(l10n('jurisdiction'))}</label>
+								<input type="text" id="tariff-rules-jurisdiction" class="form-input" maxlength="64" value="${escapeHtml(jurisdiction)}"${readOnly ? ' disabled' : ''} aria-describedby="tariff-rules-jurisdiction-help">
+								<p id="tariff-rules-jurisdiction-help" class="form-help">${escapeHtml(l10n('jurisdictionHelp'))}</p>
+							</div>
 						</div>
-						<div class="form-group">
-							<label for="tariff-rules-version" class="form-label">${escapeHtml(l10n('version'))}</label>
-							<input type="text" id="tariff-rules-version" class="form-input" required maxlength="32" value="${escapeHtml(version)}"${lockAttr} aria-describedby="tariff-rules-version-help">
-							<p id="tariff-rules-version-help" class="form-help">${escapeHtml(l10n('versionHelp'))}</p>
+					</section>
+					<section class="admin-tariff-rules__form-section" aria-labelledby="tariff-rules-section-validity">
+						<h3 id="tariff-rules-section-validity" class="admin-tariff-rules__form-section-title">${escapeHtml(l10n('sectionValidity'))}</h3>
+						<div class="form-grid admin-tariff-rules__form-grid">
+							<div class="form-group">
+								<label for="tariff-rules-valid-from" class="form-label">${escapeHtml(l10n('validFrom'))}</label>
+								<input type="date" id="tariff-rules-valid-from" class="form-input" required value="${escapeHtml(validFrom)}"${readOnly ? ' disabled' : ''}>
+							</div>
+							<div class="form-group">
+								<label for="tariff-rules-valid-to" class="form-label">${escapeHtml(l10n('validTo'))}</label>
+								<input type="date" id="tariff-rules-valid-to" class="form-input" value="${escapeHtml(validTo)}"${readOnly ? ' disabled' : ''} aria-describedby="tariff-rules-valid-to-help">
+								<p id="tariff-rules-valid-to-help" class="form-help">${escapeHtml(l10n('validToHelp'))}</p>
+							</div>
+							<div class="form-group admin-tariff-rules__form-grid--full">
+								<label for="tariff-rules-activation" class="form-label">${escapeHtml(l10n('activationMode'))}</label>
+								<select id="tariff-rules-activation" class="form-input"${readOnly ? ' disabled' : ''} aria-describedby="tariff-rules-activation-help">
+									<option value="immediate"${activationMode === 'immediate' ? ' selected' : ''}>${escapeHtml(l10n('activationImmediate'))}</option>
+									<option value="next_month"${activationMode === 'next_month' ? ' selected' : ''}>${escapeHtml(l10n('activationNextMonth'))}</option>
+									<option value="next_year"${activationMode === 'next_year' ? ' selected' : ''}>${escapeHtml(l10n('activationNextYear'))}</option>
+								</select>
+								<p id="tariff-rules-activation-help" class="form-help">${escapeHtml(l10n('activationModeHelp'))}</p>
+							</div>
 						</div>
-						<div class="form-group">
-							<label for="tariff-rules-jurisdiction" class="form-label">${escapeHtml(l10n('jurisdiction'))}</label>
-							<input type="text" id="tariff-rules-jurisdiction" class="form-input" maxlength="64" value="${escapeHtml(jurisdiction)}"${readOnly ? ' disabled' : ''} aria-describedby="tariff-rules-jurisdiction-help">
-							<p id="tariff-rules-jurisdiction-help" class="form-help">${escapeHtml(l10n('jurisdictionHelp'))}</p>
-						</div>
-						<div class="form-group">
-							<label for="tariff-rules-valid-from" class="form-label">${escapeHtml(l10n('validFrom'))}</label>
-							<input type="date" id="tariff-rules-valid-from" class="form-input" required value="${escapeHtml(validFrom)}"${readOnly ? ' disabled' : ''}>
-						</div>
-						<div class="form-group">
-							<label for="tariff-rules-valid-to" class="form-label">${escapeHtml(l10n('validTo'))}</label>
-							<input type="date" id="tariff-rules-valid-to" class="form-input" value="${escapeHtml(validTo)}"${readOnly ? ' disabled' : ''} aria-describedby="tariff-rules-valid-to-help">
-							<p id="tariff-rules-valid-to-help" class="form-help">${escapeHtml(l10n('validToHelp'))}</p>
-						</div>
-						<div class="form-group">
-							<label for="tariff-rules-activation" class="form-label">${escapeHtml(l10n('activationMode'))}</label>
-							<select id="tariff-rules-activation" class="form-input"${readOnly ? ' disabled' : ''} aria-describedby="tariff-rules-activation-help">
-								<option value="immediate"${activationMode === 'immediate' ? ' selected' : ''}>${escapeHtml(l10n('activationImmediate'))}</option>
-								<option value="next_month"${activationMode === 'next_month' ? ' selected' : ''}>${escapeHtml(l10n('activationNextMonth'))}</option>
-								<option value="next_year"${activationMode === 'next_year' ? ' selected' : ''}>${escapeHtml(l10n('activationNextYear'))}</option>
-							</select>
-							<p id="tariff-rules-activation-help" class="form-help">${escapeHtml(l10n('activationModeHelp'))}</p>
-						</div>
-					</div>
-					<h3 class="admin-tariff-rules__section-title">${escapeHtml(l10n('modules'))}</h3>
-					<p class="form-help">${escapeHtml(l10n('modulesHelp'))}</p>
-					<div id="tariff-rules-modules">${moduleRowsHtml}</div>
-					${readOnly ? '' : `<button type="button" id="tariff-rules-add-module" class="azc-btn azc-btn--secondary azc-btn--sm">${escapeHtml(l10n('addModule'))}</button>`}
-					<div id="tariff-rules-form-error" class="azc-callout azc-callout--error admin-tariff-rules__form-error" role="alert" hidden></div>
+					</section>
+					<section class="admin-tariff-rules__form-section" aria-labelledby="tariff-rules-section-modules">
+						<h3 id="tariff-rules-section-modules" class="admin-tariff-rules__section-title admin-tariff-rules__form-section-title">${escapeHtml(l10n('sectionModules'))}</h3>
+						<p class="form-help admin-tariff-rules__section-lead">${escapeHtml(l10n('modulesHelp'))}</p>
+						<div id="tariff-rules-modules">${moduleRowsHtml}</div>
+						${readOnly ? '' : `<button type="button" id="tariff-rules-add-module" class="azc-btn azc-btn--secondary azc-btn--sm admin-tariff-rules__add-module">${escapeHtml(l10n('addModule'))}</button>`}
+					</section>
+					<div id="tariff-rules-form-error" class="azc-callout azc-callout--danger admin-tariff-rules__form-error" role="alert" tabindex="-1" hidden></div>
 				</form>
 				<div class="modal-footer">
 					<button type="button" class="azc-btn azc-btn--secondary" data-dismiss="modal">${escapeHtml(readOnly ? l10n('close') : l10n('cancel'))}</button>
-					${readOnly ? '' : `<button type="button" class="azc-btn azc-btn--primary" id="tariff-rules-submit">${escapeHtml(l10n('save'))}</button>`}
+					${readOnly ? '' : `<button type="submit" class="azc-btn azc-btn--primary" id="tariff-rules-submit">${escapeHtml(l10n('save'))}</button>`}
 				</div>
 			</div>`;
 	}
@@ -473,6 +636,10 @@
 				if (fieldsHost) {
 					fieldsHost.innerHTML = moduleFieldsHtml(idx, def, {});
 				}
+				const legend = fieldset.querySelector('legend');
+				if (legend) {
+					legend.textContent = moduleLegendLabel(parseInt(idx, 10), newType);
+				}
 			});
 		});
 
@@ -485,13 +652,16 @@
 						? [...modulesHost.querySelectorAll('.admin-tariff-rules__module-type')].filter((s) => s.value === 'base_formula').length
 						: 0;
 					if (baseCount <= 1) {
-						showFormError(l10n('cannotRemoveBaseModule'));
+						showFormError(container.closest('#tariff-rules-modal') || container, l10n('cannotRemoveBaseModule'));
 						return;
 					}
 				}
 				fieldset.remove();
 				reindexModules(modulesHost);
-				showFormError(null);
+				const modalRoot = container.closest('#tariff-rules-modal');
+				if (modalRoot) {
+					showFormError(modalRoot, null);
+				}
 			});
 		});
 	}
@@ -518,7 +688,11 @@
 					const v = parseFloat(el.value);
 					config[field.name] = Number.isFinite(v) ? v : field.defaultValue;
 				} else {
-					config[field.name] = String(el.value || field.defaultValue);
+					let value = String(el.value || field.defaultValue);
+					if (moduleType === 'pro_rata_rule' && field.name === 'mode') {
+						value = normalizeProRataMode(value);
+					}
+					config[field.name] = value;
 				}
 			});
 			result.push({ moduleType, config });
@@ -526,19 +700,161 @@
 		return result;
 	}
 
-	function showFormError(message) {
-		const errBox = document.getElementById('tariff-rules-form-error');
+	function clearFormErrors(modal) {
+		const errBox = modal.querySelector('#tariff-rules-form-error');
+		if (errBox) {
+			errBox.replaceChildren();
+			errBox.hidden = true;
+		}
+		modal.querySelectorAll('.admin-tariff-rules__field-error').forEach((el) => {
+			el.textContent = '';
+			el.hidden = true;
+		});
+		modal.querySelectorAll('#tariff-rules-code, #tariff-rules-version').forEach((input) => {
+			input.removeAttribute('aria-invalid');
+		});
+	}
+
+	function setIdentityFieldErrors(modal, message) {
+		const hint = message || l10n('duplicateFieldHint');
+		['tariff-rules-code', 'tariff-rules-version'].forEach((inputId) => {
+			const input = modal.querySelector(`#${inputId}`);
+			const errEl = modal.querySelector(`#${inputId}-error`);
+			if (input) {
+				input.setAttribute('aria-invalid', 'true');
+			}
+			if (errEl) {
+				errEl.textContent = hint;
+				errEl.hidden = false;
+			}
+		});
+		const first = modal.querySelector('#tariff-rules-code');
+		if (first && !first.disabled) {
+			first.focus();
+		}
+	}
+
+	function duplicateConflictMessage(existing) {
+		if (!existing) {
+			return l10n('createError');
+		}
+		const code = existing.tariffCode || '';
+		const version = existing.version || '';
+		if (existing.status === 'draft') {
+			return l10nParams('duplicateConflictDraft', code, version);
+		}
+		return l10nParams(
+			'duplicateConflictLocked',
+			code,
+			version,
+			existing.statusLabel || statusLabel(existing.status),
+		);
+	}
+
+	function showFormError(modal, message, options) {
+		const errBox = modal.querySelector('#tariff-rules-form-error');
 		if (!errBox) {
 			return;
 		}
+		const opts = options || {};
+		clearFormErrors(modal);
 		if (!message) {
-			errBox.textContent = '';
-			errBox.hidden = true;
-		} else {
-			errBox.textContent = message;
-			errBox.hidden = false;
-			errBox.focus && errBox.focus();
+			return;
 		}
+		if (opts.fieldErrors) {
+			setIdentityFieldErrors(modal, opts.fieldErrors);
+		}
+		const text = document.createElement('p');
+		text.className = 'azc-callout__text';
+		text.textContent = message;
+		errBox.appendChild(text);
+		if (opts.versionSuggestion && typeof opts.onApplyVersionSuggestion === 'function') {
+			const hint = document.createElement('p');
+			hint.className = 'azc-callout__hint admin-tariff-rules__version-suggestion';
+			hint.textContent = l10nParams('versionSuggestion', opts.versionSuggestion);
+			errBox.appendChild(hint);
+			const suggestBtn = document.createElement('button');
+			suggestBtn.type = 'button';
+			suggestBtn.className = 'azc-btn azc-btn--secondary azc-btn--sm';
+			suggestBtn.textContent = l10n('useSuggestedVersion');
+			suggestBtn.addEventListener('click', () => opts.onApplyVersionSuggestion());
+			const suggestWrap = document.createElement('div');
+			suggestWrap.className = 'admin-tariff-rules__conflict-actions';
+			suggestWrap.appendChild(suggestBtn);
+			errBox.appendChild(suggestWrap);
+		}
+		if (opts.existing && opts.existing.id) {
+			const actions = document.createElement('div');
+			actions.className = 'admin-tariff-rules__conflict-actions';
+			const existingId = parseInt(String(opts.existing.id), 10);
+			if (opts.existing.status === 'draft' && typeof opts.onOpenExisting === 'function') {
+				const openBtn = document.createElement('button');
+				openBtn.type = 'button';
+				openBtn.className = 'azc-btn azc-btn--primary azc-btn--sm';
+				openBtn.textContent = l10n('openExistingDraft');
+				openBtn.addEventListener('click', () => opts.onOpenExisting(existingId));
+				actions.appendChild(openBtn);
+			} else if (typeof opts.onViewExisting === 'function') {
+				const viewBtn = document.createElement('button');
+				viewBtn.type = 'button';
+				viewBtn.className = 'azc-btn azc-btn--secondary azc-btn--sm';
+				viewBtn.textContent = l10n('viewExistingRuleSet');
+				viewBtn.addEventListener('click', () => opts.onViewExisting(existingId));
+				actions.appendChild(viewBtn);
+			}
+			const listBtn = document.createElement('button');
+			listBtn.type = 'button';
+			listBtn.className = 'azc-btn azc-btn--ghost azc-btn--sm';
+			listBtn.textContent = l10n('showInList');
+			listBtn.addEventListener('click', () => {
+				highlightRowInTable(existingId);
+			});
+			actions.appendChild(listBtn);
+			errBox.appendChild(actions);
+		}
+		errBox.hidden = false;
+		errBox.focus();
+		errBox.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+	}
+
+	function showDuplicatePreview(modal, existing) {
+		if (!existing) {
+			clearFormErrors(modal);
+			updateSubmitDisabled(modal, false);
+			return;
+		}
+		setIdentityFieldErrors(modal, l10n('duplicateFieldHint'));
+		updateSubmitDisabled(modal, true);
+	}
+
+	function handleDuplicateConflict(modal, existing, backdrop, closeModal) {
+		const message = duplicateConflictMessage(existing);
+		const suggestion = existing ? suggestNextVersion(existing.version) : '';
+		showFormError(modal, message, {
+			fieldErrors: l10n('duplicateFieldHint'),
+			existing,
+			versionSuggestion: suggestion,
+			onApplyVersionSuggestion: suggestion
+				? () => {
+					const versionInput = modal.querySelector('#tariff-rules-version');
+					if (versionInput && !versionInput.disabled) {
+						versionInput.value = suggestion;
+						versionInput.dispatchEvent(new Event('input', { bubbles: true }));
+					}
+				}
+				: null,
+			onOpenExisting: async (existingId) => {
+				closeModal();
+				await openEditModal(existingId);
+				highlightRowInTable(existingId);
+			},
+			onViewExisting: async (existingId) => {
+				closeModal();
+				await openViewModal(existingId);
+				highlightRowInTable(existingId);
+			},
+		});
+		updateSubmitDisabled(modal, true);
 	}
 
 	function validateForm(values) {
@@ -563,15 +879,26 @@
 			return l10n('baseFormulaRequired');
 		}
 		const c = base.config || {};
-		if (!Number.isFinite(c.reference_days) || !Number.isFinite(c.reference_week_days)) {
+		if (!Number.isFinite(c.reference_days) || c.reference_days < 0 || c.reference_days > 366) {
+			return l10n('baseFormulaRequired');
+		}
+		if (!Number.isFinite(c.reference_week_days) || c.reference_week_days < 1 || c.reference_week_days > 7) {
+			return l10n('baseFormulaRequired');
+		}
+		if (Number.isFinite(c.work_days_per_week)
+			&& (c.work_days_per_week < 1 || c.work_days_per_week > 7)) {
 			return l10n('baseFormulaRequired');
 		}
 		return null;
 	}
 
 	function collectFormValues(modal, isEdit, existing) {
-		const tariffCode = isEdit ? existing.tariffCode : modal.querySelector('#tariff-rules-code').value.trim();
-		const version = isEdit ? existing.version : modal.querySelector('#tariff-rules-version').value.trim();
+		const tariffCode = isEdit
+			? normalizeIdentity(existing.tariffCode)
+			: normalizeIdentity(modal.querySelector('#tariff-rules-code').value);
+		const version = isEdit
+			? normalizeIdentity(existing.version)
+			: normalizeIdentity(modal.querySelector('#tariff-rules-version').value);
 		const jurisdiction = modal.querySelector('#tariff-rules-jurisdiction').value.trim();
 		const validFrom = modal.querySelector('#tariff-rules-valid-from').value;
 		const validTo = modal.querySelector('#tariff-rules-valid-to').value;
@@ -638,46 +965,104 @@
 			}
 
 			const submitBtn = modal.querySelector('#tariff-rules-submit');
-			if (submitBtn) {
-				submitBtn.addEventListener('click', async () => {
-					showFormError(null);
-					const values = collectFormValues(modal, isEdit, ruleSet || {});
-					const err = validateForm(values);
-					if (err) {
-						showFormError(err);
+			const form = modal.querySelector('#tariff-rules-form');
+			const runSubmit = async () => {
+				if (!submitBtn || submitBtn.disabled) {
+					return;
+				}
+				showFormError(modal, null);
+				const values = collectFormValues(modal, isEdit, ruleSet || {});
+				const err = validateForm(values);
+				if (err) {
+					showFormError(modal, err);
+					return;
+				}
+				if (!isEdit) {
+					const localDup = findDuplicateRuleSet(values.tariffCode, values.version);
+					if (localDup) {
+						handleDuplicateConflict(modal, localDup, backdrop, closeModal);
 						return;
 					}
-					submitBtn.setAttribute('aria-busy', 'true');
-					submitBtn.disabled = true;
-					try {
-						let r;
-						if (isEdit) {
-							r = await apiFetch(`${API_LIST}/${encodeURIComponent(ruleSet.id)}`, { method: 'PUT', json: values });
-						} else {
-							r = await apiFetch(API_LIST, { method: 'POST', json: values });
-						}
-						if (r.ok && r.payload && r.payload.success) {
-							const msg = isEdit ? l10n('updated') : l10n('created');
-							Messaging.showSuccess && Messaging.showSuccess(msg);
-							announce(msg);
-							closeModal();
-							loadRuleSets();
-						} else {
-							let errMsg = (r.payload && r.payload.error) || (isEdit ? l10n('updateError') : l10n('createError'));
-							if (r.payload && r.payload.errors && typeof r.payload.errors === 'object') {
-								const parts = Object.values(r.payload.errors).filter(Boolean);
-								if (parts.length) {
-									errMsg = parts.join(' ');
-								}
-							}
-							showFormError(errMsg);
-						}
-					} catch (_) {
-						showFormError(isEdit ? l10n('updateError') : l10n('createError'));
-					} finally {
-						submitBtn.removeAttribute('aria-busy');
-						submitBtn.disabled = false;
+				}
+				submitBtn.setAttribute('aria-busy', 'true');
+				submitBtn.disabled = true;
+				let keepSubmitDisabled = false;
+				try {
+					let r;
+					if (isEdit) {
+						r = await apiFetch(`${API_LIST}/${encodeURIComponent(ruleSet.id)}`, { method: 'PUT', json: values });
+					} else {
+						r = await apiFetch(API_LIST, { method: 'POST', json: values });
 					}
+					if (r.ok && r.payload && r.payload.success) {
+						const msg = isEdit ? l10n('updated') : l10n('created');
+						Messaging.showSuccess && Messaging.showSuccess(msg);
+						announce(msg);
+						closeModal();
+						loadRuleSets();
+					} else if (!isEdit && isDuplicateConflictResponse(r)) {
+						const existing = (r.payload && r.payload.existing)
+							|| findDuplicateRuleSet(values.tariffCode, values.version);
+						if (existing && !existing.statusLabel && existing.status) {
+							existing.statusLabel = statusLabel(existing.status);
+						}
+						handleDuplicateConflict(modal, existing, backdrop, closeModal);
+						keepSubmitDisabled = true;
+						await loadRuleSets();
+					} else {
+						let errMsg = (r.payload && r.payload.error) || (isEdit ? l10n('updateError') : l10n('createError'));
+						const fieldErr = r.payload && r.payload.errors && r.payload.errors.tariffCode;
+						if (r.payload && r.payload.errors && typeof r.payload.errors === 'object') {
+							if (r.payload.errors.tariffCode || r.payload.errors.version) {
+								setIdentityFieldErrors(modal, fieldErr || l10n('duplicateFieldHint'));
+								keepSubmitDisabled = !!(r.payload.errors.tariffCode || r.payload.errors.version);
+							}
+							const parts = Object.values(r.payload.errors).filter(Boolean);
+							if (parts.length && !r.payload.error) {
+								errMsg = parts.join(' ');
+							}
+						}
+						showFormError(modal, errMsg);
+					}
+				} catch (_) {
+					showFormError(modal, isEdit ? l10n('updateError') : l10n('createError'));
+				} finally {
+					submitBtn.removeAttribute('aria-busy');
+					if (!keepSubmitDisabled) {
+						submitBtn.disabled = false;
+						submitBtn.setAttribute('aria-disabled', 'false');
+					}
+				}
+			};
+			if (submitBtn) {
+				submitBtn.addEventListener('click', (e) => {
+					e.preventDefault();
+					runSubmit();
+				});
+			}
+			if (form) {
+				form.addEventListener('submit', (e) => {
+					e.preventDefault();
+					runSubmit();
+				});
+			}
+
+			if (!isEdit && !readOnly) {
+				['tariff-rules-code', 'tariff-rules-version'].forEach((inputId) => {
+					const input = modal.querySelector(`#${inputId}`);
+					if (!input) {
+						return;
+					}
+					input.addEventListener('input', () => {
+						const values = collectFormValues(modal, false, {});
+						const dup = findDuplicateRuleSet(values.tariffCode, values.version);
+						if (dup) {
+							showDuplicatePreview(modal, dup);
+						} else {
+							clearFormErrors(modal);
+							updateSubmitDisabled(modal, false);
+						}
+					});
 				});
 			}
 		}
@@ -715,7 +1100,17 @@
 	function init() {
 		const createBtn = document.getElementById('tariff-rules-create');
 		if (createBtn) {
-			createBtn.addEventListener('click', () => openModal(null, false, false));
+			createBtn.addEventListener('click', async () => {
+				createBtn.setAttribute('aria-busy', 'true');
+				createBtn.disabled = true;
+				try {
+					await loadRuleSets();
+					openModal(null, false, false);
+				} finally {
+					createBtn.removeAttribute('aria-busy');
+					createBtn.disabled = false;
+				}
+			});
 		}
 		const refreshBtn = document.getElementById('tariff-rules-refresh');
 		if (refreshBtn) {

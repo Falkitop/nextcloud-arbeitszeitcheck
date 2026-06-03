@@ -32,6 +32,17 @@ final class Constants
 	public const MAX_LIST_LIMIT = 500;
 
 	/**
+	 * Minimum characters required for admin user-picker search (GET ?picker=1).
+	 * Prevents unbounded directory dumps on large instances.
+	 */
+	public const PICKER_MIN_SEARCH_LENGTH = 2;
+
+	/**
+	 * Maximum results returned per admin user-picker request.
+	 */
+	public const PICKER_MAX_RESULTS = 25;
+
+	/**
 	 * Default vacation days per year when no user setting exists (German standard).
 	 */
 	public const DEFAULT_VACATION_DAYS_PER_YEAR = 25;
@@ -196,11 +207,27 @@ final class Constants
 	/** User setting key: ISO Y-m-d date from which overtime balance is tracked (null = Jan 1 legacy). */
 	public const SETTING_OVERTIME_TRACKING_FROM = 'overtime_tracking_from';
 
+	/** User setting: when absent or truthy, employee may use clock in/out (stamping). Default enabled. */
+	public const SETTING_CLOCK_STAMPING_ENABLED = 'clock_stamping_enabled';
+
+	/** User setting: when absent or truthy, employee may create manual time entries. Default enabled. */
+	public const SETTING_MANUAL_TIME_ENTRY_ENABLED = 'manual_time_entry_enabled';
+
 	/** App config: require manager approval for edits to completed time entries. Default off. */
 	public const CONFIG_TIME_ENTRY_CHANGES_REQUIRE_APPROVAL = 'time_entry_changes_require_approval';
 
 	/** App config: require manager approval for new manual time entries. Default off. */
 	public const CONFIG_MANUAL_TIME_ENTRIES_REQUIRE_APPROVAL = 'manual_time_entries_require_approval';
+
+	/**
+	 * App config: when "1", employees may link ArbeitszeitCheck time to ProjectCheck
+	 * projects (clock-in picker and manual entries). Requires the ProjectCheck app
+	 * to be installed and enabled.
+	 */
+	public const CONFIG_PROJECTCHECK_INTEGRATION_ENABLED = 'projectcheck_integration_enabled';
+
+	/** Default for {@see self::CONFIG_PROJECTCHECK_INTEGRATION_ENABLED}: opt-in (off). */
+	public const CONFIG_PROJECTCHECK_INTEGRATION_DEFAULT = '0';
 
 	/** Overtime balance algorithm version for audit replay. */
 	public const OVERTIME_ALGORITHM_VERSION = 2;

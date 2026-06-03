@@ -4,13 +4,15 @@ declare(strict_types=1);
 
 namespace OCA\ArbeitszeitCheck\Service;
 
+use OCA\ArbeitszeitCheck\Constants;
 use OCA\ArbeitszeitCheck\Db\Absence;
 use OCA\ArbeitszeitCheck\Db\AbsenceMapper;
 use OCP\IUserManager;
 
 class DashboardWidgetDataService {
 	private const MAX_MANAGER_MEMBERS = 50;
-	private const MAX_ADMIN_USERS = 200;
+	/** Max accounts scanned for admin widget status summary (DoS guard). */
+	private const MAX_ADMIN_USERS_SCAN = Constants::MAX_LIST_LIMIT;
 	private const MAX_ADMIN_WIDGET_USERS = 50;
 
 	public function __construct(
@@ -24,6 +26,7 @@ class DashboardWidgetDataService {
 		private readonly PermissionService $permissionService,
 		private readonly IUserManager $userManager,
 		private readonly TimeZoneService $timeZoneService,
+		private readonly TimeCaptureMethodService $timeCaptureMethodService,
 	) {
 	}
 
@@ -63,9 +66,18 @@ class DashboardWidgetDataService {
 			$userId
 		);
 
+		$currentEntryId = null;
+		if (isset($status['current_entry']['id'])) {
+			$currentEntryId = (int)$status['current_entry']['id'];
+			if ($currentEntryId <= 0) {
+				$currentEntryId = null;
+			}
+		}
+
 		return [
 			'userId'                 => $userId,
 			'status'                 => (string)($status['status'] ?? 'clocked_out'),
+			'currentEntryId'         => $currentEntryId,
 			'workingTodayHours'      => (float)($status['working_today_hours'] ?? 0.0),
 			'currentSessionDuration' => (int)($status['current_session_duration'] ?? 0),
 			// Drift-safe timer anchor (same fields as GET /api/clock/status).
@@ -90,6 +102,7 @@ class DashboardWidgetDataService {
 			'vacationUsed'           => (float)($vacationStats['used'] ?? 0.0),
 			'vacationCarryover'      => (float)($vacationStats['carryover_days'] ?? 0.0),
 			'vacationCarryoverUsable'=> (float)($vacationStats['carryover_usable'] ?? 0.0),
+			'timeCapture'            => $this->timeCaptureMethodService->getSettings($userId),
 		];
 	}
 
@@ -153,25 +166,32 @@ class DashboardWidgetDataService {
 					'other_absent' => 0,
 					'total_absent' => 0,
 				],
+				'summaryTruncated' => false,
+				'summaryScopeLimit' => self::MAX_ADMIN_USERS_SCAN,
+				'directoryTotal' => 0,
 			];
 		}
 
 		$summary = $this->emptySummary();
 		$users = [];
 		$effectiveLimit = max(1, min(self::MAX_ADMIN_WIDGET_USERS, $limit));
-		$allUsers = $this->userManager->search('', self::MAX_ADMIN_USERS, 0);
+		$allUsers = $this->userManager->search('', self::MAX_ADMIN_USERS_SCAN, 0);
 		$allUserIds = [];
 		$index = 0;
 		foreach ($allUsers as $user) {
-			$allUserIds[] = $user->getUID();
-			$status = $this->timeTrackingService->getStatus($user->getUID());
+			if (!$user->isEnabled()) {
+				continue;
+			}
+			$uid = $user->getUID();
+			$allUserIds[] = $uid;
+			$status = $this->timeTrackingService->getStatus($uid);
 			$statusKey = (string)($status['status'] ?? 'clocked_out');
 			$summary['total']++;
 			$this->incrementStatus($summary, $statusKey);
 
 			if ($index < $effectiveLimit) {
 				$users[] = [
-					'userId' => $user->getUID(),
+					'userId' => $uid,
 					'displayName' => $user->getDisplayName(),
 					'status' => $statusKey,
 					'workingTodayHours' => (float)($status['working_today_hours'] ?? 0.0),
@@ -180,6 +200,14 @@ class DashboardWidgetDataService {
 			}
 		}
 
+		$directoryTotal = $this->userManager->countUsersTotal(0, false);
+		if ($directoryTotal === false) {
+			$directoryTotal = $summary['total'];
+		}
+		$hitScanCap = count($allUsers) >= self::MAX_ADMIN_USERS_SCAN;
+		// Only flag truncation when the scan window was exhausted (not when disabled accounts inflate directoryTotal).
+		$summaryTruncated = $hitScanCap;
+
 		$absenceSummary = $this->buildTeamAbsenceSummary($allUserIds);
 
 		return [
@@ -187,6 +215,9 @@ class DashboardWidgetDataService {
 			'users' => $users,
 			'summary' => $summary,
 			'absenceSummary' => $absenceSummary,
+			'summaryTruncated' => $summaryTruncated,
+			'summaryScopeLimit' => self::MAX_ADMIN_USERS_SCAN,
+			'directoryTotal' => (int)$directoryTotal,
 		];
 	}
 

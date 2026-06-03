@@ -29,19 +29,20 @@ $monthLabels = is_array($_['monthLabels'] ?? null) ? $_['monthLabels'] : [];
 
         <div class="admin-ot-payout-audit">
             <?php if (!$bankEnabled): ?>
-            <aside class="azc-callout azc-callout--warning" role="alert" aria-labelledby="admin-ot-audit-bank-off-title">
-                <h2 id="admin-ot-audit-bank-off-title" class="azc-callout__title">
-                    <?php p($l->t('Overtime bank is off')); ?>
-                </h2>
-                <p class="azc-callout__text">
-                    <?php p($l->t('The overtime bank is disabled. Historical payout records may still appear below.')); ?>
-                </p>
-                <p class="azc-callout__actions">
-                    <a href="<?php p($notificationsUrl); ?>" class="azc-btn azc-btn--primary">
-                        <?php p($l->t('Open overtime bank settings')); ?>
-                    </a>
-                </p>
-            </aside>
+            <?php
+            $calloutVariant = 'warning';
+            $calloutRole = 'alert';
+            $calloutTitleId = 'admin-ot-audit-bank-off-title';
+            $calloutTitle = $l->t('Overtime bank is off');
+            $calloutText = $l->t('The overtime bank is disabled. Historical payout records may still appear below.');
+            $calloutExtraClass = 'admin-ot-audit__bank-off';
+            $calloutActions = [[
+                'href' => $notificationsUrl,
+                'label' => $l->t('Open overtime bank settings'),
+                'class' => 'azc-btn azc-btn--primary',
+            ]];
+            include __DIR__ . '/common/alert-callout.php';
+            ?>
             <?php endif; ?>
 
             <section class="azc-card admin-ot-audit-filters" aria-labelledby="admin-ot-audit-filter-heading">
@@ -82,7 +83,7 @@ $monthLabels = is_array($_['monthLabels'] ?? null) ? $_['monthLabels'] : [];
                                 <input type="hidden" id="ot-audit-user-id" name="userId" value="">
                                 <div class="user-picker admin-ot-audit-filters__picker" id="ot-audit-employee-picker">
                                     <div class="user-picker__control">
-                                        <input type="text"
+                                        <input type="search"
                                             id="ot-audit-employee-search"
                                             class="form-input user-picker__search"
                                             autocomplete="off"
@@ -153,7 +154,7 @@ $monthLabels = is_array($_['monthLabels'] ?? null) ? $_['monthLabels'] : [];
                 </header>
                 <div class="azc-card__body">
                     <div class="table-container" role="region" aria-labelledby="ot-audit-table-heading">
-                        <table class="table table--hover grid-table admin-ot-audit__grid" id="ot-audit-table">
+                        <table class="table table--hover azc-table--responsive grid-table admin-ot-audit__grid" id="ot-audit-table">
                             <caption class="sr-only"><?php p($l->t('Recorded overtime payouts matching the current filters')); ?></caption>
                             <thead>
                                 <tr>
@@ -179,7 +180,7 @@ $monthLabels = is_array($_['monthLabels'] ?? null) ? $_['monthLabels'] : [];
 window.ARBEITSZEITCHECK_OT_PAYOUT_AUDIT = {
 	apiUrl: <?php echo json_encode($urlGenerator->linkToRoute('arbeitszeitcheck.overtime_payout.listAudit'), TemplateL10n::JSON_ENCODE_FLAGS); ?>,
 	payoutProcessUrl: <?php echo json_encode($payoutUrl, TemplateL10n::JSON_ENCODE_FLAGS); ?>,
-	adminUserSearchUrl: <?php echo json_encode($_['adminUserSearchUrl'] ?? $urlGenerator->linkToRoute('arbeitszeitcheck.admin.searchVacationLayersUsers'), TemplateL10n::JSON_ENCODE_FLAGS); ?>,
+	adminUserSearchUrl: <?php echo json_encode($_['adminUserSearchUrl'] ?? $urlGenerator->linkToRoute('arbeitszeitcheck.admin.getUsers'), TemplateL10n::JSON_ENCODE_FLAGS); ?>,
 	defaultYear: <?php echo (int)$defaultYear; ?>,
 	i18n: <?php echo json_encode($otPayoutAuditI18n, TemplateL10n::JSON_ENCODE_FLAGS); ?>
 };

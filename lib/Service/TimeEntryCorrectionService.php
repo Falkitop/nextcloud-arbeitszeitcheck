@@ -177,15 +177,21 @@ class TimeEntryCorrectionService
 		}
 
 		if ($this->projectCheckIntegration->isProjectCheckAvailable()) {
-			$pid = $candidate->getProjectCheckProjectId();
-			if ($pid !== null && $pid !== '') {
+			$candidatePid = $candidate->getProjectCheckProjectId();
+			$currentPid = $entry->getProjectCheckProjectId();
+			$candidatePid = ($candidatePid === null || $candidatePid === '') ? null : (string)$candidatePid;
+			$currentPid = ($currentPid === null || $currentPid === '') ? null : (string)$currentPid;
+			// Only authorise when the link actually changes (add, change, or clear).
+			// Unchanged links stay valid even if the admin connection was turned off
+			// or team access was revoked — mirrors TimeEntryController::update().
+			if ($candidatePid !== $currentPid && $candidatePid !== null) {
 				$allowed = $actingManagerUserId !== null && $actingManagerUserId !== ''
 					? $this->projectCheckIntegration->managerMayAttachProjectCheckProjectForEmployee(
 						$actingManagerUserId,
 						$entry->getUserId(),
-						$pid
+						$candidatePid
 					)
-					: $this->projectCheckIntegration->userMayAttachProjectCheckProjectToOwnTime($entry->getUserId(), $pid);
+					: $this->projectCheckIntegration->userMayAttachProjectCheckProjectToOwnTime($entry->getUserId(), $candidatePid);
 				if (!$allowed) {
 					return $this->l10n->t('You cannot link this ProjectCheck project to your time entry.');
 				}

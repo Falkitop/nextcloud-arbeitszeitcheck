@@ -1,44 +1,72 @@
 /**
- * IconCatalog / AzcCatalog SVG sizing (global).
+ * IconCatalog / AzcCatalog SVG sizing and contrast (global).
  *
  * Icons must stay compact in flex column layouts and on mobile, where
  * responsive.css applies max-width:100% to generic svg elements.
  * Rules here apply inside and outside #app-content (toasts, modals).
  */
 
+.azc-icon,
+.inline-notice__glyph,
+svg[class*='__icon-svg'],
+svg[class*='__glyph'],
+.azc-page-header__icon-svg,
+.confirm-dialog__icon-svg,
+.toast__icon-svg,
+.form-error__icon-svg {
+	max-width: none;
+	flex-shrink: 0;
+	stroke: currentColor;
+	fill: none;
+	color: inherit;
+}
+
+.azc-icon,
+.inline-notice__glyph,
+.lucide-icon {
+	stroke-width: var(--azc-icon-stroke, 2);
+}
+
 .azc-icon {
 	width: var(--azc-icon-md);
 	height: var(--azc-icon-md);
-	flex-shrink: 0;
 	display: block;
-	max-width: none;
 }
 
-/* Legacy .alert (compliance dashboard, etc.) */
-.alert-icon {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	flex-shrink: 0;
-}
-
-.alert-icon .azc-icon {
-	width: var(--azc-icon-md);
-	height: var(--azc-icon-md);
-}
-
-/* Toasts (appended to document.body) */
+/* Shared status icon wells (inline notices, alerts, toasts) */
+.azc-status-icon-well,
+.inline-notice__icon,
+.alert-icon,
 .toast-icon {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
 	flex-shrink: 0;
+	width: var(--azc-icon-well);
+	height: var(--azc-icon-well);
+	border-radius: var(--azc-radius-sm, 6px);
+	background: var(--color-main-background);
+	color: var(--color-main-text);
+	border: 2px solid var(--color-border);
 }
 
+.azc-status-icon-well .azc-icon,
+.azc-status-icon-well .inline-notice__glyph,
+.inline-notice__icon .azc-icon,
+.inline-notice__icon .inline-notice__glyph,
+.inline-notice__icon svg,
+.alert-icon .azc-icon,
+.alert-icon svg,
 .toast-icon .azc-icon,
-.toast-icon .toast__icon-svg {
-	width: var(--azc-icon-md);
-	height: var(--azc-icon-md);
+.toast-icon svg {
+	width: var(--azc-icon-lg);
+	height: var(--azc-icon-lg);
+}
+
+/* Notification icon fills: common/notification-surfaces.css */
+
+.form-error__icon {
+	color: var(--color-error, #c32c2c);
 }
 
 /* Confirm dialogs (portaled modals) */
@@ -48,6 +76,7 @@
 	justify-content: center;
 	flex-shrink: 0;
 	line-height: 1;
+	color: var(--color-main-text);
 }
 
 .confirm-dialog__icon .azc-icon,
@@ -92,17 +121,47 @@
 	max-width: 100%;
 }
 
+.azc-datepicker-host--flex {
+	display: block;
+	position: relative;
+	flex: 1 1 10rem;
+	min-width: 0;
+}
+
+.azc-datepicker-host .datepicker-input {
+	width: 100%;
+	box-sizing: border-box;
+	padding-inline-end: 3rem;
+}
+
 /* Datepicker toggle injected beside inputs */
 .azc-datepicker-toggle {
+	position: absolute;
+	inset-inline-end: 0;
+	top: 50%;
+	transform: translateY(-50%);
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
+	min-width: 44px;
+	min-height: 44px;
+	padding: 4px 8px;
+	background: none;
+	border: none;
+	cursor: pointer;
+	color: var(--color-main-text, inherit);
+}
+
+.azc-datepicker-toggle:focus-visible {
+	outline: 2px solid var(--color-primary-element, #0082c9);
+	outline-offset: 2px;
 }
 
 .azc-datepicker-toggle .azc-icon,
 .azc-datepicker-toggle__icon {
-	width: var(--azc-icon-sm);
-	height: var(--azc-icon-sm);
+	width: var(--azc-icon-md);
+	height: var(--azc-icon-md);
+	color: var(--color-main-text);
 }
 
 /* NC dashboard desklet status glyphs */
@@ -110,4 +169,30 @@
 .dashboard-widget-status-icon {
 	width: var(--azc-icon-sm);
 	height: var(--azc-icon-sm);
+}
+
+@media (prefers-contrast: more) {
+	.azc-icon,
+	.inline-notice__glyph,
+	.lucide-icon {
+		stroke-width: 2.25;
+	}
+
+	.azc-status-icon-well,
+	.inline-notice__icon,
+	.alert-icon,
+	.toast-icon {
+		border-width: 3px;
+	}
+}
+
+@media (forced-colors: active) {
+	.azc-status-icon-well,
+	.inline-notice__icon,
+	.alert-icon,
+	.toast-icon {
+		border: 2px solid CanvasText;
+		background: Canvas;
+		color: CanvasText;
+	}
 }

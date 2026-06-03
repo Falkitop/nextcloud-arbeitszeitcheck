@@ -36,38 +36,44 @@ $cancelUrl = $isNcAdminShell
 <div class="azc-nc-admin-settings" id="arbeitszeitcheck-nc-admin-settings">
 	<div id="azc-live-region" class="azc-sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 	<div id="azc-alert-region" class="azc-sr-only" role="alert" aria-live="assertive" aria-atomic="true"></div>
-	<aside class="azc-callout azc-callout--info azc-nc-admin-settings__banner" role="note" aria-labelledby="azc-nc-admin-settings-note-title">
-		<h3 id="azc-nc-admin-settings-note-title" class="azc-callout__title"><?php p($l->t('Nextcloud administration view')); ?></h3>
-		<p class="azc-callout__text"><?php p($l->t('These settings are the same as in the ArbeitszeitCheck app. Use the full app view for navigation to all admin tools (employees, holidays, audit log, and more).')); ?></p>
-		<p class="azc-callout__actions">
-			<a class="azc-btn azc-btn--primary" href="<?php p($inAppAdminSettingsUrl); ?>">
-				<?php p($l->t('Open full settings in app')); ?>
-			</a>
-		</p>
-	</aside>
+	<?php
+	$calloutVariant = 'info';
+	$calloutRole = 'note';
+	$calloutTitleId = 'azc-nc-admin-settings-note-title';
+	$calloutTitle = $l->t('Nextcloud administration view');
+	$calloutText = $l->t('These settings are the same as in the ArbeitszeitCheck app. Use the full app view for navigation to all admin tools (employees, holidays, audit log, and more).');
+	$calloutExtraClass = 'azc-nc-admin-settings__banner';
+	$calloutActions = [[
+		'href' => $inAppAdminSettingsUrl,
+		'label' => $l->t('Open full settings in app'),
+		'class' => 'azc-btn azc-btn--primary',
+	]];
+	include __DIR__ . '/common/alert-callout.php';
+	?>
 <?php endif; ?>
 
         <div class="section<?php echo $isNcAdminShell ? ' azc-nc-admin-settings__form' : ''; ?>">
 <?php if (isset($_['error']) && !empty($_['error'])): ?>
-                <div class="azc-callout azc-callout--danger" role="alert">
-                    <p class="azc-callout__title"><?php p($l->t('An error occurred')); ?></p>
-                    <p class="azc-callout__text">
-                            <?php 
-                            // Make error message more helpful
-                            $error = $_['error'];
-                            if (strpos($error, 'Exception') !== false || strpos($error, 'Error') !== false || strpos($error, 'SQL') !== false) {
-                                p($l->t('Please try again. If the problem persists, contact your administrator.'));
-                            } else {
-                                p($error);
-                            }
-                            ?>
-                    </p>
-                </div>
+                <?php
+                $error = (string)$_['error'];
+                $calloutVariant = 'danger';
+                $calloutRole = 'alert';
+                $calloutBanner = false;
+                $calloutIcon = 'circle-alert';
+                $calloutTitle = $l->t('An error occurred');
+                if (strpos($error, 'Exception') !== false || strpos($error, 'Error') !== false || strpos($error, 'SQL') !== false) {
+                    $calloutText = $l->t('Please try again. If the problem persists, contact your administrator.');
+                } else {
+                    $calloutText = $error;
+                }
+                include __DIR__ . '/common/alert-callout.php';
+                ?>
             <?php endif; ?>
 
             <div class="azc-settings-layout">
                 <?php
                 $jumpNavAriaLabel = $l->t('Jump to settings sections');
+                $projectCheckAvailable = !empty($_['projectCheckAvailable']);
                 $jumpNavItems = [
                     ['href' => '#section-access-heading', 'label' => $l->t('Access control')],
                     ['href' => '#section-compliance-heading', 'label' => $l->t('Compliance and working time rules')],
@@ -76,6 +82,7 @@ $cancelUrl = $isNcAdminShell
                     ['href' => '#section-hours-heading', 'label' => $l->t('Daily hours and rest periods')],
                     ['href' => '#section-regional-heading', 'label' => $l->t('Region and holidays')],
                     ['href' => '#section-retention-heading', 'label' => $l->t('Data retention')],
+                    ['href' => '#section-projectcheck-heading', 'label' => $l->t('ProjectCheck connection')],
                 ];
                 include __DIR__ . '/common/azc-jump-nav.php';
                 ?>
@@ -445,29 +452,34 @@ $cancelUrl = $isNcAdminShell
                             <?php p($l->t('The "Reopen month" button runs immediately and only performs this reopening step. It is not saved with "Save all settings" at the bottom of the page.')); ?>
                         </p>
                         <div class="form-group month-reopen-user-picker">
-                            <label for="monthClosureReopenUserSearch" class="form-label"><?php p($l->t('Employee')); ?></label>
-                            <input type="hidden" id="monthClosureReopenUserId" value="">
-                            <div class="user-picker">
-                                <input type="text"
+                            <label for="monthClosureReopenUserSearch" class="form-label">
+                                <?php p($l->t('Employee')); ?>
+                                <span class="required-star" aria-hidden="true">*</span>
+                            </label>
+                            <input type="hidden" id="monthClosureReopenUserId" name="monthClosureReopenUserId" value="" required>
+                            <div class="user-picker" id="month-reopen-picker">
+                                <input type="search"
                                     id="monthClosureReopenUserSearch"
                                     class="form-input user-picker__search"
                                     autocomplete="off"
                                     autocapitalize="none"
                                     spellcheck="false"
-                                    placeholder="<?php p($l->t('Search by name, email, or user ID…')); ?>"
+                                    placeholder="<?php p($l->t('Search by name or user ID…')); ?>"
                                     role="combobox"
                                     aria-autocomplete="list"
                                     aria-expanded="false"
                                     aria-controls="monthClosureReopenUserListbox"
-                                    aria-describedby="monthClosureReopenUserSearch-help">
-                                <ul id="monthClosureReopenUserListbox"
+                                    aria-describedby="monthClosureReopenUserSearch-help monthClosureReopenUserStatus"
+                                    aria-required="true">
+                                <div id="monthClosureReopenUserListbox"
                                     class="user-picker__list"
                                     role="listbox"
                                     hidden
-                                    aria-label="<?php p($l->t('Matching users')); ?>"></ul>
+                                    aria-label="<?php p($l->t('Matching users')); ?>"></div>
+                                <p id="monthClosureReopenUserStatus" class="azc-sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
                             </div>
                             <p id="monthClosureReopenUserSearch-help" class="form-help">
-                                <?php p($l->t('Type to filter, then pick the employee whose finalized month you are reopening (their account).')); ?>
+                                <?php p($l->t('Type at least 2 characters, then select the employee whose finalized month you are reopening.')); ?>
                             </p>
                         </div>
                         <div class="form-row form-row--inline" role="group" aria-labelledby="month-closure-reopen-legend" aria-describedby="month-closure-reopen-intro month-closure-reopen-separate-notice">
@@ -659,6 +671,8 @@ $cancelUrl = $isNcAdminShell
                 </div>
                 </section>
 
+                <?php include __DIR__ . '/partials/projectcheck-admin-settings-section.php'; ?>
+
                 <div class="azc-admin-settings-form__actions" role="group" aria-labelledby="admin-settings-actions-heading">
                     <h2 id="admin-settings-actions-heading" class="visually-hidden"><?php p($l->t('Save and leave')); ?></h2>
                     <div id="admin-settings-live" class="admin-settings-live" role="status" aria-live="polite" aria-atomic="true"></div>
@@ -699,7 +713,12 @@ window.ArbeitszeitCheck.l10n.maxCarryoverDaysRange = <?php echo json_encode($l->
 window.ArbeitszeitCheck.l10n.valueBetweenMinMax = <?php echo json_encode($l->t('Value must be between {min} and {max}'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 window.ArbeitszeitCheck.l10n.monthReopenFillAll = <?php echo json_encode($l->t('Please select an employee, and enter year, month, and a reason.'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 window.ArbeitszeitCheck.l10n.loadingEllipsis = <?php echo json_encode($l->t('Loading…'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
-window.ArbeitszeitCheck.l10n.noUsersFound = <?php echo json_encode($l->t('No users found'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+window.ArbeitszeitCheck.l10n.loading = <?php echo json_encode($l->t('Loading…'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+window.ArbeitszeitCheck.l10n.noUsersFound = <?php echo json_encode($l->t('No matching users found'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+window.ArbeitszeitCheck.l10n.typeToSearch = <?php echo json_encode($l->t('Type at least 2 characters to search for a person.'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+window.ArbeitszeitCheck.l10n.searchError = <?php echo json_encode($l->t('User search failed'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+window.ArbeitszeitCheck.l10n.employeeSelected = <?php echo json_encode($l->t('Selected: %s', ['%s']), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+window.ArbeitszeitCheck.l10n.resultsCount = <?php echo json_encode($l->t('%n results', ['%n']), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 window.ArbeitszeitCheck.l10n.monthReopenConfirm = <?php echo json_encode($l->t('Reopen this finalized month? The employee will be able to edit times again until the month is finalized once more.'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 window.ArbeitszeitCheck.l10n.monthReopenSuccess = <?php echo json_encode($l->t('Month reopened.'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 window.ArbeitszeitCheck.l10n.accessGroupsSelected = <?php echo json_encode($l->t('%s group(s) selected', ['%s']), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;

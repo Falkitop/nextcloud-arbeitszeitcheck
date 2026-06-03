@@ -30,6 +30,7 @@ use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
 use OCA\ArbeitszeitCheck\Service\NavigationFlagsService;
 use OCA\ArbeitszeitCheck\Service\ProjectCheckIntegrationService;
 use OCA\ArbeitszeitCheck\Service\ProjectCheckLaborTimeSyncService;
+use OCA\ArbeitszeitCheck\Service\TimeCaptureMethodService;
 use OCA\ArbeitszeitCheck\Exception\BusinessRuleException;
 use OCA\ArbeitszeitCheck\Exception\MonthFinalizedException;
 use OCP\Lock\LockedException;
@@ -76,6 +77,7 @@ class TimeEntryController extends Controller
 	private NavigationFlagsService $navigationFlags;
 	private ProjectCheckIntegrationService $projectCheckIntegration;
 	private ProjectCheckLaborTimeSyncService $projectCheckLaborSync;
+	private TimeCaptureMethodService $timeCaptureMethodService;
 
 	public function __construct(
 		string $appName,
@@ -102,6 +104,7 @@ class TimeEntryController extends Controller
 		NavigationFlagsService $navigationFlags,
 		ProjectCheckIntegrationService $projectCheckIntegration,
 		ProjectCheckLaborTimeSyncService $projectCheckLaborSync,
+		TimeCaptureMethodService $timeCaptureMethodService,
 	) {
 		parent::__construct($appName, $request);
 		$this->timeEntryMapper = $timeEntryMapper;
@@ -126,6 +129,7 @@ class TimeEntryController extends Controller
 		$this->navigationFlags = $navigationFlags;
 		$this->projectCheckIntegration = $projectCheckIntegration;
 		$this->projectCheckLaborSync = $projectCheckLaborSync;
+		$this->timeCaptureMethodService = $timeCaptureMethodService;
 	}
 
 	/**
@@ -224,10 +228,11 @@ class TimeEntryController extends Controller
 	{
 		try {
 			$userId = $this->getUserId();
+			$linkingEnabled = $this->projectCheckIntegration->isLinkingEnabledForUser($userId);
 			return new JSONResponse([
 				'success' => true,
-				'enabled' => $this->projectCheckIntegration->isProjectCheckAvailable(),
-				'projects' => $this->projectCheckIntegration->getAvailableProjects($userId),
+				'enabled' => $linkingEnabled,
+				'projects' => $linkingEnabled ? $this->projectCheckIntegration->getAvailableProjects($userId) : [],
 			]);
 		} catch (\Throwable $e) {
 			return new JSONResponse([
@@ -248,7 +253,21 @@ class TimeEntryController extends Controller
 			'monthClosureEnabled' => $this->config->getAppValue('arbeitszeitcheck', Constants::CONFIG_MONTH_CLOSURE_ENABLED, '0') === '1',
 			'timeEntryChangesRequireApproval' => $this->requiresChangeApproval(),
 			'manualTimeEntriesRequireApproval' => $this->requiresManualEntryApproval(),
+			'timeCapture' => $this->timeCaptureMethodService->getSettings($userId),
 		] + $this->getNavigationFlags($userId);
+	}
+
+	private function manualTimeEntryBlockedResponse(string $userId): ?JSONResponse
+	{
+		if ($this->timeCaptureMethodService->isManualTimeEntryEnabled($userId)) {
+			return null;
+		}
+
+		return new JSONResponse([
+			'success' => false,
+			'error' => $this->l10n->t('Manual time entries are not enabled for your account. Please contact your administrator.'),
+			'error_code' => 'manual_time_entry_disabled',
+		], Http::STATUS_FORBIDDEN);
 	}
 
 	private function registerTimeEntryFormAssets(): void
@@ -749,9 +768,35 @@ class TimeEntryController extends Controller
 
 		$userId = $this->getUserId();
 
+		if (!$this->timeCaptureMethodService->isManualTimeEntryEnabled($userId)) {
+			$entries = $this->timeEntryMapper->findByUser($userId, 100);
+			$response = new TemplateResponse(
+				$this->appName,
+				'time-entries',
+				$this->buildTimeEntriesListTemplateParams([
+					'urlGenerator' => $this->urlGenerator,
+					'mode' => 'list',
+					'entries' => $entries,
+					'stats' => [
+						'total_time_entries' => $this->timeEntryMapper->countByUser($userId),
+						'entries_this_month' => count(array_filter($entries, static function ($entry) {
+							return $entry->getStartTime() && $entry->getStartTime()->format('Y-m') === date('Y-m');
+						})),
+						'total_hours' => array_reduce($entries, static function ($sum, $entry) {
+							return $sum + $entry->getWorkingDurationHours();
+						}, 0.0),
+					],
+					'error' => $this->l10n->t('Manual time entries are not enabled for your account. Please contact your administrator.'),
+					'l' => $this->l10n,
+				] + $this->getTimeEntriesSharedTemplateParams($userId))
+			);
+			return $this->configureCSP($response);
+		}
+
 		// Get compliance configuration for frontend validation
 		$maxDailyHours = (float)$this->config->getAppValue('arbeitszeitcheck', 'max_daily_hours', '10');
 		$complianceStrictMode = $this->config->getAppValue('arbeitszeitcheck', 'compliance_strict_mode', '0') === '1';
+		$createFormLinkingEnabled = $this->projectCheckIntegration->isLinkingEnabledForUser($userId);
 
 			$response = new TemplateResponse(
 			$this->appName,
@@ -765,8 +810,10 @@ class TimeEntryController extends Controller
 				'maxDailyHours' => $maxDailyHours,
 				'complianceStrictMode' => $complianceStrictMode,
 				'l' => $this->l10n,
-				'projectCheckEnabled' => $this->projectCheckIntegration->isProjectCheckAvailable(),
-				'projectCheckProjects' => $this->projectCheckIntegration->getAvailableProjects($userId),
+				'projectCheckAvailable' => $this->projectCheckIntegration->isProjectCheckAvailable(),
+				'projectCheckAdminLinkingEnabled' => $createFormLinkingEnabled,
+				'projectCheckEnabled' => $createFormLinkingEnabled,
+				'projectCheckProjects' => $createFormLinkingEnabled ? $this->projectCheckIntegration->getAvailableProjects($userId) : [],
 				'projectCheckAssignableUrl' => $this->urlGenerator->linkToRoute('arbeitszeitcheck.time_entry.apiAssignableProjectcheckProjects'),
 			] + $this->getTimeEntriesSharedTemplateParams($userId))
 		);
@@ -855,6 +902,12 @@ class TimeEntryController extends Controller
 			// Get compliance configuration for frontend validation
 			$maxDailyHours = (float)$this->config->getAppValue('arbeitszeitcheck', 'max_daily_hours', '10');
 			$complianceStrictMode = $this->config->getAppValue('arbeitszeitcheck', 'compliance_strict_mode', '0') === '1';
+			// Show the picker when the connection is on, or when this entry already
+			// carries a link, so the user can still see (and clear) an existing
+			// project even after switching the connection off.
+			$editFormLinkingEnabled = $this->projectCheckIntegration->isLinkingEnabledForUser($userId)
+				|| ($entry->getProjectCheckProjectId() !== null && $entry->getProjectCheckProjectId() !== '');
+			$editAdminLinkingEnabled = $this->projectCheckIntegration->isLinkingEnabledForUser($userId);
 
 			$response = new TemplateResponse(
 				$this->appName,
@@ -868,8 +921,10 @@ class TimeEntryController extends Controller
 					'maxDailyHours' => $maxDailyHours,
 					'complianceStrictMode' => $complianceStrictMode,
 					'l' => $this->l10n,
-					'projectCheckEnabled' => $this->projectCheckIntegration->isProjectCheckAvailable(),
-					'projectCheckProjects' => $this->projectCheckIntegration->getAvailableProjects($userId),
+					'projectCheckAvailable' => $this->projectCheckIntegration->isProjectCheckAvailable(),
+					'projectCheckAdminLinkingEnabled' => $editAdminLinkingEnabled,
+					'projectCheckEnabled' => $editFormLinkingEnabled,
+					'projectCheckProjects' => $editFormLinkingEnabled ? $this->projectCheckIntegration->getAvailableProjects($userId) : [],
 					'projectCheckAssignableUrl' => $this->urlGenerator->linkToRoute('arbeitszeitcheck.time_entry.apiAssignableProjectcheckProjects'),
 				] + $this->getTimeEntriesSharedTemplateParams($userId))
 			);
@@ -959,6 +1014,10 @@ class TimeEntryController extends Controller
 	{
 		try {
 			$userId = $this->getUserId();
+			$blocked = $this->manualTimeEntryBlockedResponse($userId);
+			if ($blocked !== null) {
+				return $blocked;
+			}
 
 			// Reject invalid hours (ArbZG §3: max 10h/day, no negative/zero manual entries)
 			if ($hours <= 0 || $hours > 24) {
@@ -1476,11 +1535,22 @@ class TimeEntryController extends Controller
 			}
 			if ($rawProjectId !== null) {
 				$normalizedPid = $this->normalizeOptionalProjectCheckProjectId($rawProjectId);
-				$pcBlock = $this->assertProjectCheckAttachAllowed($userId, $normalizedPid);
-				if ($pcBlock !== null) {
-					return $pcBlock;
+				$currentPid = $entry->getProjectCheckProjectId();
+				$currentPid = ($currentPid === null || $currentPid === '') ? null : (string)$currentPid;
+				// Only authorise (and write) the link when it actually changes.
+				// This lets a user edit other fields of an entry that already
+				// carries a project they can no longer attach — e.g. their team
+				// membership/access was revoked, or they switched the ProjectCheck
+				// connection off — without being blocked, while still validating
+				// every genuine add/change. Clearing a link (to null) is always
+				// permitted by assertProjectCheckAttachAllowed().
+				if ($normalizedPid !== $currentPid) {
+					$pcBlock = $this->assertProjectCheckAttachAllowed($userId, $normalizedPid);
+					if ($pcBlock !== null) {
+						return $pcBlock;
+					}
+					$entry->setProjectCheckProjectId($normalizedPid);
 				}
-				$entry->setProjectCheckProjectId($normalizedPid);
 			}
 
 			// Finalise paused entries: when the user supplies an end_time, the entry
@@ -2409,6 +2479,10 @@ class TimeEntryController extends Controller
 		if ($startTime && $endTime) {
 			try {
 				$userId = $this->getUserId();
+				$blocked = $this->manualTimeEntryBlockedResponse($userId);
+				if ($blocked !== null) {
+					return $blocked;
+				}
 
 				// Combine date + local time for correct calendar day.
 				// If $startTime / $endTime already contain a full ISO datetime, respect that.

@@ -35,6 +35,15 @@ class UserVacationPolicyAssignmentMapper extends QBMapper {
 		}
 	}
 
+	public function find(int $id): UserVacationPolicyAssignment {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')
+			->from($this->getTableName())
+			->where($qb->expr()->eq('id', $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)));
+
+		return $this->findEntity($qb);
+	}
+
 	public function findByUser(string $userId): array {
 		$qb = $this->db->getQueryBuilder();
 		$qb->select('*')

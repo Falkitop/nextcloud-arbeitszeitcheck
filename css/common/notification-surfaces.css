@@ -1,0 +1,524 @@
+/**
+ * Notifications: callouts, alerts, toasts, inline-notice — theme-safe (WCAG 2.1 AA).
+ * Uses NC --color-*-text / *-rgb for contrast on light, dark, and custom themes.
+ * Icon wells: semantic fill + contrasting glyph (not low-contrast outline-only).
+ */
+
+/* ── Panel accents (visible border + tint on light, dark, custom NC themes) ── */
+#app-content.azc-app .azc-callout--info:not(.azc-semantic-panel),
+.azc-nc-admin-settings .azc-callout--info,
+.modal-backdrop .azc-callout--info:not(.azc-semantic-panel),
+#app-content.azc-app .inline-notice--info,
+.modal-backdrop .inline-notice--info,
+.toast--info {
+	border-color: var(--color-primary-element, #00679e);
+	border-left-width: 5px;
+	border-left-color: var(--color-primary-element, #00679e);
+	background: var(--azc-tint-info);
+}
+
+#app-content.azc-app .azc-callout--warning:not(.azc-semantic-panel),
+.azc-nc-admin-settings .azc-callout--warning,
+.modal-backdrop .azc-callout--warning:not(.azc-semantic-panel),
+#app-content.azc-app .inline-notice--warning,
+.modal-backdrop .inline-notice--warning,
+.toast--warning,
+#app-content.azc-app .alert--warning,
+.modal-backdrop .alert--warning {
+	border-color: var(--color-warning-text, var(--color-warning, #a37200));
+	border-left-width: 5px;
+	border-left-color: var(--color-warning-text, var(--color-warning, #a37200));
+	background: var(--azc-tint-warning);
+}
+
+#app-content.azc-app .azc-callout--success:not(.azc-semantic-panel),
+.azc-nc-admin-settings .azc-callout--success,
+.modal-backdrop .azc-callout--success:not(.azc-semantic-panel),
+.toast--success,
+#app-content.azc-app .alert--success,
+.modal-backdrop .alert--success {
+	border-color: var(--color-success-text, var(--color-success, #2d7b46));
+	border-left-width: 5px;
+	border-left-color: var(--color-success-text, var(--color-success, #2d7b46));
+	background: var(--azc-tint-success);
+}
+
+#app-content.azc-app .azc-callout--danger:not(.azc-semantic-panel),
+#app-content.azc-app .azc-callout--error:not(.azc-semantic-panel),
+.azc-nc-admin-settings .azc-callout--danger,
+.azc-nc-admin-settings .azc-callout--error,
+.modal-backdrop .azc-callout--danger:not(.azc-semantic-panel),
+.modal-backdrop .azc-callout--error:not(.azc-semantic-panel),
+.toast--error,
+#app-content.azc-app .alert--error,
+.modal-backdrop .alert--error {
+	border-color: var(--color-error-text, var(--color-error, #db0606));
+	border-left-width: 5px;
+	border-left-color: var(--color-error-text, var(--color-error, #db0606));
+	background: var(--azc-tint-danger);
+}
+
+#app-content.azc-app .azc-callout--neutral:not(.azc-semantic-panel),
+.modal-backdrop .azc-callout--neutral:not(.azc-semantic-panel) {
+	border-color: var(--color-border);
+	border-left-width: 2px;
+	background: color-mix(in srgb, var(--color-main-text) 5%, var(--color-main-background));
+}
+
+/* Semantic panel panel tints: common/semantic-surfaces.css */
+
+/* ── Icon wells: pale tint + semantic stroke (same model as .azc-page-header__icon) ── */
+.azc-notif-icon-well,
+#app-content.azc-app .azc-callout__icon,
+.modal-backdrop .azc-callout__icon,
+#app-content.azc-app .alert-icon,
+.modal-backdrop .alert-icon,
+.toast-icon,
+#app-content.azc-app .inline-notice__icon,
+.modal-backdrop .inline-notice__icon,
+.azc-status-icon-well {
+	flex-shrink: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: var(--azc-icon-well, 2.25rem);
+	height: var(--azc-icon-well, 2.25rem);
+	min-width: var(--azc-icon-well, 2.25rem);
+	min-height: var(--azc-icon-well, 2.25rem);
+	border-radius: var(--azc-radius-sm, 6px);
+	border: 2px solid var(--color-border);
+	background: var(--color-main-background);
+	color: var(--color-main-text);
+	box-shadow: none;
+}
+
+.azc-notif-icon-well .azc-icon,
+.azc-notif-icon-well .azc-callout__icon-svg,
+.azc-notif-icon-well svg,
+#app-content.azc-app .azc-callout__icon .azc-icon,
+#app-content.azc-app .azc-callout__icon .azc-callout__icon-svg,
+#app-content.azc-app .azc-callout__icon-svg,
+.modal-backdrop .azc-callout__icon .azc-icon,
+.modal-backdrop .azc-callout__icon .azc-callout__icon-svg,
+.modal-backdrop .azc-callout__icon-svg,
+.alert-icon .azc-icon,
+.alert-icon svg,
+.toast-icon .azc-icon,
+.toast-icon svg,
+.toast-icon .toast__icon-svg,
+#app-content.azc-app .inline-notice__icon .azc-icon,
+#app-content.azc-app .inline-notice__icon .inline-notice__glyph,
+#app-content.azc-app .inline-notice__icon svg,
+.modal-backdrop .inline-notice__icon svg {
+	width: var(--azc-icon-lg, 1.375rem);
+	height: var(--azc-icon-lg, 1.375rem);
+	min-width: var(--azc-icon-lg, 1.375rem);
+	min-height: var(--azc-icon-lg, 1.375rem);
+	color: inherit;
+	stroke: currentColor;
+	fill: none;
+	opacity: 1;
+}
+
+/* Filled accent dots in IconCatalog (info / alert) */
+.azc-notif-icon-well svg circle[fill='currentColor'],
+.azc-notif-icon-well svg [fill='currentColor'],
+#app-content.azc-app .azc-callout__icon svg circle[fill='currentColor'],
+#app-content.azc-app .azc-callout__icon svg [fill='currentColor'],
+.toast-icon svg circle[fill='currentColor'],
+.toast-icon svg [fill='currentColor'] {
+	fill: currentColor;
+	stroke: none;
+}
+
+/* Variant wells — modifier class + legacy parent selectors */
+.azc-notif-icon-well--info,
+.azc-callout.azc-callout--info > .azc-callout__icon,
+.azc-callout.azc-callout--info > .azc-notif-icon-well,
+#app-content.azc-app .azc-semantic-panel--info .azc-callout__icon,
+.azc-nc-admin-settings .azc-callout--info .azc-callout__icon,
+.modal-backdrop .azc-callout--info .azc-callout__icon,
+#app-content.azc-app .alert--info .alert-icon,
+.modal-backdrop .alert--info .alert-icon,
+#app-content.azc-app .inline-notice--info .inline-notice__icon,
+.modal-backdrop .inline-notice--info .inline-notice__icon,
+.toast--info .toast-icon {
+	background: var(--azc-tint-info);
+	border-color: var(--azc-notif-fg-info);
+	color: var(--azc-notif-fg-info);
+}
+
+.azc-notif-icon-well--warning,
+.azc-callout.azc-callout--warning > .azc-callout__icon,
+.azc-callout.azc-callout--warning > .azc-notif-icon-well,
+#app-content.azc-app .azc-semantic-panel--warning .azc-callout__icon,
+.azc-nc-admin-settings .azc-callout--warning .azc-callout__icon,
+.modal-backdrop .azc-callout--warning .azc-callout__icon,
+#app-content.azc-app .alert--warning .alert-icon,
+.modal-backdrop .alert--warning .alert-icon,
+#app-content.azc-app .inline-notice--warning .inline-notice__icon,
+.modal-backdrop .inline-notice--warning .inline-notice__icon,
+.toast--warning .toast-icon {
+	background: var(--azc-tint-warning);
+	border-color: var(--azc-notif-fg-warning);
+	color: var(--azc-notif-fg-warning);
+}
+
+.azc-notif-icon-well--success,
+.azc-callout.azc-callout--success > .azc-callout__icon,
+.azc-callout.azc-callout--success > .azc-notif-icon-well,
+#app-content.azc-app .azc-semantic-panel--success .azc-callout__icon,
+.modal-backdrop .azc-callout--success .azc-callout__icon,
+#app-content.azc-app .alert--success .alert-icon,
+.modal-backdrop .alert--success .alert-icon,
+.toast--success .toast-icon {
+	background: var(--azc-tint-success);
+	border-color: var(--azc-notif-fg-success);
+	color: var(--azc-notif-fg-success);
+}
+
+.azc-notif-icon-well--danger,
+.azc-notif-icon-well--error,
+.azc-callout.azc-callout--danger > .azc-callout__icon,
+.azc-callout.azc-callout--danger > .azc-notif-icon-well,
+.azc-callout.azc-callout--error > .azc-callout__icon,
+.azc-callout.azc-callout--error > .azc-notif-icon-well,
+.azc-nc-admin-settings .azc-callout--danger .azc-callout__icon,
+.azc-nc-admin-settings .azc-callout--error .azc-callout__icon,
+.modal-backdrop .azc-callout--danger .azc-callout__icon,
+.modal-backdrop .azc-callout--error .azc-callout__icon,
+#app-content.azc-app .alert--error .alert-icon,
+.modal-backdrop .alert--error .alert-icon,
+.toast--error .toast-icon {
+	background: var(--azc-tint-danger);
+	border-color: var(--azc-notif-fg-danger);
+	color: var(--azc-notif-fg-danger);
+}
+
+.azc-notif-icon-well--neutral,
+.azc-callout.azc-callout--neutral > .azc-callout__icon,
+.azc-callout.azc-callout--neutral > .azc-notif-icon-well,
+.modal-backdrop .azc-callout--neutral .azc-callout__icon {
+	background: color-mix(in srgb, var(--color-main-text) 8%, var(--color-main-background));
+	border-color: var(--color-border-maxcontrast, var(--color-border));
+	color: var(--color-main-text);
+}
+
+#app-content.azc-app .azc-semantic-panel--success.azc-callout.auto-break-panel--disabled .azc-callout__icon {
+	background: color-mix(in srgb, var(--color-main-text) 10%, var(--color-main-background));
+	border-color: var(--color-border);
+	color: var(--color-main-text);
+}
+
+/* Body copy: main text only (AA); hints stay maxcontrast */
+#app-content.azc-app .azc-callout__title,
+.modal-backdrop .azc-callout__title,
+#app-content.azc-app .azc-callout__text,
+.modal-backdrop .azc-callout__text,
+#app-content.azc-app .alert-message,
+.modal-backdrop .alert-message,
+.toast-title,
+.toast-message,
+#app-content.azc-app .inline-notice__title,
+.modal-backdrop .inline-notice__title,
+#app-content.azc-app .inline-notice__text,
+.modal-backdrop .inline-notice__text {
+	color: var(--color-main-text);
+}
+
+#app-content.azc-app .azc-callout__hint,
+.modal-backdrop .azc-callout__hint {
+	color: var(--color-text-maxcontrast, var(--color-main-text));
+}
+
+/* ── Responsive: stack icon + body on narrow viewports ── */
+@media (max-width: 720px) {
+	#app-content.azc-app .azc-callout,
+	.modal-backdrop .azc-callout,
+	#app-content.azc-app .alert,
+	.modal-backdrop .alert,
+	#app-content.azc-app .inline-notice,
+	.modal-backdrop .inline-notice,
+	.toast {
+		flex-wrap: wrap;
+	}
+
+	#app-content.azc-app .azc-callout__icon,
+	.modal-backdrop .azc-callout__icon,
+	.toast-icon,
+	#app-content.azc-app .alert-icon,
+	.modal-backdrop .alert-icon,
+	#app-content.azc-app .inline-notice__icon,
+	.modal-backdrop .inline-notice__icon {
+		margin-bottom: var(--azc-space-1, 0.25rem);
+	}
+}
+
+@media (prefers-contrast: more) {
+	#app-content.azc-app .azc-callout:not(.azc-semantic-panel),
+	.modal-backdrop .azc-callout:not(.azc-semantic-panel),
+	.toast,
+	#app-content.azc-app .alert,
+	.modal-backdrop .alert {
+		border-width: 3px;
+	}
+
+	#app-content.azc-app .azc-callout__icon,
+	.modal-backdrop .azc-callout__icon,
+	.toast-icon,
+	#app-content.azc-app .alert-icon,
+	.modal-backdrop .alert-icon {
+		border-width: 3px;
+	}
+
+	.azc-notif-icon-well .azc-icon,
+	.azc-notif-icon-well svg,
+	#app-content.azc-app .azc-callout__icon .azc-icon,
+	#app-content.azc-app .azc-callout__icon svg {
+		stroke-width: 3;
+	}
+}
+
+/* ── Legacy inline-notice (backward compat) ───────────────── */
+#app-content.azc-app .inline-notice-section,
+.modal-backdrop .inline-notice-section {
+	padding: 0;
+	background: transparent;
+	border: 0;
+	box-shadow: none;
+	margin-bottom: var(--azc-space-4, 1rem);
+}
+
+#app-content.azc-app .inline-notice,
+.modal-backdrop .inline-notice {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	gap: var(--azc-space-3, 0.75rem) var(--azc-space-4, 1rem);
+	padding: var(--azc-space-4, 1rem) var(--azc-space-5, 1.25rem);
+	border: 2px solid var(--color-border, var(--azc-border));
+	border-radius: var(--azc-radius-md, 8px);
+	background: var(--color-main-background, var(--azc-bg));
+	box-shadow: var(--azc-shadow-sm, 0 1px 2px rgb(0 0 0 / 8%));
+	color: var(--color-main-text, var(--azc-text));
+}
+
+#app-content.azc-app .inline-notice__content,
+.modal-backdrop .inline-notice__content {
+	flex: 1 1 12rem;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--azc-space-2, 0.5rem);
+}
+
+#app-content.azc-app .inline-notice__title,
+.modal-backdrop .inline-notice__title {
+	margin: 0;
+	font-size: var(--azc-fs-lg, 1.125rem);
+	font-weight: 600;
+	line-height: var(--azc-line-tight, 1.25);
+	color: var(--color-main-text, var(--azc-text));
+}
+
+#app-content.azc-app .inline-notice__text,
+.modal-backdrop .inline-notice__text {
+	margin: 0;
+	font-size: var(--azc-fs-md, 1rem);
+	line-height: var(--azc-line-base, 1.45);
+	max-width: 65ch;
+	color: var(--color-main-text, var(--azc-text));
+}
+
+#app-content.azc-app .inline-notice__actions,
+.modal-backdrop .inline-notice__actions {
+	flex-shrink: 0;
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--azc-space-2, 0.5rem);
+	margin: 0;
+}
+
+#app-content.azc-app .inline-notice__actions .azc-btn,
+#app-content.azc-app .inline-notice__actions .btn,
+.modal-backdrop .inline-notice__actions .azc-btn,
+.modal-backdrop .inline-notice__actions .btn {
+	min-height: 44px;
+	white-space: nowrap;
+}
+
+@media (max-width: 42rem) {
+	#app-content.azc-app .inline-notice,
+	.modal-backdrop .inline-notice {
+		flex-direction: column;
+	}
+
+	#app-content.azc-app .inline-notice__actions,
+	.modal-backdrop .inline-notice__actions {
+		width: 100%;
+	}
+
+	#app-content.azc-app .inline-notice__actions .azc-btn,
+	#app-content.azc-app .inline-notice__actions .btn,
+	.modal-backdrop .inline-notice__actions .azc-btn,
+	.modal-backdrop .inline-notice__actions .btn {
+		flex: 1 1 auto;
+		justify-content: center;
+	}
+}
+
+/* ── Toast container ───────────────────────────────────────── */
+.toast-container {
+	position: fixed;
+	top: calc(var(--azc-overlay-top, var(--header-height, 50px)) + var(--azc-space-4, 1rem) + env(safe-area-inset-top, 0px));
+	right: calc(var(--azc-space-4, 1rem) + env(safe-area-inset-right, 0px));
+	z-index: var(--z-toast, 10000);
+	display: flex;
+	flex-direction: column;
+	gap: var(--azc-space-2, 0.5rem);
+	max-width: min(400px, calc(100vw - 2rem));
+}
+
+/* ── Toast card (callout-aligned) ──────────────────────────── */
+.toast {
+	display: flex;
+	flex-direction: row;
+	align-items: flex-start;
+	gap: var(--azc-space-3, 0.75rem);
+	padding: var(--azc-space-4, 1rem) var(--azc-space-5, 1.25rem);
+	border: 2px solid var(--color-border, var(--azc-border));
+	border-radius: var(--azc-radius-md, 8px);
+	background: var(--color-main-background, var(--azc-bg));
+	box-shadow: var(--azc-shadow-md, 0 4px 12px rgb(0 0 0 / 12%));
+	color: var(--color-main-text, var(--azc-text));
+	max-width: 100%;
+	opacity: 0;
+	transform: translateX(100%);
+	transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.toast--show {
+	opacity: 1;
+	transform: translateX(0);
+}
+
+@keyframes toast-slide-in {
+	from {
+		transform: translateX(100%);
+		opacity: 0;
+	}
+
+	to {
+		transform: translateX(0);
+		opacity: 1;
+	}
+}
+
+.toast--removing {
+	animation: toast-slide-out 0.3s ease-in forwards;
+}
+
+@keyframes toast-slide-out {
+	from {
+		transform: translateX(0);
+		opacity: 1;
+	}
+
+	to {
+		transform: translateX(100%);
+		opacity: 0;
+	}
+}
+
+.toast-content {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--azc-space-1, 0.25rem);
+}
+
+.toast-title {
+	margin: 0;
+	font-size: var(--azc-fs-md, 1rem);
+	font-weight: 600;
+	line-height: var(--azc-line-tight, 1.25);
+	color: var(--color-main-text, var(--azc-text));
+}
+
+.toast-message {
+	margin: 0;
+	font-size: var(--azc-fs-md, 1rem);
+	line-height: var(--azc-line-base, 1.45);
+	color: var(--color-main-text, var(--azc-text));
+	max-width: 65ch;
+}
+
+.toast-close {
+	background: none;
+	border: none;
+	font-size: var(--azc-fs-lg, 1.25rem);
+	line-height: 1;
+	color: var(--color-main-text, var(--azc-text));
+	cursor: pointer;
+	padding: var(--azc-space-1, 0.25rem);
+	border-radius: var(--azc-radius-sm, 6px);
+	opacity: 0.85;
+	flex-shrink: 0;
+	min-width: 44px;
+	min-height: 44px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.toast-close:hover,
+.toast-close:focus-visible {
+	opacity: 1;
+	outline: 2px solid var(--color-primary-element, #00679e);
+	outline-offset: 2px;
+}
+
+@media (max-width: 42rem) {
+	.toast-container {
+		left: calc(var(--azc-space-4, 1rem) + env(safe-area-inset-left, 0px));
+		right: calc(var(--azc-space-4, 1rem) + env(safe-area-inset-right, 0px));
+		max-width: none;
+	}
+}
+
+@media (forced-colors: active) {
+	#app-content.azc-app .azc-callout,
+	.modal-backdrop .azc-callout,
+	#app-content.azc-app .alert,
+	.modal-backdrop .alert,
+	.toast,
+	#app-content.azc-app .inline-notice,
+	.modal-backdrop .inline-notice {
+		border: 2px solid CanvasText;
+		background: Canvas;
+		color: CanvasText;
+	}
+
+	#app-content.azc-app .azc-callout__icon,
+	.modal-backdrop .azc-callout__icon,
+	.toast-icon,
+	#app-content.azc-app .alert-icon,
+	.modal-backdrop .alert-icon,
+	#app-content.azc-app .inline-notice__icon,
+	.modal-backdrop .inline-notice__icon {
+		border: 2px solid CanvasText;
+		background: Canvas;
+		color: CanvasText;
+		box-shadow: none;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.toast,
+	.toast--removing {
+		animation: none !important;
+		transition: none !important;
+	}
+}

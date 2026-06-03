@@ -1,5 +1,6 @@
 /**
- * Searchable admin employee picker (combobox) — uses lightweight user search API.
+ * Searchable admin employee picker (WAI-ARIA combobox).
+ * Uses GET /api/admin/users?picker=1 (lightweight, enabled users only).
  *
  * @license AGPL-3.0-or-later
  */
@@ -7,6 +8,7 @@
 	'use strict';
 
 	const Utils = window.ArbeitszeitCheckUtils || {};
+	const DEBOUNCE_MS = 280;
 
 	function queryOne(selector) {
 		if (Utils.$) {
@@ -43,15 +45,32 @@
 		return d.innerHTML;
 	}
 
+	function deriveIdPrefix(hidden, search, options) {
+		if (options.idPrefix && String(options.idPrefix).trim() !== '') {
+			return String(options.idPrefix).trim();
+		}
+		if (hidden && hidden.id) {
+			return hidden.id.replace(/[^a-zA-Z0-9_-]/g, '-');
+		}
+		if (search && search.id) {
+			return search.id.replace(/[^a-zA-Z0-9_-]/g, '-');
+		}
+		return 'user-picker-' + String(Math.random()).slice(2, 9);
+	}
+
 	/**
 	 * @param {object} options
 	 * @param {string} options.hiddenSelector Hidden input storing userId
 	 * @param {string} options.searchSelector Visible combobox input
 	 * @param {string} options.listSelector Listbox container element
 	 * @param {string} options.wrapSelector Container for outside-click close
-	 * @param {string} options.searchUrl Base URL for GET ?search=&limit=
+	 * @param {string} [options.searchUrl] Base URL for GET ?picker=1&search=&limit=
 	 * @param {string} [options.statusSelector] Live region for screen reader updates
+	 * @param {string} [options.idPrefix] Unique prefix for option element ids
 	 * @param {number} [options.limit=15]
+	 * @param {boolean} [options.pickerMode=true] Use lightweight GET ?picker=1
+	 * @param {number} [options.minQueryLength=2] Minimum typed characters before searching
+	 * @param {string[]} [options.excludeUserIds] User IDs to hide from suggestions
 	 * @param {object} [options.l10n]
 	 * @param {function(string): void} [options.onChange] Called when selection cleared or set
 	 */
@@ -64,10 +83,29 @@
 		const baseUrl = options.searchUrl || '';
 		const l10n = options.l10n || {};
 		const limit = options.limit || 15;
+		const pickerMode = options.pickerMode !== false;
+		const minQueryLength = typeof options.minQueryLength === 'number'
+			? Math.max(0, options.minQueryLength)
+			: 2;
+		const idPrefix = deriveIdPrefix(hidden, search, options);
+		const excludeLookup = {};
+		if (Array.isArray(options.excludeUserIds)) {
+			options.excludeUserIds.forEach(function (id) {
+				const key = String(id || '').trim();
+				if (key !== '') {
+					excludeLookup[key] = true;
+				}
+			});
+		}
 		const onChange = typeof options.onChange === 'function' ? options.onChange : function () {};
 
 		if (!hidden || !search || !list || !baseUrl) {
 			return null;
+		}
+
+		search.setAttribute('aria-haspopup', 'listbox');
+		if (!list.getAttribute('role')) {
+			list.setAttribute('role', 'listbox');
 		}
 
 		let debounceTimer = null;
@@ -95,23 +133,45 @@
 		}
 
 		function showMessage(msg, muted) {
-			const cls = muted ? 'user-picker__item user-picker__item--muted' : 'user-picker__item user-picker__item--muted';
+			const cls = 'user-picker__item user-picker__item--muted';
 			list.innerHTML = '<div class="' + cls + '" role="presentation">' + escapeText(msg) + '</div>';
 			openList();
+			if (muted) {
+				/* keep pointer events off informational rows */
+			}
+		}
+
+		function minSearchHint() {
+			return l10n.typeToSearch || l10n.minSearchHint
+				|| ('Type at least ' + minQueryLength + ' characters to search.');
 		}
 
 		function fetchUsers(query) {
 			const q = typeof query === 'string' ? query.trim() : '';
-			const params = new URLSearchParams({ limit: String(limit) });
-			if (q !== '') {
-				params.set('search', q);
+			if (q.length < minQueryLength) {
+				const hint = minSearchHint();
+				showMessage(hint, true);
+				setStatus(hint);
+				return;
 			}
+			const params = new URLSearchParams({ limit: String(limit) });
+			if (pickerMode) {
+				params.set('picker', '1');
+			}
+			params.set('search', q);
+			// Exclude already-assigned people server-side so a heavily-staffed
+			// unit cannot fill the capped page and hide everyone still
+			// available (issue #14). Client-side filtering below stays as a
+			// defensive second pass.
+			Object.keys(excludeLookup).forEach(function (id) {
+				params.append('exclude[]', id);
+			});
 			const sep = baseUrl.indexOf('?') >= 0 ? '&' : '?';
 			const url = baseUrl + sep + params.toString();
 			const generation = ++requestGeneration;
 
-			showMessage(l10n.loading || 'Loading…', true);
-			setStatus(l10n.loading || 'Loading…');
+			showMessage(l10n.loading || l10n.loadingEllipsis || 'Loading…', true);
+			setStatus(l10n.loading || l10n.loadingEllipsis || 'Loading…');
 
 			const onDone = function (data) {
 				if (generation !== requestGeneration) {
@@ -123,7 +183,19 @@
 					setStatus(err);
 					return;
 				}
-				renderUsers(data.users);
+				const raw = data.users;
+				const filtered = raw.filter(function (u) {
+					const uid = String(u.userId || u.uid || '').trim();
+					return uid !== '' && !excludeLookup[uid];
+				});
+				if (filtered.length === 0 && raw.length > 0) {
+					const excludedMsg = l10n.allExcluded || l10n.noUsersFound
+						|| 'No matching employees found.';
+					showMessage(excludedMsg, true);
+					setStatus(excludedMsg);
+					return;
+				}
+				renderUsers(filtered, data.truncated === true);
 			};
 
 			const onFail = function () {
@@ -164,8 +236,10 @@
 			selectedLabel = name + ' (' + id + ')';
 			search.value = selectedLabel;
 			closeList();
-			const selectedMsg = (l10n.employeeSelected || 'Selected %s')
-				.replace('%s', selectedLabel);
+			const tpl = l10n.employeeSelected || 'Selected: %s';
+			const selectedMsg = tpl.indexOf('%s') >= 0
+				? tpl.replace('%s', selectedLabel)
+				: (tpl + ' ' + selectedLabel);
 			setStatus(selectedMsg);
 			onChange(id);
 		}
@@ -179,7 +253,23 @@
 			onChange('');
 		}
 
-		function renderUsers(users) {
+		function setSelection(uid, displayName) {
+			const id = String(uid || '').trim();
+			if (id === '') {
+				clearSelection();
+				return;
+			}
+			const name = (displayName && String(displayName).trim()) ? String(displayName).trim() : id;
+			selectUser(id, name);
+		}
+
+		function truncationHint(count) {
+			const tpl = l10n.moreResults
+				|| 'Showing the first %n matches. Keep typing to narrow it down.';
+			return tpl.replace('%n', String(count));
+		}
+
+		function renderUsers(users, truncated) {
 			const emptyMsg = l10n.noUsersFound || 'No matching employees found.';
 			if (users.length === 0) {
 				list.innerHTML = '';
@@ -188,19 +278,28 @@
 				return;
 			}
 
-			list.innerHTML = users.map(function (u, index) {
+			let html = users.map(function (u, index) {
 				const uid = u.userId || u.uid || '';
 				const name = (u.displayName && String(u.displayName).trim()) ? String(u.displayName) : uid;
-				return '<div role="option" id="user-picker-opt-' + index + '" tabindex="-1" class="user-picker__item" data-user-id="'
+				const optId = idPrefix + '-opt-' + index;
+				return '<div role="option" id="' + escapeText(optId) + '" tabindex="-1" class="user-picker__item" data-user-id="'
 					+ escapeText(uid) + '" aria-selected="false">'
 					+ '<span class="user-picker__name">' + escapeText(name) + '</span>'
 					+ '<span class="user-picker__meta">' + escapeText(uid) + '</span></div>';
 			}).join('');
+			if (truncated) {
+				html += '<div class="user-picker__item user-picker__item--muted user-picker__hint" role="presentation">'
+					+ escapeText(truncationHint(users.length)) + '</div>';
+			}
+			list.innerHTML = html;
 			openList();
 			activeIndex = -1;
 
-			const countMsg = (l10n.resultsCount || '%n results')
-				.replace('%n', String(users.length));
+			const countTpl = l10n.resultsCount || '%n results';
+			let countMsg = countTpl.replace('%n', String(users.length));
+			if (truncated) {
+				countMsg += '. ' + truncationHint(users.length);
+			}
 			setStatus(countMsg);
 
 			queryAll('.user-picker__item[data-user-id]', list).forEach(function (item) {
@@ -215,19 +314,42 @@
 			});
 		}
 
+		function getSelectableItems() {
+			return list.querySelectorAll('.user-picker__item[data-user-id]');
+		}
+
 		function highlightOption(index) {
-			const items = list.querySelectorAll('.user-picker__item[data-user-id]');
+			const items = getSelectableItems();
 			if (!items.length) {
 				return;
 			}
 			items.forEach(function (item, i) {
 				const active = i === index;
 				item.setAttribute('aria-selected', active ? 'true' : 'false');
-				if (active) {
-					search.setAttribute('aria-activedescendant', item.id || '');
+				if (active && item.id) {
+					search.setAttribute('aria-activedescendant', item.id);
 				}
 			});
 			activeIndex = index;
+		}
+
+		function commitHighlighted() {
+			const items = getSelectableItems();
+			if (activeIndex >= 0 && items[activeIndex]) {
+				const item = items[activeIndex];
+				const uid = item.getAttribute('data-user-id') || '';
+				const nameEl = item.querySelector('.user-picker__name');
+				selectUser(uid, nameEl ? nameEl.textContent : uid);
+				return true;
+			}
+			if (items.length === 1) {
+				const item = items[0];
+				const uid = item.getAttribute('data-user-id') || '';
+				const nameEl = item.querySelector('.user-picker__name');
+				selectUser(uid, nameEl ? nameEl.textContent : uid);
+				return true;
+			}
+			return false;
 		}
 
 		bind(search, 'input', function () {
@@ -239,18 +361,30 @@
 			clearTimeout(debounceTimer);
 			debounceTimer = setTimeout(function () {
 				fetchUsers(search.value);
-			}, 280);
+			}, DEBOUNCE_MS);
 		});
 
 		bind(search, 'focus', function () {
 			const q = (hidden.value && search.value === selectedLabel) ? hidden.value : search.value.trim();
-			fetchUsers(q);
+			if (q.length >= minQueryLength) {
+				fetchUsers(q);
+			} else if (q.length > 0) {
+				showMessage(minSearchHint(), true);
+				setStatus(minSearchHint());
+			}
 		});
 
 		bind(search, 'keydown', function (e) {
-			const items = list.querySelectorAll('.user-picker__item[data-user-id]');
+			const items = getSelectableItems();
 			if (e.key === 'Escape') {
 				closeList();
+				return;
+			}
+			if (e.key === 'Enter') {
+				e.preventDefault();
+				if (!list.hidden && items.length > 0) {
+					commitHighlighted();
+				}
 				return;
 			}
 			if (list.hidden || items.length === 0) {
@@ -264,26 +398,37 @@
 				e.preventDefault();
 				const prev = activeIndex > 0 ? activeIndex - 1 : items.length - 1;
 				highlightOption(prev);
-			} else if (e.key === 'Enter' && activeIndex >= 0 && items[activeIndex]) {
+			} else if (e.key === 'Home') {
 				e.preventDefault();
-				const item = items[activeIndex];
-				const uid = item.getAttribute('data-user-id') || '';
-				const nameEl = item.querySelector('.user-picker__name');
-				selectUser(uid, nameEl ? nameEl.textContent : uid);
+				highlightOption(0);
+			} else if (e.key === 'End') {
+				e.preventDefault();
+				highlightOption(items.length - 1);
 			}
 		});
 
-		document.addEventListener('click', function (ev) {
-			if (!wrap || wrap.contains(ev.target)) {
+		function onDocumentClick(ev) {
+			if (!wrap || !wrap.isConnected) {
+				document.removeEventListener('click', onDocumentClick);
+				return;
+			}
+			if (wrap.contains(ev.target)) {
 				return;
 			}
 			closeList();
-		});
+		}
+		document.addEventListener('click', onDocumentClick);
 
 		return {
 			clear: clearSelection,
+			setSelection: setSelection,
 			getUserId: function () {
 				return String(hidden.value || '').trim();
+			},
+			destroy: function () {
+				clearTimeout(debounceTimer);
+				document.removeEventListener('click', onDocumentClick);
+				closeList();
 			},
 		};
 	}

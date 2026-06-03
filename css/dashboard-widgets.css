@@ -122,46 +122,7 @@
 	color: var(--color-text-maxcontrast);
 }
 
-/* ── Status badge ─────────────────────────────────────────────── */
-.dz-status-badge {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	padding: var(--space-1, 0.25rem) var(--space-3, 0.75rem);
-	border-radius: var(--radius-full, 9999px);
-	font-size: var(--arbeitszeitcheck-font-size-sm, 0.875rem);
-	font-weight: var(--arbeitszeitcheck-font-weight-semibold, 600);
-	white-space: nowrap;
-	flex-shrink: 0;
-	background-color: var(--color-background-hover);
-	color: var(--color-text-maxcontrast);
-	border: 1px solid var(--color-border);
-}
-
-.dz-status-badge[data-status="active"] {
-	background-color: color-mix(in srgb, var(--color-success) 18%, var(--color-main-background));
-	color: var(--color-main-text);
-	border-color: color-mix(in srgb, var(--color-success) 50%, transparent);
-}
-
-.dz-status-badge[data-status="break"] {
-	background-color: color-mix(in srgb, var(--color-warning) 20%, var(--color-main-background));
-	color: var(--color-main-text);
-	border-color: color-mix(in srgb, var(--color-warning) 50%, transparent);
-}
-
-.dz-status-badge[data-status="paused"] {
-	background-color: color-mix(in srgb, var(--color-primary-element) 18%, var(--color-main-background));
-	color: var(--color-main-text);
-	border-color: color-mix(in srgb, var(--color-primary-element) 50%, transparent);
-}
-
-.dz-status-badge[data-status="clocked_out"],
-.dz-status-badge[data-status="completed"] {
-	background-color: var(--color-background-hover);
-	color: var(--color-text-maxcontrast);
-	border-color: var(--color-border);
-}
+/* Desklet status badges: css/common/badges.css (.dz-status-badge) */
 
 /* ── Status text line ─────────────────────────────────────────── */
 .dz-status-text {
@@ -201,6 +162,30 @@
 .dz-last-updated {
 	margin: 0;
 	font-size: var(--arbeitszeitcheck-font-size-sm, 0.875rem);
+	color: var(--color-text-maxcontrast);
+}
+
+/* ── Time capture disabled (stamping off) ───────────────────── */
+.dz-capture-notice {
+	margin: 0 0 var(--space-4, 1rem);
+	padding: var(--space-4, 1rem);
+	border-radius: var(--radius-base, 6px);
+	border: 1px solid color-mix(in srgb, var(--color-primary-element) 35%, transparent);
+	border-left: 4px solid var(--color-primary-element);
+	background: color-mix(in srgb, var(--color-primary-element) 8%, var(--color-main-background));
+}
+
+.dz-capture-notice__title {
+	margin: 0 0 var(--space-2, 0.5rem);
+	font-size: var(--arbeitszeitcheck-font-size-sm, 0.875rem);
+	font-weight: var(--arbeitszeitcheck-font-weight-semibold, 600);
+	color: var(--color-main-text);
+}
+
+.dz-capture-notice__text {
+	margin: 0;
+	font-size: var(--arbeitszeitcheck-font-size-sm, 0.875rem);
+	line-height: 1.45;
 	color: var(--color-text-maxcontrast);
 }
 
@@ -289,35 +274,7 @@
 	min-width: 0; /* Prevents text overflow breaking layout */
 }
 
-/* Badge within list items */
-.dz-list-item .dz-badge {
-	font-size: var(--arbeitszeitcheck-font-size-xs, 0.75rem);
-	padding: 2px var(--space-2, 0.5rem);
-	border-radius: var(--radius-full, 9999px);
-	white-space: nowrap;
-	flex-shrink: 0;
-	border: 1px solid var(--color-border);
-	background-color: var(--color-background-hover);
-	color: var(--color-text-maxcontrast);
-}
-
-.dz-list-item .dz-badge[data-status="active"] {
-	background-color: color-mix(in srgb, var(--color-success) 18%, var(--color-main-background));
-	color: var(--color-main-text);
-	border-color: color-mix(in srgb, var(--color-success) 50%, transparent);
-}
-
-.dz-list-item .dz-badge[data-status="break"] {
-	background-color: color-mix(in srgb, var(--color-warning) 20%, var(--color-main-background));
-	color: var(--color-main-text);
-	border-color: color-mix(in srgb, var(--color-warning) 50%, transparent);
-}
-
-.dz-list-item .dz-badge[data-status="paused"] {
-	background-color: color-mix(in srgb, var(--color-primary-element) 18%, var(--color-main-background));
-	color: var(--color-main-text);
-	border-color: color-mix(in srgb, var(--color-primary-element) 50%, transparent);
-}
+/* List item badges: css/common/badges.css (.dz-list-item .dz-badge) */
 
 /* ── Empty state ──────────────────────────────────────────────── */
 .dz-empty {
@@ -349,11 +306,6 @@
 
 /* ── High contrast overrides ──────────────────────────────────── */
 @media (prefers-contrast: high) {
-	.dz-status-badge,
-	.dz-list-item .dz-badge {
-		border-width: 2px;
-	}
-
 	.dz-status-card {
 		border-width: 2px;
 	}

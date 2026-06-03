@@ -48,6 +48,7 @@ class TimeTrackingService
 	private TimeZoneService $timeZoneService;
 	private DailyWorkingHoursCalculator $dailyWorkingHoursCalculator;
 	private ?ProjectCheckLaborTimeSyncService $projectCheckLaborSync;
+	private TimeCaptureMethodService $timeCaptureMethodService;
 
 	public function __construct(
 		TimeEntryMapper $timeEntryMapper,
@@ -66,6 +67,7 @@ class TimeTrackingService
 		TimeZoneService $timeZoneService,
 		DailyWorkingHoursCalculator $dailyWorkingHoursCalculator,
 		?ProjectCheckLaborTimeSyncService $projectCheckLaborSync = null,
+		?TimeCaptureMethodService $timeCaptureMethodService = null,
 	) {
 		$this->timeEntryMapper = $timeEntryMapper;
 		$this->violationMapper = $violationMapper;
@@ -83,6 +85,11 @@ class TimeTrackingService
 		$this->timeZoneService = $timeZoneService;
 		$this->dailyWorkingHoursCalculator = $dailyWorkingHoursCalculator;
 		$this->projectCheckLaborSync = $projectCheckLaborSync;
+		$this->timeCaptureMethodService = $timeCaptureMethodService ?? new TimeCaptureMethodService(
+			$userSettingsMapper,
+			$auditLogMapper,
+			$l10n,
+		);
 	}
 
 	/**
@@ -326,10 +333,13 @@ class TimeTrackingService
 				[$today, $tomorrow] = $this->getAppLocalTodayWindow();
 				$pausedTodayEntry = $this->timeEntryMapper->findPausedOrUnfinishedTodayByUser($userId, $today, $tomorrow);
 				if ($pausedTodayEntry !== null && $pausedTodayEntry->getStatus() === TimeEntry::STATUS_PAUSED) {
+					$this->timeCaptureMethodService->assertClockStampingAllowed($userId);
 					$resumed = $this->resumePausedEntry($userId, $pausedTodayEntry, $projectCheckProjectId, $description);
 					$this->db->commit();
 					return $resumed;
 				}
+
+				$this->timeCaptureMethodService->assertClockStampingAllowed($userId);
 
 				$this->checkComplianceBeforeClockIn($userId);
 				$todayHours = $this->getTodayHours($userId);
@@ -1118,9 +1128,11 @@ class TimeTrackingService
 	 * would exceed 10 hours. If so, automatically sets endTime and marks entry as COMPLETED.
 	 * 
 	 * @param TimeEntry $timeEntry The active entry to check and potentially complete
+	 * @param \DateTimeInterface|null $referenceTime Evaluation instant (defaults to now in storage TZ).
+	 *        Used by tests and background jobs so calendar-day clipping is deterministic.
 	 * @return bool True if entry was automatically completed, false otherwise
 	 */
-	public function completeEntryIfDailyMaximumReached(TimeEntry $timeEntry): bool
+	public function completeEntryIfDailyMaximumReached(TimeEntry $timeEntry, ?\DateTimeInterface $referenceTime = null): bool
 	{
 		// Only process active/break entries without endTime
 		if ($timeEntry->getEndTime() !== null || !$timeEntry->getStartTime()) {
@@ -1134,7 +1146,9 @@ class TimeTrackingService
 
 		$userId = $timeEntry->getUserId();
 		$startTime = $timeEntry->getStartTime();
-		$now = $this->nowForAtEntries();
+		$now = $referenceTime !== null
+			? \DateTime::createFromInterface($referenceTime)
+			: $this->nowForAtEntries();
 
 		// ArbZG §3: evaluate the calendar day that contains "now", clipping overnight
 		// sessions at midnight (never the clock-in date bucket alone).

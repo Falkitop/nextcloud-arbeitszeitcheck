@@ -14,6 +14,7 @@ namespace OCA\ArbeitszeitCheck\Tests\Unit\Controller;
 use OCA\ArbeitszeitCheck\Controller\TimeTrackingController;
 use OCA\ArbeitszeitCheck\Db\TimeEntry;
 use OCA\ArbeitszeitCheck\Exception\BusinessRuleException;
+use OCA\ArbeitszeitCheck\Exception\TimeCaptureForbiddenException;
 use OCA\ArbeitszeitCheck\Service\TimeTrackingService;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\JSONResponse;
@@ -137,6 +138,32 @@ class TimeTrackingControllerTest extends TestCase
 		$data = $response->getData();
 		$this->assertFalse($data['success']);
 		$this->assertArrayHasKey('error', $data);
+	}
+
+	/**
+	 * Disabled stamping maps to HTTP 403 with a stable error_code (not 400).
+	 */
+	public function testClockInReturnsForbiddenWhenStampingDisabled(): void
+	{
+		$userId = 'testuser';
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn($userId);
+
+		$this->userSession->method('getUser')->willReturn($user);
+
+		$this->timeTrackingService->expects($this->once())
+			->method('clockIn')
+			->willThrowException(new TimeCaptureForbiddenException(
+				'Clock in/out (stamping) is not enabled for your account.',
+				TimeCaptureForbiddenException::CODE_CLOCK_STAMPING_DISABLED,
+			));
+
+		$response = $this->controller->clockIn();
+
+		$this->assertEquals(Http::STATUS_FORBIDDEN, $response->getStatus());
+		$data = $response->getData();
+		$this->assertFalse($data['success']);
+		$this->assertSame(TimeCaptureForbiddenException::CODE_CLOCK_STAMPING_DISABLED, $data['error_code']);
 	}
 
 	/**

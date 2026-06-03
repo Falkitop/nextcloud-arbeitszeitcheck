@@ -40,6 +40,7 @@ use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
 use OCA\ArbeitszeitCheck\Service\NavigationFlagsService;
 use OCA\ArbeitszeitCheck\Constants;
 use OCA\ArbeitszeitCheck\Support\TimeEntryClockPayloadBuilder;
+use OCA\ArbeitszeitCheck\Support\UserDirectorySearch;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Http;
@@ -530,7 +531,7 @@ class ManagerController extends Controller
 	#[NoCSRFRequired]
 	public function employeeTimeEntriesPage(): TemplateResponse|\OCP\AppFramework\Http\RedirectResponse
 	{
-		$this->registerFrontEndAssets('manager-time-entries', 'manager-time-entries', ['time-entry-correction']);
+		$this->registerFrontEndAssets('manager-time-entries', 'manager-time-entries', ['time-entry-correction'], ['common/admin-user-picker', 'common/manager-scoped-employee-picker']);
 		Util::addScript('arbeitszeitcheck', 'common/datepicker');
 		Util::addScript('arbeitszeitcheck', 'common/time-entry-clock-form');
 		Util::addScript('arbeitszeitcheck', 'manager-correction-dialog');
@@ -562,7 +563,7 @@ class ManagerController extends Controller
 				$this->managerEmployeeListTemplateParams('time-entries'),
 				[
 					'monthClosureEnabled' => $this->monthClosureEnabledParam(),
-					'projectCheckEnabled' => $this->projectCheckIntegration->isProjectCheckAvailable(),
+					'projectCheckEnabled' => $this->projectCheckIntegration->isAdminIntegrationEnabled(),
 				]
 			));
 			return $this->configureCSP($response);
@@ -589,7 +590,7 @@ class ManagerController extends Controller
 	#[NoCSRFRequired]
 	public function employeeAbsencesPage(): TemplateResponse|\OCP\AppFramework\Http\RedirectResponse
 	{
-		$this->registerFrontEndAssets('manager-absences', 'manager-time-entries');
+		$this->registerFrontEndAssets('manager-absences', 'manager-time-entries', [], ['common/admin-user-picker', 'common/manager-scoped-employee-picker']);
 		Util::addScript('arbeitszeitcheck', 'common/datepicker');
 
 		try {
@@ -736,7 +737,11 @@ class ManagerController extends Controller
 		try {
 			if ($this->permissionService->isAdmin($actor)) {
 				$fetchCap = (int)min(max($limit * 4, $limit), Constants::MAX_LIST_LIMIT);
-				$candidates = $this->userManager->search($query, $fetchCap, 0);
+				// Match by user id OR display name (issue #14).
+				$candidates = UserDirectorySearch::mergeUnique(
+					$this->userManager->search($query, $fetchCap, 0),
+					$this->userManager->searchDisplayName($query, $fetchCap, 0),
+				);
 				$usersData = [];
 				foreach ($candidates as $user) {
 					$uid = $user->getUID();
@@ -1006,6 +1011,169 @@ class ManagerController extends Controller
 	}
 
 	/**
+	 * Lightweight employee search within the actor's manager scope (combobox pickers).
+	 */
+	#[NoAdminRequired]
+	public function getScopedEmployees(?string $search = null, ?int $limit = null): JSONResponse
+	{
+		try {
+			$actorUserId = $this->getUserId();
+			$accessResponse = $this->ensureManagerReadAccess($actorUserId, 'search_scoped_employees');
+			if ($accessResponse !== null) {
+				return $accessResponse;
+			}
+
+			$searchTerm = $search !== null
+				? trim($search)
+				: trim((string)($this->request->getParam('search') ?? ''));
+			if (mb_strlen($searchTerm) > 200) {
+				$searchTerm = mb_substr($searchTerm, 0, 200);
+			}
+
+			$requestLimit = $this->request->getParam('limit');
+			$normalizedLimit = max(1, min((int)($requestLimit ?? $limit ?? 20), Constants::PICKER_MAX_RESULTS));
+
+			if (mb_strlen($searchTerm) < Constants::PICKER_MIN_SEARCH_LENGTH) {
+				return new JSONResponse([
+					'success' => true,
+					'users' => [],
+					'limit' => $normalizedLimit,
+					'requiresMinSearch' => Constants::PICKER_MIN_SEARCH_LENGTH,
+				]);
+			}
+
+			$isAdmin = $this->permissionService->isAdmin($actorUserId);
+			$usersData = [];
+
+			if ($isAdmin) {
+				// Match by user id OR display name (issue #14).
+				$result = UserDirectorySearch::searchByIdOrName(
+					$this->userManager,
+					$searchTerm,
+					$normalizedLimit,
+					0,
+					true,
+				);
+				foreach ($result['users'] as $user) {
+					$usersData[] = [
+						'userId' => (string)$user->getUID(),
+						'displayName' => (string)$user->getDisplayName(),
+					];
+				}
+			} else {
+				$needle = mb_strtolower($searchTerm);
+				foreach ($this->getTeamMemberIds($actorUserId) as $uid) {
+					$user = $this->userManager->get($uid);
+					if ($user === null || !$user->isEnabled()) {
+						continue;
+					}
+					if (!$this->scopedEmployeeMatchesSearch($user, $needle)) {
+						continue;
+					}
+					$usersData[] = [
+						'userId' => $uid,
+						'displayName' => $this->getDisplayName($uid),
+					];
+					if (count($usersData) >= $normalizedLimit) {
+						break;
+					}
+				}
+			}
+
+			usort($usersData, static function (array $a, array $b): int {
+				return strcasecmp((string)$a['displayName'], (string)$b['displayName']);
+			});
+
+			return new JSONResponse([
+				'success' => true,
+				'users' => $usersData,
+				'limit' => $normalizedLimit,
+			]);
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->error(
+				'Error in ManagerController::getScopedEmployees',
+				['exception' => $e]
+			);
+			return new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('An internal error occurred. Please contact your administrator.'),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	/**
+	 * @param \OCP\IUser $user
+	 */
+	private function scopedEmployeeMatchesSearch($user, string $needle): bool
+	{
+		if ($needle === '') {
+			return true;
+		}
+		$uid = mb_strtolower((string)$user->getUID());
+		$name = mb_strtolower((string)$user->getDisplayName());
+		return str_contains($uid, $needle) || str_contains($name, $needle);
+	}
+
+	/**
+	 * Allow list APIs to honor a picker-selected employee outside the capped directory preload.
+	 *
+	 * Admins may pick any enabled account via scoped-employees search; managers must be team members.
+	 *
+	 * @param list<array{userId: string, displayName: string, enabled: bool}> $employees
+	 * @param array<string, true> $scopedLookup
+	 * @return array{allowed: bool, employees: list<array{userId: string, displayName: string, enabled: bool}>}|null
+	 *         null when denied (caller returns 403)
+	 */
+	private function resolveManagerListEmployeeFilter(
+		string $actorUserId,
+		bool $isAdmin,
+		string $employeeId,
+		array $employees,
+		array $scopedLookup,
+		string $denyAction,
+	): ?array {
+		if (isset($scopedLookup[$employeeId])) {
+			return ['allowed' => true, 'employees' => $employees];
+		}
+
+		if ($isAdmin) {
+			$user = $this->userManager->get($employeeId);
+			if ($user === null || !$user->isEnabled()) {
+				$this->permissionService->logPermissionDenied($actorUserId, $denyAction, 'user', $employeeId);
+
+				return null;
+			}
+			$employees[] = [
+				'userId' => $employeeId,
+				'displayName' => $this->getDisplayName($employeeId),
+				'enabled' => true,
+			];
+
+			return ['allowed' => true, 'employees' => $employees];
+		}
+
+		if (!in_array($employeeId, $this->getTeamMemberIds($actorUserId), true)) {
+			$this->permissionService->logPermissionDenied($actorUserId, $denyAction, 'user', $employeeId);
+
+			return null;
+		}
+
+		$user = $this->userManager->get($employeeId);
+		if ($user === null || !$user->isEnabled()) {
+			$this->permissionService->logPermissionDenied($actorUserId, $denyAction, 'user', $employeeId);
+
+			return null;
+		}
+		$employees[] = [
+			'userId' => $employeeId,
+			'displayName' => $this->getDisplayName($employeeId),
+			'enabled' => $user->isEnabled(),
+		];
+
+		return ['allowed' => true, 'employees' => $employees];
+	}
+
+	/**
 	 * Read-only employee time entries list for managers/admins.
 	 * Query executes only when start_date and end_date are provided (empty-safe default).
 	 */
@@ -1059,13 +1227,21 @@ class ManagerController extends Controller
 
 			$scopedLookup = array_fill_keys(array_column($employees, 'userId'), true);
 			if ($employeeId !== null && $employeeId !== '') {
-				if (!isset($scopedLookup[$employeeId])) {
-					$this->permissionService->logPermissionDenied($actorUserId, 'view_employee_time_entries_user_filter', 'user', $employeeId);
+				$resolved = $this->resolveManagerListEmployeeFilter(
+					$actorUserId,
+					$isAdmin,
+					$employeeId,
+					$employees,
+					$scopedLookup,
+					'view_employee_time_entries_user_filter',
+				);
+				if ($resolved === null) {
 					return new JSONResponse([
 						'success' => false,
 						'error' => $this->l10n->t('Access denied. You can only view time entries for employees in your scope.'),
 					], Http::STATUS_FORBIDDEN);
 				}
+				$employees = $resolved['employees'];
 				$scopedUserIds = [$employeeId];
 			}
 
@@ -1220,13 +1396,21 @@ class ManagerController extends Controller
 
 			$scopedLookup = array_fill_keys(array_column($employees, 'userId'), true);
 			if ($employeeId !== null && $employeeId !== '') {
-				if (!isset($scopedLookup[$employeeId])) {
-					$this->permissionService->logPermissionDenied($actorUserId, 'view_employee_absences_user_filter', 'user', $employeeId);
+				$resolved = $this->resolveManagerListEmployeeFilter(
+					$actorUserId,
+					$isAdmin,
+					$employeeId,
+					$employees,
+					$scopedLookup,
+					'view_employee_absences_user_filter',
+				);
+				if ($resolved === null) {
 					return new JSONResponse([
 						'success' => false,
 						'error' => $this->l10n->t('Access denied. You can only view absences for employees in your scope.'),
 					], Http::STATUS_FORBIDDEN);
 				}
+				$employees = $resolved['employees'];
 				$scopedUserIds = [$employeeId];
 			}
 
@@ -1486,7 +1670,7 @@ class ManagerController extends Controller
 				], Http::STATUS_FORBIDDEN);
 			}
 
-			if (!$this->projectCheckIntegration->isProjectCheckAvailable()) {
+			if (!$this->projectCheckIntegration->isAdminIntegrationEnabled()) {
 				return new JSONResponse(['success' => true, 'projects' => []]);
 			}
 

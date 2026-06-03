@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\ArbeitszeitCheck\Controller;
 
+use OCA\ArbeitszeitCheck\Exception\TimeCaptureForbiddenException;
 use OCA\ArbeitszeitCheck\Exception\MonthFinalizedException;
 use OCA\ArbeitszeitCheck\Service\DashboardWidgetDataService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
@@ -104,6 +105,12 @@ class DashboardWidgetController extends Controller {
 				'success' => false,
 				'error' => $this->l10n->t('This calendar month is finalized. Contact an administrator if a correction must be made.'),
 			], Http::STATUS_CONFLICT);
+		} catch (TimeCaptureForbiddenException $e) {
+			return new JSONResponse([
+				'success' => false,
+				'error' => $e->getMessage(),
+				'error_code' => $e->getErrorCode(),
+			], Http::STATUS_FORBIDDEN);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->warning('Dashboard widget action failed', [
 				'exception' => $e,

@@ -118,7 +118,7 @@ class OvertimePayoutController extends Controller
 			'monthLabels' => $monthLabels,
 			'bankEnabled' => $this->bankService->isEnabled(),
 			'payoutProcessUrl' => $this->urlGenerator->linkToRoute('arbeitszeitcheck.overtime_payout.index'),
-			'adminUserSearchUrl' => $this->urlGenerator->linkToRoute('arbeitszeitcheck.admin.searchVacationLayersUsers'),
+			'adminUserSearchUrl' => $this->urlGenerator->linkToRoute('arbeitszeitcheck.admin.getUsers'),
 		]);
 
 		return $this->configureCSP($response, 'admin');

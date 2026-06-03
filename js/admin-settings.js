@@ -12,6 +12,9 @@
     const Validation = window.ArbeitszeitCheckValidation || {};
     const Messaging = window.ArbeitszeitCheckMessaging || {};
 
+    /** @type {{ clear: function(): void, getUserId: function(): string } | null} */
+    let monthReopenPicker = null;
+
     function setLiveMessage(liveRegion, message, type) {
         if (!liveRegion) {
             return;
@@ -59,6 +62,34 @@
         initMonthReopenUserPicker();
         initAppAdminsPicker();
         initAccessGroupsPicker();
+        initProjectCheckAdminToggle();
+    }
+
+    function initProjectCheckAdminToggle() {
+        const toggle = Utils.$('#projectCheckIntegrationEnabled');
+        if (!toggle) {
+            return;
+        }
+        const badge = Utils.$('#projectcheck-admin-status-badge');
+        const status = Utils.$('#projectcheck-admin-status-text');
+        const t = (key, fallback) => (window.t ? window.t('arbeitszeitcheck', key) : fallback);
+
+        function syncUi() {
+            const on = !!toggle.checked;
+            toggle.setAttribute('aria-checked', on ? 'true' : 'false');
+            if (badge) {
+                badge.textContent = on ? t('Connection on', 'Connection on') : t('Connection off', 'Connection off');
+                badge.classList.toggle('azc-projectcheck-connection__badge--on', on);
+                badge.classList.toggle('azc-projectcheck-connection__badge--off', !on);
+            }
+            if (status) {
+                status.textContent = on
+                    ? t('Employees can link time to customer projects.', 'Employees can link time to customer projects.')
+                    : t('Project linking is disabled for everyone until you turn this on.', 'Project linking is disabled for everyone until you turn this on.');
+            }
+        }
+
+        Utils.on(toggle, 'change', syncUi);
     }
 
     function initAppAdminsPicker() {
@@ -188,6 +219,8 @@
         formData.statutoryAutoReseed = isChecked(formData.statutoryAutoReseed);
         formData.timeEntryChangesRequireApproval = isChecked(formData.timeEntryChangesRequireApproval);
         formData.manualTimeEntriesRequireApproval = isChecked(formData.manualTimeEntriesRequireApproval);
+        // Always send (unchecked checkboxes are omitted from FormData; server only updates keys that are present).
+        formData.projectCheckIntegrationEnabled = isChecked(formData.projectCheckIntegrationEnabled);
         const accessGroupsRaw = formData['accessAllowedGroups[]'];
         formData.accessAllowedGroups = accessGroupsRaw === undefined
             ? []
@@ -281,121 +314,30 @@
     }
 
     /**
-     * Searchable user picker for month reopen (uses GET /api/admin/users).
+     * Searchable user picker for month reopen (GET /api/admin/users?picker=1).
      */
     function initMonthReopenUserPicker() {
-        const hidden = Utils.$('#monthClosureReopenUserId');
-        const search = Utils.$('#monthClosureReopenUserSearch');
-        const list = Utils.$('#monthClosureReopenUserListbox');
-        const wrap = Utils.$('.month-reopen-user-picker');
+        const initPicker = window.ArbeitszeitCheck && window.ArbeitszeitCheck.initAdminUserPicker;
         const baseUrl = window.ArbeitszeitCheck && window.ArbeitszeitCheck.adminUsersListUrl;
         const l10n = window.ArbeitszeitCheck && window.ArbeitszeitCheck.l10n ? window.ArbeitszeitCheck.l10n : {};
-        if (!hidden || !search || !list || !baseUrl) {
+        if (typeof initPicker !== 'function' || !baseUrl) {
             return;
         }
-
-        let debounceTimer = null;
-        let selectedLabel = '';
-
-        function closeList() {
-            list.hidden = true;
-            list.innerHTML = '';
-            search.setAttribute('aria-expanded', 'false');
-        }
-
-        function openList() {
-            list.hidden = false;
-            search.setAttribute('aria-expanded', 'true');
-        }
-
-        function showLoading() {
-            const msg = l10n.loadingEllipsis || 'Loading…';
-            list.innerHTML = '<li class="user-picker__item user-picker__item--muted" role="presentation">' + Utils.escapeHtml(msg) + '</li>';
-            openList();
-        }
-
-        function fetchUsers(query) {
-            const q = typeof query === 'string' ? query.trim() : '';
-            const url = baseUrl + (q !== '' ? '?search=' + encodeURIComponent(q) : '');
-            showLoading();
-            Utils.ajax(url, {
-                method: 'GET',
-                onSuccess: function(data) {
-                    if (!data || !data.success || !Array.isArray(data.users)) {
-                        closeList();
-                        return;
-                    }
-                    renderUsers(data.users);
-                },
-                onError: function() {
-                    closeList();
-                }
-            });
-        }
-
-        function renderUsers(users) {
-            const emptyMsg = l10n.noUsersFound || 'No users found';
-            if (users.length === 0) {
-                list.innerHTML = '<li class="user-picker__item user-picker__item--muted" role="presentation">' + Utils.escapeHtml(emptyMsg) + '</li>';
-                openList();
-                return;
-            }
-            list.innerHTML = users.map(function(u) {
-                const uid = u.userId || '';
-                const name = (u.displayName && String(u.displayName).trim()) ? String(u.displayName) : uid;
-                const email = u.email ? String(u.email) : '';
-                const meta = email ? (uid + ' · ' + email) : uid;
-                return '<li role="option" tabindex="0" class="user-picker__item" data-user-id="' + Utils.escapeHtml(uid) + '">' +
-                    '<span class="user-picker__name">' + Utils.escapeHtml(name) + '</span>' +
-                    '<span class="user-picker__meta">' + Utils.escapeHtml(meta) + '</span></li>';
-            }).join('');
-            openList();
-            Utils.$$('.user-picker__item[data-user-id]', list).forEach(function(li) {
-                Utils.on(li, 'mousedown', function(e) {
-                    e.preventDefault();
-                });
-                Utils.on(li, 'click', function() {
-                    const uid = li.getAttribute('data-user-id') || '';
-                    const nameEl = li.querySelector('.user-picker__name');
-                    const displayName = nameEl ? nameEl.textContent : uid;
-                    hidden.value = uid;
-                    selectedLabel = displayName + ' (' + uid + ')';
-                    search.value = selectedLabel;
-                    closeList();
-                });
-            });
-        }
-
-        Utils.on(search, 'input', function() {
-            if (search.value !== selectedLabel) {
-                hidden.value = '';
-                selectedLabel = '';
-            }
-            clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(function() {
-                fetchUsers(search.value);
-            }, 300);
+        monthReopenPicker = initPicker({
+            hiddenSelector: '#monthClosureReopenUserId',
+            searchSelector: '#monthClosureReopenUserSearch',
+            listSelector: '#monthClosureReopenUserListbox',
+            wrapSelector: '#month-reopen-picker',
+            statusSelector: '#monthClosureReopenUserStatus',
+            searchUrl: baseUrl,
+            limit: 20,
+            minQueryLength: 2,
+            idPrefix: 'month-reopen-user',
+            l10n: l10n,
         });
-
-        Utils.on(search, 'focus', function() {
-            const q = (hidden.value && search.value === selectedLabel)
-                ? hidden.value
-                : search.value.trim();
-            fetchUsers(q);
-        });
-
-        Utils.on(search, 'keydown', function(e) {
-            if (e.key === 'Escape') {
-                closeList();
-            }
-        });
-
-        document.addEventListener('click', function(ev) {
-            if (!wrap || wrap.contains(ev.target)) {
-                return;
-            }
-            closeList();
-        });
+        if (!monthReopenPicker) {
+            Messaging && Messaging.showError && Messaging.showError(l10n.searchError || 'User search is unavailable. Reload the page.');
+        }
     }
 
     /**
@@ -409,7 +351,9 @@
         const live = Utils.$('#monthClosureReopenLive');
         const btn = Utils.$('#monthClosureReopenBtn');
         const l10n = window.ArbeitszeitCheck && window.ArbeitszeitCheck.l10n ? window.ArbeitszeitCheck.l10n : {};
-        const userId = userEl && userEl.value ? String(userEl.value).trim() : '';
+        const userId = (monthReopenPicker && typeof monthReopenPicker.getUserId === 'function')
+            ? monthReopenPicker.getUserId()
+            : (userEl && userEl.value ? String(userEl.value).trim() : '');
         const reason = reasonEl && reasonEl.value ? String(reasonEl.value).trim() : '';
         const year = yearEl ? parseInt(String(yearEl.value), 10) : NaN;
         const month = monthEl ? parseInt(String(monthEl.value), 10) : NaN;
@@ -452,13 +396,16 @@
                     if (live) {
                         live.textContent = ok;
                     }
-                    const searchEl = Utils.$('#monthClosureReopenUserSearch');
-                    if (userEl) {
-                        userEl.value = '';
-                    }
-                    if (searchEl) {
-                        searchEl.value = '';
-                        searchEl.dispatchEvent(new Event('input', { bubbles: true }));
+                    if (monthReopenPicker && typeof monthReopenPicker.clear === 'function') {
+                        monthReopenPicker.clear();
+                    } else {
+                        const searchEl = Utils.$('#monthClosureReopenUserSearch');
+                        if (userEl) {
+                            userEl.value = '';
+                        }
+                        if (searchEl) {
+                            searchEl.value = '';
+                        }
                     }
                     if (reasonEl) {
                         reasonEl.value = '';

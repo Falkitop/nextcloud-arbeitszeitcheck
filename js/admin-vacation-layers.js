@@ -379,8 +379,10 @@
         <td data-label="${escape(t('Days', 'Days'))}">${escape(fmtDays(row.manualDays))}</td>
         <td data-label="${escape(t('Tariff rule set', 'Tariff rule set'))}">${escape(fmtRuleSet(row.tariffRuleSetId))}</td>
         <td data-label="${escape(t('Description', 'Description'))}">${escape(row.description || '')}</td>
-        <td data-label="${escape(t('Actions', 'Actions'))}" class="layer-card__history-actions">
+        <td data-label="${escape(t('Actions', 'Actions'))}" class="actions-cell layer-card__history-actions">
+          <div class="azc-table-actions" role="group" aria-label="${escape(t('Actions', 'Actions'))}">
           <button type="button" class="azc-btn azc-btn--sm azc-btn--danger admin-vacation-layers__row-action" data-delete-org="${row.id}" aria-label="${escape(t('Delete organisation default', 'Delete organisation default'))} #${row.id}">${escape(t('Delete', 'Delete'))}</button>
+          </div>
         </td>
       </tr>
     `).join('');
@@ -403,8 +405,10 @@
         <td data-label="${escape(t('Days', 'Days'))}">${escape(fmtDays(row.manualDays))}</td>
         <td data-label="${escape(t('Tariff rule set', 'Tariff rule set'))}">${escape(fmtRuleSet(row.tariffRuleSetId))}</td>
         <td data-label="${escape(t('Description', 'Description'))}">${escape(row.description || '')}</td>
-        <td data-label="${escape(t('Actions', 'Actions'))}" class="layer-card__history-actions">
+        <td data-label="${escape(t('Actions', 'Actions'))}" class="actions-cell layer-card__history-actions">
+          <div class="azc-table-actions" role="group" aria-label="${escape(t('Actions', 'Actions'))}">
           <button type="button" class="azc-btn azc-btn--sm azc-btn--danger admin-vacation-layers__row-action" data-delete-model="${row.id}" aria-label="${escape(t('Delete model default', 'Delete model default'))} #${row.id}">${escape(t('Delete', 'Delete'))}</button>
+          </div>
         </td>
       </tr>
     `).join('');
@@ -427,8 +431,10 @@
         <td data-label="${escape(t('Days', 'Days'))}">${escape(fmtDays(row.manualDays))}</td>
         <td data-label="${escape(t('Priority', 'Priority'))}">${escape(String(row.priority ?? 0))}</td>
         <td data-label="${escape(t('Description', 'Description'))}">${escape(row.description || '')}</td>
-        <td data-label="${escape(t('Actions', 'Actions'))}" class="layer-card__history-actions">
+        <td data-label="${escape(t('Actions', 'Actions'))}" class="actions-cell layer-card__history-actions">
+          <div class="azc-table-actions" role="group" aria-label="${escape(t('Actions', 'Actions'))}">
           <button type="button" class="azc-btn azc-btn--sm azc-btn--danger admin-vacation-layers__row-action" data-delete-team="${row.id}" aria-label="${escape(t('Delete team policy', 'Delete team policy'))} #${row.id}">${escape(t('Delete', 'Delete'))}</button>
+          </div>
         </td>
       </tr>
     `).join('');
@@ -778,7 +784,9 @@
 
   function ruleSetFieldHtml() {
     const opts = ['<option value="">— ' + escape(t('None', 'None')) + ' —</option>']
-      .concat(state.ruleSets.map((r) => {
+      .concat(state.ruleSets
+        .filter((r) => Utils.isAssignableTariffRuleSet(r))
+        .map((r) => {
         const statusTxt = fmtTariffRuleSetStatus(r);
         return `<option value="${r.id}">${escape(r.tariffCode || r.id)} (v${escape(r.version)} · ${escape(statusTxt)})</option>`;
       }))
@@ -1550,7 +1558,7 @@
   function fetchSuggestions(term) {
     if (!URLS.userSearch) return;
     const reqId = ++simSuggestReqId;
-    const url = URLS.userSearch + '?search=' + encodeURIComponent(term) + '&limit=10';
+    const url = URLS.userSearch + '?picker=1&search=' + encodeURIComponent(term) + '&limit=15';
     Utils.ajax(url, {
       method: 'GET',
       onSuccess: (data) => {

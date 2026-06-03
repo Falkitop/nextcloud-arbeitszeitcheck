@@ -54,50 +54,55 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
             </header>
             <div class="azc-card__body">
                 <?php if ($loadError): ?>
-                    <div class="alert alert--error" role="alert">
-                        <span class="alert-icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('circle-alert')); ?></span>
-                        <div class="alert-content">
-                            <strong class="alert-title"><?php p($l->t('Could not load compliance status')); ?></strong>
-                            <p class="alert-message">
-                                <?php p($l->t('Please refresh the page to try again.')); ?>
-                            </p>
-                            <?php if (!empty($error)): ?>
-                                <p class="form-help"><?php p($error); ?></p>
-                            <?php endif; ?>
-                        </div>
-                    </div>
+                    <?php
+                    $calloutVariant = 'danger';
+                    $calloutRole = 'alert';
+                    $calloutBanner = false;
+                    $calloutTitleId = 'compliance-status-load-error-title';
+                    $calloutIcon = 'circle-alert';
+                    $calloutTitle = $l->t('Could not load compliance status');
+                    $calloutText = $l->t('Please refresh the page to try again.');
+                    $calloutHint = !empty($error) ? (string)$error : '';
+                    include __DIR__ . '/common/alert-callout.php';
+                    ?>
                 <?php elseif ($complianceStatus['compliant'] ?? false): ?>
                     <?php if (!$hasData): ?>
-                        <div class="alert alert--info" role="status">
-                            <span class="alert-icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('info')); ?></span>
-                            <div class="alert-content">
-                                <strong class="alert-title"><?php p($l->t('Not enough data yet')); ?></strong>
-                                <p class="alert-message">
-                                    <?php p($l->t('Create time entries to get your compliance status. Once you have recorded working hours, we can check them against German labor law.')); ?>
-                                </p>
-                            </div>
-                        </div>
+                        <?php
+                        $calloutVariant = 'info';
+                        $calloutRole = 'status';
+                        $calloutBanner = false;
+                        $calloutTitleId = 'compliance-status-no-data-title';
+                        $calloutIcon = 'info';
+                        $calloutTitle = $l->t('Not enough data yet');
+                        $calloutText = $l->t('Create time entries to get your compliance status. Once you have recorded working hours, we can check them against German labor law.');
+                        $calloutHint = '';
+                        include __DIR__ . '/common/alert-callout.php';
+                        ?>
                     <?php else: ?>
-                        <div class="alert alert--success" role="status">
-                            <span class="alert-icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('circle-check')); ?></span>
-                            <div class="alert-content">
-                                <strong class="alert-title"><?php p($l->t('Everything looks good!')); ?></strong>
-                                <p class="alert-message">
-                                    <?php p($l->t('Your working time follows all German labor law rules. Keep up the good work!')); ?>
-                                </p>
-                            </div>
-                        </div>
+                        <?php
+                        $calloutVariant = 'success';
+                        $calloutRole = 'status';
+                        $calloutBanner = false;
+                        $calloutTitleId = 'compliance-status-ok-title';
+                        $calloutIcon = 'check-circle';
+                        $calloutTitle = $l->t('Everything looks good!');
+                        $calloutText = $l->t('Your working time follows all German labor law rules. Keep up the good work!');
+                        $calloutHint = '';
+                        include __DIR__ . '/common/alert-callout.php';
+                        ?>
                     <?php endif; ?>
                 <?php else: ?>
-                    <div class="alert alert--warning" role="status">
-                        <span class="alert-icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('triangle-alert')); ?></span>
-                        <div class="alert-content">
-                            <strong class="alert-title"><?php p($l->t('Some problems found')); ?></strong>
-                            <p class="alert-message">
-                                <?php p($l->t('There are issues with your working time that need attention. Please check the list below and fix them.')); ?>
-                            </p>
-                        </div>
-                    </div>
+                    <?php
+                    $calloutVariant = 'warning';
+                    $calloutRole = 'status';
+                    $calloutBanner = false;
+                    $calloutTitleId = 'compliance-status-warning-title';
+                    $calloutIcon = 'alert-triangle';
+                    $calloutTitle = $l->t('Some problems found');
+                    $calloutText = $l->t('There are issues with your working time that need attention. Please check the list below and fix them.');
+                    $calloutHint = '';
+                    include __DIR__ . '/common/alert-callout.php';
+                    ?>
                 <?php endif; ?>
                 <?php if (!$loadError): ?>
                     <p class="compliance-dashboard__score">
@@ -140,7 +145,7 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
                     </div>
                 <?php else: ?>
                     <div class="table-container" role="region" aria-label="<?php p($l->t('Recent violations')); ?>">
-                        <table class="table table--hover" aria-label="<?php p($l->t('Recent violations')); ?>">
+                        <table class="table table--hover azc-table--responsive" aria-label="<?php p($l->t('Recent violations')); ?>">
                             <thead>
                                 <tr>
                                     <th scope="col"><?php p($l->t('Type')); ?></th>
@@ -178,14 +183,14 @@ $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class
                                     };
                                     ?>
                                     <tr>
-                                        <td><?php p($typeLabel); ?></td>
-                                        <td>
+                                        <td data-label="<?php p($l->t('Type')); ?>"><?php p($typeLabel); ?></td>
+                                        <td data-label="<?php p($l->t('Severity')); ?>">
                                             <span class="badge badge--<?php p($severityBadge); ?>">
                                                 <?php p($severityLabel); ?>
                                             </span>
                                         </td>
-                                        <td><?php p($violation['date'] ?? '-'); ?></td>
-                                        <td>
+                                        <td data-label="<?php p($l->t('Date')); ?>"><?php p($violation['date'] ?? '-'); ?></td>
+                                        <td data-label="<?php p($l->t('Status')); ?>">
                                             <?php if ($violation['resolved']): ?>
                                                 <span class="badge badge--success"><?php p($l->t('Resolved')); ?></span>
                                             <?php else: ?>

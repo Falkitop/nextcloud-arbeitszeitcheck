@@ -155,9 +155,8 @@
     height: 1.125rem;
     margin: 0;
     flex-shrink: 0;
-    stroke-width: 1.75;
-    opacity: 0.85;
-    transition: opacity 0.2s ease;
+    stroke-width: var(--azc-icon-stroke, 2);
+    color: inherit;
 }
 
 .nav-parent-chevron {
@@ -243,14 +242,12 @@
     height: 1.125rem;
     margin: 0;
     flex-shrink: 0;
-    stroke-width: 1.75;
-    opacity: 0.85;
-    transition: opacity 0.2s ease;
+    stroke-width: var(--azc-icon-stroke, 2);
+    color: inherit;
 }
 
 .nav-menu li.active .lucide-icon,
 .nav-menu a[aria-current="page"] .lucide-icon {
-    opacity: 1;
     color: var(--color-primary-element);
 }
 
@@ -299,7 +296,7 @@
     height: 1.75rem;
     margin: 0;
     color: var(--color-primary-element-text);
-    stroke-width: 1.5;
+    stroke-width: var(--azc-icon-stroke, 2);
 }
 
 .app-info {

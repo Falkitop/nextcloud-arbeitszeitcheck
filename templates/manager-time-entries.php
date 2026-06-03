@@ -2,9 +2,12 @@
 
 declare(strict_types=1);
 
+use OCA\ArbeitszeitCheck\Constants;
+
 /** @var array $_ */
 /** @var \OCP\IL10N $l */
 $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
+$maxManagerListDateRangeDays = (int)($_['maxManagerListDateRangeDays'] ?? Constants::MAX_EXPORT_DATE_RANGE_DAYS);
 ?>
 
 <?php include __DIR__ . '/common/page-start.php'; ?>
@@ -45,14 +48,34 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 						id="employee-time-entries-filter-form"
 						class="manager-scope-page__filter-form"
 						novalidate
-						aria-describedby="employee-time-entries-filter-help employee-time-entries-filter-error"
+						aria-describedby="employee-time-entries-filter-error"
 					>
-						<div class="manager-scope-page__filter-grid azc-filter-grid" role="group" aria-label="<?php p($l->t('Filter options')); ?>">
-							<div class="azc-filter-field">
-								<label for="employee-filter" class="azc-filter-field__label"><?php p($l->t('Employee')); ?></label>
+						<div class="manager-scope-filter" role="group" aria-label="<?php p($l->t('Filter options')); ?>">
+							<div class="azc-filter-field azc-filter-field--employee">
+								<label for="employee-filter-search" class="azc-filter-field__label"><?php p($l->t('Employee')); ?></label>
 								<div class="azc-filter-field__control">
-									<select id="employee-filter" name="employee_id" class="form-select">
-										<option value=""><?php p($l->t('All in my scope')); ?></option>
+									<?php
+									$scopePickerId = 'employee-filter';
+									$scopePickerName = 'employee_id';
+									$scopePickerAllowAll = true;
+									$scopePickerRequired = false;
+									$scopePickerCompact = true;
+									include __DIR__ . '/common/scoped-employee-picker-field.php';
+									?>
+								</div>
+							</div>
+
+							<div class="azc-filter-field azc-filter-field--status">
+								<label for="status-filter" class="azc-filter-field__label"><?php p($l->t('Status')); ?></label>
+								<div class="azc-filter-field__control">
+									<select id="status-filter" name="status" class="form-select" aria-label="<?php p($l->t('Status')); ?>">
+										<option value=""><?php p($l->t('All statuses')); ?></option>
+										<option value="active"><?php p($l->t('Clocked In')); ?></option>
+										<option value="break"><?php p($l->t('On Break')); ?></option>
+										<option value="paused"><?php p($l->t('Paused')); ?></option>
+										<option value="completed"><?php p($l->t('Completed')); ?></option>
+										<option value="pending_approval"><?php p($l->t('Pending Approval')); ?></option>
+										<option value="rejected"><?php p($l->t('Rejected')); ?></option>
 									</select>
 								</div>
 							</div>
@@ -66,7 +89,7 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 								<div class="azc-filter-field__control">
 									<div class="azc-date-range">
 										<div class="azc-date-range__part">
-											<label for="start-date-filter" class="azc-date-range__sublabel"><?php p($l->t('From')); ?></label>
+											<label for="start-date-filter" class="azc-date-range__sublabel visually-hidden"><?php p($l->t('From')); ?></label>
 											<input
 												id="start-date-filter"
 												name="start_date"
@@ -84,7 +107,7 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 										</div>
 										<span class="azc-date-range__sep" aria-hidden="true"><?php p($l->t('to')); ?></span>
 										<div class="azc-date-range__part">
-											<label for="end-date-filter" class="azc-date-range__sublabel"><?php p($l->t('To')); ?></label>
+											<label for="end-date-filter" class="azc-date-range__sublabel visually-hidden"><?php p($l->t('To')); ?></label>
 											<input
 												id="end-date-filter"
 												name="end_date"
@@ -104,28 +127,16 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 								</div>
 							</div>
 
-							<div class="azc-filter-field">
-								<label for="status-filter" class="azc-filter-field__label"><?php p($l->t('Status')); ?></label>
-								<div class="azc-filter-field__control">
-									<select id="status-filter" name="status" class="form-select">
-										<option value=""><?php p($l->t('All Statuses')); ?></option>
-										<option value="active"><?php p($l->t('Clocked In')); ?></option>
-										<option value="break"><?php p($l->t('On Break')); ?></option>
-										<option value="paused"><?php p($l->t('Paused')); ?></option>
-										<option value="completed"><?php p($l->t('Completed')); ?></option>
-										<option value="pending_approval"><?php p($l->t('Pending Approval')); ?></option>
-										<option value="rejected"><?php p($l->t('Rejected')); ?></option>
-									</select>
+							<div class="azc-filter-field azc-filter-field--actions">
+								<span class="azc-filter-field__label visually-hidden"><?php p($l->t('Actions')); ?></span>
+								<div class="azc-filter-field__control azc-filter-actions">
+									<button type="submit" class="azc-btn azc-btn--primary" id="employee-time-entries-submit">
+										<?php p($l->t('Show')); ?>
+									</button>
+									<button type="button" id="employee-time-entries-clear" class="azc-btn azc-btn--secondary">
+										<?php p($l->t('Reset')); ?>
+									</button>
 								</div>
-							</div>
-
-							<div class="azc-filter-actions">
-								<button type="submit" class="azc-btn azc-btn--primary" id="employee-time-entries-submit">
-									<?php p($l->t('Show')); ?>
-								</button>
-								<button type="button" id="employee-time-entries-clear" class="azc-btn azc-btn--secondary">
-									<?php p($l->t('Reset')); ?>
-								</button>
 							</div>
 						</div>
 
@@ -134,7 +145,7 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 						</p>
 					</form>
 					<p id="employee-time-entries-filter-help" class="manager-scope-page__toolbar-footnote" role="note">
-						<?php p($l->t('Entries load only after you click Show with a valid date range.')); ?>
+						<?php p($l->t('Pick a date range, then Show. Leave employee empty for your whole team, or search and select one person. Maximum range: %d days.', [$maxManagerListDateRangeDays])); ?>
 					</p>
 				</div>
 
@@ -144,7 +155,7 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 				</div>
 
 				<div id="employee-time-entries-table-wrap" class="table-container visually-hidden" aria-live="polite">
-					<table class="table table--hover" aria-label="<?php p($l->t('Employee time entries')); ?>">
+					<table class="table table--hover azc-table--responsive manager-scope-page__results-table" aria-label="<?php p($l->t('Employee time entries')); ?>">
 						<thead>
 							<tr>
 								<th scope="col"><?php p($l->t('Name')); ?></th>

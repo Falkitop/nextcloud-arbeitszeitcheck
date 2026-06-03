@@ -48,6 +48,17 @@ $teamsUiKeys = [
 	'Failed to update unit',
 	'No users available',
 	'All users are already members of this team',
+	'Find a person',
+	'Start typing their name or user ID, then pick them from the list.',
+	'Search by name or user ID…',
+	'Matching users',
+	'No matching users found',
+	'Type at least 2 characters to search for a person.',
+	'Please select a person from the search results.',
+	'Selected: %s',
+	'%n results',
+	'Showing the first %n matches. Keep typing to narrow it down.',
+	'Everyone matching your search is already assigned to this unit.',
 	'Add member',
 	'Select user',
 	'Add',
@@ -79,8 +90,12 @@ foreach ($teamsUiKeys as $msgid) {
 	}
 }
 
+$adminUserSearchUrl = (string)($_['adminUserSearchUrl'] ?? '');
 ?>
 <script nonce="<?php p($_['cspNonce'] ?? ''); ?>">
 window.ArbeitszeitCheck = window.ArbeitszeitCheck || {};
 window.ArbeitszeitCheck.teamsL10n = <?php echo json_encode($teamsL10n, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;
+window.ArbeitszeitCheck.teamsConfig = <?php echo json_encode([
+	'adminUserSearchUrl' => $adminUserSearchUrl,
+], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;
 </script>

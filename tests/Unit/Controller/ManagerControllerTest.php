@@ -1088,6 +1088,74 @@ class ManagerControllerTest extends TestCase
 		$this->assertFalse($data['success']);
 	}
 
+	public function testGetEmployeeTimeEntriesReturnsForbiddenForOutOfScopeEmployee(): void
+	{
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn('manager1');
+		$employee = $this->createMock(IUser::class);
+		$employee->method('isEnabled')->willReturn(true);
+		$this->userSession->method('getUser')->willReturn($user);
+		$this->teamResolver->method('getTeamMemberIds')->with('manager1')->willReturn(['employee1']);
+		$this->userManager->method('get')->willReturn($employee);
+		$this->userManager->method('getDisplayName')->willReturn('Employee One');
+
+		$response = $this->controller->getEmployeeTimeEntries(
+			'employee2',
+			'2026-03-01',
+			'2026-03-31',
+		);
+		$data = $response->getData();
+
+		$this->assertEquals(Http::STATUS_FORBIDDEN, $response->getStatus());
+		$this->assertFalse($data['success']);
+	}
+
+	public function testGetEmployeeAbsencesRejectsDateRangeOverMaxDays(): void
+	{
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn('manager1');
+		$employee = $this->createMock(IUser::class);
+		$employee->method('isEnabled')->willReturn(true);
+		$this->userSession->method('getUser')->willReturn($user);
+		$this->teamResolver->method('getTeamMemberIds')->with('manager1')->willReturn(['employee1']);
+		$this->userManager->method('get')->willReturn($employee);
+		$this->userManager->method('getDisplayName')->willReturn('Employee One');
+		$this->absenceMapper->expects($this->never())->method('findByUsersAndDateRange');
+
+		$response = $this->controller->getEmployeeAbsences(
+			'employee1',
+			'2024-01-01',
+			'2025-12-31',
+		);
+		$data = $response->getData();
+
+		$this->assertEquals(Http::STATUS_BAD_REQUEST, $response->getStatus());
+		$this->assertFalse($data['success']);
+	}
+
+	public function testGetEmployeeTimeEntriesRejectsDateRangeOverMaxDays(): void
+	{
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn('manager1');
+		$employee = $this->createMock(IUser::class);
+		$employee->method('isEnabled')->willReturn(true);
+		$this->userSession->method('getUser')->willReturn($user);
+		$this->teamResolver->method('getTeamMemberIds')->with('manager1')->willReturn(['employee1']);
+		$this->userManager->method('get')->willReturn($employee);
+		$this->userManager->method('getDisplayName')->willReturn('Employee One');
+		$this->timeEntryMapper->expects($this->never())->method('findByUsersAndDateRange');
+
+		$response = $this->controller->getEmployeeTimeEntries(
+			'employee1',
+			'2024-01-01',
+			'2025-12-31',
+		);
+		$data = $response->getData();
+
+		$this->assertEquals(Http::STATUS_BAD_REQUEST, $response->getStatus());
+		$this->assertFalse($data['success']);
+	}
+
 	public function testGetEmployeeAbsencesReturnsFilteredRows(): void
 	{
 		$user = $this->createMock(IUser::class);
@@ -1278,6 +1346,98 @@ class ManagerControllerTest extends TestCase
 		$this->assertTrue($data['success']);
 		$this->assertCount(1, $data['users']);
 		$this->assertSame('emp1', $data['users'][0]['userId']);
+	}
+
+	public function testGetScopedEmployeesRequiresMinSearchLength(): void
+	{
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn('manager1');
+		$this->userSession->method('getUser')->willReturn($user);
+
+		$response = $this->controller->getScopedEmployees('a', 25);
+
+		$this->assertSame(Http::STATUS_OK, $response->getStatus());
+		$data = $response->getData();
+		$this->assertTrue($data['success']);
+		$this->assertSame([], $data['users']);
+		$this->assertSame(Constants::PICKER_MIN_SEARCH_LENGTH, $data['requiresMinSearch']);
+	}
+
+	public function testAdminEmployeeTimeEntriesAcceptsPickerUserOutsideListPreload(): void
+	{
+		$admin = $this->createMock(IUser::class);
+		$admin->method('getUID')->willReturn('admin1');
+		$this->userSession->method('getUser')->willReturn($admin);
+		$this->isAdminAccess = true;
+
+		$this->userManager->method('search')->with('', Constants::MAX_LIST_LIMIT, 0)->willReturn([]);
+
+		$remote = $this->createMock(IUser::class);
+		$remote->method('getUID')->willReturn('remote-user');
+		$remote->method('isEnabled')->willReturn(true);
+		$this->userManager->method('get')->with('remote-user')->willReturn($remote);
+		$this->userManager->method('getDisplayName')->with('remote-user')->willReturn('Remote User');
+
+		$this->timeEntryMapper->expects($this->once())
+			->method('findByUsersAndDateRange')
+			->with(
+				['remote-user'],
+				$this->isInstanceOf(\DateTimeImmutable::class),
+				$this->isInstanceOf(\DateTimeImmutable::class),
+				null,
+				$this->anything(),
+				$this->anything(),
+			)
+			->willReturn([]);
+		$this->timeEntryMapper->method('countByUsersAndDateRange')->willReturn(0);
+
+		$response = $this->controller->getEmployeeTimeEntries(
+			'remote-user',
+			'2026-01-01',
+			'2026-01-31',
+		);
+
+		$this->assertSame(Http::STATUS_OK, $response->getStatus());
+		$data = $response->getData();
+		$this->assertTrue($data['success']);
+		$this->assertSame('remote-user', $data['employees'][0]['userId']);
+	}
+
+	public function testGetScopedEmployeesReturnsTeamMembersForManager(): void
+	{
+		$manager = $this->createMock(IUser::class);
+		$manager->method('getUID')->willReturn('manager1');
+		$this->userSession->method('getUser')->willReturn($manager);
+		$this->isAdminAccess = false;
+		$this->teamResolver->method('getTeamMemberIds')->with('manager1')->willReturn(['alice', 'bob']);
+
+		$alice = $this->createMock(IUser::class);
+		$alice->method('getUID')->willReturn('alice');
+		$alice->method('getDisplayName')->willReturn('Alice Example');
+		$alice->method('isEnabled')->willReturn(true);
+		$bob = $this->createMock(IUser::class);
+		$bob->method('getUID')->willReturn('bob');
+		$bob->method('isEnabled')->willReturn(true);
+
+		$this->userManager->method('get')->willReturnCallback(static function (string $uid) use ($alice, $bob) {
+			return match ($uid) {
+				'alice' => $alice,
+				'bob' => $bob,
+				default => null,
+			};
+		});
+		$this->userManager->method('getDisplayName')->willReturnCallback(static fn (string $uid) => match ($uid) {
+			'alice' => 'Alice Example',
+			default => $uid,
+		});
+
+		$response = $this->controller->getScopedEmployees('ali', 25);
+
+		$this->assertSame(Http::STATUS_OK, $response->getStatus());
+		$data = $response->getData();
+		$this->assertTrue($data['success']);
+		$this->assertCount(1, $data['users']);
+		$this->assertSame('alice', $data['users'][0]['userId']);
 	}
 
 }

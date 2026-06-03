@@ -23,8 +23,6 @@
   flex-direction: column;
   gap: var(--azc-space-5, 1.25rem);
   width: 100%;
-  max-width: 72rem;
-  margin-inline: auto;
   min-width: 0;
 }
 
@@ -117,17 +115,27 @@
   width: 2.25rem;
   height: 1.75rem;
   border-radius: 6px;
-  background: var(--color-primary-element);
-  color: var(--color-primary-element-text);
+  border: 2px solid var(--color-primary-element, #00679e);
+  background: var(--color-main-background);
+  color: var(--color-main-text);
   font-size: .8125rem;
   font-weight: 700;
   align-items: center;
   justify-content: center;
   letter-spacing: .02em;
 }
-.layer-card--l2 .layer-card__chip { background: color-mix(in srgb, var(--color-primary-element) 80%, var(--color-warning) 20%); }
-.layer-card--l1 .layer-card__chip { background: color-mix(in srgb, var(--color-primary-element) 60%, var(--color-text-maxcontrast) 40%); }
-.layer-card--l0 .layer-card__chip { background: color-mix(in srgb, var(--color-text-maxcontrast) 60%, var(--color-primary-element) 40%); }
+.layer-card--l2 .layer-card__chip {
+  border-color: var(--color-warning, #b08100);
+  background: color-mix(in srgb, var(--color-warning, #b08100) 10%, var(--color-main-background));
+}
+.layer-card--l1 .layer-card__chip {
+  border-color: var(--color-primary-element, #00679e);
+  background: color-mix(in srgb, var(--color-primary-element, #00679e) 10%, var(--color-main-background));
+}
+.layer-card--l0 .layer-card__chip {
+  border-color: var(--color-border);
+  background: var(--color-main-background);
+}
 
 /* Count chip next to the section title — small, neutral, never the only
    indicator (the number always carries a textual "entries" suffix from JS). */
@@ -140,9 +148,9 @@
   font-size: .75rem;
   font-weight: 600;
   letter-spacing: .02em;
-  background: var(--color-background-dark);
-  border: 1px solid var(--color-border);
-  color: var(--color-text-maxcontrast);
+  border: 2px solid var(--color-border);
+  background: var(--color-main-background);
+  color: var(--color-main-text);
   /* When JS hasn't set a value yet the chip stays hidden so the header
      doesn't look broken during the initial load. */
 }
@@ -334,8 +342,6 @@ dialog.layer-dialog::backdrop {
   margin: 0;
   min-height: 1.25rem;
   font-size: .9375rem;
-  color: var(--color-error);
-  font-weight: 500;
 }
 .layer-dialog__feedback:empty { min-height: 0; }
 
@@ -451,7 +457,6 @@ dialog.layer-dialog::backdrop {
 .form-error--inline {
   margin: 0;
   font-size: .8125rem;
-  color: var(--color-error);
   font-weight: 500;
 }
 .form-error[hidden] { display: none; }

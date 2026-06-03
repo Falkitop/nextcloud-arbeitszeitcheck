@@ -28,25 +28,25 @@ $payoutsUrl = $urlGenerator->linkToRoute('arbeitszeitcheck.overtime_payout.index
         <div class="azc-page-stack">
         <div class="admin-dashboard__stack">
             <?php if ($showOvertimeBanner): ?>
-            <aside id="admin-overtime-onboarding-banner"
-                   class="azc-callout azc-callout--warning admin-overtime-onboarding"
-                   role="region"
-                   aria-labelledby="admin-overtime-onboarding-title">
-                <h2 id="admin-overtime-onboarding-title" class="azc-callout__title"><?php p($l->t('Configure overtime balances')); ?></h2>
-                <p class="azc-callout__text">
-                    <?php p($l->t('%s of %s employees have no overtime tracking start date (Stichtag). Without it, year-to-date balances are calculated from 1 January and may show large undertime until configured.', [
-                        (string)($overtimeOnboarding['without_tracking'] ?? 0),
-                        (string)($overtimeOnboarding['total_users'] ?? 0),
-                    ])); ?>
-                </p>
-                <p class="azc-callout__actions">
-                    <a id="admin-overtime-onboarding-link"
-                       class="azc-btn azc-btn--secondary azc-btn--sm"
-                       href="<?php p($usersAdminUrl); ?>">
-                        <?php p($l->t('Open user administration')); ?>
-                    </a>
-                </p>
-            </aside>
+            <?php
+            $calloutVariant = 'warning';
+            $calloutRole = 'region';
+            $calloutId = 'admin-overtime-onboarding-banner';
+            $calloutTitleId = 'admin-overtime-onboarding-title';
+            $calloutTitle = $l->t('Configure overtime balances');
+            $calloutText = $l->t('%s of %s employees have no overtime tracking start date (Stichtag). Without it, year-to-date balances are calculated from 1 January and may show large undertime until configured.', [
+                (string)($overtimeOnboarding['without_tracking'] ?? 0),
+                (string)($overtimeOnboarding['total_users'] ?? 0),
+            ]);
+            $calloutExtraClass = 'admin-overtime-onboarding';
+            $calloutActions = [[
+                'id' => 'admin-overtime-onboarding-link',
+                'href' => $usersAdminUrl,
+                'label' => $l->t('Open user administration'),
+                'class' => 'azc-btn azc-btn--secondary azc-btn--sm',
+            ]];
+            include __DIR__ . '/common/alert-callout.php';
+            ?>
             <?php endif; ?>
 
             <?php if (!empty($overtimePolicy['bank_enabled']) || !empty($overtimePolicy['traffic_light_enabled'])): ?>
@@ -150,7 +150,7 @@ $payoutsUrl = $urlGenerator->linkToRoute('arbeitszeitcheck.overtime_payout.index
                         </div>
                     <?php else: ?>
                         <div class="table-container" role="region" aria-label="<?php p($l->t('Recent compliance violations')); ?>">
-                            <table class="table table--hover" aria-label="<?php p($l->t('Recent compliance violations')); ?>">
+                            <table class="table table--hover azc-table--responsive" aria-label="<?php p($l->t('Recent compliance violations')); ?>">
                                 <thead>
                                     <tr>
                                         <th scope="col"><?php p($l->t('Employee')); ?></th>
@@ -189,15 +189,15 @@ $payoutsUrl = $urlGenerator->linkToRoute('arbeitszeitcheck.overtime_payout.index
                                         };
                                         ?>
                                         <tr>
-                                            <td><?php p($violation['userDisplayName'] ?? $violation['userId']); ?></td>
-                                            <td><?php p($typeLabel); ?></td>
-                                            <td>
+                                            <td data-label="<?php p($l->t('Employee')); ?>"><?php p($violation['userDisplayName'] ?? $violation['userId']); ?></td>
+                                            <td data-label="<?php p($l->t('Problem Type')); ?>"><?php p($typeLabel); ?></td>
+                                            <td data-label="<?php p($l->t('How Serious')); ?>">
                                                 <span class="badge badge--<?php p($severityBadge); ?>">
                                                     <?php p($severityLabel); ?>
                                                 </span>
                                             </td>
-                                            <td><?php p($violation['date'] ?? '-'); ?></td>
-                                            <td>
+                                            <td data-label="<?php p($l->t('Date')); ?>"><?php p($violation['date'] ?? '-'); ?></td>
+                                            <td data-label="<?php p($l->t('Fixed?')); ?>">
                                                 <?php if ($violation['resolved']): ?>
                                                     <span class="badge badge--success"><?php p($l->t('Resolved')); ?></span>
                                                 <?php else: ?>

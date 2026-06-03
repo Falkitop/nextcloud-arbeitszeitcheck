@@ -130,22 +130,21 @@
             const resolveBtn = (!v.resolved && v.can_resolve)
                 ? `<button type="button" class="btn btn--sm btn--secondary" id="btn-resolve-violation-${Utils.escapeHtml(String(v.id))}" data-violation-id="${Utils.escapeHtml(String(v.id))}">${Utils.escapeHtml(cvT('Mark as fixed'))}</button>`
                 : '';
+            const td = (label, html) => Utils.responsiveTd
+                ? Utils.responsiveTd(label, html)
+                : `<td>${html}</td>`;
             return `
             <tr>
-                <td>${Utils.escapeHtml(typeLabels[v.type] || v.type)}</td>
-                <td>
-                    <span class="badge badge--${v.severity === 'error' ? 'error' : (v.severity === 'warning' ? 'warning' : 'primary')}">
+                ${td(cvT('Problem Type'), Utils.escapeHtml(typeLabels[v.type] || v.type))}
+                ${td(cvT('How Serious'), `<span class="badge badge--${Utils.badgeVariantForComplianceSeverity ? Utils.badgeVariantForComplianceSeverity(v.severity) : (v.severity === 'error' ? 'error' : (v.severity === 'warning' ? 'warning' : 'primary'))}">
                         ${Utils.escapeHtml(severityLabels[v.severity] || v.severity)}
-                    </span>
-                </td>
-                <td>${Utils.escapeHtml(v.date || '-')}</td>
-                <td>${Utils.escapeHtml(v.description || '-')}</td>
-                <td>
-                    <span class="badge badge--${v.resolved ? 'success' : 'error'}">
+                    </span>`)}
+                ${td(cvT('Date'), Utils.escapeHtml(v.date || '-'))}
+                ${td(cvT('What Happened'), Utils.escapeHtml(v.description || '-'))}
+                ${td(cvT('Fixed?'), `<span class="badge badge--${v.resolved ? 'success' : 'error'}">
                         ${Utils.escapeHtml(v.resolved ? resolvedLabel : unresolvedLabel)}
                     </span>
-                    ${resolveBtn}
-                </td>
+                    ${resolveBtn}`)}
             </tr>`;
         }).join('');
 

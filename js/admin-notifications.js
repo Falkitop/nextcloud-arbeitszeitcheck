@@ -61,6 +61,7 @@
 		}
 		liveRegion.textContent = message || '';
 		liveRegion.classList.remove('admin-notifications-live--error', 'admin-notifications-live--success');
+		liveRegion.setAttribute('role', type === 'error' ? 'alert' : 'status');
 		if (type === 'error') {
 			liveRegion.classList.add('admin-notifications-live--error');
 		} else if (type === 'success') {

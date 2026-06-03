@@ -19,6 +19,22 @@
 
 #app-content.azc-app--admin-tariff-rules .admin-tariff-rules__intro {
 	margin: 0;
+	padding: var(--azc-space-3, 0.75rem) var(--azc-space-4, 1rem);
+	gap: var(--azc-space-3, 0.75rem);
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__intro .azc-callout__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--azc-space-1, 0.25rem);
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__intro .azc-callout__text,
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__intro .azc-callout__hint {
+	margin: 0;
+	max-width: none;
 }
 
 #app-content.azc-app--admin-tariff-rules .admin-tariff-rules__toolbar {
@@ -91,6 +107,68 @@
 	gap: var(--azc-space-4);
 }
 
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__form-grid--full,
+.modal-backdrop .admin-tariff-rules__form-grid--full {
+	grid-column: 1 / -1;
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__form-section,
+.modal-backdrop .admin-tariff-rules__form-section {
+	margin: 0 0 var(--azc-space-5);
+	padding: 0 0 var(--azc-space-4);
+	border-bottom: 1px solid var(--color-border, var(--azc-border));
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__form-section:last-of-type,
+.modal-backdrop .admin-tariff-rules__form-section:last-of-type {
+	border-bottom: none;
+	padding-bottom: 0;
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__form-section-title,
+.modal-backdrop .admin-tariff-rules__form-section-title {
+	margin: 0 0 var(--azc-space-3);
+	font-size: var(--azc-fs-md, 1rem);
+	font-weight: 700;
+	color: var(--color-main-text);
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__section-lead,
+.modal-backdrop .admin-tariff-rules__section-lead {
+	margin: 0 0 var(--azc-space-3);
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__field-error,
+.modal-backdrop .admin-tariff-rules__field-error {
+	margin-top: var(--azc-space-1);
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__modal .form-input[aria-invalid='true'],
+.modal-backdrop .admin-tariff-rules__modal .form-input[aria-invalid='true'] {
+	border-color: var(--color-error, #c32c2c);
+	outline-color: var(--color-error, #c32c2c);
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__conflict-actions,
+.modal-backdrop .admin-tariff-rules__conflict-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--azc-space-2);
+	margin-top: var(--azc-space-3);
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__add-module,
+.modal-backdrop .admin-tariff-rules__add-module {
+	margin-top: var(--azc-space-3);
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__row--highlight,
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__row--highlight td {
+	background: color-mix(in srgb, var(--color-primary-element, #00679e) 14%, var(--color-main-background));
+	outline: 2px solid var(--color-primary-element, #00679e);
+	outline-offset: -2px;
+}
+
 #app-content.azc-app--admin-tariff-rules .admin-tariff-rules__section-title,
 .modal-backdrop .admin-tariff-rules__section-title {
 	margin: var(--azc-space-5) 0 var(--azc-space-2);
@@ -124,6 +202,38 @@
 #app-content.azc-app--admin-tariff-rules .admin-tariff-rules__module-field,
 .modal-backdrop .admin-tariff-rules__module-field {
 	margin: 0;
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__module-type-row,
+.modal-backdrop .admin-tariff-rules__module-type-row {
+	margin-bottom: var(--azc-space-3);
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__version-suggestion,
+.modal-backdrop .admin-tariff-rules__version-suggestion {
+	margin: var(--azc-space-2) 0 0;
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__form-error .azc-callout__text,
+.modal-backdrop .admin-tariff-rules__form-error .azc-callout__text {
+	margin: 0;
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__modules-count,
+.modal-backdrop .admin-tariff-rules__modules-count {
+	margin-right: var(--azc-space-2);
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__incomplete-badge,
+.modal-backdrop .admin-tariff-rules__incomplete-badge {
+	vertical-align: middle;
+	white-space: nowrap;
+}
+
+#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__row-actions .azc-btn[disabled],
+.modal-backdrop .admin-tariff-rules__row-actions .azc-btn[disabled] {
+	cursor: not-allowed;
+	opacity: 0.65;
 }
 
 #app-content.azc-app--admin-tariff-rules .admin-tariff-rules__form-error,
@@ -176,7 +286,12 @@
 @media (forced-colors: active) {
 	#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__table-wrap,
 	#app-content.azc-app--admin-tariff-rules .admin-tariff-rules__module,
-	.modal-backdrop .admin-tariff-rules__module {
+	.modal-backdrop .admin-tariff-rules__module,
+	.modal-backdrop .admin-tariff-rules__form-error.azc-callout {
 		border-color: CanvasText;
+	}
+
+	.modal-backdrop .admin-tariff-rules__form-error.azc-callout--danger {
+		border-left-color: CanvasText;
 	}
 }

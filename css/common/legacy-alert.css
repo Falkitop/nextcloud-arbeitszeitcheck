@@ -1,0 +1,104 @@
+/**
+ * Legacy .alert banners — aligned with azc-callout contrast (theme-safe, WCAG 2.1 AA).
+ * Prefer templates/common/alert-callout.php for new markup.
+ */
+
+#app-content.azc-app .alert,
+.modal-backdrop .alert,
+.azc-denied .alert {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: nowrap;
+	align-items: flex-start;
+	gap: var(--azc-space-3, 0.75rem) var(--azc-space-4, 1rem);
+	margin: 0 0 var(--azc-space-4, 1rem);
+	padding: var(--azc-space-4, 1rem) var(--azc-space-5, 1.25rem);
+	border: 2px solid var(--color-border, var(--azc-border));
+	border-radius: var(--azc-radius-md, 8px);
+	background: var(--color-main-background, var(--azc-bg));
+	box-shadow: var(--azc-shadow-sm, 0 1px 2px rgb(0 0 0 / 8%));
+	color: var(--color-main-text, var(--azc-text));
+}
+
+/* Variant accents + icon wells: common/notification-surfaces.css */
+
+#app-content.azc-app .alert-icon,
+.modal-backdrop .alert-icon {
+	flex-shrink: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: var(--azc-icon-well, 2.75rem);
+	height: var(--azc-icon-well, 2.75rem);
+	border-radius: var(--azc-radius-sm, 6px);
+}
+
+#app-content.azc-app .alert-icon .azc-icon,
+#app-content.azc-app .alert-icon svg,
+.modal-backdrop .alert-icon .azc-icon,
+.modal-backdrop .alert-icon svg {
+	width: var(--azc-icon-lg, 1.5rem);
+	height: var(--azc-icon-lg, 1.5rem);
+}
+
+#app-content.azc-app .alert-content,
+.modal-backdrop .alert-content {
+	flex: 1 1 auto;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--azc-space-1, 0.25rem);
+}
+
+#app-content.azc-app .alert-title,
+#app-content.azc-app .alert-message,
+#app-content.azc-app .alert-content strong,
+.modal-backdrop .alert-title,
+.modal-backdrop .alert-message,
+.modal-backdrop .alert-content strong {
+	margin: 0;
+	color: var(--color-main-text, var(--azc-text));
+}
+
+#app-content.azc-app .alert-title,
+#app-content.azc-app .alert-content strong,
+.modal-backdrop .alert-title,
+.modal-backdrop .alert-content strong {
+	font-size: var(--azc-fs-md, 1rem);
+	font-weight: 600;
+	line-height: var(--azc-line-tight, 1.25);
+}
+
+#app-content.azc-app .alert-message,
+.modal-backdrop .alert-message {
+	font-size: var(--azc-fs-md, 1rem);
+	line-height: var(--azc-line-base, 1.45);
+	max-width: 70ch;
+}
+
+#app-content.azc-app .alert > .alert-message:only-child,
+.modal-backdrop .alert > .alert-message:only-child {
+	flex: 1 1 auto;
+}
+
+#app-content.azc-app .alert > .alert-message:only-child strong,
+.modal-backdrop .alert > .alert-message:only-child strong {
+	display: block;
+	margin-bottom: var(--azc-space-1, 0.25rem);
+}
+
+@media (forced-colors: active) {
+	#app-content.azc-app .alert,
+	.modal-backdrop .alert {
+		border: 2px solid CanvasText;
+		background: Canvas;
+		color: CanvasText;
+	}
+
+	#app-content.azc-app .alert-icon,
+	.modal-backdrop .alert-icon {
+		border: 1px solid CanvasText;
+		background: Canvas;
+		color: CanvasText;
+	}
+}

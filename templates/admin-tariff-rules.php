@@ -47,6 +47,7 @@ $tariffL10n = [
 	'days' => $l->t('Days'),
 	'roundingMode' => $l->t('Rounding mode'),
 	'roundingCommercial' => $l->t('Commercial (round half away from zero)'),
+	'roundingHalfDay' => $l->t('Nearest half day'),
 	'roundingCeil' => $l->t('Always round up'),
 	'roundingFloor' => $l->t('Always round down'),
 	'proRataMode' => $l->t('Pro-rata calculation'),
@@ -76,6 +77,9 @@ $tariffL10n = [
 	'statusDraft' => $l->t('Draft'),
 	'statusActive' => $l->t('Active'),
 	'statusRetired' => $l->t('Retired'),
+	'status' => $l->t('Status'),
+	'modulesCol' => $l->t('Modules'),
+	'actions' => $l->t('Actions'),
 	'loading' => $l->t('Loading…'),
 	'loadingError' => $l->t('Could not load tariff rule sets. Please try again.'),
 	'createError' => $l->t('Could not create tariff rule set.'),
@@ -94,6 +98,21 @@ $tariffL10n = [
 	'noRuleSets' => $l->t('No tariff rule sets yet'),
 	'noRuleSetsHelp' => $l->t('Create the first tariff rule set to enable tariff-based vacation entitlement.'),
 	'workflowHelp' => $l->t('Draft → Activate when ready → Retire when superseded. Only drafts can be edited or deleted.'),
+	'sectionIdentity' => $l->t('Identify this rule set'),
+	'sectionValidity' => $l->t('Validity and activation'),
+	'sectionModules' => $l->t('Calculation modules'),
+	'moduleLegend' => $l->t('Module %1$s: %2$s', ['%1$s', '%2$s']),
+	'duplicateConflictDraft' => $l->t('A draft already exists for tariff code "%1$s" and version "%2$s". Open that draft to continue, or change the code or version below.', ['%1$s', '%2$s']),
+	'duplicateConflictLocked' => $l->t('Tariff code "%1$s" with version "%2$s" already exists (status: %3$s). Pick a new version label to create another rule set.', ['%1$s', '%2$s', '%3$s']),
+	'openExistingDraft' => $l->t('Open existing draft'),
+	'viewExistingRuleSet' => $l->t('View existing rule set'),
+	'showInList' => $l->t('Show in list'),
+	'duplicateFieldHint' => $l->t('This combination is already in use.'),
+	'versionSuggestion' => $l->t('Suggested new version label: %1$s', ['%1$s']),
+	'useSuggestedVersion' => $l->t('Use suggested version'),
+	'incompleteDraft' => $l->t('Incomplete'),
+	'incompleteDraftHelp' => $l->t('This draft is missing required calculation modules. Edit it and add a base formula before activating.'),
+	'activateIncompleteHint' => $l->t('Complete the calculation modules before activating this draft.'),
 ];
 ?>
 
@@ -103,10 +122,15 @@ $tariffL10n = [
         <div id="admin-tariff-rules-feedback" class="azc-sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
 
         <div class="admin-tariff-rules">
-            <aside class="azc-callout azc-callout--info admin-tariff-rules__intro" role="note">
-                <p class="azc-callout__text"><?php p($l->t('Tariff rule sets drive vacation entitlement when employees use “tariff rule” mode. Changes are audited and active sets cannot be edited.')); ?></p>
-                <p class="azc-callout__hint"><?php p($tariffL10n['workflowHelp']); ?></p>
-            </aside>
+            <?php
+            $calloutVariant = 'info';
+            $calloutRole = 'note';
+            $calloutBanner = false;
+            $calloutExtraClass = 'admin-tariff-rules__intro';
+            $calloutText = $l->t('Tariff rule sets drive vacation entitlement when employees use “tariff rule” mode. Changes are audited and active sets cannot be edited.');
+            $calloutHint = $tariffL10n['workflowHelp'];
+            include __DIR__ . '/common/alert-callout.php';
+            ?>
 
             <section class="azc-card admin-tariff-rules__list-card" aria-labelledby="admin-tariff-rules-list-heading">
                 <header class="azc-card__header">
@@ -132,7 +156,7 @@ $tariffL10n = [
                 </header>
                 <div class="azc-card__body">
                     <div class="table-container admin-tariff-rules__table-wrap" role="region" aria-labelledby="admin-tariff-rules-list-heading">
-                        <table class="table table--hover grid-table admin-tariff-rules__table" id="tariff-rules-table">
+                        <table class="table table--hover azc-table--responsive grid-table admin-tariff-rules__table" id="tariff-rules-table">
                             <caption class="sr-only"><?php p($l->t('Tariff rule sets')); ?></caption>
                             <thead>
                                 <tr>

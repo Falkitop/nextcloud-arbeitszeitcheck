@@ -19,11 +19,20 @@ $page = (string) ($_['managerEmployeeListPage'] ?? 'time-entries');
 
 $sharedMessageIds = [
 	'Loading...',
+	'Loading results…',
+	'Select filters first',
+	'Check your filters',
 	'No entries found for the selected filters.',
 	'Please select start and end date.',
 	'Page {page} of {pages}',
 	'{count} entries',
 	'All in my scope',
+	'Type at least 2 characters to search.',
+	'Employee search failed.',
+	'No matching employees found.',
+	'%n results',
+	'Selected: %s',
+	'Search by name or user ID…',
 	'Invalid date range. Please use valid dates in YYYY-MM-DD format.',
 	'Invalid date range. The start date must be before the end date.',
 	'Invalid date format. Please use dd.mm.yyyy (e.g., 15.01.2024).',
@@ -31,6 +40,7 @@ $sharedMessageIds = [
 
 $timeEntriesMessageIds = [
 	'Could not load employee time entries.',
+	'No matching time entries',
 	'No description',
 	'Choose a date range to load entries.',
 	'Add time entry',
@@ -63,6 +73,19 @@ $messageIds = array_merge(
 );
 
 $managerEmployeeListL10n = TemplateL10n::mapFromMessageIds($l, $messageIds);
+
+$managerEmployeeListL10n['pickerTypeToSearch'] = TemplateL10n::translate($l, 'Type at least 2 characters to search.');
+$managerEmployeeListL10n['pickerMinSearchHint'] = $managerEmployeeListL10n['pickerTypeToSearch'];
+$managerEmployeeListL10n['pickerLoading'] = TemplateL10n::translate($l, 'Loading...');
+$managerEmployeeListL10n['pickerSearchError'] = TemplateL10n::translate($l, 'Employee search failed.');
+$managerEmployeeListL10n['pickerNoUsersFound'] = TemplateL10n::translate($l, 'No matching employees found.');
+$managerEmployeeListL10n['pickerResultsCount'] = TemplateL10n::translate($l, '%n results');
+$managerEmployeeListL10n['pickerEmployeeSelected'] = TemplateL10n::translate($l, 'Selected: %s');
+$managerEmployeeListL10n['allInMyScope'] = TemplateL10n::translate($l, 'All in my scope');
+$managerEmployeeListL10n['pickerIncompleteSelection'] = TemplateL10n::translate(
+	$l,
+	'Select an employee from the list, or clear the search field to include everyone in your scope.'
+);
 
 $maxDays = (int) ($_['maxManagerListDateRangeDays'] ?? Constants::MAX_EXPORT_DATE_RANGE_DAYS);
 $managerEmployeeListL10n['dateRangeTooLong'] = TemplateL10n::translate(

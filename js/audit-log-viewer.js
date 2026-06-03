@@ -5,173 +5,431 @@
  * @license AGPL-3.0-or-later
  */
 
-(function() {
-    'use strict';
+(function () {
+	'use strict';
 
-    const Utils = window.ArbeitszeitCheckUtils || {};
-    const Messaging = window.ArbeitszeitCheckMessaging || {};
+	const Utils = window.ArbeitszeitCheckUtils || {};
+	const Messaging = window.ArbeitszeitCheckMessaging || {};
+	const config = (window.ArbeitszeitCheck && window.ArbeitszeitCheck.auditLogViewerConfig) || {};
 
-    function alT(msg) {
-        const map = window.ArbeitszeitCheck && window.ArbeitszeitCheck.auditLogViewerL10n;
-        if (map && Object.prototype.hasOwnProperty.call(map, msg) && map[msg] !== undefined && map[msg] !== '') {
-            return map[msg];
-        }
-        return (typeof window.t === 'function' ? window.t('arbeitszeitcheck', msg) : msg);
-    }
+	const state = {
+		limit: Number(config.limit) > 0 ? Number(config.limit) : 50,
+		offset: Number(config.offset) >= 0 ? Number(config.offset) : 0,
+		total: Number(config.total) >= 0 ? Number(config.total) : 0,
+		maxDateRangeDays: Number(config.maxDateRangeDays) > 0 ? Number(config.maxDateRangeDays) : 365,
+		defaultStartDate: config.defaultStartDate || '',
+		defaultEndDate: config.defaultEndDate || '',
+		loading: false,
+	};
 
-    /**
-     * Initialize audit log viewer
-     */
-    function applyUrlParams() {
-        const params = new URLSearchParams(window.location.search);
-        const userId = params.get('user_id') || params.get('userId') || '';
-        const action = params.get('action') || '';
-        const userEl = Utils.$('#user-filter');
-        const actionEl = Utils.$('#action-filter');
-        if (userId && userEl) {
-            userEl.value = userId;
-        }
-        if (action && actionEl) {
-            let found = false;
-            for (let i = 0; i < actionEl.options.length; i++) {
-                if (actionEl.options[i].value === action) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                const opt = document.createElement('option');
-                opt.value = action;
-                opt.textContent = action;
-                actionEl.appendChild(opt);
-            }
-            actionEl.value = action;
-        }
-        if (userId || action) {
-            loadAuditLogs();
-        }
-    }
+	function alT(msg, params) {
+		const map = window.ArbeitszeitCheck && window.ArbeitszeitCheck.auditLogViewerL10n;
+		let text = msg;
+		if (map && Object.prototype.hasOwnProperty.call(map, msg) && map[msg] !== undefined && map[msg] !== '') {
+			text = map[msg];
+		} else if (typeof window.t === 'function') {
+			text = window.t('arbeitszeitcheck', msg);
+		}
+		if (Array.isArray(params) && params.length) {
+			return text.replace(/%(\d+\$)?[ds]/g, function (_match, index) {
+				const idx = index ? parseInt(index, 10) - 1 : 0;
+				return params[idx] !== undefined ? String(params[idx]) : '';
+			});
+		}
+		return text;
+	}
 
-    function init() {
-        bindEvents();
-        applyUrlParams();
-    }
+	function $(selector) {
+		return Utils.$ ? Utils.$(selector) : document.querySelector(selector);
+	}
 
-    /**
-     * Bind event listeners
-     */
-    function bindEvents() {
-        const applyBtn = Utils.$('#apply-filters');
-        if (applyBtn) {
-            Utils.on(applyBtn, 'click', loadAuditLogs);
-        }
+	function on(el, event, handler) {
+		if (Utils.on) {
+			Utils.on(el, event, handler);
+			return;
+		}
+		if (el) {
+			el.addEventListener(event, handler);
+		}
+	}
 
-        const exportBtn = Utils.$('#export-logs');
-        if (exportBtn) {
-            Utils.on(exportBtn, 'click', exportLogs);
-        }
-    }
+	function escapeHtml(value) {
+		if (Utils.escapeHtml) {
+			return Utils.escapeHtml(value);
+		}
+		const div = document.createElement('div');
+		div.textContent = value === null || value === undefined ? '' : String(value);
+		return div.innerHTML;
+	}
 
-    /**
-     * Load audit logs with filters
-     */
-    function loadAuditLogs() {
-        const dp = window.ArbeitszeitCheckDatepicker;
-        const toISO = dp ? dp.convertEuropeanToISO : function (s) { return s; };
-        const startDate = toISO(Utils.$('#start-date')?.value || '');
-        const endDate = toISO(Utils.$('#end-date')?.value || '');
-        const userId = Utils.$('#user-filter')?.value || '';
-        const action = Utils.$('#action-filter')?.value || '';
+	function toIsoDate(value) {
+		const dp = window.ArbeitszeitCheckDatepicker;
+		if (dp && typeof dp.convertEuropeanToISO === 'function') {
+			return dp.convertEuropeanToISO(value || '');
+		}
+		return value || '';
+	}
 
-        const params = new URLSearchParams();
-        if (startDate) params.append('start_date', startDate);
-        if (endDate) params.append('end_date', endDate);
-        if (userId) params.append('user_id', userId);
-        if (action) params.append('action', action);
+	function isValidEuropeanDate(value) {
+		if (!/^\d{2}\.\d{2}\.\d{4}$/.test(String(value || ''))) {
+			return false;
+		}
+		const dp = window.ArbeitszeitCheckDatepicker;
+		if (dp && typeof dp.convertEuropeanToISO === 'function') {
+			return !!dp.convertEuropeanToISO(value);
+		}
+		return true;
+	}
 
-        const tbody = Utils.$('#audit-log-tbody');
-        if (tbody) {
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center">' + alT('Loading…') + '</td></tr>';
-        }
+	function daySpan(startIso, endIso) {
+		const start = new Date(startIso + 'T00:00:00');
+		const end = new Date(endIso + 'T00:00:00');
+		if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+			return null;
+		}
+		return Math.round((end.getTime() - start.getTime()) / 86400000);
+	}
 
-        Utils.ajax('/apps/arbeitszeitcheck/api/admin/audit-logs?' + params.toString(), {
-            method: 'GET',
-            onSuccess: function(data) {
-                if (data.success && data.logs) {
-                    renderAuditLogs(data.logs);
-                } else {
-                    if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="text-center">' + alT('Error loading audit logs') + '</td></tr>';
-                }
-            },
-            onError: function(_error) {
-                if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="text-center">' + alT('Error loading audit logs') + '</td></tr>';
-                if (Messaging && Messaging.showError) {
-                    Messaging.showError(alT('Failed to load audit logs. Please try again.'));
-                }
-            }
-        });
-    }
+	function clearFilterFieldErrors() {
+		const form = $('#audit-log-filter-form');
+		if (form) {
+			form.querySelectorAll('[aria-invalid="true"]').forEach(function (el) {
+				el.removeAttribute('aria-invalid');
+			});
+		}
+	}
 
-    /**
-     * Render audit logs table
-     */
-    function renderAuditLogs(logs) {
-        const tbody = Utils.$('#audit-log-tbody');
-        if (!tbody) return;
+	function setErrorText(errorEl, message) {
+		if (!errorEl) {
+			return;
+		}
+		const inner = errorEl.querySelector('.azc-callout__text');
+		if (inner) {
+			inner.textContent = message;
+		} else {
+			errorEl.textContent = message;
+		}
+		errorEl.hidden = !message;
+	}
 
-        if (logs.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center">' + alT('No audit log entries found') + '</td></tr>';
-            return;
-        }
+	function setError(message, focusId) {
+		const errorEl = $('#audit-log-filter-error');
+		clearFilterFieldErrors();
+		setErrorText(errorEl, message || '');
+		if (message && focusId) {
+			const focusEl = document.getElementById(focusId);
+			if (focusEl) {
+				focusEl.setAttribute('aria-invalid', 'true');
+				focusEl.focus();
+			}
+		}
+	}
 
-        tbody.innerHTML = logs.map(log => {
-            const createdRaw = log.created_at || log.createdAt;
-            const created = createdRaw
-                ? (window.ArbeitszeitCheckTime
-                    ? (window.ArbeitszeitCheckTime.formatDateTime(createdRaw) || '-')
-                    : (Utils.formatDate
-                        ? Utils.formatDate(createdRaw, 'DD.MM.YYYY HH:mm')
-                        : String(createdRaw)))
-                : '-';
-            const user = log.user_display_name || log.userDisplayName || log.user_id || log.userId;
-            const performed = log.performed_by_display_name || log.performedByDisplayName || log.performed_by || log.performedBy || '-';
-            const entity = log.entity_type || log.entityType;
-            return `<tr>
-                <td>${Utils.escapeHtml(String(created))}</td>
-                <td>${Utils.escapeHtml(String(user))}</td>
-                <td>${Utils.escapeHtml(String(log.action))}</td>
-                <td>${Utils.escapeHtml(String(entity))}</td>
-                <td>${Utils.escapeHtml(String(performed))}</td>
-            </tr>`;
-        }).join('');
-    }
+	function setLoading(loading) {
+		state.loading = loading;
+		const results = document.querySelector('.audit-log-page__results');
+		const applyBtn = $('#apply-filters');
+		const exportBtn = $('#export-logs');
+		const resetBtn = $('#reset-filters');
+		const prevBtn = $('#audit-log-prev');
+		const nextBtn = $('#audit-log-next');
 
-    /**
-     * Export audit logs
-     */
-    function exportLogs() {
-        const dp = window.ArbeitszeitCheckDatepicker;
-        const toISO = dp ? dp.convertEuropeanToISO : function (s) { return s; };
-        const startDate = toISO(Utils.$('#start-date')?.value || '');
-        const endDate = toISO(Utils.$('#end-date')?.value || '');
-        const userId = Utils.$('#user-filter')?.value || '';
-        const action = Utils.$('#action-filter')?.value || '';
+		if (results) {
+			results.setAttribute('aria-busy', loading ? 'true' : 'false');
+		}
+		[applyBtn, exportBtn, resetBtn, prevBtn, nextBtn].forEach(function (btn) {
+			if (!btn) {
+				return;
+			}
+			btn.disabled = loading;
+			btn.setAttribute('aria-disabled', loading ? 'true' : 'false');
+		});
+	}
 
-        const params = new URLSearchParams();
-        if (startDate) params.append('start_date', startDate);
-        if (endDate) params.append('end_date', endDate);
-        if (userId) params.append('user_id', userId);
-        if (action) params.append('action', action);
+	function readFilters() {
+		return {
+			startDate: ($('#start-date') && $('#start-date').value) || '',
+			endDate: ($('#end-date') && $('#end-date').value) || '',
+			userId: ($('#user-filter') && $('#user-filter').value.trim()) || '',
+			actionCategory: ($('#action-category-filter') && $('#action-category-filter').value) || '',
+			entityType: ($('#entity-type-filter') && $('#entity-type-filter').value) || '',
+		};
+	}
 
-        // Redirect to export endpoint
-        params.append('format', 'csv');
-        window.location.href = OC.generateUrl('/apps/arbeitszeitcheck/api/admin/audit-logs/export?' + params.toString());
-    }
+	function validateFilters(filters) {
+		if (filters.userId.length > 200) {
+			return { message: alT('User filter is too long.'), focusId: 'user-filter' };
+		}
+		if (!isValidEuropeanDate(filters.startDate) || !isValidEuropeanDate(filters.endDate)) {
+			return { message: alT('Please enter valid dates in dd.mm.yyyy format.'), focusId: 'start-date' };
+		}
+		const startIso = toIsoDate(filters.startDate);
+		const endIso = toIsoDate(filters.endDate);
+		if (!startIso || !endIso) {
+			return { message: alT('Please enter valid dates in dd.mm.yyyy format.'), focusId: 'start-date' };
+		}
+		if (startIso > endIso) {
+			return { message: alT('Start date must be before or equal to end date'), focusId: 'start-date' };
+		}
+		const days = daySpan(startIso, endIso);
+		if (days !== null && days > state.maxDateRangeDays) {
+			return {
+				message: alT('Date range must not exceed %d days. Please narrow the range.', [state.maxDateRangeDays]),
+				focusId: 'start-date',
+			};
+		}
+		return { message: '', focusId: '' };
+	}
 
-    // Initialize on DOM ready
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-    } else {
-        init();
-    }
+	function buildQueryParams(filters, includePaging) {
+		const params = new URLSearchParams();
+		const startIso = toIsoDate(filters.startDate);
+		const endIso = toIsoDate(filters.endDate);
+		if (startIso) {
+			params.append('start_date', startIso);
+		}
+		if (endIso) {
+			params.append('end_date', endIso);
+		}
+		if (filters.userId) {
+			params.append('user_id', filters.userId);
+		}
+		if (filters.actionCategory) {
+			params.append('action_category', filters.actionCategory);
+		}
+		if (filters.entityType) {
+			params.append('entity_type', filters.entityType);
+		}
+		if (includePaging) {
+			params.append('limit', String(state.limit));
+			params.append('offset', String(state.offset));
+		}
+		return params;
+	}
+
+	function updatePaginationUi() {
+		const countEl = $('#audit-log-count');
+		const nav = $('#audit-log-pagination');
+		const textEl = $('#audit-log-pagination-text');
+		const prevBtn = $('#audit-log-prev');
+		const nextBtn = $('#audit-log-next');
+		const shown = document.querySelectorAll('#audit-log-tbody tr:not(.audit-log-empty-row)').length;
+		const hasDataRows = state.total > 0 && shown > 0;
+		const rangeStart = hasDataRows ? state.offset + 1 : 0;
+		const rangeEnd = hasDataRows ? Math.min(state.total, state.offset + shown) : 0;
+		const totalPages = Math.max(1, Math.ceil(state.total / state.limit));
+		const currentPage = Math.min(totalPages, Math.floor(state.offset / state.limit) + 1);
+
+		if (countEl) {
+			countEl.textContent = state.total > 0
+				? alT('%1$d–%2$d of %3$d entries', [rangeStart, rangeEnd, state.total])
+				: alT('0 entries');
+		}
+		if (nav) {
+			nav.hidden = state.total <= state.limit;
+		}
+		if (textEl) {
+			textEl.textContent = alT('Page %1$d of %2$d', [currentPage, totalPages]);
+		}
+		if (prevBtn) {
+			const disabled = state.offset <= 0 || state.loading;
+			prevBtn.disabled = disabled;
+			prevBtn.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+		}
+		if (nextBtn) {
+			const disabled = state.offset + state.limit >= state.total || state.loading;
+			nextBtn.disabled = disabled;
+			nextBtn.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+		}
+	}
+
+	function renderAuditLogs(logs) {
+		const tbody = $('#audit-log-tbody');
+		if (!tbody) {
+			return;
+		}
+
+		if (!logs.length) {
+			tbody.innerHTML = '<tr class="audit-log-empty-row"><td colspan="5" class="text-center audit-log-empty">' +
+				'<div class="empty-state">' +
+				'<h3 class="empty-state__title">' + escapeHtml(alT('No audit log entries found')) + '</h3>' +
+				'</div></td></tr>';
+			updatePaginationUi();
+			return;
+		}
+
+		tbody.innerHTML = logs.map(function (log) {
+			const created = log.created_at_display || log.created_at || log.createdAt || '-';
+			const user = log.user_display_name || log.userDisplayName || log.user_id || log.userId || '-';
+			const performed = log.performed_by_display_name || log.performedByDisplayName || log.performed_by || log.performedBy || '-';
+			const entity = log.entity_type || log.entityType || '-';
+			const action = log.action || '-';
+			const td = Utils.responsiveTd
+				? function (label, html) { return Utils.responsiveTd(label, html); }
+				: function (_label, html) { return '<td>' + html + '</td>'; };
+
+			return '<tr>' +
+				td(alT('Date and time'), escapeHtml(String(created))) +
+				td(alT('Employee'), escapeHtml(String(user))) +
+				td(alT('Action'), escapeHtml(String(action))) +
+				td(alT('What was changed'), escapeHtml(String(entity))) +
+				td(alT('Who did it'), escapeHtml(String(performed))) +
+				'</tr>';
+		}).join('');
+
+		updatePaginationUi();
+	}
+
+	function loadAuditLogs() {
+		const filters = readFilters();
+		const validation = validateFilters(filters);
+		if (validation.message) {
+			setError(validation.message, validation.focusId);
+			return;
+		}
+		setError('');
+
+		const tbody = $('#audit-log-tbody');
+		if (tbody) {
+			tbody.innerHTML = '<tr><td colspan="5" class="text-center">' + escapeHtml(alT('Loading…')) + '</td></tr>';
+		}
+		setLoading(true);
+
+		const params = buildQueryParams(filters, true);
+		Utils.ajax('/apps/arbeitszeitcheck/api/admin/audit-logs?' + params.toString(), {
+			method: 'GET',
+			onSuccess: function (data) {
+				setLoading(false);
+				if (data.success && Array.isArray(data.logs)) {
+					state.total = Number(data.total) >= 0 ? Number(data.total) : data.logs.length;
+					state.limit = Number(data.limit) > 0 ? Number(data.limit) : state.limit;
+					state.offset = Number(data.offset) >= 0 ? Number(data.offset) : state.offset;
+					renderAuditLogs(data.logs);
+					return;
+				}
+				const apiMessage = (data && (data.error || data.message)) ? String(data.error || data.message) : '';
+				if (apiMessage) {
+					const focusId = apiMessage.toLowerCase().indexOf('user') !== -1 ? 'user-filter' : 'start-date';
+					setError(apiMessage, focusId);
+				}
+				state.total = 0;
+				if (tbody) {
+					tbody.innerHTML = '<tr><td colspan="5" class="text-center">' + escapeHtml(alT('Error loading audit logs')) + '</td></tr>';
+				}
+				updatePaginationUi();
+			},
+			onError: function () {
+				setLoading(false);
+				state.total = 0;
+				if (tbody) {
+					tbody.innerHTML = '<tr><td colspan="5" class="text-center">' + escapeHtml(alT('Error loading audit logs')) + '</td></tr>';
+				}
+				updatePaginationUi();
+				if (Messaging && Messaging.showError) {
+					Messaging.showError(alT('Failed to load audit logs. Please try again.'));
+				}
+			},
+		});
+	}
+
+	function exportLogs() {
+		const filters = readFilters();
+		const validation = validateFilters(filters);
+		if (validation.message) {
+			setError(validation.message, validation.focusId);
+			return;
+		}
+		setError('');
+		const params = buildQueryParams(filters, false);
+		params.append('format', 'csv');
+		window.location.href = OC.generateUrl('/apps/arbeitszeitcheck/api/admin/audit-logs/export?' + params.toString());
+	}
+
+	function resetFilters() {
+		const startEl = $('#start-date');
+		const endEl = $('#end-date');
+		const userEl = $('#user-filter');
+		const actionEl = $('#action-category-filter');
+		const entityEl = $('#entity-type-filter');
+		if (startEl) {
+			startEl.value = state.defaultStartDate;
+		}
+		if (endEl) {
+			endEl.value = state.defaultEndDate;
+		}
+		if (userEl) {
+			userEl.value = '';
+		}
+		if (actionEl) {
+			actionEl.value = '';
+		}
+		if (entityEl) {
+			entityEl.value = '';
+		}
+		state.offset = 0;
+		setError('');
+		if (startEl) {
+			startEl.focus();
+		}
+		loadAuditLogs();
+	}
+
+	function applyUrlParams() {
+		const params = new URLSearchParams(window.location.search);
+		const userId = params.get('user_id') || params.get('userId') || '';
+		const actionCategory = params.get('action_category') || params.get('action_type') || '';
+		const entityType = params.get('entity_type') || '';
+		const userEl = $('#user-filter');
+		const actionEl = $('#action-category-filter');
+		const entityEl = $('#entity-type-filter');
+		if (userId && userEl) {
+			userEl.value = userId;
+		}
+		if (actionCategory && actionEl) {
+			actionEl.value = actionCategory;
+		}
+		if (entityType && entityEl) {
+			entityEl.value = entityType;
+		}
+		if (userId || actionCategory || entityType) {
+			state.offset = 0;
+			loadAuditLogs();
+		}
+	}
+
+	function bindEvents() {
+		const form = $('#audit-log-filter-form');
+		if (form) {
+			on(form, 'submit', function (event) {
+				event.preventDefault();
+				state.offset = 0;
+				loadAuditLogs();
+			});
+		}
+
+		on($('#export-logs'), 'click', exportLogs);
+		on($('#reset-filters'), 'click', resetFilters);
+		on($('#audit-log-prev'), 'click', function () {
+			state.offset = Math.max(0, state.offset - state.limit);
+			loadAuditLogs();
+		});
+		on($('#audit-log-next'), 'click', function () {
+			if (state.offset + state.limit < state.total) {
+				state.offset += state.limit;
+				loadAuditLogs();
+			}
+		});
+	}
+
+	function init() {
+		bindEvents();
+		updatePaginationUi();
+		applyUrlParams();
+	}
+
+	if (document.readyState === 'loading') {
+		document.addEventListener('DOMContentLoaded', init);
+	} else {
+		init();
+	}
 })();

@@ -22,6 +22,7 @@ use OCA\ArbeitszeitCheck\Service\OvertimeService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCA\ArbeitszeitCheck\Service\TeamResolverService;
 use OCA\ArbeitszeitCheck\Service\TimeTrackingService;
+use OCA\ArbeitszeitCheck\Service\TimeCaptureMethodService;
 use OCA\ArbeitszeitCheck\Service\OvertimeBankService;
 use OCA\ArbeitszeitCheck\Service\OvertimeDisplayService;
 use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
@@ -109,6 +110,12 @@ class PageControllerTest extends TestCase
 		$projectCheckIntegration->method('isProjectCheckAvailable')->willReturn(false);
 		$projectCheckIntegration->method('getAvailableProjects')->willReturn([]);
 
+		$timeCaptureMethodService = $this->createMock(TimeCaptureMethodService::class);
+		$timeCaptureMethodService->method('getSettings')->willReturn([
+			'clockStampingEnabled' => true,
+			'manualTimeEntryEnabled' => true,
+		]);
+
 		$this->controller = new PageController(
 			'arbeitszeitcheck',
 			$request,
@@ -131,6 +138,7 @@ class PageControllerTest extends TestCase
 			$localeFormat,
 			$navigationFlags,
 			$projectCheckIntegration,
+			$timeCaptureMethodService,
 			$l10n,
 		);
 	}

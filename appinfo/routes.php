@@ -104,6 +104,7 @@ return [
 		['name' => 'manager#revisionPdfAvailableMonths', 'url' => '/api/manager/revision-pdf/available-months', 'verb' => 'GET'],
 		['name' => 'manager#revisionPdfUsersForMonth', 'url' => '/api/manager/revision-pdf/users-for-month', 'verb' => 'GET'],
 		['name' => 'manager#getTeamOverview', 'url' => '/api/manager/team-overview', 'verb' => 'GET'],
+		['name' => 'manager#getScopedEmployees', 'url' => '/api/manager/scoped-employees', 'verb' => 'GET'],
 		['name' => 'manager#getEmployeeTimeEntries', 'url' => '/api/manager/employee-time-entries', 'verb' => 'GET'],
 		['name' => 'manager#createEmployeeTimeEntry', 'url' => '/api/manager/employee-time-entries', 'verb' => 'POST'],
 		['name' => 'manager#getManagerAssignableProjectcheckProjects', 'url' => '/api/manager/employees/{employeeId}/projectcheck-assignable-projects', 'verb' => 'GET'],
@@ -195,6 +196,7 @@ return [
 		['name' => 'admin#getUsers', 'url' => '/api/admin/users', 'verb' => 'GET'],
 		['name' => 'admin#exportUsers', 'url' => '/api/admin/users/export', 'verb' => 'GET'],
 		['name' => 'admin#getUser', 'url' => '/api/admin/users/{userId}', 'verb' => 'GET'],
+		['name' => 'admin#updateUserProfile', 'url' => '/api/admin/users/{userId}/profile', 'verb' => 'PUT'],
 		['name' => 'admin#updateUserWorkingTimeModel', 'url' => '/api/admin/users/{userId}/working-time-model', 'verb' => 'PUT'],
 		['name' => 'admin#getUserAssignmentHistory', 'url' => '/api/admin/users/{userId}/working-time-model/history', 'verb' => 'GET'],
 		['name' => 'admin#getWorkingTimeModels', 'url' => '/api/admin/working-time-models', 'verb' => 'GET'],
@@ -212,6 +214,7 @@ return [
 		['name' => 'admin#retireTariffRuleSet', 'url' => '/api/admin/tariff-rule-sets/{id}/retire', 'verb' => 'POST'],
 		['name' => 'admin#assignVacationPolicy', 'url' => '/api/admin/users/{userId}/vacation-policy', 'verb' => 'PUT'],
 		['name' => 'admin#updateUserOvertimeSettings', 'url' => '/api/admin/users/{userId}/overtime-settings', 'verb' => 'PUT'],
+		['name' => 'admin#updateUserTimeCaptureSettings', 'url' => '/api/admin/users/{userId}/time-capture-settings', 'verb' => 'PUT'],
 		['name' => 'admin#simulateVacationPolicy', 'url' => '/api/admin/vacation-policy/simulate', 'verb' => 'POST'],
 
 		// Layered vacation entitlement (L0/L1/L2) admin endpoints

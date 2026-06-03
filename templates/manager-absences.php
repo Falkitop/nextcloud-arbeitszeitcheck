@@ -2,11 +2,12 @@
 
 declare(strict_types=1);
 
-use OCA\ArbeitszeitCheck\Service\IconCatalog;
+use OCA\ArbeitszeitCheck\Constants;
 
 /** @var array $_ */
 /** @var \OCP\IL10N $l */
 $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
+$maxManagerListDateRangeDays = (int)($_['maxManagerListDateRangeDays'] ?? Constants::MAX_EXPORT_DATE_RANGE_DAYS);
 ?>
 
 <?php include __DIR__ . '/common/page-start.php'; ?>
@@ -30,14 +31,51 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 						id="employee-absences-filter-form"
 						class="manager-scope-page__filter-form"
 						novalidate
-						aria-describedby="employee-absences-filter-help employee-absences-filter-error"
+						aria-describedby="employee-absences-filter-error"
 					>
-						<div class="manager-scope-page__filter-grid manager-scope-page__filter-grid--extended azc-filter-grid azc-filter-grid--extended" role="group" aria-label="<?php p($l->t('Filter options')); ?>">
-							<div class="azc-filter-field">
-								<label for="employee-absences-employee-filter" class="azc-filter-field__label"><?php p($l->t('Employee')); ?></label>
+						<div class="manager-scope-filter manager-scope-filter--extended" role="group" aria-label="<?php p($l->t('Filter options')); ?>">
+							<div class="azc-filter-field azc-filter-field--employee">
+								<label for="employee-absences-employee-filter-search" class="azc-filter-field__label"><?php p($l->t('Employee')); ?></label>
 								<div class="azc-filter-field__control">
-									<select id="employee-absences-employee-filter" name="employee_id" class="form-select">
-										<option value=""><?php p($l->t('All in my scope')); ?></option>
+									<?php
+									$scopePickerId = 'employee-absences-employee-filter';
+									$scopePickerName = 'employee_id';
+									$scopePickerAllowAll = true;
+									$scopePickerRequired = false;
+									$scopePickerCompact = true;
+									include __DIR__ . '/common/scoped-employee-picker-field.php';
+									?>
+								</div>
+							</div>
+
+							<div class="azc-filter-field azc-filter-field--type">
+								<label for="employee-absences-type-filter" class="azc-filter-field__label"><?php p($l->t('Type')); ?></label>
+								<div class="azc-filter-field__control">
+									<select id="employee-absences-type-filter" name="type" class="form-select" aria-label="<?php p($l->t('Type')); ?>">
+										<option value=""><?php p($l->t('All types')); ?></option>
+										<option value="vacation"><?php p($l->t('Vacation')); ?></option>
+										<option value="sick_leave"><?php p($l->t('Sick leave')); ?></option>
+										<option value="personal_leave"><?php p($l->t('Personal leave')); ?></option>
+										<option value="parental_leave"><?php p($l->t('Parental leave')); ?></option>
+										<option value="special_leave"><?php p($l->t('Special leave')); ?></option>
+										<option value="unpaid_leave"><?php p($l->t('Unpaid leave')); ?></option>
+										<option value="home_office"><?php p($l->t('Home office')); ?></option>
+										<option value="business_trip"><?php p($l->t('Business trip')); ?></option>
+									</select>
+								</div>
+							</div>
+
+							<div class="azc-filter-field azc-filter-field--status">
+								<label for="employee-absences-status-filter" class="azc-filter-field__label"><?php p($l->t('Status')); ?></label>
+								<div class="azc-filter-field__control">
+									<select id="employee-absences-status-filter" name="status" class="form-select" aria-label="<?php p($l->t('Status')); ?>">
+										<option value=""><?php p($l->t('All statuses')); ?></option>
+										<option value="pending"><?php p($l->t('Pending')); ?></option>
+										<option value="substitute_pending"><?php p($l->t('Substitute pending')); ?></option>
+										<option value="substitute_declined"><?php p($l->t('Substitute declined')); ?></option>
+										<option value="approved"><?php p($l->t('Approved')); ?></option>
+										<option value="rejected"><?php p($l->t('Rejected')); ?></option>
+										<option value="cancelled"><?php p($l->t('Cancelled')); ?></option>
 									</select>
 								</div>
 							</div>
@@ -51,7 +89,7 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 								<div class="azc-filter-field__control">
 									<div class="azc-date-range">
 										<div class="azc-date-range__part">
-											<label for="employee-absences-start-date-filter" class="azc-date-range__sublabel"><?php p($l->t('From')); ?></label>
+											<label for="employee-absences-start-date-filter" class="azc-date-range__sublabel visually-hidden"><?php p($l->t('From')); ?></label>
 											<input
 												id="employee-absences-start-date-filter"
 												name="start_date"
@@ -69,7 +107,7 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 										</div>
 										<span class="azc-date-range__sep" aria-hidden="true"><?php p($l->t('to')); ?></span>
 										<div class="azc-date-range__part">
-											<label for="employee-absences-end-date-filter" class="azc-date-range__sublabel"><?php p($l->t('To')); ?></label>
+											<label for="employee-absences-end-date-filter" class="azc-date-range__sublabel visually-hidden"><?php p($l->t('To')); ?></label>
 											<input
 												id="employee-absences-end-date-filter"
 												name="end_date"
@@ -89,45 +127,16 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 								</div>
 							</div>
 
-							<div class="azc-filter-field">
-								<label for="employee-absences-type-filter" class="azc-filter-field__label"><?php p($l->t('Type')); ?></label>
-								<div class="azc-filter-field__control">
-									<select id="employee-absences-type-filter" name="type" class="form-select">
-										<option value=""><?php p($l->t('All types')); ?></option>
-										<option value="vacation"><?php p($l->t('Vacation')); ?></option>
-										<option value="sick_leave"><?php p($l->t('Sick leave')); ?></option>
-										<option value="personal_leave"><?php p($l->t('Personal leave')); ?></option>
-										<option value="parental_leave"><?php p($l->t('Parental leave')); ?></option>
-										<option value="special_leave"><?php p($l->t('Special leave')); ?></option>
-										<option value="unpaid_leave"><?php p($l->t('Unpaid leave')); ?></option>
-										<option value="home_office"><?php p($l->t('Home office')); ?></option>
-										<option value="business_trip"><?php p($l->t('Business trip')); ?></option>
-									</select>
+							<div class="azc-filter-field azc-filter-field--actions">
+								<span class="azc-filter-field__label visually-hidden"><?php p($l->t('Actions')); ?></span>
+								<div class="azc-filter-field__control azc-filter-actions">
+									<button type="submit" class="azc-btn azc-btn--primary" id="employee-absences-submit">
+										<?php p($l->t('Show')); ?>
+									</button>
+									<button type="button" id="employee-absences-clear" class="azc-btn azc-btn--secondary">
+										<?php p($l->t('Reset')); ?>
+									</button>
 								</div>
-							</div>
-
-							<div class="azc-filter-field">
-								<label for="employee-absences-status-filter" class="azc-filter-field__label"><?php p($l->t('Status')); ?></label>
-								<div class="azc-filter-field__control">
-									<select id="employee-absences-status-filter" name="status" class="form-select">
-										<option value=""><?php p($l->t('All Statuses')); ?></option>
-										<option value="pending"><?php p($l->t('Pending')); ?></option>
-										<option value="substitute_pending"><?php p($l->t('Substitute pending')); ?></option>
-										<option value="substitute_declined"><?php p($l->t('Substitute declined')); ?></option>
-										<option value="approved"><?php p($l->t('Approved')); ?></option>
-										<option value="rejected"><?php p($l->t('Rejected')); ?></option>
-										<option value="cancelled"><?php p($l->t('Cancelled')); ?></option>
-									</select>
-								</div>
-							</div>
-
-							<div class="azc-filter-actions">
-								<button type="submit" class="azc-btn azc-btn--primary" id="employee-absences-submit">
-									<?php p($l->t('Show')); ?>
-								</button>
-								<button type="button" id="employee-absences-clear" class="azc-btn azc-btn--secondary">
-									<?php p($l->t('Reset')); ?>
-								</button>
 							</div>
 						</div>
 
@@ -136,7 +145,7 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 						</p>
 					</form>
 					<p id="employee-absences-filter-help" class="manager-scope-page__toolbar-footnote" role="note">
-						<?php p($l->t('Entries load only after you click Show with a valid date range.')); ?>
+						<?php p($l->t('Pick a date range, then Show. Leave employee empty for your whole team, or search and select one person. Type and status are optional. Maximum range: %d days.', [$maxManagerListDateRangeDays])); ?>
 					</p>
 				</div>
 
@@ -146,7 +155,7 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 				</div>
 
 				<div id="employee-absences-table-wrap" class="table-container visually-hidden" aria-live="polite">
-					<table class="table table--hover" aria-label="<?php p($l->t('Employee absences')); ?>">
+					<table class="table table--hover azc-table--responsive manager-scope-page__results-table" aria-label="<?php p($l->t('Employee absences')); ?>">
 						<thead>
 							<tr>
 								<th scope="col"><?php p($l->t('Name')); ?></th>
@@ -180,27 +189,33 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 				</div>
 			</header>
 			<div class="azc-card__body">
-				<div id="manager-absence-record-historical-hint"
-					class="azc-callout azc-callout--info manager-scope-page__historical-hint"
-					role="status"
-					aria-live="polite"
-					hidden>
-					<span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('clock', 'azc-callout__icon-svg')); ?></span>
-					<div>
-						<p class="azc-callout__title"><?php p($l->t('Historical entry – the dates you selected are in the past')); ?></p>
-						<p class="azc-callout__text">
-							<?php p($l->t('This will be saved immediately as approved and shown with the "Past record" badge in calendars, timelines and reports. Audit trail captures who recorded it.')); ?>
-						</p>
-					</div>
-				</div>
+				<?php
+				$calloutVariant = 'info';
+				$calloutRole = 'status';
+				$calloutId = 'manager-absence-record-historical-hint';
+				$calloutTitle = $l->t('Historical entry – the dates you selected are in the past');
+				$calloutText = $l->t('This will be saved immediately as approved and shown with the "Past record" badge in calendars, timelines and reports. Audit trail captures who recorded it.');
+				$calloutIcon = 'clock';
+				$calloutExtraClass = 'manager-scope-page__historical-hint';
+				$calloutBanner = false;
+				$calloutAriaLive = 'polite';
+				$calloutHidden = true;
+				$calloutActions = [];
+				$calloutElement = 'div';
+				include __DIR__ . '/common/alert-callout.php';
+				?>
 				<form id="manager-absence-record-form" class="azc-filter-panel__form" novalidate>
 					<div class="azc-filter-grid azc-filter-grid--record" role="group" aria-label="<?php p($l->t('Record absence')); ?>">
 						<div class="azc-filter-field">
-							<label for="manager-absence-record-employee" class="azc-filter-field__label"><?php p($l->t('Employee (required)')); ?></label>
+							<label for="manager-absence-record-employee-search" class="azc-filter-field__label"><?php p($l->t('Employee (required)')); ?></label>
 							<div class="azc-filter-field__control">
-								<select id="manager-absence-record-employee" name="record_employee_id" class="form-select" required>
-									<option value=""><?php p($l->t('Select an employee')); ?></option>
-								</select>
+								<?php
+								$scopePickerId = 'manager-absence-record-employee';
+								$scopePickerName = 'record_employee_id';
+								$scopePickerAllowAll = false;
+								$scopePickerRequired = true;
+								include __DIR__ . '/common/scoped-employee-picker-field.php';
+								?>
 							</div>
 						</div>
 						<div class="azc-filter-field">

@@ -32,10 +32,15 @@ use OCA\ArbeitszeitCheck\Db\TariffRuleSet;
 use OCA\ArbeitszeitCheck\Db\TariffRuleSetMapper;
 use OCA\ArbeitszeitCheck\Db\UserVacationPolicyAssignment;
 use OCA\ArbeitszeitCheck\Db\UserVacationPolicyAssignmentMapper;
+use OCA\ArbeitszeitCheck\Service\AdminUserProfileUpdateService;
 use OCA\ArbeitszeitCheck\Service\CSPService;
+use OCP\IDBConnection;
+use OCA\ArbeitszeitCheck\Service\HolidayAdminService;
 use OCA\ArbeitszeitCheck\Service\HolidayService;
 use OCA\ArbeitszeitCheck\Service\VacationEntitlementEngine;
 use OCA\ArbeitszeitCheck\Service\UserOvertimeSettingsService;
+use OCA\ArbeitszeitCheck\Exception\BusinessRuleException;
+use OCA\ArbeitszeitCheck\Service\TimeCaptureMethodService;
 use OCP\App\IAppManager;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\DataDownloadResponse;
@@ -83,6 +88,9 @@ class AdminControllerTest extends TestCase
 	/** @var TariffRuleSetMapper|\PHPUnit\Framework\MockObject\MockObject */
 	private $tariffRuleSetMapper;
 
+	/** @var TariffRuleModuleMapper|\PHPUnit\Framework\MockObject\MockObject */
+	private $tariffRuleModuleMapper;
+
 	/** @var VacationEntitlementEngine|\PHPUnit\Framework\MockObject\MockObject */
 	private $vacationEntitlementEngine;
 
@@ -91,6 +99,9 @@ class AdminControllerTest extends TestCase
 
 	/** @var UserOvertimeSettingsService|\PHPUnit\Framework\MockObject\MockObject */
 	private $userOvertimeSettingsService;
+
+	/** @var TimeCaptureMethodService|\PHPUnit\Framework\MockObject\MockObject */
+	private $timeCaptureMethodService;
 
 	/** @var UserVacationPolicyAssignmentMapper|\PHPUnit\Framework\MockObject\MockObject */
 	private $userVacationPolicyAssignmentMapper;
@@ -101,6 +112,9 @@ class AdminControllerTest extends TestCase
 	private $groupManager;
 	/** @var IAppManager|\PHPUnit\Framework\MockObject\MockObject */
 	private $appManager;
+
+	/** @var HolidayService|\PHPUnit\Framework\MockObject\MockObject */
+	private $holidayCalendarService;
 
 	protected function setUp(): void
 	{
@@ -128,13 +142,15 @@ class AdminControllerTest extends TestCase
 		$l10n->method('t')->willReturnCallback(fn ($s, $p = []) => empty($p) ? $s : vsprintf($s, $p));
 		$urlGenerator = $this->createMock(IURLGenerator::class);
 		$holidayMapper = $this->createMock(HolidayMapper::class);
-		$holidayCalendarService = $this->createMock(HolidayService::class);
+		$this->holidayCalendarService = $this->createMock(HolidayService::class);
+		$holidayAdminService = $this->createMock(HolidayAdminService::class);
 
 		$vacationYearBalanceMapper = $this->createMock(\OCA\ArbeitszeitCheck\Db\VacationYearBalanceMapper::class);
 		$vacationAllocationService = $this->createMock(\OCA\ArbeitszeitCheck\Service\VacationAllocationService::class);
 		$vacationAllocationService->method('applyCapToOpeningBalance')->willReturnCallback(fn (float $d) => $d);
 		$this->tariffRuleSetMapper = $this->createMock(TariffRuleSetMapper::class);
-		$tariffRuleModuleMapper = $this->createMock(TariffRuleModuleMapper::class);
+		$this->tariffRuleModuleMapper = $this->createMock(TariffRuleModuleMapper::class);
+		$tariffRuleModuleMapper = $this->tariffRuleModuleMapper;
 		$this->userVacationPolicyAssignmentMapper = $this->createMock(UserVacationPolicyAssignmentMapper::class);
 		$this->vacationEntitlementEngine = $this->createMock(VacationEntitlementEngine::class);
 		$this->vacationEntitlementEngine->method('computeForDate')->willReturn([
@@ -145,6 +161,11 @@ class AdminControllerTest extends TestCase
 		]);
 		$this->layeredVacationDefaultsService = $this->createMock(\OCA\ArbeitszeitCheck\Service\LayeredVacationDefaultsService::class);
 		$this->userOvertimeSettingsService = $this->createMock(UserOvertimeSettingsService::class);
+		$this->timeCaptureMethodService = $this->createMock(TimeCaptureMethodService::class);
+		$this->timeCaptureMethodService->method('getSettings')->willReturn([
+			'clockStampingEnabled' => true,
+			'manualTimeEntryEnabled' => true,
+		]);
 		$permissionService = $this->createMock(\OCA\ArbeitszeitCheck\Service\PermissionService::class);
 		$localeFormat = $this->createMock(\OCA\ArbeitszeitCheck\Service\LocaleFormatService::class);
 		$localeFormat->method('clientHints')->willReturn([
@@ -152,6 +173,26 @@ class AdminControllerTest extends TestCase
 			'htmlLang' => 'en-US',
 			'timezone' => 'Europe/Berlin',
 		]);
+		$dateTimeFormatter = $this->createMock(\OCP\IDateTimeFormatter::class);
+		$dateTimeFormatter->method('formatDateTime')->willReturn('2026-06-03 19:04');
+		$auditLogPresenter = new \OCA\ArbeitszeitCheck\Service\AuditLogPresenter($l10n, $dateTimeFormatter);
+
+		$db = $this->createMock(IDBConnection::class);
+		$adminUserProfileUpdateService = new AdminUserProfileUpdateService(
+			$this->userManager,
+			$this->userWorkingTimeModelMapper,
+			$this->workingTimeModelMapper,
+			$this->auditLogMapper,
+			$userSettingsMapper,
+			$vacationYearBalanceMapper,
+			$vacationAllocationService,
+			$this->tariffRuleSetMapper,
+			$this->userVacationPolicyAssignmentMapper,
+			$this->userOvertimeSettingsService,
+			$this->timeCaptureMethodService,
+			$l10n,
+			$db,
+		);
 
 		$this->controller = new AdminController(
 			'arbeitszeitcheck',
@@ -174,7 +215,8 @@ class AdminControllerTest extends TestCase
 			$l10n,
 			$urlGenerator,
 			$holidayMapper,
-			$holidayCalendarService,
+			$this->holidayCalendarService,
+			$holidayAdminService,
 			$vacationYearBalanceMapper,
 			$vacationAllocationService,
 			$this->tariffRuleSetMapper,
@@ -183,8 +225,12 @@ class AdminControllerTest extends TestCase
 			$this->vacationEntitlementEngine,
 			$this->layeredVacationDefaultsService,
 			$this->userOvertimeSettingsService,
+			$this->timeCaptureMethodService,
+			$adminUserProfileUpdateService,
+			$auditLogPresenter,
 			$permissionService,
 			$localeFormat,
+			$db,
 		);
 	}
 
@@ -566,6 +612,44 @@ class AdminControllerTest extends TestCase
 		$this->assertArrayHasKey('settings', $data);
 	}
 
+	public function testUpdateAdminSettingsDisablesProjectCheckIntegration(): void
+	{
+		$this->appManager->method('isEnabledForUser')->with('projectcheck')->willReturn(true);
+		$this->request->method('getParams')
+			->willReturn([
+				'projectCheckIntegrationEnabled' => false,
+			]);
+
+		$this->appConfig->expects($this->once())
+			->method('setAppValueString')
+			->with(Constants::CONFIG_PROJECTCHECK_INTEGRATION_ENABLED, '0');
+
+		$response = $this->controller->updateAdminSettings();
+		$data = $response->getData();
+
+		$this->assertTrue($data['success']);
+		$this->assertSame('0', $data['settings']['projectCheckIntegrationEnabled']);
+	}
+
+	public function testUpdateAdminSettingsEnablesProjectCheckIntegration(): void
+	{
+		$this->appManager->method('isEnabledForUser')->with('projectcheck')->willReturn(true);
+		$this->request->method('getParams')
+			->willReturn([
+				'projectCheckIntegrationEnabled' => true,
+			]);
+
+		$this->appConfig->expects($this->once())
+			->method('setAppValueString')
+			->with(Constants::CONFIG_PROJECTCHECK_INTEGRATION_ENABLED, '1');
+
+		$response = $this->controller->updateAdminSettings();
+		$data = $response->getData();
+
+		$this->assertTrue($data['success']);
+		$this->assertSame('1', $data['settings']['projectCheckIntegrationEnabled']);
+	}
+
 	public function testUpdateAdminSettingsNormalizesAppAdminUsers(): void
 	{
 		$this->request->method('getParams')
@@ -731,10 +815,8 @@ class AdminControllerTest extends TestCase
 		$user->method('getEMailAddress')->willReturn('user1@example.com');
 		$user->method('isEnabled')->willReturn(true);
 
-		$this->userManager->expects($this->once())
-			->method('search')
-			->with('test', 50, 0)
-			->willReturn([$user]);
+		$this->userManager->method('search')->willReturn([$user]);
+		$this->userManager->method('searchDisplayName')->willReturn([]);
 
 		$this->userManager->method('countUsersTotal')->willReturn(1);
 		$this->userWorkingTimeModelMapper->method('findCurrentByUser')->willReturn(null);
@@ -744,6 +826,173 @@ class AdminControllerTest extends TestCase
 		$data = $response->getData();
 
 		$this->assertTrue($data['success']);
+	}
+
+	/**
+	 * Picker mode returns a lightweight user list (no entitlement / model joins).
+	 */
+	public function testGetUsersPickerModeReturnsLightweightList(): void
+	{
+		$enabled = $this->createMock(IUser::class);
+		$enabled->method('getUID')->willReturn('alice');
+		$enabled->method('getDisplayName')->willReturn('Alice');
+		$enabled->method('isEnabled')->willReturn(true);
+
+		$disabled = $this->createMock(IUser::class);
+		$disabled->method('getUID')->willReturn('bob');
+		$disabled->method('getDisplayName')->willReturn('Bob');
+		$disabled->method('isEnabled')->willReturn(false);
+
+		$this->request->method('getParam')->willReturnCallback(
+			static function (string $key, $default = null) {
+				return match ($key) {
+					'picker' => '1',
+					'limit' => '20',
+					default => $default,
+				};
+			}
+		);
+
+		$this->userManager->method('search')->willReturn([$enabled, $disabled]);
+		$this->userManager->method('searchDisplayName')->willReturn([]);
+
+		$this->vacationEntitlementEngine->expects($this->never())->method('computeForDate');
+		$this->userWorkingTimeModelMapper->expects($this->never())->method('findCurrentByUser');
+
+		$response = $this->controller->getUsers('ann', 50, 0);
+		$data = $response->getData();
+
+		$this->assertTrue($data['success']);
+		$this->assertTrue($data['picker']);
+		$this->assertCount(1, $data['users']);
+		$this->assertSame('alice', $data['users'][0]['userId']);
+		$this->assertSame('Alice', $data['users'][0]['displayName']);
+		$this->assertArrayNotHasKey('entitlementPreview', $data['users'][0]);
+	}
+
+	/**
+	 * Regression for issue #14: a person whose *display name* matches but whose
+	 * *user id* does not (e.g. id is an email/UUID) must still appear. This is
+	 * the case that previously hid most of the directory in the team picker.
+	 */
+	public function testGetUsersPickerModeMatchesByDisplayName(): void
+	{
+		$byName = $this->createMock(IUser::class);
+		$byName->method('getUID')->willReturn('a1b2-uuid');
+		$byName->method('getDisplayName')->willReturn('Max Mustermann');
+		$byName->method('isEnabled')->willReturn(true);
+
+		$this->request->method('getParam')->willReturnCallback(
+			static function (string $key, $default = null) {
+				return match ($key) {
+					'picker' => '1',
+					'limit' => '20',
+					default => $default,
+				};
+			}
+		);
+
+		// User-id search finds nothing for "max"; display-name search does.
+		$this->userManager->method('search')->willReturn([]);
+		$this->userManager->method('searchDisplayName')->willReturn([$byName]);
+
+		$response = $this->controller->getUsers('max', 50, 0);
+		$data = $response->getData();
+
+		$this->assertTrue($data['success']);
+		$this->assertTrue($data['picker']);
+		$this->assertCount(1, $data['users']);
+		$this->assertSame('a1b2-uuid', $data['users'][0]['userId']);
+		$this->assertSame('Max Mustermann', $data['users'][0]['displayName']);
+	}
+
+	/**
+	 * Already-assigned people passed via `exclude[]` must be filtered out of
+	 * picker results so a heavily-staffed unit cannot hide available people.
+	 */
+	public function testGetUsersPickerModeHonoursExcludeList(): void
+	{
+		$assigned = $this->createMock(IUser::class);
+		$assigned->method('getUID')->willReturn('alice');
+		$assigned->method('getDisplayName')->willReturn('Alice');
+		$assigned->method('isEnabled')->willReturn(true);
+
+		$available = $this->createMock(IUser::class);
+		$available->method('getUID')->willReturn('alan');
+		$available->method('getDisplayName')->willReturn('Alan');
+		$available->method('isEnabled')->willReturn(true);
+
+		$this->request->method('getParam')->willReturnCallback(
+			static function (string $key, $default = null) {
+				return match ($key) {
+					'picker' => '1',
+					'limit' => '20',
+					'exclude' => ['alice'],
+					default => $default,
+				};
+			}
+		);
+
+		$this->userManager->method('search')->willReturn([$assigned, $available]);
+		$this->userManager->method('searchDisplayName')->willReturn([]);
+
+		$response = $this->controller->getUsers('al', 50, 0);
+		$data = $response->getData();
+
+		$this->assertTrue($data['success']);
+		$this->assertCount(1, $data['users']);
+		$this->assertSame('alan', $data['users'][0]['userId']);
+	}
+
+	public function testGetUsersPickerModeRequiresMinSearchLength(): void
+	{
+		$this->request->method('getParam')->willReturnCallback(
+			static function (string $key, $default = null) {
+				return match ($key) {
+					'picker' => '1',
+					default => $default,
+				};
+			}
+		);
+
+		$this->userManager->expects($this->never())->method('search');
+
+		$response = $this->controller->getUsers('a', 20, 0);
+		$data = $response->getData();
+
+		$this->assertTrue($data['success']);
+		$this->assertTrue($data['picker']);
+		$this->assertSame([], $data['users']);
+		$this->assertSame(Constants::PICKER_MIN_SEARCH_LENGTH, $data['requiresMinSearch']);
+	}
+
+	public function testSearchVacationLayersUsersDelegatesToPicker(): void
+	{
+		$enabled = $this->createMock(IUser::class);
+		$enabled->method('getUID')->willReturn('alice');
+		$enabled->method('getDisplayName')->willReturn('Alice');
+		$enabled->method('isEnabled')->willReturn(true);
+
+		$this->request->method('getParam')->willReturnCallback(
+			static function (string $key, $default = null) {
+				return match ($key) {
+					'search' => 'ann',
+					'limit' => '10',
+					default => $default,
+				};
+			}
+		);
+
+		$this->userManager->method('search')->willReturn([$enabled]);
+		$this->userManager->method('searchDisplayName')->willReturn([]);
+
+		$response = $this->controller->searchVacationLayersUsers();
+		$data = $response->getData();
+
+		$this->assertTrue($data['success']);
+		$this->assertTrue($data['picker']);
+		$this->assertCount(1, $data['users']);
+		$this->assertSame('alice', $data['users'][0]['userId']);
 	}
 
 	/**
@@ -782,6 +1031,70 @@ class AdminControllerTest extends TestCase
 		$this->assertArrayHasKey('user', $data);
 		$this->assertEquals($userId, $data['user']['userId']);
 		$this->assertArrayHasKey('availableWorkingTimeModels', $data['user']);
+	}
+
+	/**
+	 * Future-dated assignments must load the vacation policy effective on the
+	 * assignment start — not only policies active today.
+	 */
+	public function testGetUserLoadsVacationPolicyAsOfFutureAssignmentStart(): void
+	{
+		$userId = 'user1';
+		$future = (new \DateTimeImmutable('first day of next month'))->format('Y-m-d');
+
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn($userId);
+		$user->method('getDisplayName')->willReturn('User One');
+		$user->method('getEMailAddress')->willReturn('user1@example.com');
+		$user->method('isEnabled')->willReturn(true);
+
+		$this->userManager->method('get')->with($userId)->willReturn($user);
+
+		$wtm = new UserWorkingTimeModel();
+		$wtm->setId(10);
+		$wtm->setUserId($userId);
+		$wtm->setWorkingTimeModelId(1);
+		$wtm->setVacationDaysPerYear(28);
+		$wtm->setStartDate(new \DateTime($future));
+
+		$this->userWorkingTimeModelMapper->method('findEditableByUser')
+			->with($userId)
+			->willReturn($wtm);
+
+		$model = new WorkingTimeModel();
+		$model->setId(1);
+		$model->setName('Full-time');
+		$model->setType(WorkingTimeModel::TYPE_FULL_TIME);
+		$model->setWeeklyHours(40.0);
+		$model->setDailyHours(8.0);
+		$model->setWorkDaysPerWeek(5.0);
+		$this->workingTimeModelMapper->method('find')->with(1)->willReturn($model);
+		$this->workingTimeModelMapper->method('findAll')->willReturn([$model]);
+
+		$policy = new UserVacationPolicyAssignment();
+		$policy->setId(99);
+		$policy->setUserId($userId);
+		$policy->setVacationMode(Constants::VACATION_MODE_MANUAL_FIXED);
+		$policy->setManualDays(30.0);
+		$policy->setEffectiveFrom(new \DateTime($future));
+		$policy->setInheritLowerLayers(false);
+
+		$this->userVacationPolicyAssignmentMapper->expects($this->once())
+			->method('findCurrentByUser')
+			->with(
+				$userId,
+				$this->callback(static function (\DateTimeInterface $asOf) use ($future): bool {
+					return $asOf->format('Y-m-d') === $future;
+				})
+			)
+			->willReturn($policy);
+
+		$response = $this->controller->getUser($userId);
+		$data = $response->getData();
+
+		$this->assertTrue($data['success']);
+		$this->assertSame(Constants::VACATION_MODE_MANUAL_FIXED, $data['user']['vacationPolicy']['vacationMode']);
+		$this->assertSame(30.0, $data['user']['vacationPolicy']['manualDays']);
 	}
 
 	/**
@@ -1114,10 +1427,17 @@ class AdminControllerTest extends TestCase
 		$this->userWorkingTimeModelMapper->method('findCurrentByUser')
 			->with($userId)
 			->willReturn($currentAssignment);
+		$this->userWorkingTimeModelMapper->method('findEditableByUser')
+			->with($userId)
+			->willReturn($currentAssignment);
+		// An active/past assignment is retired by closing it with an end date
+		// (updated in place), not by inserting or duplicating a row.
 		$this->userWorkingTimeModelMapper->expects($this->once())
-			->method('endCurrentAssignment')
-			->with($userId, $this->isInstanceOf(\DateTime::class))
+			->method('update')
+			->with($this->isInstanceOf(UserWorkingTimeModel::class))
 			->willReturn($endedAssignment);
+		$this->userWorkingTimeModelMapper->expects($this->never())
+			->method('insert');
 
 		$response = $this->controller->updateUserWorkingTimeModel($userId);
 		$data = $response->getData();
@@ -1282,6 +1602,198 @@ class AdminControllerTest extends TestCase
 		$this->assertSame('Invalid date; use YYYY-MM-DD.', $data['error']);
 	}
 
+	public function testCreateTariffRuleSetRejectsInvalidModules(): void
+	{
+		$this->request->method('getParams')->willReturn([
+			'tariffCode' => 'TVOD-VKA',
+			'version' => '2026.1',
+			'validFrom' => '2026-06-03',
+			'modules' => [
+				[
+					'moduleType' => 'additional_entitlements',
+					'config' => ['days' => 1],
+				],
+			],
+		]);
+		$this->tariffRuleSetMapper->expects($this->never())->method('insert');
+
+		$response = $this->controller->createTariffRuleSet();
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
+		$data = $response->getData();
+		$this->assertFalse($data['success']);
+		$this->assertArrayHasKey('errors', $data);
+		$this->assertArrayHasKey('modules', $data['errors']);
+	}
+
+	public function testCreateTariffRuleSetReturnsConflictPayloadWhenDuplicateExists(): void
+	{
+		$existing = new TariffRuleSet();
+		$existing->setId(9);
+		$existing->setTariffCode('TVOD-VKA');
+		$existing->setVersion('2024.1');
+		$existing->setStatus(Constants::TARIFF_RULE_SET_STATUS_DRAFT);
+
+		$this->request->method('getParams')->willReturn([
+			'tariffCode' => 'TVOD-VKA',
+			'version' => '2024.1',
+			'validFrom' => '2026-06-03',
+			'modules' => [
+				[
+					'moduleType' => 'base_formula',
+					'config' => [
+						'reference_days' => 30,
+						'reference_week_days' => 5,
+						'work_days_per_week' => 5,
+					],
+				],
+			],
+		]);
+
+		$this->tariffRuleSetMapper->expects($this->once())
+			->method('findByCodeAndVersion')
+			->with('TVOD-VKA', '2024.1')
+			->willReturn($existing);
+		$this->tariffRuleSetMapper->expects($this->never())->method('insert');
+
+		$response = $this->controller->createTariffRuleSet();
+		$this->assertInstanceOf(JSONResponse::class, $response);
+		$this->assertSame(Http::STATUS_CONFLICT, $response->getStatus());
+		$data = $response->getData();
+		$this->assertFalse($data['success']);
+		$this->assertSame('duplicate_code_version', $data['code']);
+		$this->assertArrayHasKey('existing', $data);
+		$this->assertSame(9, $data['existing']['id']);
+		$this->assertSame(Constants::TARIFF_RULE_SET_STATUS_DRAFT, $data['existing']['status']);
+		$this->assertArrayHasKey('errors', $data);
+		$this->assertArrayHasKey('tariffCode', $data['errors']);
+	}
+
+	public function testCreateTariffRuleSetPersistsDraftWithModules(): void
+	{
+		$this->request->method('getParams')->willReturn([
+			'tariffCode' => 'TVOD-VKA',
+			'version' => '2026.2',
+			'validFrom' => '2026-06-03',
+			'modules' => [
+				[
+					'moduleType' => 'base_formula',
+					'config' => [
+						'reference_days' => 30,
+						'reference_week_days' => 5,
+						'work_days_per_week' => 5,
+					],
+				],
+			],
+		]);
+
+		$this->tariffRuleSetMapper->expects($this->once())
+			->method('findByCodeAndVersion')
+			->with('TVOD-VKA', '2026.2')
+			->willReturn(null);
+		$this->tariffRuleSetMapper->expects($this->once())
+			->method('insert')
+			->willReturnCallback(function (TariffRuleSet $ruleSet) {
+				self::assertSame(Constants::TARIFF_RULE_SET_STATUS_DRAFT, $ruleSet->getStatus());
+				$ruleSet->setId(42);
+				return $ruleSet;
+			});
+		$this->tariffRuleModuleMapper->expects($this->once())
+			->method('insert')
+			->willReturnCallback(function (\OCA\ArbeitszeitCheck\Db\TariffRuleModule $module) {
+				$module->setId(7);
+				return $module;
+			});
+		$this->auditLogMapper->expects($this->once())->method('logAction');
+
+		$response = $this->controller->createTariffRuleSet();
+		self::assertSame(Http::STATUS_CREATED, $response->getStatus());
+		$data = $response->getData();
+		self::assertTrue($data['success']);
+		self::assertSame(42, $data['ruleSetId']);
+	}
+
+	public function testCreateTariffRuleSetRejectsClientStatusOverride(): void
+	{
+		$this->request->method('getParams')->willReturn([
+			'tariffCode' => 'TVOD-VKA',
+			'version' => '2026.3',
+			'validFrom' => '2026-06-03',
+			'status' => Constants::TARIFF_RULE_SET_STATUS_ACTIVE,
+			'modules' => [
+				[
+					'moduleType' => 'base_formula',
+					'config' => [
+						'reference_days' => 30,
+						'reference_week_days' => 5,
+						'work_days_per_week' => 5,
+					],
+				],
+			],
+		]);
+
+		$this->tariffRuleSetMapper->expects($this->never())->method('insert');
+
+		$response = $this->controller->createTariffRuleSet();
+		self::assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
+		$data = $response->getData();
+		self::assertFalse($data['success']);
+		self::assertArrayHasKey('errors', $data);
+		self::assertArrayHasKey('status', $data['errors']);
+	}
+
+	public function testUpdateTariffRuleSetRejectsStatusOverride(): void
+	{
+		$ruleSet = new TariffRuleSet();
+		$ruleSet->setId(44);
+		$ruleSet->setTariffCode('TVOD-VKA');
+		$ruleSet->setVersion('2026.4');
+		$ruleSet->setValidFrom(new \DateTime('2026-01-01'));
+		$ruleSet->setStatus(Constants::TARIFF_RULE_SET_STATUS_DRAFT);
+		$ruleSet->setUpdatedAt(new \DateTime('2026-04-01'));
+
+		$this->request->method('getParams')->willReturn([
+			'status' => Constants::TARIFF_RULE_SET_STATUS_ACTIVE,
+			'validFrom' => '2026-01-01',
+		]);
+
+		$this->tariffRuleSetMapper->expects($this->once())->method('find')->with(44)->willReturn($ruleSet);
+		$this->tariffRuleSetMapper->expects($this->never())->method('update');
+
+		$response = $this->controller->updateTariffRuleSet(44);
+		self::assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
+		$data = $response->getData();
+		self::assertFalse($data['success']);
+		self::assertArrayHasKey('errors', $data);
+		self::assertArrayHasKey('status', $data['errors']);
+	}
+
+	public function testUpdateTariffRuleSetRejectsIdentityOverride(): void
+	{
+		$ruleSet = new TariffRuleSet();
+		$ruleSet->setId(45);
+		$ruleSet->setTariffCode('TVOD-VKA');
+		$ruleSet->setVersion('2026.5');
+		$ruleSet->setValidFrom(new \DateTime('2026-01-01'));
+		$ruleSet->setStatus(Constants::TARIFF_RULE_SET_STATUS_DRAFT);
+		$ruleSet->setUpdatedAt(new \DateTime('2026-04-01'));
+
+		$this->request->method('getParams')->willReturn([
+			'tariffCode' => 'OTHER-CODE',
+			'version' => '9999.9',
+		]);
+
+		$this->tariffRuleSetMapper->expects($this->once())->method('find')->with(45)->willReturn($ruleSet);
+		$this->tariffRuleSetMapper->expects($this->never())->method('update');
+
+		$response = $this->controller->updateTariffRuleSet(45);
+		self::assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
+		$data = $response->getData();
+		self::assertFalse($data['success']);
+		self::assertArrayHasKey('errors', $data);
+		self::assertArrayHasKey('tariffCode', $data['errors']);
+		self::assertArrayHasKey('version', $data['errors']);
+	}
+
 	public function testActivateTariffRuleSetWithNextMonthAdjustsValidityAndClosesOverlap(): void
 	{
 		$ruleSet = new TariffRuleSet();
@@ -1300,10 +1812,23 @@ class AdminControllerTest extends TestCase
 		$existingActive->setStatus(Constants::TARIFF_RULE_SET_STATUS_ACTIVE);
 		$existingActive->setUpdatedAt(new \DateTime('2026-04-01'));
 
+		$baseModule = new \OCA\ArbeitszeitCheck\Db\TariffRuleModule();
+		$baseModule->setRuleSetId(22);
+		$baseModule->setModuleType('base_formula');
+		$baseModule->setConfig([
+			'reference_days' => 30,
+			'reference_week_days' => 5,
+			'work_days_per_week' => 5,
+		]);
+
 		$this->tariffRuleSetMapper->expects($this->once())
 			->method('find')
 			->with(22)
 			->willReturn($ruleSet);
+		$this->tariffRuleModuleMapper->expects($this->once())
+			->method('findByRuleSetId')
+			->with(22)
+			->willReturn([$baseModule]);
 		$this->tariffRuleSetMapper->expects($this->once())
 			->method('findActiveByTariffCode')
 			->with('TVOD')
@@ -1446,9 +1971,8 @@ class AdminControllerTest extends TestCase
 		$this->userManager->method('get')
 			->willReturn($user);
 
-		$this->auditLogMapper->expects($this->once())
-			->method('findByDateRange')
-			->willReturn([$log]);
+		$this->auditLogMapper->method('countByDateRange')->willReturn(1);
+		$this->auditLogMapper->method('searchByDateRange')->willReturn([$log]);
 
 		$response = $this->controller->getAuditLogs();
 		$data = $response->getData();
@@ -1533,7 +2057,7 @@ class AdminControllerTest extends TestCase
 
 		$this->userManager->method('get')->willReturn($user);
 
-		$this->auditLogMapper->method('findByDateRange')
+		$this->auditLogMapper->method('searchByDateRange')
 			->willReturn([$log]);
 
 		$response = $this->controller->exportAuditLogs('csv');
@@ -1668,5 +2192,117 @@ class AdminControllerTest extends TestCase
 		$response = $this->controller->updateUserOvertimeSettings('alice');
 		$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
 		$this->assertFalse($response->getData()['success']);
+	}
+
+	public function testGetStateHolidaysDoesNotInjectVirtualStatutoryRows(): void
+	{
+		$this->appConfig
+			->method('getAppValueString')
+			->willReturnCallback(static function (string $key, string $default = ''): string {
+				if ($key === 'statutory_auto_reseed') {
+					return '0';
+				}
+				if ($key === 'company_holidays') {
+					return '[]';
+				}
+				return $default;
+			});
+
+		$companyHoliday = [
+			'id' => 42,
+			'state' => 'NW',
+			'date' => '2026-12-24',
+			'name' => 'Company closure',
+			'kind' => 'full',
+			'scope' => 'company',
+			'source' => 'manual',
+			'weight' => 1.0,
+		];
+
+		$this->holidayCalendarService
+			->expects($this->once())
+			->method('getHolidaysForRange')
+			->willReturn([$companyHoliday]);
+
+		$response = $this->controller->getStateHolidays('NW', 2026);
+		$this->assertInstanceOf(JSONResponse::class, $response);
+		$this->assertSame(Http::STATUS_OK, $response->getStatus());
+
+		$data = $response->getData();
+		$this->assertTrue($data['success']);
+		$this->assertFalse($data['statutoryAutoReseed']);
+		$this->assertCount(1, $data['holidays']);
+		$this->assertSame(42, $data['holidays'][0]['id']);
+		$this->assertSame('company', $data['holidays'][0]['scope']);
+	}
+
+	public function testUpdateUserTimeCaptureSettingsReturnsUpdatedPayload(): void
+	{
+		$user = $this->makeUserMock('alice', 'Alice');
+		$this->userManager->method('get')->with('alice')->willReturn($user);
+		$this->request->method('getParams')->willReturn([
+			'clockStampingEnabled' => false,
+			'manualTimeEntryEnabled' => true,
+		]);
+		$this->timeCaptureMethodService->expects($this->once())
+			->method('setSettings')
+			->with(
+				'alice',
+				['clockStampingEnabled' => false, 'manualTimeEntryEnabled' => true],
+				'system',
+			)
+			->willReturn([
+				'clockStampingEnabled' => false,
+				'manualTimeEntryEnabled' => true,
+			]);
+
+		$response = $this->controller->updateUserTimeCaptureSettings('alice');
+
+		$this->assertSame(Http::STATUS_OK, $response->getStatus());
+		$data = $response->getData();
+		$this->assertTrue($data['success']);
+		$this->assertFalse($data['timeCapture']['clockStampingEnabled']);
+		$this->assertTrue($data['timeCapture']['manualTimeEntryEnabled']);
+	}
+
+	public function testUpdateUserTimeCaptureSettingsReturns404ForUnknownUser(): void
+	{
+		$this->userManager->method('get')->with('missing')->willReturn(null);
+		$this->timeCaptureMethodService->expects($this->never())->method('setSettings');
+
+		$response = $this->controller->updateUserTimeCaptureSettings('missing');
+
+		$this->assertSame(Http::STATUS_NOT_FOUND, $response->getStatus());
+		$this->assertFalse($response->getData()['success']);
+	}
+
+	public function testUpdateUserTimeCaptureSettingsReturns400WhenPayloadEmpty(): void
+	{
+		$user = $this->makeUserMock('alice', 'Alice');
+		$this->userManager->method('get')->with('alice')->willReturn($user);
+		$this->request->method('getParams')->willReturn([]);
+		$this->timeCaptureMethodService->expects($this->never())->method('setSettings');
+
+		$response = $this->controller->updateUserTimeCaptureSettings('alice');
+
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
+		$this->assertFalse($response->getData()['success']);
+	}
+
+	public function testUpdateUserTimeCaptureSettingsMapsBusinessRuleExceptionTo400(): void
+	{
+		$user = $this->makeUserMock('alice', 'Alice');
+		$this->userManager->method('get')->with('alice')->willReturn($user);
+		$this->request->method('getParams')->willReturn([
+			'clockStampingEnabled' => false,
+			'manualTimeEntryEnabled' => false,
+		]);
+		$this->timeCaptureMethodService->expects($this->never())->method('setSettings');
+
+		$response = $this->controller->updateUserTimeCaptureSettings('alice');
+
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
+		$this->assertFalse($response->getData()['success']);
+		$this->assertStringContainsString('method is required', $response->getData()['error']);
 	}
 }

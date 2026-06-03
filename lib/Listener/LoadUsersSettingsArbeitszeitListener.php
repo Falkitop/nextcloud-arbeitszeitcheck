@@ -62,12 +62,17 @@ final class LoadUsersSettingsArbeitszeitListener implements IEventListener {
 				'fieldset' => $l10n->t('ArbeitszeitCheck'),
 				'trackingLabel' => $l10n->t('Overtime tracking from (optional)'),
 				'trackingHelp' => $l10n->t('If set, this date is saved as the overtime “Stichtag” when the new account is created. Leave empty to configure later in ArbeitszeitCheck → Administration → Employees.'),
+				'datePlaceholder' => $l10n->t('dd.mm.yyyy'),
+				'formatHelp' => $l10n->t('Format: dd.mm.yyyy'),
+				'invalidDate' => $l10n->t('Please enter a valid date (dd.mm.yyyy).'),
 				'toastApplied' => $l10n->t('Overtime tracking start date saved for the new account.'),
 				'toastSkipped' => $l10n->t('Account created. Overtime start date was not applied (check ArbeitszeitCheck permissions or try again from Employees).'),
 			],
 		]);
 
 		Util::addStyle(Application::APP_ID, 'settings-users-overtime');
+		Util::addScript(Application::APP_ID, 'common/catalog');
+		Util::addScript(Application::APP_ID, 'common/datepicker');
 		Util::addScript(Application::APP_ID, 'settings-users-overtime');
 	}
 }

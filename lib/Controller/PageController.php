@@ -22,6 +22,7 @@ use OCA\ArbeitszeitCheck\Service\CSPService;
 use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
 use OCA\ArbeitszeitCheck\Service\NavigationFlagsService;
 use OCA\ArbeitszeitCheck\Service\ProjectCheckIntegrationService;
+use OCA\ArbeitszeitCheck\Service\TimeCaptureMethodService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCA\ArbeitszeitCheck\Service\TeamResolverService;
 use OCA\ArbeitszeitCheck\Service\OvertimeDisplayService;
@@ -67,6 +68,7 @@ class PageController extends Controller
 	private LocaleFormatService $localeFormat;
 	private NavigationFlagsService $navigationFlags;
 	private ProjectCheckIntegrationService $projectCheckIntegration;
+	private TimeCaptureMethodService $timeCaptureMethodService;
 	private IL10N $l10n;
 
 	/**
@@ -105,6 +107,7 @@ class PageController extends Controller
 		LocaleFormatService $localeFormat,
 		NavigationFlagsService $navigationFlags,
 		ProjectCheckIntegrationService $projectCheckIntegration,
+		TimeCaptureMethodService $timeCaptureMethodService,
 		IL10N $l10n
 	) {
 		parent::__construct($appName, $request);
@@ -126,6 +129,7 @@ class PageController extends Controller
 		$this->localeFormat = $localeFormat;
 		$this->navigationFlags = $navigationFlags;
 		$this->projectCheckIntegration = $projectCheckIntegration;
+		$this->timeCaptureMethodService = $timeCaptureMethodService;
 		$this->l10n = $l10n;
 		$this->setCspService($cspService);
 	}
@@ -256,6 +260,7 @@ class PageController extends Controller
 		$this->registerFrontEndAssets('arbeitszeitcheck-main', 'dashboard', [
 			'dashboard-overtime-bank',
 			'dashboard-overtime',
+			'common/projectcheck',
 		]);
 
 		try {
@@ -302,6 +307,7 @@ class PageController extends Controller
 			$currentYear = (int)date('Y');
 			$vacationStats = $this->absenceService->getVacationStats($userId, $currentYear);
 			$workingTimeModelMissing = $this->isWorkingTimeModelMissing($userId);
+			$projectCheckLinkingEnabled = $this->projectCheckIntegration->isLinkingEnabledForUser($userId);
 
 			$params = $this->buildShellParams(
 				'dashboard',
@@ -320,8 +326,10 @@ class PageController extends Controller
 				'recentEntries' => $recentEntries,
 				'isFirstTimeUser' => $isFirstTimeUser,
 				'workingTimeModelMissing' => $workingTimeModelMissing,
-				'projectCheckEnabled' => $this->projectCheckIntegration->isProjectCheckAvailable(),
-				'projectCheckProjects' => $this->projectCheckIntegration->getAvailableProjects($userId),
+				'projectCheckAvailable' => $this->projectCheckIntegration->isProjectCheckAvailable(),
+				'projectCheckEnabled' => $projectCheckLinkingEnabled,
+				'projectCheckProjects' => $projectCheckLinkingEnabled ? $this->projectCheckIntegration->getAvailableProjects($userId) : [],
+				'timeCapture' => $this->timeCaptureMethodService->getSettings($userId),
 				'stats' => [
 					'total_time_entries' => $timeEntryCount,
 					'total_absences' => $absenceCount,
@@ -377,6 +385,10 @@ class PageController extends Controller
 					'vacation_year' => (int)date('Y'),
 				],
 				'error' => $errorMessage,
+				'timeCapture' => [
+					'clockStampingEnabled' => true,
+					'manualTimeEntryEnabled' => true,
+				],
 			]);
 			return $this->configureCSP($response);
 		}
@@ -391,7 +403,7 @@ class PageController extends Controller
 	public function timeEntries(): TemplateResponse
 	{
 		$extraScripts = ['time-entry-correction', 'time-entry-form-accessibility'];
-		$extraStyles = ['time-entries', 'time-entry-correction', 'time-entry-form-accessibility'];
+		$extraStyles = ['time-entries', 'time-entry-correction', 'time-entry-form-accessibility', 'common/projectcheck'];
 		// time-entry-form.js is loaded only on create/edit via TimeEntryController::registerTimeEntryFormAssets()
 		$this->registerFrontEndAssets('arbeitszeitcheck-main', null, $extraStyles, [
 			'common/datepicker',
@@ -436,6 +448,7 @@ class PageController extends Controller
 				'maxDailyHours' => $maxDailyHours,
 				'complianceStrictMode' => $complianceStrictMode,
 				'monthClosureEnabled' => $this->config->getAppValue('arbeitszeitcheck', Constants::CONFIG_MONTH_CLOSURE_ENABLED, '0') === '1',
+				'timeCapture' => $this->timeCaptureMethodService->getSettings($userId),
 			];
 
 			$response = new TemplateResponse('arbeitszeitcheck', 'time-entries', $params);
@@ -798,7 +811,7 @@ class PageController extends Controller
 	#[NoCSRFRequired]
 	public function settings(): TemplateResponse
 	{
-		$this->registerFrontEndAssets('settings', 'settings');
+		$this->registerFrontEndAssets('settings', 'settings', ['common/projectcheck']);
 
 		try {
 			$userId = $this->getUserId();
@@ -808,14 +821,15 @@ class PageController extends Controller
 
 			$params = $this->buildShellParams(
 				'settings',
-				$this->l10n->t('Settings'),
-				$this->l10n->t('Manage your personal preferences and notification settings'),
+				$this->l10n->t('My settings'),
+				$this->l10n->t('Your personal preferences: notifications and break settings'),
 				$navFlags,
 			) + [
 				'stats' => [
 					'total_time_entries' => $timeEntryCount,
 					'total_absences' => $absenceCount,
 				],
+				'projectCheckAvailable' => $this->projectCheckIntegration->isProjectCheckAvailable(),
 			];
 
 			$response = new TemplateResponse('arbeitszeitcheck', 'settings', $params);
@@ -826,8 +840,8 @@ class PageController extends Controller
 			$navFlags = $this->getNavigationFlagsForSession();
 			$response = new TemplateResponse('arbeitszeitcheck', 'settings', $this->buildShellParams(
 				'settings',
-				$this->l10n->t('Settings'),
-				$this->l10n->t('Manage your personal preferences and notification settings'),
+				$this->l10n->t('My settings'),
+				$this->l10n->t('Your personal preferences: notifications and break settings'),
 				$navFlags,
 			) + [
 				'error' => $errorMessage,

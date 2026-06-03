@@ -316,16 +316,14 @@ function initializeDatepicker(input, options = {}) {
 	element.addEventListener('click', function () { openCalendar(); });
 	element.addEventListener('paste', function (e) { e.preventDefault(); });
 
-	const wrapper = document.createElement('div');
-	wrapper.className = 'azc-datepicker-host';
 	const parent = element.parentNode;
 	const inDateRow = parent && (
 		parent.classList.contains('form-input-wrapper--date')
 		|| (parent.closest && parent.closest('.form-input-wrapper--date'))
+		|| (parent.closest && parent.closest('.azc-date-range__part'))
 	);
-	wrapper.style.cssText = inDateRow
-		? 'position:relative;display:block;flex:1 1 10rem;min-width:0;max-width:100%;'
-		: 'position:relative;display:inline-block;width:100%;max-width:100%;';
+	const wrapper = document.createElement('div');
+	wrapper.className = 'azc-datepicker-host' + (inDateRow ? ' azc-datepicker-host--flex' : '');
 	element.parentNode.insertBefore(wrapper, element);
 	wrapper.appendChild(element);
 
@@ -337,7 +335,6 @@ function initializeDatepicker(input, options = {}) {
 	} else {
 		toggleBtn.textContent = '';
 	}
-	toggleBtn.style.cssText = 'position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:4px 8px;display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;';
 	toggleBtn.setAttribute('aria-label', t('Open calendar'));
 	toggleBtn.addEventListener('click', function (e) {
 		e.preventDefault();

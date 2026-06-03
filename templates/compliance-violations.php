@@ -67,7 +67,7 @@ $total = $_['total'] ?? 0;
 
             <!-- Violations Table -->
             <div class="table-container" role="region" aria-label="<?php p($l->t('Compliance violations list')); ?>">
-                <table class="table table--hover" id="violations-table" role="table" aria-label="<?php p($l->t('Compliance violations list')); ?>">
+                <table class="table table--hover azc-table--responsive" id="violations-table" role="table" aria-label="<?php p($l->t('Compliance violations list')); ?>">
                     <thead>
                         <tr>
                             <th scope="col"><?php p($l->t('Problem Type')); ?></th>
@@ -118,15 +118,15 @@ $total = $_['total'] ?? 0;
                                 };
                                 ?>
                                 <tr>
-                                    <td><?php p($typeLabel); ?></td>
-                                    <td>
+                                    <td data-label="<?php p($l->t('Problem Type')); ?>"><?php p($typeLabel); ?></td>
+                                    <td data-label="<?php p($l->t('How Serious')); ?>">
                                         <span class="badge badge--<?php p($severityBadge); ?>">
                                             <?php p($severityLabel); ?>
                                         </span>
                                     </td>
-                                    <td><?php p($violation['date'] ?? '-'); ?></td>
-                                    <td><?php p($violation['description'] ? $l->t($violation['description']) : '-'); ?></td>
-                                    <td>
+                                    <td data-label="<?php p($l->t('Date')); ?>"><?php p($violation['date'] ?? '-'); ?></td>
+                                    <td data-label="<?php p($l->t('What Happened')); ?>"><?php p($violation['description'] ? $l->t($violation['description']) : '-'); ?></td>
+                                    <td data-label="<?php p($l->t('Fixed?')); ?>">
                                         <?php if ($violation['resolved']): ?>
                                             <span class="badge badge--success"><?php p($l->t('Resolved')); ?></span>
                                         <?php else: ?>
@@ -166,6 +166,12 @@ $complianceViolationsL10n = [
 	'High' => $l->t('High'),
 	'Medium' => $l->t('Medium'),
 	'Low' => $l->t('Low'),
+	'Problem Type' => $l->t('Problem Type'),
+	'How Serious' => $l->t('How Serious'),
+	'Date' => $l->t('Date'),
+	'What Happened' => $l->t('What Happened'),
+	'Fixed?' => $l->t('Fixed?'),
+	'Mark as fixed' => $l->t('Mark as fixed'),
 ];
 ?>
 <script nonce="<?php p($_['cspNonce'] ?? ''); ?>">

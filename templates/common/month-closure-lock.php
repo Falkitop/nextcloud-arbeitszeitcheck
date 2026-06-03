@@ -14,6 +14,6 @@ $message = (string)($_['message'] ?? $l->t('This calendar month is finalized. Co
 $noticeId = (string)($_['id'] ?? 'month-closure-lock-notice');
 ?>
 <div class="azc-callout azc-callout--info azc-month-closure-lock" id="<?php p($noticeId); ?>" role="status">
-	<span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('lock', 'azc-callout__icon-svg')); ?></span>
+	<span class="azc-callout__icon azc-notif-icon-well" aria-hidden="true"><?php print_unescaped(IconCatalog::render('lock', 'azc-callout__icon-svg')); ?></span>
 	<p class="azc-callout__text"><?php p($message); ?></p>
 </div>

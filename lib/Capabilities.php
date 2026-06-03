@@ -13,6 +13,7 @@ namespace OCA\ArbeitszeitCheck;
 
 use OCA\ArbeitszeitCheck\Service\MonthClosureFeature;
 use OCA\ArbeitszeitCheck\Service\OvertimeBankService;
+use OCA\ArbeitszeitCheck\Service\TimeCaptureMethodService;
 use OCP\App\IAppManager;
 use OCP\AppFramework\Services\IAppConfig;
 use OCP\Capabilities\ICapability;
@@ -29,6 +30,7 @@ class Capabilities implements ICapability {
 		private readonly OvertimeBankService $overtimeBankService,
 		private readonly IAppManager $appManager,
 		private readonly IUserSession $userSession,
+		private readonly TimeCaptureMethodService $timeCaptureMethodService,
 	) {
 	}
 
@@ -39,6 +41,15 @@ class Capabilities implements ICapability {
 		$user = $this->userSession->getUser();
 		$pushAvailable = $user !== null
 			&& $this->appManager->isEnabledForUser('notifications', $user);
+
+		$timeCapture = $user !== null
+			? $this->timeCaptureMethodService->getSettings($user->getUID())
+			: [
+				'clockStampingEnabled' => true,
+				'manualTimeEntryEnabled' => true,
+			];
+
+		$projectCheckAvailable = $this->appManager->isEnabledForUser('projectcheck');
 
 		return [
 			'arbeitszeitcheck' => [
@@ -60,6 +71,15 @@ class Capabilities implements ICapability {
 					'monthClosure' => MonthClosureFeature::isEnabledFromIConfig($this->config),
 					'overtimeBank' => $this->overtimeBankService->isEnabled(),
 					'layeredVacationEntitlements' => $this->appConfig->getAppValueString('layered_entitlements_enabled', '0') === '1',
+					'timeCapture' => $timeCapture,
+					'projectCheck' => [
+						'available' => $projectCheckAvailable,
+						'linkingEnabled' => $projectCheckAvailable
+							&& $this->appConfig->getAppValueString(
+								Constants::CONFIG_PROJECTCHECK_INTEGRATION_ENABLED,
+								Constants::CONFIG_PROJECTCHECK_INTEGRATION_DEFAULT,
+							) === '1',
+					],
 				],
 				'compliance' => [
 					'german-labor-law' => true,

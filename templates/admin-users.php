@@ -27,22 +27,30 @@ $total = $_['total'] ?? 0;
 
         <div class="section">
             <div class="section-content">
-                <div class="azc-list-toolbar">
-                    <label for="user-search" class="visually-hidden"><?php p($l->t('Search employees')); ?></label>
-                    <input type="search"
-                        id="user-search"
-                        class="form-input"
-                        autocomplete="off"
-                        placeholder="<?php p($l->t('Search employees...')); ?>">
+                <div class="azc-list-toolbar admin-users-toolbar">
+                    <div class="admin-users-toolbar__search">
+                        <label for="user-search" class="form-label"><?php p($l->t('Find an employee')); ?></label>
+                        <input type="search"
+                            id="user-search"
+                            class="form-input"
+                            autocomplete="off"
+                            autocapitalize="none"
+                            spellcheck="false"
+                            placeholder="<?php p($l->t('Search by name or user ID…')); ?>"
+                            aria-describedby="user-search-help users-pagination">
+                        <p id="user-search-help" class="form-help">
+                            <?php p($l->t('Type at least 2 characters to search. Leave empty to browse the list page by page.')); ?>
+                        </p>
+                    </div>
                     <div class="azc-list-toolbar__actions">
                         <button type="button" id="refresh-users" class="btn btn--secondary">
-                            <?php p($l->t('Refresh')); ?>
+                            <?php p($l->t('Refresh list')); ?>
                         </button>
                     </div>
                 </div>
 
                 <div class="table-container" role="region" aria-label="<?php p($l->t('Employee list')); ?>">
-                    <table class="table table--hover" id="users-table" role="table" aria-label="<?php p($l->t('Employee list')); ?>">
+                    <table class="table table--hover azc-table--responsive" id="users-table" role="table" aria-label="<?php p($l->t('Employee list')); ?>">
                         <thead>
                             <tr>
                                 <th scope="col"><?php p($l->t('Name')); ?></th>
@@ -81,32 +89,32 @@ $total = $_['total'] ?? 0;
                                     $stichtag = $user['overtimeTrackingFrom'] ?? null;
                                     ?>
                                     <tr data-user-id="<?php p($user['userId']); ?>">
-                                        <td><?php p($user['displayName']); ?></td>
-                                        <td><?php p($user['email'] ?? '-'); ?></td>
-                                        <td>
+                                        <td data-label="<?php p($l->t('Name')); ?>"><?php p($user['displayName']); ?></td>
+                                        <td data-label="<?php p($l->t('Email')); ?>"><?php p($user['email'] ?? '-'); ?></td>
+                                        <td data-label="<?php p($l->t('Working Time Model')); ?>">
                                             <?php if ($user['workingTimeModel']): ?>
                                                 <?php p($user['workingTimeModel']['name']); ?>
                                             <?php else: ?>
                                                 <span class="text-muted"><?php p($l->t('Not assigned')); ?></span>
                                             <?php endif; ?>
                                         </td>
-                                        <td><?php p($vacation !== null ? (string)$vacation : '-'); ?></td>
-                                        <td><?php p($validity); ?></td>
-                                        <td>
+                                        <td data-label="<?php p($l->t('Vacation days')); ?>"><?php p($vacation !== null ? (string)$vacation : '-'); ?></td>
+                                        <td data-label="<?php p($l->t('Valid from / to')); ?>"><?php p($validity); ?></td>
+                                        <td data-label="<?php p($l->t('Overtime Stichtag')); ?>">
                                             <?php if ($stichtag): ?>
                                                 <span class="badge badge--info"><?php p($formatDate($stichtag)); ?></span>
                                             <?php else: ?>
                                                 <span class="badge badge--warning" title="<?php p($l->t('Year-to-date balance uses 1 January until configured')); ?>"><?php p($l->t('Not set')); ?></span>
                                             <?php endif; ?>
                                         </td>
-                                        <td>
+                                        <td data-label="<?php p($l->t('Status')); ?>">
                                             <?php if ($user['enabled']): ?>
                                                 <span class="badge badge--success"><?php p($l->t('Enabled')); ?></span>
                                             <?php else: ?>
                                                 <span class="badge badge--error"><?php p($l->t('Disabled')); ?></span>
                                             <?php endif; ?>
                                         </td>
-                                        <td class="azc-table-actions-col">
+                                        <td class="actions-cell" data-label="<?php p($l->t('Actions')); ?>">
                                             <div class="user-actions azc-table-actions" role="group" aria-label="<?php p($l->t('Actions for %s', [$user['displayName']])); ?>">
                                                 <button type="button"
                                                         class="btn btn--sm btn--tertiary"
@@ -134,12 +142,23 @@ $total = $_['total'] ?? 0;
                     </table>
                 </div>
 
-                <div class="azc-table-meta pagination-info" id="users-pagination" aria-live="polite">
-                    <p><?php
+                <nav class="admin-users-pager" id="users-pager" aria-label="<?php p($l->t('Employee list pages')); ?>" hidden>
+                    <button type="button" id="users-page-prev" class="btn btn--secondary" disabled>
+                        <?php p($l->t('Previous page')); ?>
+                    </button>
+                    <button type="button" id="users-page-next" class="btn btn--secondary" disabled>
+                        <?php p($l->t('Next page')); ?>
+                    </button>
+                </nav>
+                <div class="azc-table-meta pagination-info admin-users-meta" id="users-pagination" aria-live="polite" aria-atomic="true">
+                    <p id="users-pagination-text"><?php
+                        $shown = count($users);
+                        $from = $shown > 0 ? 1 : 0;
+                        $to = $shown;
                         p(str_replace(
-                            ['{shown}', '{total}'],
-                            [(string) count($users), (string) $total],
-                            $l->t('Showing {shown} of {total} employees')
+                            ['{from}', '{to}', '{total}'],
+                            [(string) $from, (string) $to, (string) $total],
+                            $l->t('Showing employees {from}–{to} of {total}')
                         ));
                     ?></p>
                 </div>
@@ -225,6 +244,10 @@ foreach ($holidayStates as $code => $name) {
     window.ArbeitszeitCheck.l10n.enabled = <?php echo json_encode($l->t('Enabled'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.disabled = <?php echo json_encode($l->t('Disabled'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.actions = <?php echo json_encode($l->t('Actions'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.colName = <?php echo json_encode($l->t('Name'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.colEmail = <?php echo json_encode($l->t('Email'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.colValidFromTo = <?php echo json_encode($l->t('Valid from / to'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.colOvertimeStichtag = <?php echo json_encode($l->t('Overtime Stichtag'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.edit = <?php echo json_encode($l->t('Edit'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.invalidUserData = <?php echo json_encode($l->t('Invalid user data'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.failedToUpdateUser = <?php echo json_encode($l->t('Failed to update user'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
@@ -254,6 +277,16 @@ foreach ($holidayStates as $code => $name) {
     window.ArbeitszeitCheck.l10n.previewTraceManual = <?php echo json_encode($l->t('Uses manually entered annual days.'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.previewTraceModel = <?php echo json_encode($l->t('Formula: 30 × (work days per week ÷ 5).'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.previewTraceError = <?php echo json_encode($l->t('Preview unavailable.'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.previewTechnicalDetails = <?php echo json_encode($l->t('Technical details (audit)'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.previewResolvedByLayer = <?php echo json_encode($l->t('Determined by: {layer}.'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.previewDegradedHint = <?php echo json_encode($l->t('Resolution ran in a degraded state — open technical details or check layered vacation settings.'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.organisationDefault = <?php echo json_encode($l->t('Organisation default'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.workingTimeModelDefault = <?php echo json_encode($l->t('Working time model default'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.teamPolicy = <?php echo json_encode($l->t('Team policy'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.individualRule = <?php echo json_encode($l->t('Individual rule'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.legacyFallback = <?php echo json_encode($l->t('Legacy fallback (25 d.)'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.formatDdmmyyyy = <?php echo json_encode($l->t('Format: dd.mm.yyyy'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.l10n.invalidDateDdmmyyyy = <?php echo json_encode($l->t('Please enter a valid date (dd.mm.yyyy).'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.previewSelectTariffRuleSet = <?php echo json_encode($l->t('Select a tariff rule set to see the preview.'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.notAvailable = <?php echo json_encode($l->t('Not available'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.l10n.sourceManual = <?php echo json_encode($l->t('Manual'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
@@ -264,6 +297,30 @@ foreach ($holidayStates as $code => $name) {
         TemplateL10n::translate($l, 'Showing {shown} of {total} employees'),
         TemplateL10n::JSON_ENCODE_FLAGS
     ); ?>;
+    window.ArbeitszeitCheck.l10n.showingEmployeesRange = <?php echo json_encode(
+        TemplateL10n::translate($l, 'Showing employees {from}–{to} of {total}'),
+        TemplateL10n::JSON_ENCODE_FLAGS
+    ); ?>;
+    window.ArbeitszeitCheck.l10n.searchMatches = <?php echo json_encode(
+        TemplateL10n::translate($l, '{count} employees match your search'),
+        TemplateL10n::JSON_ENCODE_FLAGS
+    ); ?>;
+    window.ArbeitszeitCheck.l10n.searchRefineHint = <?php echo json_encode(
+        TemplateL10n::translate($l, 'More than {count} matches — refine your search to find a specific person.'),
+        TemplateL10n::JSON_ENCODE_FLAGS
+    ); ?>;
+    window.ArbeitszeitCheck.l10n.searchMinLength = <?php echo json_encode(
+        TemplateL10n::translate($l, 'Type at least 2 characters to search.'),
+        TemplateL10n::JSON_ENCODE_FLAGS
+    ); ?>;
+    window.ArbeitszeitCheck.l10n.notSet = <?php echo json_encode($l->t('Not set'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+    window.ArbeitszeitCheck.adminUsersConfig = <?php echo json_encode([
+        'pageSize' => 50,
+        'minSearchLength' => 2,
+        'initialOffset' => 0,
+        'initialTotal' => (int) $total,
+        'initialShown' => count($users),
+    ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     window.ArbeitszeitCheck.states = <?php echo json_encode($holidayStatesForJs, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 </script>
 

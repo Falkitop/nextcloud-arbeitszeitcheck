@@ -37,6 +37,13 @@ class TariffRuleModule extends Entity {
 		$this->addType('sortOrder', 'integer');
 		$this->addType('createdAt', 'datetime');
 		$this->addType('updatedAt', 'datetime');
+		// Typed \DateTime properties must be initialized before the parent
+		// Entity::setter() can compare/assign them; otherwise the very first
+		// setCreatedAt()/setUpdatedAt() call throws "must not be accessed
+		// before initialization" and aborts persistence.
+		$now = new \DateTime();
+		$this->createdAt = $now;
+		$this->updatedAt = clone $now;
 	}
 
 	public function getConfig(): array {
@@ -45,7 +52,12 @@ class TariffRuleModule extends Entity {
 	}
 
 	public function setConfig(array $config): void {
+		// Assign directly (this is not a registered column) and explicitly mark
+		// the backing column dirty so QBMapper::insert()/update() include it.
+		// Going through the magic setter alone would skip the write whenever the
+		// encoded value equals the current one (e.g. the default "{}").
 		$this->configJson = (string)json_encode($config);
+		$this->markFieldUpdated('configJson');
 	}
 }
 

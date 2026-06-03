@@ -13,6 +13,7 @@ namespace OCA\ArbeitszeitCheck\Controller;
 
 use OCA\ArbeitszeitCheck\Service\TimeTrackingService;
 use OCA\ArbeitszeitCheck\Exception\BusinessRuleException;
+use OCA\ArbeitszeitCheck\Exception\TimeCaptureForbiddenException;
 use OCA\ArbeitszeitCheck\Exception\MonthFinalizedException;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
@@ -76,6 +77,14 @@ class TimeTrackingController extends Controller
 	 */
 	private function buildSafeErrorResponse(\Throwable $e): JSONResponse
 	{
+		if ($e instanceof TimeCaptureForbiddenException) {
+			return new JSONResponse([
+				'success' => false,
+				'error' => $e->getMessage(),
+				'error_code' => $e->getErrorCode(),
+			], Http::STATUS_FORBIDDEN);
+		}
+
 		if ($e instanceof BusinessRuleException) {
 			return new JSONResponse([
 				'success' => false,

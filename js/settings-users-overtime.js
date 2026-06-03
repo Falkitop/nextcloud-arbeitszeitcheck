@@ -24,6 +24,33 @@
 		}
 	}
 
+	function convertEuropeanToISO(value) {
+		const s = String(value == null ? '' : value).trim();
+		if (!s) {
+			return '';
+		}
+		const dp = window.ArbeitszeitCheckDatepicker;
+		if (dp && typeof dp.convertEuropeanToISO === 'function') {
+			return dp.convertEuropeanToISO(s);
+		}
+		if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+			return s;
+		}
+		const m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+		if (!m) {
+			return '';
+		}
+		return m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');
+	}
+
+	function isValidOptionalEuropeanDate(value) {
+		const s = String(value == null ? '' : value).trim();
+		if (!s) {
+			return true;
+		}
+		return /^\d{4}-\d{2}-\d{2}$/.test(convertEuropeanToISO(s));
+	}
+
 	function getRequestToken() {
 		const head = document.head || document.getElementsByTagName('head')[0];
 		const fromHead = head && head.getAttribute('data-requesttoken');
@@ -99,15 +126,20 @@
 		label.textContent = strings.trackingLabel || 'Overtime tracking from (optional)';
 
 		const input = document.createElement('input');
-		input.type = 'date';
+		input.type = 'text';
 		input.id = 'azc-nc-newuser-overtime-date';
-		input.className = 'azc-nc-newuser-overtime__input';
+		input.className = 'azc-nc-newuser-overtime__input datepicker-input';
 		input.setAttribute('autocomplete', 'off');
+		input.setAttribute('placeholder', strings.datePlaceholder || 'dd.mm.yyyy');
+		input.setAttribute('pattern', '\\d{2}\\.\\d{2}\\.\\d{4}');
+		input.setAttribute('maxlength', '10');
+		input.setAttribute('inputmode', 'numeric');
 
 		const help = document.createElement('p');
 		help.id = 'azc-nc-newuser-overtime-help';
 		help.className = 'azc-nc-newuser-overtime__help';
-		help.textContent = strings.trackingHelp || '';
+		const helpParts = [strings.trackingHelp || '', strings.formatHelp || ''].filter(Boolean);
+		help.textContent = helpParts.join(' ');
 
 		const status = document.createElement('p');
 		status.className = 'azc-nc-newuser-overtime__status';
@@ -126,10 +158,16 @@
 
 		dialog.__azcOvertimeStatusEl = status;
 		dialog.__azcOvertimeInput = input;
-		bindCreateCapture(dialog, input);
+
+		const dp = window.ArbeitszeitCheckDatepicker;
+		if (dp && typeof dp.initializeDatepicker === 'function') {
+			dp.initializeDatepicker(input, {});
+		}
+
+		bindCreateCapture(dialog, input, strings);
 	}
 
-	function bindCreateCapture(dialog, input) {
+	function bindCreateCapture(dialog, input, strings) {
 		if (dialog.__azcCreateCaptureBound) {
 			return;
 		}
@@ -139,7 +177,13 @@
 			if (!looksLikeNewUserDialog(dialog)) {
 				return;
 			}
-			const tracking = input && input.value ? String(input.value).trim() : '';
+			const raw = input && input.value ? String(input.value).trim() : '';
+			if (raw && !isValidOptionalEuropeanDate(raw)) {
+				showStatus(dialog, strings.invalidDate || 'Please enter a valid date (dd.mm.yyyy).', true);
+				pendingCreateCapture = null;
+				return;
+			}
+			const tracking = raw ? convertEuropeanToISO(raw) : '';
 			pendingCreateCapture = { dialog: dialog, tracking: tracking };
 		};
 

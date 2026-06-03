@@ -440,8 +440,10 @@ const ArbeitszeitCheckComponents = {
       ? window.t('arbeitszeitcheck', 'Close') 
       : 'Close';
     
+    const toastVariant = ['success', 'error', 'warning', 'info'].includes(type) ? type : 'info';
+    const toastWellClass = type === 'error' ? 'danger' : toastVariant;
     toast.innerHTML = `
-      <div class="toast-icon">${icon}</div>
+      <div class="toast-icon azc-notif-icon-well azc-notif-icon-well--${toastWellClass}" aria-hidden="true">${icon}</div>
       <div class="toast-content">
         ${title ? `<div class="toast-title">${title}</div>` : ''}
         <div class="toast-message">${message}</div>

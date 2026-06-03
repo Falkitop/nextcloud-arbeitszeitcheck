@@ -41,18 +41,9 @@
 }
 
 .status-badge {
-    display: inline-block;
-    padding: 5px 12px;
-    border-radius: 20px;
-    font-weight: 600;
-    text-transform: uppercase;
-    font-size: 0.8rem;
-    margin-bottom: 15px;
+	/* Geometry + variants: css/common/badges.css */
+	margin-bottom: 15px;
 }
-
-.status-badge.active { background-color: color-mix(in srgb, var(--color-success) 70%, var(--color-main-background)); color: var(--color-primary-text); }
-.status-badge.break { background-color: color-mix(in srgb, var(--color-warning) 60%, var(--color-main-background)); color: var(--color-primary-text); }
-.status-badge.clocked_out { background-color: var(--color-background-darker); color: var(--color-text-maxcontrast); }
 
 .session-timer {
     margin-bottom: 20px;
@@ -172,41 +163,7 @@
     background-color: var(--color-background-hover);
 }
 
-.badge {
-    padding: 2px 8px;
-    border-radius: 10px;
-    font-size: 0.75rem;
-    font-weight: 500;
-    /* Use Nextcloud standard variables for theme compatibility */
-    background-color: var(--color-background-hover);
-    color: var(--color-main-text);
-}
-
-.badge.status-completed,
-.badge--success { 
-    background-color: color-mix(in srgb, var(--arbeitszeitcheck-color-success-dark) 50%, var(--arbeitszeitcheck-color-gray-900) 50%);
-    color: var(--color-primary-text);
-    border: 1px solid var(--arbeitszeitcheck-color-success-dark);
-}
-
-.badge.status-active,
-.badge--primary { 
-    background-color: var(--color-primary-element);
-    color: var(--color-primary-element-text);
-}
-
-.badge.status-break,
-.badge--warning { 
-    background-color: color-mix(in srgb, var(--arbeitszeitcheck-color-warning-dark) 45%, var(--arbeitszeitcheck-color-gray-900) 55%);
-    color: var(--color-primary-text);
-    border: 1px solid var(--arbeitszeitcheck-color-warning-dark);
-}
-
-.badge--error {
-    background-color: color-mix(in srgb, var(--arbeitszeitcheck-color-error-dark) 45%, var(--arbeitszeitcheck-color-gray-900) 55%);
-    color: var(--color-primary-text);
-    border: 1px solid var(--arbeitszeitcheck-color-error-dark);
-}
+/* .badge variants: css/common/badges.css */
 
 .empty-state {
     text-align: center;

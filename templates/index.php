@@ -16,6 +16,8 @@ declare(strict_types=1);
  * @license AGPL-3.0-or-later
  */
 
+use OCA\ArbeitszeitCheck\Support\BadgeVariant;
+
 /** @var array $_ */
 /** @var \OCP\IL10N $l */
 /** @var \OCP\IURLGenerator $urlGenerator */
@@ -82,12 +84,7 @@ $content = '';
                         <div class="arbeitszeitcheck-card__title"><?php p($l->t('Current Status')); ?></div>
                         <div class="arbeitszeitcheck-card__content">
                             <div class="badge badge--<?php 
-                                echo match($status['status']) {
-                                    'active' => 'success',
-                                    'break' => 'warning',
-                                    'clocked_out' => 'secondary',
-                                    default => 'secondary'
-                                };
+                                echo BadgeVariant::forClockStatus((string)($status['status'] ?? ''));
                             ?>">
                                 <?php 
                                 $statusLabel = match($status['status']) {
@@ -143,7 +140,7 @@ $content = '';
                 <div class="arbeitszeitcheck-section recent-entries-section">
                     <h3><?php p($l->t('Recent Entries')); ?></h3>
                     <div class="table-container">
-                        <table class="table table--hover arbeitszeitcheck-table" role="table" aria-label="<?php p($l->t('Recent time entries')); ?>">
+                        <table class="table table--hover azc-table--responsive arbeitszeitcheck-table" role="table" aria-label="<?php p($l->t('Recent time entries')); ?>">
                             <thead>
                                 <tr>
                                     <th scope="col"><?php p($l->t('Date')); ?></th>
@@ -159,9 +156,9 @@ $content = '';
                                     $rowEnd = $arbeitszeitCheckToDisplayTz($entry->getEndTime());
                                 ?>
                                     <tr>
-                                        <td><?php p($rowStart ? $rowStart->format('d.m.Y') : '-'); ?></td>
-                                        <td><?php p($rowStart ? $rowStart->format('H:i') : '-'); ?></td>
-                                        <td><?php
+                                        <td data-label="<?php p($l->t('Date')); ?>"><?php p($rowStart ? $rowStart->format('d.m.Y') : '-'); ?></td>
+                                        <td data-label="<?php p($l->t('Start')); ?>"><?php p($rowStart ? $rowStart->format('H:i') : '-'); ?></td>
+                                        <td data-label="<?php p($l->t('End')); ?>"><?php
                                             if ($rowEnd && $rowStart) {
                                                 $startDate = $rowStart->format('Y-m-d');
                                                 $endDate = $rowEnd->format('Y-m-d');
@@ -175,17 +172,9 @@ $content = '';
                                                 p('-');
                                             }
                                         ?></td>
-                                        <td><?php p(round($entry->getWorkingDurationHours() ?? 0, 2)); ?> h</td>
-                                        <td><span class="badge badge--<?php 
-                                            echo match($entry->getStatus()) {
-                                                'completed' => 'success',
-                                                'active' => 'primary',
-                                                'pending_approval' => 'warning',
-                                                'break' => 'primary',
-                                                'paused' => 'secondary',
-                                                'rejected' => 'error',
-                                                default => 'secondary'
-                                            };
+                                        <td data-label="<?php p($l->t('Duration')); ?>"><?php p(round($entry->getWorkingDurationHours() ?? 0, 2)); ?> h</td>
+                                        <td data-label="<?php p($l->t('Status')); ?>"><span class="badge badge--<?php 
+                                            p(BadgeVariant::forTimeEntryStatus((string)$entry->getStatus()));
                                         ?>"><?php
                                             $entryStatusKey = $entry->getStatus();
                                             p(match($entryStatusKey) {
@@ -215,7 +204,7 @@ $content = '';
                     <h2><?php p($l->t('Time Entries')); ?></h2>
                 </div>
                 <div class="table-container">
-                    <table class="table table--hover arbeitszeitcheck-table" role="table" aria-label="<?php p($l->t('Time entries list')); ?>">
+                    <table class="table table--hover azc-table--responsive arbeitszeitcheck-table" role="table" aria-label="<?php p($l->t('Time entries list')); ?>">
                         <thead>
                             <tr>
                                 <th scope="col"><?php p($l->t('Date')); ?></th>
@@ -236,17 +225,12 @@ $content = '';
                                     $rowEnd = $arbeitszeitCheckToDisplayTz($entry->getEndTime());
                                 ?>
                                     <tr>
-                                        <td><?php p($rowStart ? $rowStart->format('d.m.Y') : '-'); ?></td>
-                                        <td><?php p($rowStart ? $rowStart->format('H:i') : '-'); ?></td>
-                                        <td><?php p($rowEnd ? $rowEnd->format('H:i') : '-'); ?></td>
-                                        <td><?php p(round($entry->getWorkingDurationHours() ?? 0, 2)); ?> h</td>
-                                        <td><span class="badge badge--<?php
-                                            echo match($entry->getStatus()) {
-                                                'completed' => 'success',
-                                                'active' => 'primary',
-                                                'pending_approval' => 'warning',
-                                                default => 'secondary'
-                                            };
+                                        <td data-label="<?php p($l->t('Date')); ?>"><?php p($rowStart ? $rowStart->format('d.m.Y') : '-'); ?></td>
+                                        <td data-label="<?php p($l->t('Start')); ?>"><?php p($rowStart ? $rowStart->format('H:i') : '-'); ?></td>
+                                        <td data-label="<?php p($l->t('End')); ?>"><?php p($rowEnd ? $rowEnd->format('H:i') : '-'); ?></td>
+                                        <td data-label="<?php p($l->t('Duration')); ?>"><?php p(round($entry->getWorkingDurationHours() ?? 0, 2)); ?> h</td>
+                                        <td data-label="<?php p($l->t('Status')); ?>"><span class="badge badge--<?php
+                                            p(BadgeVariant::forTimeEntryStatus((string)$entry->getStatus()));
                                         ?>"><?php
                                             $statusKey = $entry->getStatus();
                                             $statusLabel = match($statusKey) {
@@ -269,7 +253,7 @@ $content = '';
                     <h2><?php p($l->t('Absences')); ?></h2>
                 </div>
                 <div class="table-container">
-                    <table class="table table--hover arbeitszeitcheck-table" role="table" aria-label="<?php p($l->t('Absence requests list')); ?>">
+                    <table class="table table--hover azc-table--responsive arbeitszeitcheck-table" role="table" aria-label="<?php p($l->t('Absence requests list')); ?>">
                         <thead>
                             <tr>
                                 <th scope="col"><?php p($l->t('Type')); ?></th>
@@ -281,7 +265,7 @@ $content = '';
                         <tbody>
                             <?php foreach ($_['absences'] ?? [] as $absence): ?>
                                 <tr>
-                                    <td><?php
+                                    <td data-label="<?php p($l->t('Type')); ?>"><?php
                                         $typeKey = $absence->getType();
                                         $typeLabel = match($typeKey) {
                                             'vacation' => $l->t('Vacation'),
@@ -296,9 +280,9 @@ $content = '';
                                         };
                                         p($typeLabel);
                                     ?></td>
-                                    <td><?php p($absence->getStartDate()->format('d.m.Y')); ?></td>
-                                    <td><?php p($absence->getEndDate()->format('d.m.Y')); ?></td>
-                                    <td><span class="badge"><?php
+                                    <td data-label="<?php p($l->t('Start Date')); ?>"><?php p($absence->getStartDate()->format('d.m.Y')); ?></td>
+                                    <td data-label="<?php p($l->t('End Date')); ?>"><?php p($absence->getEndDate()->format('d.m.Y')); ?></td>
+                                    <td data-label="<?php p($l->t('Status')); ?>"><span class="badge"><?php
                                         $statusKey = $absence->getStatus();
                                         p(match($statusKey) {
                                             'approved' => $l->t('Approved'),

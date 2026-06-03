@@ -26,10 +26,27 @@ use OCP\IUserSession;
  */
 trait PageShellTrait
 {
-	/** Page IDs that use full-width shell (tables, dashboards, dense admin). */
+	/** Page IDs that keep a readable max width (forms, preferences). */
+	private const CONSTRAINED_SHELL_PAGE_IDS = [
+		'settings',
+	];
+
+	/** Page IDs that use full-width shell (tables, dashboards, dense admin/manager lists). */
 	private const WIDE_SHELL_PAGE_IDS = [
 		'dashboard',
+		'time-entries',
+		'absences',
+		'calendar',
+		'timeline',
 		'reports',
+		'substitution-requests',
+		'compliance-dashboard',
+		'compliance-violations',
+		'compliance-reports',
+		'manager-dashboard',
+		'manager-time-entries',
+		'manager-absences',
+		'manager-month-closures',
 		'admin-dashboard',
 		'admin-users',
 		'admin-notifications',
@@ -59,8 +76,10 @@ trait PageShellTrait
 		$userId = $this->getShellUserId();
 		$roleLabel = $this->resolveRoleLabel($userId);
 		$clientHints = $this->localeFormat->clientHints();
-		$shellWidth = in_array($shellWidth, ['standard', 'wide', 'minimal'], true) ? $shellWidth : 'standard';
-		if ($shellWidth === 'standard' && in_array($pageId, self::WIDE_SHELL_PAGE_IDS, true)) {
+		$shellWidth = in_array($shellWidth, ['standard', 'wide', 'constrained', 'minimal'], true) ? $shellWidth : 'standard';
+		if ($shellWidth === 'standard' && in_array($pageId, self::CONSTRAINED_SHELL_PAGE_IDS, true)) {
+			$shellWidth = 'constrained';
+		} elseif ($shellWidth === 'standard' && in_array($pageId, self::WIDE_SHELL_PAGE_IDS, true)) {
 			$shellWidth = 'wide';
 		}
 

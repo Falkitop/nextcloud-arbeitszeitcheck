@@ -274,54 +274,20 @@
 	flex-wrap: wrap;
 }
 
-/* Badge Styles - Compatible with all Nextcloud themes */
-.badge {
-	display: inline-block;
-	padding: 0.25rem 0.75rem;
-	border-radius: 12px;
-	font-size: 0.75rem;
-	font-weight: 600;
-	text-transform: uppercase;
-	letter-spacing: 0.5px;
-	/* Use Nextcloud standard variables */
-	background-color: var(--color-background-hover);
-	color: var(--color-main-text);
-}
-
-.badge--success {
-	background-color: color-mix(in srgb, var(--arbeitszeitcheck-color-success-dark) 50%, var(--arbeitszeitcheck-color-gray-900) 50%);
-	color: var(--color-primary-text);
-	border: 1px solid var(--arbeitszeitcheck-color-success-dark);
-}
-
-.badge--primary {
-	background-color: var(--color-primary-element);
-	color: var(--color-primary-element-text);
-}
-
-.badge--warning {
-	background-color: color-mix(in srgb, var(--arbeitszeitcheck-color-warning-dark) 45%, var(--arbeitszeitcheck-color-gray-900) 55%);
-	color: var(--color-primary-text);
-	border: 1px solid var(--arbeitszeitcheck-color-warning-dark);
-}
-
-.badge--error {
-	background-color: color-mix(in srgb, var(--arbeitszeitcheck-color-error-dark) 45%, var(--arbeitszeitcheck-color-gray-900) 55%);
-	color: var(--color-primary-text);
-	border: 1px solid var(--arbeitszeitcheck-color-error-dark);
-}
-
-.badge--secondary {
-	background-color: var(--color-background-hover);
-	color: var(--color-text-maxcontrast);
-}
+/* Badges: css/common/badges.css (via app.css) */
 
 /* Empty and Error States */
-.timeline-empty,
-.timeline-error {
+.timeline-empty {
 	text-align: center;
 	padding: var(--space-12, 3rem) var(--space-6, 1.5rem);
 	color: var(--arbeitszeitcheck-color-text-maxcontrast, var(--color-text-maxcontrast, var(--arbeitszeitcheck-color-text-tertiary)));
+	font-size: 1rem;
+	line-height: 1.6;
+}
+
+.timeline-error {
+	text-align: center;
+	padding: var(--space-12, 3rem) var(--space-6, 1.5rem);
 	font-size: 1rem;
 	line-height: 1.6;
 }

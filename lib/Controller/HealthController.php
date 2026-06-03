@@ -148,11 +148,24 @@ class HealthController extends Controller
 	{
 		try {
 			$isAvailable = $this->projectCheckService->isProjectCheckAvailable();
+			$linkingEnabled = $this->projectCheckService->isAdminIntegrationEnabled();
+
+			if (!$isAvailable) {
+				return [
+					'status' => 'healthy',
+					'message' => $this->l10n->t('ProjectCheck not installed'),
+					'available' => false,
+					'linkingEnabled' => false,
+				];
+			}
 
 			return [
 				'status' => 'healthy',
-				'message' => $isAvailable ? $this->l10n->t('ProjectCheck integration available') : $this->l10n->t('ProjectCheck not installed'),
-				'available' => $isAvailable
+				'message' => $linkingEnabled
+					? $this->l10n->t('ProjectCheck integration available')
+					: $this->l10n->t('ProjectCheck linking is turned off'),
+				'available' => true,
+				'linkingEnabled' => $linkingEnabled,
 			];
 		} catch (\Throwable $e) {
 			// Do not expose raw exception to PublicPage health endpoint

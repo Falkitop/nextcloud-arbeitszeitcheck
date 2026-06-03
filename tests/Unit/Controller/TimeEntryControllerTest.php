@@ -21,6 +21,7 @@ use OCA\ArbeitszeitCheck\Db\AuditLogMapper;
 use OCA\ArbeitszeitCheck\Service\ComplianceService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCA\ArbeitszeitCheck\Service\TimeTrackingService;
+use OCA\ArbeitszeitCheck\Service\TimeCaptureMethodService;
 use OCA\ArbeitszeitCheck\Service\TimeZoneService;
 use OCA\ArbeitszeitCheck\Service\TimeEntryCorrectionService;
 use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
@@ -96,6 +97,9 @@ class TimeEntryControllerTest extends TestCase
 	/** @var PermissionService|\PHPUnit\Framework\MockObject\MockObject */
 	private $permissionService;
 
+	/** @var TimeCaptureMethodService|\PHPUnit\Framework\MockObject\MockObject */
+	private $timeCaptureMethodService;
+
 	protected function setUp(): void
 	{
 		parent::setUp();
@@ -161,6 +165,13 @@ class TimeEntryControllerTest extends TestCase
 		$projectCheckIntegration->method('getAvailableProjects')->willReturn([]);
 		$projectCheckIntegration->method('userMayAttachProjectCheckProjectToOwnTime')->willReturn(true);
 
+		$this->timeCaptureMethodService = $this->createMock(TimeCaptureMethodService::class);
+		$this->timeCaptureMethodService->method('getSettings')->willReturn([
+			'clockStampingEnabled' => true,
+			'manualTimeEntryEnabled' => true,
+		]);
+		$this->timeCaptureMethodService->method('isManualTimeEntryEnabled')->willReturn(true);
+
 		$this->controller = new TimeEntryController(
 			'arbeitszeitcheck',
 			$this->request,
@@ -186,6 +197,7 @@ class TimeEntryControllerTest extends TestCase
 			$navigationFlags,
 			$projectCheckIntegration,
 			$this->createMock(\OCA\ArbeitszeitCheck\Service\ProjectCheckLaborTimeSyncService::class),
+			$this->timeCaptureMethodService,
 		);
 	}
 
@@ -902,6 +914,97 @@ class TimeEntryControllerTest extends TestCase
 		$response = $this->controller->apiStore();
 		$this->assertSame(Http::STATUS_CREATED, $response->getStatus());
 		$this->assertTrue($response->getData()['success']);
+	}
+
+	public function testApiStoreReturns403WhenManualTimeEntryDisabled(): void
+	{
+		$userId = 'testuser';
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn($userId);
+		$this->userSession->method('getUser')->willReturn($user);
+
+		$this->replaceTimeCaptureMethodService(
+			$this->createManualEntryDisabledCaptureService(),
+		);
+
+		$this->request->method('getParams')->willReturn([
+			'date' => '2024-01-15',
+			'startTime' => '09:00',
+			'endTime' => '17:00',
+		]);
+
+		$this->timeEntryMapper->expects($this->never())->method('insert');
+
+		$response = $this->controller->apiStore();
+		$data = $response->getData();
+
+		$this->assertSame(Http::STATUS_FORBIDDEN, $response->getStatus());
+		$this->assertFalse($data['success']);
+		$this->assertSame('manual_time_entry_disabled', $data['error_code']);
+		$this->assertStringContainsString('Manual time entries are not enabled', $data['error']);
+	}
+
+	public function testApiStoreLegacyDateHoursReturns403WhenManualTimeEntryDisabled(): void
+	{
+		$userId = 'testuser';
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn($userId);
+		$this->userSession->method('getUser')->willReturn($user);
+
+		$this->replaceTimeCaptureMethodService(
+			$this->createManualEntryDisabledCaptureService(),
+		);
+
+		$this->request->method('getParams')->willReturn([
+			'date' => '2024-01-15',
+			'hours' => 8.0,
+		]);
+
+		$this->timeEntryMapper->expects($this->never())->method('insert');
+
+		$response = $this->controller->apiStore();
+		$data = $response->getData();
+
+		$this->assertSame(Http::STATUS_FORBIDDEN, $response->getStatus());
+		$this->assertSame('manual_time_entry_disabled', $data['error_code']);
+	}
+
+	public function testStoreReturns403WhenManualTimeEntryDisabled(): void
+	{
+		$userId = 'testuser';
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn($userId);
+		$this->userSession->method('getUser')->willReturn($user);
+
+		$this->replaceTimeCaptureMethodService(
+			$this->createManualEntryDisabledCaptureService(),
+		);
+		$this->timeEntryMapper->expects($this->never())->method('insert');
+
+		$response = $this->controller->store('2024-01-15', 8.0, 'Work');
+
+		$this->assertSame(Http::STATUS_FORBIDDEN, $response->getStatus());
+		$this->assertSame('manual_time_entry_disabled', $response->getData()['error_code']);
+	}
+
+	private function createManualEntryDisabledCaptureService(): TimeCaptureMethodService
+	{
+		$service = $this->createMock(TimeCaptureMethodService::class);
+		$service->method('getSettings')->willReturn([
+			'clockStampingEnabled' => true,
+			'manualTimeEntryEnabled' => false,
+		]);
+		$service->method('isManualTimeEntryEnabled')->willReturn(false);
+
+		return $service;
+	}
+
+	private function replaceTimeCaptureMethodService(TimeCaptureMethodService $service): void
+	{
+		$ref = new \ReflectionClass($this->controller);
+		$prop = $ref->getProperty('timeCaptureMethodService');
+		$prop->setAccessible(true);
+		$prop->setValue($this->controller, $service);
 	}
 
 	public function testUpdateAcceptsGermanDateFormatInLegacyMode(): void

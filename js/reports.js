@@ -446,6 +446,7 @@
 		function renderReportHtml(report) {
 			if (!report) return '';
 			const L = A.l10n || {};
+			const reportTd = (label, content) => `<td data-label="${esc(label)}">${content}</td>`;
 			let html = '<div class="report-result">';
 			if (report.date) html += `<p class="report-meta"><strong>${L.date || 'Date'}:</strong> ${esc(report.date)}</p>`;
 			const periodStr = formatPeriod(report.period);
@@ -458,9 +459,9 @@
 			if (report.total_undertime != null) html += `<p class="report-meta"><strong>${L.undertime || 'Undertime'}:</strong> ${esc(report.total_undertime)} h</p>`;
 			if (report.bank_enabled) html += `<p class="report-meta"><strong>${L.overtimeBank || 'Overtime bank'}:</strong> ${esc(L.enabled || 'Enabled')}</p>`;
 			if (report.entries && report.entries.length) {
-				html += `<div class="table-container" role="region"><table class="table table--hover report-table"><thead><tr><th>${L.date || 'Date'}</th><th>${L.hours || 'Hours'}</th></tr></thead><tbody>`;
+				html += `<div class="table-container" role="region"><table class="table table--hover azc-table--responsive report-table"><thead><tr><th>${L.date || 'Date'}</th><th>${L.hours || 'Hours'}</th></tr></thead><tbody>`;
 				report.entries.forEach((entry) => {
-					html += `<tr><td>${esc(entry.date || entry.start || '-')}</td><td>${esc(entry.hours != null ? entry.hours : (entry.duration || '-'))}</td></tr>`;
+					html += `<tr><td data-label="${esc(L.date || 'Date')}">${esc(entry.date || entry.start || '-')}</td><td data-label="${esc(L.hours || 'Hours')}">${esc(entry.hours != null ? entry.hours : (entry.duration || '-'))}</td></tr>`;
 				});
 				html += '</tbody></table></div>';
 			}
@@ -475,9 +476,9 @@
 					const rows = Object.entries(report.absences_by_type)
 						.sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0));
 					html += `<h4 class="report-subhead">${esc(L.absencesByType || 'Absences by type')}</h4>`;
-					html += `<div class="table-container" role="region"><table class="table table--hover report-table"><thead><tr><th>${esc(L.type || 'Type')}</th><th>${esc(L.count || 'Count')}</th></tr></thead><tbody>`;
+					html += `<div class="table-container" role="region"><table class="table table--hover azc-table--responsive report-table"><thead><tr><th>${esc(L.type || 'Type')}</th><th>${esc(L.count || 'Count')}</th></tr></thead><tbody>`;
 					rows.forEach(([k, v]) => {
-						html += `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`;
+						html += `<tr>${reportTd(L.type || 'Type', esc(k))}${reportTd(L.count || 'Count', esc(v))}</tr>`;
 					});
 					html += '</tbody></table></div>';
 				}
@@ -486,9 +487,9 @@
 					const rows = Object.entries(report.absences_by_status)
 						.sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0));
 					html += `<h4 class="report-subhead">${esc(L.absencesByStatus || 'Absences by status')}</h4>`;
-					html += `<div class="table-container" role="region"><table class="table table--hover report-table"><thead><tr><th>${esc(L.status || 'Status')}</th><th>${esc(L.count || 'Count')}</th></tr></thead><tbody>`;
+					html += `<div class="table-container" role="region"><table class="table table--hover azc-table--responsive report-table"><thead><tr><th>${esc(L.status || 'Status')}</th><th>${esc(L.count || 'Count')}</th></tr></thead><tbody>`;
 					rows.forEach(([k, v]) => {
-						html += `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`;
+						html += `<tr>${reportTd(L.status || 'Status', esc(k))}${reportTd(L.count || 'Count', esc(v))}</tr>`;
 					});
 					html += '</tbody></table></div>';
 				}
@@ -511,9 +512,9 @@
 
 					if (allAbsences.length) {
 						html += `<h4 class="report-subhead">${esc(L.details || 'Details')}</h4>`;
-						html += `<div class="table-container" role="region"><table class="table table--hover report-table"><thead><tr><th>${esc(L.name || 'Name')}</th><th>${esc(L.type || 'Type')}</th><th>${esc(L.startDateCol || L.startDate || 'Start')}</th><th>${esc(L.endDateCol || L.endDate || 'End')}</th><th>${esc(L.days || 'Days')}</th><th>${esc(L.status || 'Status')}</th></tr></thead><tbody>`;
+						html += `<div class="table-container" role="region"><table class="table table--hover azc-table--responsive report-table"><thead><tr><th>${esc(L.name || 'Name')}</th><th>${esc(L.type || 'Type')}</th><th>${esc(L.startDateCol || L.startDate || 'Start')}</th><th>${esc(L.endDateCol || L.endDate || 'End')}</th><th>${esc(L.days || 'Days')}</th><th>${esc(L.status || 'Status')}</th></tr></thead><tbody>`;
 						allAbsences.forEach((a) => {
-							html += `<tr><td>${esc(a.user_name)}</td><td>${esc(a.type)}</td><td>${esc(a.start)}</td><td>${esc(a.end)}</td><td>${esc(a.days)}</td><td>${esc(a.status)}</td></tr>`;
+							html += `<tr>${reportTd(L.name || 'Name', esc(a.user_name))}${reportTd(L.type || 'Type', esc(a.type))}${reportTd(L.startDateCol || L.startDate || 'Start', esc(a.start))}${reportTd(L.endDateCol || L.endDate || 'End', esc(a.end))}${reportTd(L.days || 'Days', esc(a.days))}${reportTd(L.status || 'Status', esc(a.status))}</tr>`;
 						});
 						html += '</tbody></table></div>';
 					}
@@ -525,9 +526,9 @@
 						.sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
 						.slice(0, 10);
 					html += `<h4 class="report-subhead">${esc(L.violationTypes || 'Violation types')}</h4>`;
-					html += `<div class="table-container" role="region"><table class="table table--hover report-table"><thead><tr><th>${esc(L.type || 'Type')}</th><th>${esc(L.count || 'Count')}</th></tr></thead><tbody>`;
+					html += `<div class="table-container" role="region"><table class="table table--hover azc-table--responsive report-table"><thead><tr><th>${esc(L.type || 'Type')}</th><th>${esc(L.count || 'Count')}</th></tr></thead><tbody>`;
 					rows.forEach(([k, v]) => {
-						html += `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`;
+						html += `<tr>${reportTd(L.type || 'Type', esc(k))}${reportTd(L.count || 'Count', esc(v))}</tr>`;
 					});
 					html += '</tbody></table></div>';
 				}
@@ -537,16 +538,16 @@
 						.sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
 						.slice(0, 10);
 					html += `<h4 class="report-subhead">${esc(L.severities || 'Severities')}</h4>`;
-					html += `<div class="table-container" role="region"><table class="table table--hover report-table"><thead><tr><th>${esc(L.severity || 'Severity')}</th><th>${esc(L.count || 'Count')}</th></tr></thead><tbody>`;
+					html += `<div class="table-container" role="region"><table class="table table--hover azc-table--responsive report-table"><thead><tr><th>${esc(L.severity || 'Severity')}</th><th>${esc(L.count || 'Count')}</th></tr></thead><tbody>`;
 					rows.forEach(([k, v]) => {
-						html += `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`;
+						html += `<tr>${reportTd(L.severity || 'Severity', esc(k))}${reportTd(L.count || 'Count', esc(v))}</tr>`;
 					});
 					html += '</tbody></table></div>';
 				}
 			} else if (report.type === 'overtime' && report.users && report.users.length) {
 				const bankOn = report.bank_enabled === true;
 				html += `<h4 class="report-subhead">${esc(L.users || 'Users')}</h4>`;
-				html += `<div class="table-container" role="region"><table class="table table--hover report-table"><thead><tr>`
+				html += `<div class="table-container" role="region"><table class="table table--hover azc-table--responsive report-table"><thead><tr>`
 					+ `<th>${esc(L.name || 'Name')}</th>`
 					+ `<th>${esc(L.workedHours || L.hours || 'Worked')}</th>`
 					+ `<th>${esc(L.requiredHours || 'Required')}</th>`
@@ -557,37 +558,37 @@
 					+ `</tr></thead><tbody>`;
 				report.users.forEach((u) => {
 					html += `<tr>`
-						+ `<td>${esc(u.display_name || u.user_id || '-')}</td>`
-						+ `<td>${esc(u.total_hours_worked != null ? u.total_hours_worked : '-')}</td>`
-						+ `<td>${esc(u.required_hours != null ? u.required_hours : '-')}</td>`
-						+ `<td>${esc(u.period_overtime_hours != null ? u.period_overtime_hours : (u.overtime_hours > 0 ? u.overtime_hours : '0'))}</td>`
-						+ `<td>${esc(u.period_undertime_hours != null ? u.period_undertime_hours : '-')}</td>`
-						+ `<td>${esc(u.effective_balance != null ? u.effective_balance : (u.cumulative_balance != null ? u.cumulative_balance : '-'))}</td>`
-						+ (bankOn ? `<td>${esc(u.payout_eligible_hours != null ? u.payout_eligible_hours : '0')}</td>` : '')
+						+ reportTd(L.name || 'Name', esc(u.display_name || u.user_id || '-'))
+						+ reportTd(L.workedHours || L.hours || 'Worked', esc(u.total_hours_worked != null ? u.total_hours_worked : '-'))
+						+ reportTd(L.requiredHours || 'Required', esc(u.required_hours != null ? u.required_hours : '-'))
+						+ reportTd(L.periodOvertime || 'Period +', esc(u.period_overtime_hours != null ? u.period_overtime_hours : (u.overtime_hours > 0 ? u.overtime_hours : '0')))
+						+ reportTd(L.periodUndertime || 'Period −', esc(u.period_undertime_hours != null ? u.period_undertime_hours : '-'))
+						+ reportTd(bankOn ? (L.effectiveBalance || 'Effective balance') : (L.balance || 'Balance'), esc(u.effective_balance != null ? u.effective_balance : (u.cumulative_balance != null ? u.cumulative_balance : '-')))
+						+ (bankOn ? reportTd(L.payoutEligible || 'Payout eligible', esc(u.payout_eligible_hours != null ? u.payout_eligible_hours : '0')) : '')
 						+ `</tr>`;
 				});
 				html += '</tbody></table></div>';
 			} else if (report.members && report.members.length) {
 				// Team report (aggregated members)
-				html += `<h4 class="report-subhead">${L.users || 'Users'}</h4><div class="table-container" role="region"><table class="table table--hover report-table"><thead><tr><th>${L.name || 'Name'}</th><th>${L.hours || 'Hours'}</th><th>${L.overtime || 'Overtime'}</th></tr></thead><tbody>`;
+				html += `<h4 class="report-subhead">${L.users || 'Users'}</h4><div class="table-container" role="region"><table class="table table--hover azc-table--responsive report-table"><thead><tr><th>${L.name || 'Name'}</th><th>${L.hours || 'Hours'}</th><th>${L.overtime || 'Overtime'}</th></tr></thead><tbody>`;
 				report.members.forEach((m) => {
-					html += `<tr><td>${esc(m.display_name || m.user_id || '-')}</td><td>${esc(m.total_hours != null ? m.total_hours : '-')}</td><td>${esc(m.overtime_hours != null ? m.overtime_hours : '-')}</td></tr>`;
+					html += `<tr>${reportTd(L.name || 'Name', esc(m.display_name || m.user_id || '-'))}${reportTd(L.hours || 'Hours', esc(m.total_hours != null ? m.total_hours : '-'))}${reportTd(L.overtime || 'Overtime', esc(m.overtime_hours != null ? m.overtime_hours : '-'))}</tr>`;
 				});
 				html += '</tbody></table></div>';
 			} else if (report.users && report.users.length) {
-				html += `<h4 class="report-subhead">${L.users || 'Users'}</h4><div class="table-container" role="region"><table class="table table--hover report-table"><thead><tr><th>${L.name || 'Name'}</th><th>${L.hours || 'Hours'}</th><th>${L.overtime || 'Overtime'}</th></tr></thead><tbody>`;
+				html += `<h4 class="report-subhead">${L.users || 'Users'}</h4><div class="table-container" role="region"><table class="table table--hover azc-table--responsive report-table"><thead><tr><th>${L.name || 'Name'}</th><th>${L.hours || 'Hours'}</th><th>${L.overtime || 'Overtime'}</th></tr></thead><tbody>`;
 				report.users.forEach((u) => {
-					html += `<tr><td>${esc(u.display_name || u.user_id || '-')}</td><td>${esc(u.total_hours != null ? u.total_hours : (u.total_hours_worked != null ? u.total_hours_worked : '-'))}</td><td>${esc(u.overtime_hours != null ? u.overtime_hours : '-')}</td></tr>`;
+					html += `<tr>${reportTd(L.name || 'Name', esc(u.display_name || u.user_id || '-'))}${reportTd(L.hours || 'Hours', esc(u.total_hours != null ? u.total_hours : (u.total_hours_worked != null ? u.total_hours_worked : '-')))}${reportTd(L.overtime || 'Overtime', esc(u.overtime_hours != null ? u.overtime_hours : '-'))}</tr>`;
 				});
 				html += '</tbody></table></div>';
 			}
 			if (report.daily_breakdown && Object.keys(report.daily_breakdown).length) {
-				html += `<h4 class="report-subhead">${L.dailyBreakdown || 'Daily breakdown'}</h4><div class="table-container" role="region"><table class="table table--hover report-table"><thead><tr><th>${L.date || 'Date'}</th><th>${L.hours || 'Hours'}</th></tr></thead><tbody>`;
+				html += `<h4 class="report-subhead">${L.dailyBreakdown || 'Daily breakdown'}</h4><div class="table-container" role="region"><table class="table table--hover azc-table--responsive report-table"><thead><tr><th>${L.date || 'Date'}</th><th>${L.hours || 'Hours'}</th></tr></thead><tbody>`;
 				Object.keys(report.daily_breakdown)
 					.sort()
 					.forEach((d) => {
 						const day = report.daily_breakdown[d];
-						html += `<tr><td>${esc(day.date || d)}</td><td>${esc(day.total_hours != null ? day.total_hours : '-')}</td></tr>`;
+						html += `<tr>${reportTd(L.date || 'Date', esc(day.date || d))}${reportTd(L.hours || 'Hours', esc(day.total_hours != null ? day.total_hours : '-'))}</tr>`;
 					});
 				html += '</tbody></table></div>';
 			}

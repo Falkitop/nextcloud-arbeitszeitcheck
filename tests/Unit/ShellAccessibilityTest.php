@@ -55,6 +55,21 @@ class ShellAccessibilityTest extends TestCase
 		$this->assertStringContainsString('Open full settings in app', $content);
 	}
 
+	public function testProjectCheckAdminSettingsPartialIsAccessibleSwitch(): void
+	{
+		$path = __DIR__ . '/../../templates/partials/projectcheck-admin-settings-section.php';
+		$this->assertFileExists($path);
+		$content = (string)file_get_contents($path);
+
+		$this->assertStringContainsString('aria-labelledby="section-projectcheck-heading"', $content);
+		$this->assertStringContainsString('id="projectCheckIntegrationEnabled"', $content);
+		$this->assertStringContainsString('role="switch"', $content);
+		$this->assertStringContainsString('aria-checked=', $content);
+		$this->assertStringContainsString('aria-describedby="projectcheck-admin-integration-help"', $content);
+		$this->assertStringContainsString('id="projectcheck-admin-status-text"', $content);
+		$this->assertStringContainsString('role="status"', $content);
+	}
+
 	public function testTimeInitSupportsModernInitialStateApi(): void
 	{
 		$path = __DIR__ . '/../../js/common/time-init.js';
@@ -79,6 +94,7 @@ class ShellAccessibilityTest extends TestCase
 		$content = (string)file_get_contents(__DIR__ . '/../../templates/common/page-start.php');
 		$this->assertStringContainsString('shellWidth', $content);
 		$this->assertStringContainsString('azc-shell--wide', $content);
+		$this->assertStringContainsString('azc-shell--constrained', $content);
 		$this->assertStringContainsString('azc-shell--minimal', $content);
 	}
 

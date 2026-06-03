@@ -295,9 +295,9 @@
 	width: 1.35rem;
 	height: 1.35rem;
 	border-radius: 4px;
-	background: color-mix(in srgb, var(--color-warning, #c98600) 22%, var(--color-main-background, #fff));
-	color: var(--color-warning-text, var(--color-warning, #9a6700));
-	border: 1px solid color-mix(in srgb, var(--color-warning, #c98600) 45%, var(--color-border, #ccc));
+	background: color-mix(in srgb, var(--color-warning-text, #6b4d00) 14%, var(--color-warning, #fbeecb));
+	color: var(--color-warning-text, #6b4d00);
+	border: 1px solid color-mix(in srgb, var(--color-warning-text, #6b4d00) 35%, var(--color-warning, #fbeecb));
 }
 
 .calendar-day-absence-chip__icon-svg,
@@ -322,65 +322,59 @@
 
 .calendar-day-absence-chip__status {
 	flex-shrink: 0;
-	font-size: 0.62rem;
-	font-weight: 700;
-	line-height: 1.2;
-	padding: 0.12rem 0.35rem;
-	text-transform: none;
-	letter-spacing: 0.01em;
 }
 
 .calendar-day-absence-more {
 	display: inline-block;
 	align-self: flex-start;
-	font-size: 0.62rem;
+	font-size: 0.625rem;
 	font-weight: 700;
 	line-height: 1.2;
 	padding: 0.1rem 0.35rem;
-	border-radius: 999px;
-	border: 1px dashed var(--color-border, var(--arbeitszeitcheck-color-border));
+	border-radius: var(--border-radius-pill, 999px);
+	border: 1px dashed var(--color-border-maxcontrast, var(--color-border, var(--arbeitszeitcheck-color-border)));
 	color: var(--color-text-maxcontrast, var(--arbeitszeitcheck-color-text-maxcontrast));
 	background: var(--color-background-hover, var(--arbeitszeitcheck-color-background-hover));
 }
 
 /* Type accents (border + icon well; text stays main-text for contrast). */
 .calendar-day-absence--vacation .calendar-day-absence-chip {
-	border-color: color-mix(in srgb, var(--color-success, #46ba61) 50%, var(--color-border, #ccc));
-	background: color-mix(in srgb, var(--color-success, #46ba61) 14%, var(--color-main-background, #fff));
+	border-color: color-mix(in srgb, var(--color-success, #2d7b41) 50%, var(--color-border, var(--arbeitszeitcheck-color-border)));
+	background: color-mix(in srgb, var(--color-success, #2d7b41) 14%, var(--color-main-background));
 }
 
 .calendar-day-absence--vacation .calendar-day-absence-chip__icon {
-	background: color-mix(in srgb, var(--color-success, #46ba61) 24%, var(--color-main-background, #fff));
-	color: var(--color-success-text, var(--color-success, #2d7a3e));
-	border-color: color-mix(in srgb, var(--color-success, #46ba61) 45%, var(--color-border, #ccc));
+	background: color-mix(in srgb, var(--color-success, #2d7b41) 24%, var(--color-main-background));
+	color: var(--color-success-text, var(--color-success, #286c39));
+	border-color: color-mix(in srgb, var(--color-success, #2d7b41) 45%, var(--color-border, var(--arbeitszeitcheck-color-border)));
 }
 
 .calendar-day-absence--sick .calendar-day-absence-chip {
-	border-color: color-mix(in srgb, var(--color-error, #cc4646) 45%, var(--color-border, #ccc));
-	background: color-mix(in srgb, var(--color-error, #cc4646) 12%, var(--color-main-background, #fff));
+	border-color: color-mix(in srgb, var(--color-error, #db0606) 45%, var(--color-border, var(--arbeitszeitcheck-color-border)));
+	background: color-mix(in srgb, var(--color-error, #db0606) 12%, var(--color-main-background));
 }
 
 .calendar-day-absence--sick .calendar-day-absence-chip__icon {
-	background: color-mix(in srgb, var(--color-error, #cc4646) 22%, var(--color-main-background, #fff));
-	color: var(--color-error-text, var(--color-error, #a83232));
-	border-color: color-mix(in srgb, var(--color-error, #cc4646) 40%, var(--color-border, #ccc));
+	background: color-mix(in srgb, var(--color-error, #db0606) 22%, var(--color-main-background));
+	color: var(--color-error-text, var(--color-error, #c20505));
+	border-color: color-mix(in srgb, var(--color-error, #db0606) 40%, var(--color-border, var(--arbeitszeitcheck-color-border)));
 }
 
 .calendar-day-absence--unpaid .calendar-day-absence-chip,
 .calendar-day-absence--other .calendar-day-absence-chip {
-	border-color: color-mix(in srgb, var(--color-warning, #c98600) 50%, var(--color-border, #ccc));
-	background: color-mix(in srgb, var(--color-warning, #c98600) 14%, var(--color-main-background, #fff));
+	border-color: color-mix(in srgb, var(--color-warning, #a37200) 50%, var(--color-border, var(--arbeitszeitcheck-color-border)));
+	background: color-mix(in srgb, var(--color-warning, #a37200) 14%, var(--color-main-background));
 }
 
 .calendar-day-absence--coverage .calendar-day-absence-chip {
-	border-color: color-mix(in srgb, var(--color-primary-element, var(--color-primary, #00679e)) 50%, var(--color-border, #ccc));
-	background: color-mix(in srgb, var(--color-primary-element, var(--color-primary, #00679e)) 12%, var(--color-main-background, #fff));
+	border-color: color-mix(in srgb, var(--color-primary-element, var(--color-primary, #00679e)) 50%, var(--color-border, var(--arbeitszeitcheck-color-border)));
+	background: color-mix(in srgb, var(--color-primary-element, var(--color-primary, #00679e)) 12%, var(--color-main-background));
 }
 
 .calendar-day-absence--coverage .calendar-day-absence-chip__icon {
-	background: color-mix(in srgb, var(--color-primary-element, var(--color-primary, #00679e)) 22%, var(--color-main-background, #fff));
+	background: color-mix(in srgb, var(--color-primary-element, var(--color-primary, #00679e)) 22%, var(--color-main-background));
 	color: var(--color-primary-text, var(--color-primary-element-text, var(--color-primary, #00679e)));
-	border-color: color-mix(in srgb, var(--color-primary-element, var(--color-primary, #00679e)) 40%, var(--color-border, #ccc));
+	border-color: color-mix(in srgb, var(--color-primary-element, var(--color-primary, #00679e)) 40%, var(--color-border, var(--arbeitszeitcheck-color-border)));
 }
 
 .btn-close__icon,
@@ -391,26 +385,10 @@
 	flex-shrink: 0;
 }
 
+/* Past-record chips: css/common/badges.css */
 .calendar-day-past-label,
 .calendar-past-record-badge {
-	display: inline-flex;
-	align-items: center;
-	width: fit-content;
-	max-width: 100%;
 	margin-top: var(--space-1, 0.25rem);
-	padding: 0.1rem 0.35rem;
-	border: 1px solid color-mix(in srgb, var(--color-primary-element) 45%, var(--color-border));
-	border-radius: 999px;
-	background: color-mix(in srgb, var(--color-primary-element) 12%, var(--color-main-background));
-	color: var(--color-primary-element);
-	font-size: 0.7rem;
-	font-weight: 600;
-	line-height: 1.25;
-}
-
-.calendar-past-record-badge {
-	margin-left: var(--space-2, 0.5rem);
-	vertical-align: middle;
 }
 
 /* Calendar Week Grid */
@@ -577,41 +555,13 @@
 	display: inline-flex;
 	align-items: center;
 	gap: 0.25rem;
-	padding: 0.15rem 0.35rem;
-	border-radius: 6px;
-	border: 1px solid var(--color-border);
-	background: var(--color-main-background);
-	font-size: 0.7rem;
-	font-weight: 600;
-	color: var(--color-main-text);
+	padding: 0;
+	border: none;
+	background: transparent;
+	font-size: inherit;
+	font-weight: inherit;
+	color: inherit;
 	flex-shrink: 0;
-}
-
-.legend-sample-chip--approved {
-	border-color: color-mix(in srgb, var(--color-success) 50%, var(--color-border));
-}
-
-.legend-sample-chip--pending {
-	border-color: color-mix(in srgb, var(--color-warning) 50%, var(--color-border));
-}
-
-.legend-sample-chip__status {
-	font-size: 0.62rem;
-	padding: 0.08rem 0.3rem;
-	border-radius: 999px;
-	font-weight: 700;
-}
-
-.legend-sample-chip__status--approved {
-	background: color-mix(in srgb, var(--color-success) 20%, transparent);
-	color: var(--color-success-text, var(--color-success));
-	border: 1px solid color-mix(in srgb, var(--color-success) 45%, transparent);
-}
-
-.legend-sample-chip__status--pending {
-	background: color-mix(in srgb, var(--color-warning) 20%, transparent);
-	color: var(--color-warning-text, var(--color-warning));
-	border: 1px solid color-mix(in srgb, var(--color-warning) 45%, transparent);
 }
 
 .day-details-absence-label {
@@ -875,8 +825,7 @@
 		color: CanvasText;
 	}
 
-	.calendar-day-absence-chip__status,
-	.legend-sample-chip__status {
+	.calendar-day-absence-chip__status.badge {
 		border: 1px solid CanvasText;
 		background: Canvas;
 		color: CanvasText;

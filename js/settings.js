@@ -90,6 +90,7 @@
                     if (missingClockInReminders) {
                         missingClockInReminders.checked = result.settings.missing_clock_in_reminders_enabled === '1' || result.settings.missing_clock_in_reminders_enabled === true;
                     }
+
                 }
             })
             .catch(error => {

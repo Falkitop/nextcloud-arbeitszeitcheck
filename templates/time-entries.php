@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use OCA\ArbeitszeitCheck\Service\IconCatalog;
+use OCA\ArbeitszeitCheck\Support\BadgeVariant;
 /**
  * Time Entries template for arbeitszeitcheck app
  *
@@ -23,9 +24,15 @@ $mode = $_['mode'] ?? 'list'; // 'list', 'create', 'edit'
 $entry = $_['entry'] ?? null;
 $error = $_['error'] ?? null;
 $projectCheckEnabled = !empty($_['projectCheckEnabled']);
+$projectCheckAvailable = !empty($_['projectCheckAvailable']);
+$projectCheckAdminLinkingEnabled = array_key_exists('projectCheckAdminLinkingEnabled', $_)
+	? !empty($_['projectCheckAdminLinkingEnabled'])
+	: $projectCheckEnabled;
 $projectCheckProjects = is_array($_['projectCheckProjects'] ?? null) ? $_['projectCheckProjects'] : [];
 $selectedProjectCheckId = $entry ? (string)($entry->getProjectCheckProjectId() ?? '') : '';
 $appTimezone = \OCP\Server::get(\OCP\IConfig::class)->getAppValue('arbeitszeitcheck', 'app_timezone', 'Europe/Berlin');
+$timeCapture = is_array($_['timeCapture'] ?? null) ? $_['timeCapture'] : [];
+$manualTimeEntryEnabled = (bool)($timeCapture['manualTimeEntryEnabled'] ?? true);
 require __DIR__ . '/common/user-display-timezone.php';
 ?>
 
@@ -34,7 +41,7 @@ require __DIR__ . '/common/user-display-timezone.php';
         <div class="azc-page-stack time-entries-page">
         <?php if ($mode === 'list' && $error): ?>
             <div class="azc-callout azc-callout--danger time-entries-page__list-error" role="alert">
-                <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('alert-triangle', 'azc-callout__icon-svg')); ?></span>
+                <span class="azc-callout__icon azc-notif-icon-well" aria-hidden="true"><?php print_unescaped(IconCatalog::render('alert-triangle', 'azc-callout__icon-svg')); ?></span>
                 <p class="azc-callout__text"><?php p($error); ?></p>
             </div>
         <?php endif; ?>
@@ -57,6 +64,7 @@ require __DIR__ . '/common/user-display-timezone.php';
             </div>
 
             <div class="header-actions azc-page-actions-source">
+                <?php if ($manualTimeEntryEnabled): ?>
                 <button id="btn-add-entry"
                     class="azc-btn azc-btn--primary"
                     type="button"
@@ -64,6 +72,7 @@ require __DIR__ . '/common/user-display-timezone.php';
                     title="<?php p($l->t('Click to add a new time entry. You can record when you started and finished work, and any breaks you took.')); ?>">
                     <?php p($l->t('Add Time Entry')); ?>
                 </button>
+                <?php endif; ?>
                 <button id="btn-filter"
                     class="azc-btn azc-btn--secondary"
                     type="button"
@@ -79,6 +88,15 @@ require __DIR__ . '/common/user-display-timezone.php';
                     <?php p($l->t('Download CSV')); ?>
                 </button>
             </div>
+            <?php if ($mode === 'list' && !$manualTimeEntryEnabled): ?>
+            <div class="azc-callout azc-callout--info time-entries-page__capture-disabled" role="status">
+                <span class="azc-callout__icon azc-notif-icon-well" aria-hidden="true"><?php print_unescaped(IconCatalog::render('info', 'azc-callout__icon-svg')); ?></span>
+                <div class="azc-callout__body">
+                    <p class="azc-callout__title"><?php p($l->t('Manual time entries are turned off for you')); ?></p>
+                    <p class="azc-callout__text"><?php p($l->t('Your administrator disabled adding hours by hand. You can still view entries and request corrections if something is wrong.')); ?></p>
+                </div>
+            </div>
+            <?php endif; ?>
             <p class="azc-callout azc-callout--neutral time-entries-page__export-hint" id="time-entries-export-hint">
                 <span class="azc-callout__text">
                     <?php p($l->t('Quick CSV uses the long layout (columns include start and end times). Overnight entries can appear as two rows after midnight if the administrator enabled split in export settings.')); ?>
@@ -164,7 +182,7 @@ require __DIR__ . '/common/user-display-timezone.php';
             $timeEntryChangesRequireApproval = !empty($_['timeEntryChangesRequireApproval']);
             ?>
             <div class="azc-callout azc-callout--info time-entries-page__tz-callout" role="region" aria-labelledby="time-entry-tz-title">
-                <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('clock', 'azc-callout__icon-svg')); ?></span>
+                <span class="azc-callout__icon azc-notif-icon-well" aria-hidden="true"><?php print_unescaped(IconCatalog::render('clock', 'azc-callout__icon-svg')); ?></span>
                 <div class="azc-callout__body">
                     <p id="time-entry-tz-title" class="azc-callout__title"><?php p($l->t('How times are stored')); ?></p>
                     <p class="azc-callout__text"><?php p($l->t('You enter start and end in your personal timezone (%2$s). The app stores them in the organization timezone (%1$s).', [$appTimezone, $arbeitszeitCheckUserDisplayTz->getName()])); ?></p>
@@ -176,13 +194,13 @@ require __DIR__ . '/common/user-display-timezone.php';
             </div>
             <?php if ($mode === 'create' && $manualTimeEntriesRequireApproval): ?>
             <div class="azc-callout azc-callout--info time-entries-page__workflow-callout" role="status">
-                <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('user-check', 'azc-callout__icon-svg')); ?></span>
+                <span class="azc-callout__icon azc-notif-icon-well" aria-hidden="true"><?php print_unescaped(IconCatalog::render('user-check', 'azc-callout__icon-svg')); ?></span>
                 <p class="azc-callout__text"><?php p($l->t('New manual entries need manager approval before they count toward your hours and overtime.')); ?></p>
             </div>
             <?php endif; ?>
             <?php if ($monthClosureEnabled): ?>
             <div class="azc-callout azc-callout--neutral time-entries-page__workflow-callout" role="note">
-                <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('lock', 'azc-callout__icon-svg')); ?></span>
+                <span class="azc-callout__icon azc-notif-icon-well" aria-hidden="true"><?php print_unescaped(IconCatalog::render('lock', 'azc-callout__icon-svg')); ?></span>
                 <p class="azc-callout__text"><?php p($l->t('Entries in a finalized calendar month cannot be changed unless an administrator reopens that month.')); ?></p>
             </div>
             <?php endif; ?>
@@ -200,7 +218,7 @@ require __DIR__ . '/common/user-display-timezone.php';
                 <div class="azc-card__body">
                 <?php if ($error): ?>
                     <div class="azc-callout azc-callout--danger" role="alert">
-                        <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('alert-triangle', 'azc-callout__icon-svg')); ?></span>
+                        <span class="azc-callout__icon azc-notif-icon-well" aria-hidden="true"><?php print_unescaped(IconCatalog::render('alert-triangle', 'azc-callout__icon-svg')); ?></span>
                         <p class="azc-callout__text"><?php p($error); ?></p>
                     </div>
                 <?php endif; ?>
@@ -226,7 +244,7 @@ require __DIR__ . '/common/user-display-timezone.php';
 
                         <?php if ($mode === 'edit' && $entry && $entry->getStatus() === \OCA\ArbeitszeitCheck\Db\TimeEntry::STATUS_PAUSED && $entry->getEndTime() === null): ?>
                             <div class="azc-callout azc-callout--warning" role="status">
-                                <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('alert-triangle', 'azc-callout__icon-svg')); ?></span>
+                                <span class="azc-callout__icon azc-notif-icon-well" aria-hidden="true"><?php print_unescaped(IconCatalog::render('alert-triangle', 'azc-callout__icon-svg')); ?></span>
                                 <p class="azc-callout__text"><?php p($l->t('This session was left unfinished. Set the correct end time and save — the entry will then be recorded as completed.')); ?></p>
                             </div>
                         <?php endif; ?>
@@ -439,14 +457,14 @@ require __DIR__ . '/common/user-display-timezone.php';
                         <fieldset class="time-entry-form-fieldset time-entry-form-fieldset--breaks">
                             <legend class="time-entry-form-fieldset__legend"><?php p($l->t('Breaks')); ?> <span class="form-optional"><?php p($l->t('(optional)')); ?></span></legend>
                             <div class="azc-callout azc-semantic-panel azc-semantic-panel--info time-entry-form__break-intro" role="note">
-                                <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('coffee', 'azc-callout__icon-svg')); ?></span>
+                                <span class="azc-callout__icon azc-notif-icon-well" aria-hidden="true"><?php print_unescaped(IconCatalog::render('coffee', 'azc-callout__icon-svg')); ?></span>
                                 <p class="azc-callout__text"><?php p($l->t('German law: 30 min break from 6 h work, 45 min from 9 h. Enable automatic breaks or add times yourself.')); ?></p>
                             </div>
 
                             <div class="auto-break-panel auto-break-panel--enabled azc-callout azc-semantic-panel azc-semantic-panel--success"
                                  role="group"
                                  aria-labelledby="auto-break-panel-title">
-                                <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('check', 'azc-callout__icon-svg')); ?></span>
+                                <span class="azc-callout__icon azc-notif-icon-well" aria-hidden="true"><?php print_unescaped(IconCatalog::render('check', 'azc-callout__icon-svg')); ?></span>
                                 <div class="auto-break-panel__body">
                                     <p id="auto-break-panel-title" class="auto-break-panel__title"><?php p($l->t('Automatic breaks')); ?></p>
                                     <div class="auto-break-panel__control">
@@ -472,7 +490,7 @@ require __DIR__ . '/common/user-display-timezone.php';
                                  role="status"
                                  aria-live="polite"
                                  hidden>
-                                <span class="azc-callout__icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('alert-triangle', 'azc-callout__icon-svg')); ?></span>
+                                <span class="azc-callout__icon azc-notif-icon-well" aria-hidden="true"><?php print_unescaped(IconCatalog::render('alert-triangle', 'azc-callout__icon-svg')); ?></span>
                                 <p class="azc-callout__text break-requirement-indicator__text">
                                     <span id="break-requirement-text"></span>
                                 </p>
@@ -631,9 +649,22 @@ require __DIR__ . '/common/user-display-timezone.php';
                             </div>
                         </fieldset>
 
-                        <?php if ($projectCheckEnabled): ?>
+                        <?php if ($projectCheckAvailable && !$projectCheckAdminLinkingEnabled && $mode === 'create'): ?>
+                            <?php $azcProjectCheckCalloutContext = 'time-entry'; include __DIR__ . '/partials/projectcheck-linking-disabled-callout.php'; ?>
+                        <?php elseif ($projectCheckEnabled): ?>
                         <fieldset class="time-entry-form-fieldset time-entry-form-fieldset--project" aria-describedby="entry-project-help">
-                            <legend class="time-entry-form-fieldset__legend"><?php p($l->t('Project (optional)')); ?></legend>
+                            <legend class="time-entry-form-fieldset__legend">
+                                <span class="time-entry-form-fieldset__legend-icon" aria-hidden="true"><?php print_unescaped(\OCA\ArbeitszeitCheck\Service\IconCatalog::render('briefcase', 'time-entry-form-fieldset__legend-icon-svg')); ?></span>
+                                <?php p($l->t('Project')); ?> <span class="form-optional"><?php p($l->t('(optional)')); ?></span>
+                            </legend>
+                            <?php if ($projectCheckAvailable && !$projectCheckAdminLinkingEnabled && $mode === 'edit'): ?>
+                                <?php $azcProjectCheckCalloutContext = 'edit'; include __DIR__ . '/partials/projectcheck-linking-disabled-callout.php'; ?>
+                            <?php endif; ?>
+                            <?php if (empty($projectCheckProjects)): ?>
+                                <p id="entry-project-help" class="azc-projectcheck-picker-empty form-help" role="status">
+                                    <?php p($l->t('You have no ProjectCheck projects to choose from right now. You can still save your time without a project. Ask your project manager to add you to a project team.')); ?>
+                                </p>
+                            <?php else: ?>
                             <div class="form-group">
                                 <label for="entry-project-check" class="form-label" id="entry-project-check-label">
                                     <?php p($l->t('Link to ProjectCheck project')); ?>
@@ -643,26 +674,15 @@ require __DIR__ . '/common/user-display-timezone.php';
                                     class="form-select time-entry-form__project-select"
                                     aria-labelledby="entry-project-check-label"
                                     aria-describedby="entry-project-help">
-                                    <option value=""><?php p($l->t('No project selected')); ?></option>
                                     <?php
-                                    $listedIds = [];
-                                    foreach ($projectCheckProjects as $pcProject):
-                                        $pid = (string)($pcProject['id'] ?? '');
-                                        if ($pid === '') {
-                                            continue;
-                                        }
-                                        $listedIds[$pid] = true;
-                                        ?>
-                                        <option value="<?php p($pid); ?>"<?php if ($selectedProjectCheckId === $pid) {
-                                            p(' selected');
-                                        } ?>><?php p($pcProject['displayName'] ?? $pcProject['name'] ?? $pid); ?></option>
-                                    <?php endforeach;
-                                    if ($selectedProjectCheckId !== '' && !isset($listedIds[$selectedProjectCheckId])): ?>
-                                        <option value="<?php p($selectedProjectCheckId); ?>" selected><?php p($l->t('Linked project %s (not in your current picker list)', [$selectedProjectCheckId])); ?></option>
-                                    <?php endif; ?>
+                                    $azcPickerProjects = $projectCheckProjects;
+                                    $azcPickerSelectedId = $selectedProjectCheckId;
+                                    include __DIR__ . '/common/projectcheck-picker-options.php';
+                                    ?>
                                 </select>
-                                <p id="entry-project-help" class="form-help"><?php p($l->t('ProjectCheck links your hours to a customer project when both apps are enabled. Projects with per-person pricing only appear if you are on the team.')); ?></p>
+                                <p id="entry-project-help" class="form-help"><?php p($l->t('Link these hours to a ProjectCheck customer project, or leave it on “No project”. Projects with per-person pricing only appear if you are on the project team.')); ?></p>
                             </div>
+                            <?php endif; ?>
                         </fieldset>
                         <?php endif; ?>
 
@@ -757,41 +777,45 @@ require __DIR__ . '/common/user-display-timezone.php';
                 }
                 if ($pausedEntriesCount > 0):
                 ?>
-                    <div class="alert alert--warning" role="status" aria-live="polite" id="paused-entries-banner">
-                        <p class="alert-message">
-                            <strong><?php p($l->n(
-                                'You have %n unfinished session that was not properly clocked out.',
-                                'You have %n unfinished sessions that were not properly clocked out.',
-                                $pausedEntriesCount
-                            )); ?></strong>
-                            <?php p($l->t('Click "Complete" next to the entry below to finalise it with the time it was paused — required breaks are added automatically. You can also click "Edit" to set custom times.')); ?>
-                        </p>
-                    </div>
+                    <?php
+                    $calloutVariant = 'warning';
+                    $calloutRole = 'status';
+                    $calloutBanner = false;
+                    $calloutId = 'paused-entries-banner';
+                    $calloutAriaLive = 'polite';
+                    $calloutIcon = 'alert-triangle';
+                    $calloutTitle = $l->n(
+                        'You have %n unfinished session that was not properly clocked out.',
+                        'You have %n unfinished sessions that were not properly clocked out.',
+                        $pausedEntriesCount
+                    );
+                    $calloutText = $l->t('Click "Complete" next to the entry below to finalise it with the time it was paused — required breaks are added automatically. You can also click "Edit" to set custom times.');
+                    $calloutHint = '';
+                    include __DIR__ . '/common/alert-callout.php';
+                    ?>
                 <?php endif; ?>
                 <?php
                 $pendingCorrectionCount = (int)($_['pendingCorrectionCount'] ?? 0);
                 if ($pendingCorrectionCount > 0):
+                    $calloutVariant = 'warning';
+                    $calloutRole = 'status';
+                    $calloutElement = 'div';
+                    $calloutBanner = false;
+                    $calloutId = 'pending-correction-banner';
+                    $calloutTitleId = 'pending-correction-banner-title';
+                    $calloutIcon = 'user-check';
+                    $calloutExtraClass = 'pending-correction-banner';
+                    $calloutTitle = $l->n(
+                        '%n time entry is waiting for your manager\'s approval.',
+                        '%n time entries are waiting for your manager\'s approval.',
+                        $pendingCorrectionCount
+                    );
+                    $calloutText = $l->t('The table below shows your proposed times until a decision is made. You can withdraw a request using the Withdraw button.');
+                    include __DIR__ . '/common/alert-callout.php';
+                endif;
                 ?>
-                    <div class="inline-notice-section pending-correction-banner" role="region" aria-labelledby="pending-correction-banner-title">
-                        <div class="inline-notice inline-notice--warning" role="status">
-                            <span class="inline-notice__icon"><?php include __DIR__ . '/common/inline-notice-pending-correction-icon.php'; ?></span>
-                            <div class="inline-notice__content">
-                                <p id="pending-correction-banner-title" class="inline-notice__title">
-                                    <?php p($l->n(
-                                        '%n time entry is waiting for your manager\'s approval.',
-                                        '%n time entries are waiting for your manager\'s approval.',
-                                        $pendingCorrectionCount
-                                    )); ?>
-                                </p>
-                                <p class="inline-notice__text">
-                                    <?php p($l->t('The table below shows your proposed times until a decision is made. You can withdraw a request using the Withdraw button.')); ?>
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                <?php endif; ?>
                 <div class="table-container">
-                    <table class="table table--hover" id="time-entries-table" role="table" aria-label="<?php p($l->t('Time entries list')); ?>">
+                    <table class="table table--hover azc-table--responsive" id="time-entries-table" role="table" aria-label="<?php p($l->t('Time entries list')); ?>">
                         <thead>
                             <tr>
                                 <th scope="col"><?php p($l->t('Date')); ?></th>
@@ -802,7 +826,7 @@ require __DIR__ . '/common/user-display-timezone.php';
                                 <th scope="col"><?php p($l->t('Working Hours')); ?></th>
                                 <th scope="col"><?php p($l->t('Description')); ?></th>
                                 <th scope="col"><?php p($l->t('Status')); ?></th>
-                                <th scope="col"><?php p($l->t('Actions')); ?></th>
+                                <th scope="col" class="azc-table-actions-col"><?php p($l->t('Actions')); ?></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -951,17 +975,7 @@ require __DIR__ . '/common/user-display-timezone.php';
                                             <?php endif; ?>
                                         </td>
                                         <td data-label="<?php p($l->t('Status')); ?>">
-                                            <span class="badge badge--<?php
-                                                                        p(match ($entry->getStatus()) {
-                                                                            'completed' => 'success',
-                                                                            'active' => 'primary',
-                                                                            'pending_approval' => 'warning',
-                                                                            'break' => 'warning',
-                                                                            'paused' => 'warning',
-                                                                            'rejected' => 'error',
-                                                                            default => 'secondary'
-                                                                        });
-                                                                        ?>"
+                                            <span class="badge badge--<?php p(BadgeVariant::forTimeEntryStatus((string)$entry->getStatus())); ?>"
                                                 title="<?php
                                                 p(match ($entry->getStatus()) {
                                                     'paused' => $l->t('This session was not properly clocked out. Complete it (one click) or edit the times below.'),
@@ -989,6 +1003,7 @@ require __DIR__ . '/common/user-display-timezone.php';
                                             </span>
                                         </td>
                                         <td class="actions-cell" data-label="<?php p($l->t('Actions')); ?>">
+                                            <div class="azc-table-actions" role="group" aria-label="<?php p($l->t('Actions')); ?>">
                                             <?php
                                             $isPaused = $entry->getStatus() === \OCA\ArbeitszeitCheck\Db\TimeEntry::STATUS_PAUSED;
                                             // One-click completion for paused entries — the most common recovery action.
@@ -1050,6 +1065,7 @@ require __DIR__ . '/common/user-display-timezone.php';
                                                     <?php p($l->t('Delete')); ?>
                                                 </button>
                                             <?php endif; ?>
+                                            </div>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -1059,14 +1075,20 @@ require __DIR__ . '/common/user-display-timezone.php';
                                         <div class="azc-empty-state">
                                             <h3 class="azc-empty-state__title"><?php p($l->t('No time entries yet')); ?></h3>
                                             <p class="azc-empty-state__text">
-                                                <?php p($l->t('You haven\'t recorded any working time yet. Click the button below to add your first time entry, or use the clock in button on the dashboard to start tracking automatically.')); ?>
+                                                <?php if ($manualTimeEntryEnabled): ?>
+                                                    <?php p($l->t('You haven\'t recorded any working time yet. Click the button below to add your first time entry, or use the clock in button on the dashboard to start tracking automatically.')); ?>
+                                                <?php else: ?>
+                                                    <?php p($l->t('You haven\'t recorded any working time yet. When your administrator allows it, you can add entries here or use clock in on the dashboard.')); ?>
+                                                <?php endif; ?>
                                             </p>
+                                            <?php if ($manualTimeEntryEnabled): ?>
                                             <button id="btn-add-first-entry"
                                                 class="azc-btn azc-btn--primary"
                                                 type="button"
                                                 aria-label="<?php p($l->t('Add your first time entry')); ?>">
                                                 <?php p($l->t('Add Your First Entry')); ?>
                                             </button>
+                                            <?php endif; ?>
                                         </div>
                                     </td>
                                 </tr>

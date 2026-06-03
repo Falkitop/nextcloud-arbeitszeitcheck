@@ -8,6 +8,8 @@ $l = $_['l'] ?? \OCP\Util::getL10N('arbeitszeitcheck');
 /** @var \OCP\IURLGenerator $urlGenerator */
 $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class);
 
+use OCA\ArbeitszeitCheck\Support\BadgeVariant;
+
 $teamStats = $_['teamStats'] ?? [];
 $teamMembers = $_['teamMembers'] ?? [];
 ?>
@@ -39,17 +41,19 @@ $teamMembers = $_['teamMembers'] ?? [];
 		$adminTeamsUrl = (string)($_['adminTeamsUrl'] ?? '');
 		if (!$useAppTeams && $adminTeamsUrl !== ''):
 		?>
-		<div class="azc-callout azc-callout--warning" role="status" aria-labelledby="manager-teams-off-title">
-			<p id="manager-teams-off-title" class="azc-callout__title"><?php p($l->t('App teams are disabled')); ?></p>
-			<p class="azc-callout__text">
-				<?php p($l->t('Only administrators can open this page while teams are off. Employees assigned as group managers cannot approve absences or corrections until you enable app teams and assign managers.')); ?>
-			</p>
-			<div class="azc-callout__actions">
-				<a class="azc-btn azc-btn--secondary azc-btn--sm" href="<?php p($adminTeamsUrl); ?>">
-					<?php p($l->t('Open team settings')); ?>
-				</a>
-			</div>
-		</div>
+		<?php
+		$calloutVariant = 'warning';
+		$calloutRole = 'status';
+		$calloutTitleId = 'manager-teams-off-title';
+		$calloutTitle = $l->t('App teams are disabled');
+		$calloutText = $l->t('Only administrators can open this page while teams are off. Employees assigned as group managers cannot approve absences or corrections until you enable app teams and assign managers.');
+		$calloutActions = [[
+			'href' => $adminTeamsUrl,
+			'label' => $l->t('Open team settings'),
+			'class' => 'azc-btn azc-btn--secondary azc-btn--sm',
+		]];
+		include __DIR__ . '/common/alert-callout.php';
+		?>
 		<?php endif; ?>
 
 		<section class="manager-dashboard__stats" aria-labelledby="stats-heading">
@@ -170,7 +174,7 @@ $teamMembers = $_['teamMembers'] ?? [];
 					</div>
 				<?php else: ?>
 					<div class="table-container" role="region" aria-label="<?php p($l->t('Team members overview')); ?>">
-						<table class="table table--hover" role="table" aria-label="<?php p($l->t('Team members overview')); ?>">
+						<table class="table table--hover azc-table--responsive" role="table" aria-label="<?php p($l->t('Team members overview')); ?>">
 							<thead>
 								<tr>
 									<th scope="col"><?php p($l->t('Name')); ?></th>
@@ -182,9 +186,9 @@ $teamMembers = $_['teamMembers'] ?? [];
 							<tbody>
 								<?php foreach (($teamMembers ?? []) as $member): ?>
 									<tr>
-										<td><?php p($member['displayName']); ?></td>
-										<td><?php p(round($member['todayHours'], 2)); ?>h</td>
-										<td>
+										<td data-label="<?php p($l->t('Name')); ?>"><?php p($member['displayName']); ?></td>
+										<td data-label="<?php p($l->t('Hours Today')); ?>"><?php p(round($member['todayHours'], 2)); ?>h</td>
+										<td data-label="<?php p($l->t('Status')); ?>">
 											<?php
 											$statusLabels = [
 												'active' => $l->t('Clocked In'),
@@ -193,9 +197,9 @@ $teamMembers = $_['teamMembers'] ?? [];
 											];
 											$statusLabel = $statusLabels[$member['status']] ?? $member['status'];
 											?>
-											<span class="badge badge--primary"><?php p($statusLabel); ?></span>
+											<span class="badge badge--<?php p(BadgeVariant::forClockStatus((string)($member['status'] ?? ''))); ?>"><?php p($statusLabel); ?></span>
 										</td>
-										<td><?php p($member['pendingAbsences']); ?></td>
+										<td data-label="<?php p($l->t('Pending Absences')); ?>"><?php p($member['pendingAbsences']); ?></td>
 									</tr>
 								<?php endforeach; ?>
 							</tbody>

@@ -173,26 +173,99 @@ class AuditLogMapper extends QBMapper
 		?string $action = null,
 		?string $entityType = null
 	): array {
-		$qb = $this->db->getQueryBuilder();
+		return $this->searchByDateRange($startDate, $endDate, [
+			'user_id' => $userId,
+			'action' => $action,
+			'entity_type' => $entityType,
+		]);
+	}
+
+	/**
+	 * Search audit logs with optional filters and pagination.
+	 *
+	 * Supported filter keys:
+	 * - user_id: exact user id match
+	 * - user_id_like: partial match on user_id (case-sensitive per DB collation)
+	 * - action: exact action match
+	 * - actions_in: list of action strings (IN clause)
+	 * - entity_type: exact entity type match
+	 * - limit, offset: pagination
+	 *
+	 * @param array<string, mixed> $filters
+	 * @return AuditLog[]
+	 */
+	public function searchByDateRange(\DateTime $startDate, \DateTime $endDate, array $filters = []): array
+	{
+		$qb = $this->buildDateRangeQuery($startDate, $endDate, $filters);
 		$qb->select('*')
-			->from($this->getTableName())
-			->where($qb->expr()->gte('created_at', $qb->createNamedParameter($startDate->format('Y-m-d H:i:s'), IQueryBuilder::PARAM_STR)))
-			->andWhere($qb->expr()->lt('created_at', $qb->createNamedParameter($endDate->format('Y-m-d H:i:s'), IQueryBuilder::PARAM_STR)))
 			->orderBy('created_at', 'DESC');
 
-		if ($userId !== null) {
-			$qb->andWhere($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
+		if (isset($filters['limit']) && $filters['limit'] !== null) {
+			$qb->setMaxResults(max(1, (int)$filters['limit']));
 		}
-
-		if ($action !== null) {
-			$qb->andWhere($qb->expr()->eq('action', $qb->createNamedParameter($action)));
-		}
-
-		if ($entityType !== null) {
-			$qb->andWhere($qb->expr()->eq('entity_type', $qb->createNamedParameter($entityType)));
+		if (isset($filters['offset']) && $filters['offset'] !== null) {
+			$qb->setFirstResult(max(0, (int)$filters['offset']));
 		}
 
 		return $this->findEntities($qb);
+	}
+
+	/**
+	 * Count audit logs matching the same filters as {@see searchByDateRange}.
+	 *
+	 * @param array<string, mixed> $filters
+	 */
+	public function countByDateRange(\DateTime $startDate, \DateTime $endDate, array $filters = []): int
+	{
+		$qb = $this->buildDateRangeQuery($startDate, $endDate, $filters);
+		$qb->selectAlias($qb->createFunction('COUNT(*)'), 'audit_count');
+
+		return (int)$qb->executeQuery()->fetchOne();
+	}
+
+	/**
+	 * @param array<string, mixed> $filters
+	 */
+	private function buildDateRangeQuery(\DateTime $startDate, \DateTime $endDate, array $filters): IQueryBuilder
+	{
+		$exclusiveEnd = clone $endDate;
+		$exclusiveEnd->modify('+1 day');
+		$exclusiveEnd->setTime(0, 0, 0);
+
+		$qb = $this->db->getQueryBuilder();
+		$qb->from($this->getTableName())
+			->where($qb->expr()->gte('created_at', $qb->createNamedParameter($startDate->format('Y-m-d H:i:s'), IQueryBuilder::PARAM_STR)))
+			->andWhere($qb->expr()->lt('created_at', $qb->createNamedParameter($exclusiveEnd->format('Y-m-d H:i:s'), IQueryBuilder::PARAM_STR)));
+
+		$userId = isset($filters['user_id']) ? trim((string)$filters['user_id']) : '';
+		if ($userId !== '') {
+			$qb->andWhere($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)));
+		}
+
+		$userIdLike = isset($filters['user_id_like']) ? trim((string)$filters['user_id_like']) : '';
+		if ($userIdLike !== '' && $userId === '') {
+			$qb->andWhere($qb->expr()->like(
+				'user_id',
+				$qb->createNamedParameter('%' . $this->db->escapeLikeParameter($userIdLike) . '%')
+			));
+		}
+
+		$action = isset($filters['action']) ? trim((string)$filters['action']) : '';
+		if ($action !== '') {
+			$qb->andWhere($qb->expr()->eq('action', $qb->createNamedParameter($action)));
+		} elseif (!empty($filters['actions_in']) && is_array($filters['actions_in'])) {
+			$actions = array_values(array_filter(array_map('strval', $filters['actions_in']), static fn (string $a): bool => $a !== ''));
+			if ($actions !== []) {
+				$qb->andWhere($qb->expr()->in('action', $qb->createNamedParameter($actions, IQueryBuilder::PARAM_STR_ARRAY)));
+			}
+		}
+
+		$entityType = isset($filters['entity_type']) ? trim((string)$filters['entity_type']) : '';
+		if ($entityType !== '') {
+			$qb->andWhere($qb->expr()->eq('entity_type', $qb->createNamedParameter($entityType)));
+		}
+
+		return $qb;
 	}
 
 	/**

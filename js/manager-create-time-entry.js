@@ -49,47 +49,6 @@
 		};
 	}
 
-	function fetchEmployees() {
-		const select = document.getElementById('employee-filter');
-		if (!select || select.options.length > 1) {
-			return Promise.resolve();
-		}
-		const end = document.getElementById('end-date-filter');
-		const start = document.getElementById('start-date-filter');
-		if (!end || !start || !end.value || !start.value) {
-			return Promise.resolve();
-		}
-		const dp = window.ArbeitszeitCheckDatepicker;
-		const startISO = dp && dp.convertEuropeanToISO ? dp.convertEuropeanToISO(start.value) : '';
-		const endISO = dp && dp.convertEuropeanToISO ? dp.convertEuropeanToISO(end.value) : '';
-		if (!startISO || !endISO) {
-			return Promise.resolve();
-		}
-		const params = new URLSearchParams({ startDate: startISO, endDate: endISO, limit: '200', offset: '0' });
-		return Utils.ajax(`/apps/arbeitszeitcheck/api/manager/employee-time-entries?${params}`, {
-			method: 'GET',
-		}).then((data) => {
-			if (!data || !Array.isArray(data.employees)) {
-				return;
-			}
-			const current = select.value;
-			select.innerHTML = '';
-			const def = document.createElement('option');
-			def.value = '';
-			def.textContent = t('All in my scope', 'All in my scope');
-			select.appendChild(def);
-			data.employees.forEach((emp) => {
-				const opt = document.createElement('option');
-				opt.value = emp.userId;
-				opt.textContent = emp.displayName || emp.userId;
-				select.appendChild(opt);
-			});
-			if (current) {
-				select.value = current;
-			}
-		}).catch(() => {});
-	}
-
 	function loadProjectOptions(selectEl, employeeId) {
 		if (!selectEl) {
 			return Promise.resolve();
@@ -129,28 +88,26 @@
 			});
 	}
 
-	function buildEmployeeField(employees) {
+	function buildEmployeeField() {
 		const wrap = document.createElement('div');
 		wrap.className = 'azc-filter-field manager-create-dialog__employee';
-		const id = 'mgr-create-employee';
+		const prefix = 'mgr-create-employee';
 		wrap.innerHTML = [
-			`<label for="${id}" class="azc-filter-field__label">${t('Select employee', 'Select employee')} <span class="required-star" aria-hidden="true">*</span></label>`,
+			`<label for="${prefix}-search" class="azc-filter-field__label">${t('Select employee', 'Select employee')} <span class="required-star" aria-hidden="true">*</span></label>`,
 			'<div class="azc-filter-field__control">',
-			`<select id="${id}" class="form-select" required aria-required="true"></select>`,
+			`<input type="hidden" id="${prefix}-id" value="">`,
+			`<div class="user-picker user-picker--in-modal" id="${prefix}-wrap">`,
+			'<div class="user-picker__control">',
+			`<input type="search" id="${prefix}-search" class="form-input user-picker__search" autocomplete="off" autocapitalize="none" spellcheck="false"`,
+			` placeholder="${t('Search by name or user ID…', 'Search by name or user ID…')}" role="combobox" aria-autocomplete="list" aria-expanded="false"`,
+			` aria-controls="${prefix}-listbox" aria-required="true">`,
+			'</div>',
+			`<div id="${prefix}-listbox" class="user-picker__list" role="listbox" hidden aria-label="${t('Matching employees', 'Matching employees')}"></div>`,
+			`<p id="${prefix}-status" class="azc-sr-only" role="status" aria-live="polite" aria-atomic="true"></p>`,
+			'</div>',
 			'</div>',
 		].join('');
-		const sel = wrap.querySelector('select');
-		const filterSel = document.getElementById('employee-filter');
-		const source = filterSel && filterSel.options.length > 1
-			? Array.from(filterSel.options).filter((o) => o.value !== '')
-			: (employees || []);
-		source.forEach((item) => {
-			const opt = document.createElement('option');
-			opt.value = item.value !== undefined ? item.value : item.userId;
-			opt.textContent = item.textContent !== undefined ? item.textContent : (item.displayName || item.userId);
-			sel.appendChild(opt);
-		});
-		return { wrap, sel };
+		return { wrap, prefix };
 	}
 
 	function buildProjectField() {
@@ -172,7 +129,7 @@
 			return;
 		}
 
-		fetchEmployees().finally(() => {
+		(() => {
 			const modalId = 'manager-create-time-entry-modal';
 			const existing = document.getElementById(modalId);
 			if (existing) {
@@ -180,7 +137,7 @@
 			}
 
 			const idPrefix = 'mgr-create';
-			const { wrap: empWrap, sel: empSel } = buildEmployeeField();
+			const { wrap: empWrap, prefix: empPrefix } = buildEmployeeField();
 			const { wrap: projWrap, sel: projSel } = buildProjectField();
 			const formHtml = ClockForm.buildFormHtml(idPrefix, labels());
 			const footerHtml = [
@@ -204,15 +161,29 @@
 			}
 
 			const formApi = ClockForm.bindForm(modal, idPrefix, {}, t);
-			const preselected = document.getElementById('employee-filter')?.value || '';
-			if (preselected && empSel) {
-				empSel.value = preselected;
+			const initPicker = window.ArbeitszeitCheck?.initManagerScopedEmployeePicker;
+			let employeePicker = null;
+			if (initPicker) {
+				employeePicker = initPicker({
+					hiddenSelector: `#${empPrefix}-id`,
+					searchSelector: `#${empPrefix}-search`,
+					listSelector: `#${empPrefix}-listbox`,
+					wrapSelector: `#${empPrefix}-wrap`,
+					statusSelector: `#${empPrefix}-status`,
+					idPrefix: empPrefix,
+					allowAll: false,
+					onChange: (userId) => {
+						loadProjectOptions(projSel, userId);
+					},
+				});
 			}
-			loadProjectOptions(projSel, empSel?.value || '');
-
-			empSel?.addEventListener('change', () => {
-				loadProjectOptions(projSel, empSel.value);
-			});
+			const preselected = document.getElementById('employee-filter-id')?.value || '';
+			if (preselected && employeePicker) {
+				const filterSearch = document.getElementById('employee-filter-search');
+				const label = filterSearch && filterSearch.value ? filterSearch.value : preselected;
+				employeePicker.setSelection(preselected, label);
+				loadProjectOptions(projSel, preselected);
+			}
 
 			const saveBtn = modal.querySelector('.btn-mgr-create-save');
 			const cancelBtn = modal.querySelector('.btn-mgr-create-cancel');
@@ -224,15 +195,18 @@
 					formApi.setStatus(result.error, true);
 					return;
 				}
-				if (!empSel?.value) {
+				const userId = employeePicker
+					? employeePicker.getUserId()
+					: String(document.getElementById(`${empPrefix}-id`)?.value || '');
+				if (!userId) {
 					formApi.setStatus(t('Select employee', 'Select employee'), true);
-					empSel?.focus();
+					document.getElementById(`${empPrefix}-search`)?.focus();
 					return;
 				}
 				formApi.setStatus('', false);
 
 				const payload = {
-					userId: empSel.value,
+					userId: userId,
 					reason: result.payload.reason,
 					date: result.payload.date,
 					startTime: result.payload.startTime,
@@ -269,7 +243,7 @@
 			});
 
 			Components.openModal(modal);
-		});
+		})();
 	}
 
 	function init() {

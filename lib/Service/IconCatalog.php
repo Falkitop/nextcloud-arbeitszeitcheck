@@ -22,8 +22,8 @@ final class IconCatalog
 		'activity' => '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
 		'shield-check' => '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/>',
 		'shield' => '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/>',
-		'alert-triangle' => '<path d="m12 3 10 17H2Z"/><path d="M12 9v4M12 17h.01"/>',
-		'triangle-alert' => '<path d="m12 3 10 17H2Z"/><path d="M12 9v4M12 17h.01"/>',
+		'alert-triangle' => '<path d="m12 3 10 17H2Z"/><path d="M12 9v4"/><circle cx="12" cy="17" r="1" fill="currentColor" stroke="none"/>',
+		'triangle-alert' => '<path d="m12 3 10 17H2Z"/><path d="M12 9v4"/><circle cx="12" cy="17" r="1" fill="currentColor" stroke="none"/>',
 		'file-analytics' => '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/>',
 		'file-text' => '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/>',
 		'file-down' => '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M12 18v-6M9 15l3 3 3-3"/>',
@@ -50,21 +50,21 @@ final class IconCatalog
 		'x' => '<path d="M18 6 6 18M6 6l12 12"/>',
 		'edit' => '<path d="M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z"/>',
 		'trash' => '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
-		'info' => '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
-		'help' => '<circle cx="12" cy="12" r="10"/><path d="M9.5 9a2.5 2.5 0 1 1 4.5 1.5c-.7.6-1.5.9-1.5 1.5v.5"/><path d="M12 17h.01"/>',
+		'info' => '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><circle cx="12" cy="8" r="1" fill="currentColor" stroke="none"/>',
+		'help' => '<circle cx="12" cy="12" r="10"/><path d="M9.5 9a2.5 2.5 0 1 1 4.5 1.5c-.7.6-1.5.9-1.5 1.5v.5"/><circle cx="12" cy="17" r="1" fill="currentColor" stroke="none"/>',
 		'search' => '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
 		'list' => '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
 		'rotate' => '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/>',
 		'circle-check' => '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
 		'circle-x' => '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/>',
-		'circle-alert' => '<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>',
+		'circle-alert' => '<circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><circle cx="12" cy="16" r="1" fill="currentColor" stroke="none"/>',
 		'circle' => '<circle cx="12" cy="12" r="10"/>',
 		'chevron-left' => '<path d="m15 18-6-6 6-6"/>',
 		'chevron-right' => '<path d="m9 18 6-6-6-6"/>',
 		'pause' => '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>',
 	];
 
-	public static function render(string $name, ?string $extraClass = null): string
+	public static function render(string $name, ?string $extraClass = null, float $strokeWidth = 2.0): string
 	{
 		$inner = self::ICONS[$name] ?? null;
 		if ($inner === null) {
@@ -74,11 +74,33 @@ final class IconCatalog
 		if ($extraClass !== null && $extraClass !== '') {
 			$class .= ' ' . htmlspecialchars($extraClass, ENT_QUOTES, 'UTF-8');
 		}
+		$strokeWidth = max(1.5, min(3.5, $strokeWidth));
 
 		return sprintf(
-			'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="%s" aria-hidden="true" focusable="false">%s</svg>',
+			'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="%s" stroke-linecap="round" stroke-linejoin="round" class="%s" aria-hidden="true" focusable="false">%s</svg>',
+			htmlspecialchars((string)$strokeWidth, ENT_QUOTES, 'UTF-8'),
 			$class,
 			$inner
+		);
+	}
+
+	/**
+	 * Callout / notification icon well (theme-safe variant class on the well).
+	 */
+	public static function renderCalloutWell(string $name, string $variant = 'info'): string
+	{
+		$variant = match ($variant) {
+			'error' => 'danger',
+			default => $variant,
+		};
+		if (!in_array($variant, ['info', 'warning', 'danger', 'success', 'neutral'], true)) {
+			$variant = 'info';
+		}
+
+		return sprintf(
+			'<span class="azc-callout__icon azc-notif-icon-well azc-notif-icon-well--%s" aria-hidden="true">%s</span>',
+			htmlspecialchars($variant, ENT_QUOTES, 'UTF-8'),
+			self::render($name, 'azc-callout__icon-svg', 2.75)
 		);
 	}
 
