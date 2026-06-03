@@ -648,7 +648,6 @@
     }
 
     function getPickerL10n() {
-        const map = window.ArbeitszeitCheck && window.ArbeitszeitCheck.teamsL10n;
         return {
             loading: t('Loading…', 'Loading…'),
             searchError: t('Failed to load users', 'Failed to load users'),
@@ -670,9 +669,6 @@
         const listUrl = baseUrl + '/api/admin/teams/' + teamId + (isMember ? '/members' : '/managers');
         const postUrl = listUrl;
         const loadFailKey = isMember ? 'Failed to load members' : 'Failed to load managers';
-        const allAssignedKey = isMember
-            ? 'All users are already members of this team'
-            : 'All users are already managers of this team';
         const modalId = isMember ? 'modal-add-member' : 'modal-add-manager';
         const formId = isMember ? 'form-add-member' : 'form-add-manager';
         const prefix = isMember ? 'add-member' : 'add-manager';

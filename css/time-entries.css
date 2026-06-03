@@ -1357,7 +1357,7 @@
 		position: static;
 		width: auto;
 		height: auto;
-		clip: auto;
+		clip-path: none;
 		overflow: visible;
 		font-weight: 600;
 		margin-bottom: var(--azc-space-1, 0.25rem);

@@ -31,7 +31,6 @@
 
   const Utils = window.ArbeitszeitCheckUtils || {};
   const Messaging = window.ArbeitszeitCheckMessaging || {};
-  const Components = window.ArbeitszeitCheckComponents || {};
 
   // -----------------------------------------------------------------------
   // Bootstrap (URLs etc.) shipped from the server-rendered template.

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+## 1.3.20 - 2026-06-03
+
 ### Fixed
 
 - **Callouts and notification icons (all Nextcloud themes)**: unified `templates/common/alert-callout.php` and `css/common/notification-surfaces.css` with theme-safe panel tints and semantic icon wells (same contrast model as the page header). Replaced invisible Lucide `h.01` SVG marks in `IconCatalog` with visible accent dots; added `IconCatalog::renderCalloutWell()` and variant classes (`azc-notif-icon-well--warning`, etc.) so warning/danger/info glyphs stay identifiable on light, dark, high-contrast, and custom themes. Admin notifications save feedback uses matching callout styling and `role="alert"` on errors.

@@ -9,7 +9,6 @@
 
 	const cfg = window.ArbeitszeitCheck || {};
 	const Utils = window.ArbeitszeitCheckUtils || {};
-	const Messaging = window.ArbeitszeitCheckMessaging || {};
 
 	function t(key, fallback) {
 		const bundle = cfg.l10n || {};

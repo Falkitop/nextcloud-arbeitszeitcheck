@@ -2259,9 +2259,9 @@
 
         getAbsenceStatusBadgeClass: function(absence) {
             const status = absence && absence.status ? String(absence.status) : 'pending';
-            if (typeof ArbeitszeitCheckUtils !== 'undefined'
-                && typeof ArbeitszeitCheckUtils.badgeVariantForAbsenceStatus === 'function') {
-                return ArbeitszeitCheckUtils.badgeVariantForAbsenceStatus(status);
+            if (typeof window.ArbeitszeitCheckUtils !== 'undefined'
+                && typeof window.ArbeitszeitCheckUtils.badgeVariantForAbsenceStatus === 'function') {
+                return window.ArbeitszeitCheckUtils.badgeVariantForAbsenceStatus(status);
             }
             if (status === 'approved') {
                 return 'success';
@@ -2373,7 +2373,7 @@
             const startDate = absence.start_date || absence.startDate;
             const endDate = absence.end_date || absence.endDate;
             const _type = absence.type || 'unknown';
-            const status = absence.status || 'pending';
+            const _status = absence.status || 'pending';
             const translatedType = this.getAbsenceDisplayLabel(absence);
             const isCoverage = absence && absence.role === 'substitute';
 

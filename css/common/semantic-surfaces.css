@@ -21,8 +21,8 @@
 
 #app-content.azc-app .azc-semantic-panel--success.azc-callout.auto-break-panel--disabled,
 #app-content.azc-app .azc-semantic-panel--success.azc-callout.auto-break-panel--disabled {
-	border-left-color: color-mix(in srgb, var(--color-main-text) 40%, var(--color-border));
 	border-color: color-mix(in srgb, var(--color-main-text) 35%, var(--color-border));
+	border-left-color: color-mix(in srgb, var(--color-main-text) 40%, var(--color-border));
 	background: var(--color-main-background);
 }
 

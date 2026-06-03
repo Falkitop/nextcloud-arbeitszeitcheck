@@ -489,18 +489,6 @@
 		}
 	}
 
-	function readFilterFormDates() {
-		const form = document.getElementById('employee-absences-filter-form');
-		if (!form) {
-			return { startDate: '', endDate: '' };
-		}
-		const fd = new FormData(form);
-		return {
-			startDate: String(fd.get('start_date') || ''),
-			endDate: String(fd.get('end_date') || ''),
-		};
-	}
-
 	function syncRecordDatesFromFilter() {
 		const fs = document.getElementById('employee-absences-start-date-filter');
 		const fe = document.getElementById('employee-absences-end-date-filter');
