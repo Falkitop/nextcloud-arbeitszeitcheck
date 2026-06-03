@@ -114,4 +114,95 @@ class TimeCaptureSettingsIntegrationTest extends TestCase
 			$this->userSettingsMapper->getSetting(self::TEST_USER, Constants::SETTING_CLOCK_STAMPING_ENABLED),
 		);
 	}
+
+	public function testOrganizationDisabledClockOverridesUserPreference(): void
+	{
+		$this->timeCaptureMethodService->setOrganizationDefaults([
+			'clockStampingEnabled' => false,
+			'manualTimeEntryEnabled' => true,
+		], 'integration_test');
+
+		try {
+			$this->assertFalse($this->timeCaptureMethodService->isClockStampingEnabled(self::TEST_USER));
+			$this->assertTrue($this->timeCaptureMethodService->getUserPreferences(self::TEST_USER)['clockStampingEnabled']);
+			$this->assertTrue($this->timeCaptureMethodService->isManualTimeEntryEnabled(self::TEST_USER));
+
+			$settings = $this->timeCaptureMethodService->getSettings(self::TEST_USER);
+			$this->assertFalse($settings['clockStampingEnabled']);
+			$this->assertTrue($settings['manualTimeEntryEnabled']);
+		} finally {
+			$this->timeCaptureMethodService->setOrganizationDefaults([
+				'clockStampingEnabled' => true,
+				'manualTimeEntryEnabled' => true,
+			], 'integration_test');
+		}
+	}
+
+	public function testOrganizationDisabledManualOverridesUserPreference(): void
+	{
+		$this->timeCaptureMethodService->setOrganizationDefaults([
+			'clockStampingEnabled' => true,
+			'manualTimeEntryEnabled' => false,
+		], 'integration_test');
+
+		try {
+			$this->timeCaptureMethodService->setSettings(
+				self::TEST_USER,
+				['manualTimeEntryEnabled' => true],
+				'integration_test',
+			);
+
+			$this->assertFalse($this->timeCaptureMethodService->isManualTimeEntryEnabled(self::TEST_USER));
+			$this->assertTrue($this->timeCaptureMethodService->getUserPreferences(self::TEST_USER)['manualTimeEntryEnabled']);
+			$this->assertTrue($this->timeCaptureMethodService->isClockStampingEnabled(self::TEST_USER));
+
+			$settings = $this->timeCaptureMethodService->getSettings(self::TEST_USER);
+			$this->assertTrue($settings['clockStampingEnabled']);
+			$this->assertFalse($settings['manualTimeEntryEnabled']);
+		} finally {
+			$this->timeCaptureMethodService->setOrganizationDefaults([
+				'clockStampingEnabled' => true,
+				'manualTimeEntryEnabled' => true,
+			], 'integration_test');
+		}
+	}
+
+	public function testCannotDisableBothOrganizationMethods(): void
+	{
+		$this->expectException(BusinessRuleException::class);
+		$this->timeCaptureMethodService->setOrganizationDefaults([
+			'clockStampingEnabled' => false,
+			'manualTimeEntryEnabled' => false,
+		], 'integration_test');
+	}
+
+	/**
+	 * Regression guard: the Nextcloud "Administration → ArbeitszeitCheck" settings
+	 * section (the ISettings render path) must reflect the persisted organisation
+	 * time-capture config — otherwise it always shows "both active" and saving
+	 * silently re-enables a disabled method.
+	 */
+	public function testAdminSettingsFormReflectsOrganizationTimeCapture(): void
+	{
+		$this->timeCaptureMethodService->setOrganizationDefaults([
+			'clockStampingEnabled' => false,
+			'manualTimeEntryEnabled' => true,
+		], 'integration_test');
+
+		try {
+			$adminSettings = \OC::$server->get(\OCA\ArbeitszeitCheck\Settings\AdminSettings::class);
+			$params = $adminSettings->getForm()->getParams();
+
+			$this->assertArrayHasKey('settings', $params);
+			$this->assertArrayHasKey('clockStampingEnabled', $params['settings']);
+			$this->assertArrayHasKey('manualTimeEntryEnabled', $params['settings']);
+			$this->assertFalse($params['settings']['clockStampingEnabled']);
+			$this->assertTrue($params['settings']['manualTimeEntryEnabled']);
+		} finally {
+			$this->timeCaptureMethodService->setOrganizationDefaults([
+				'clockStampingEnabled' => true,
+				'manualTimeEntryEnabled' => true,
+			], 'integration_test');
+		}
+	}
 }

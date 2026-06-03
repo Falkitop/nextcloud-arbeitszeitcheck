@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- **Organisation-wide time recording methods** ([#16](https://github.com/aSoftwareByDesignRepository/nextcloud-arbeitszeitcheck/issues/16)): Administrators can disable clock in/out (stamping) and/or manual time entries for everyone under **Admin → Global settings → Time recording methods**. Per-employee restrictions remain under **Admin → Employees → Edit → Time recording**. Organisation rules are enforced on every API path (clock, manual entries, dashboard, mobile bootstrap, desklet). Missing clock-in reminders are suppressed when stamping is off. Audit log shows a dedicated label for organisation changes; integration and E2E tests cover org-vs-employee layering and API enforcement.
+
 ## 1.3.20 - 2026-06-03
 
 ### Fixed

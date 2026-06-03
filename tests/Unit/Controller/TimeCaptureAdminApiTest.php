@@ -32,6 +32,7 @@ use OCA\ArbeitszeitCheck\Service\UserOvertimeSettingsService;
 use OCA\ArbeitszeitCheck\Service\VacationAllocationService;
 use OCA\ArbeitszeitCheck\Service\VacationEntitlementEngine;
 use OCP\App\IAppManager;
+use OCP\IConfig;
 use OCP\IDBConnection;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Services\IAppConfig;
@@ -65,9 +66,13 @@ class TimeCaptureAdminApiTest extends TestCase
 		$l10n = $this->createMock(IL10N::class);
 		$l10n->method('t')->willReturnArgument(0);
 
+		$config = $this->createMock(IConfig::class);
+		$config->method('getAppValue')->willReturn('1');
+
 		$timeCaptureMethodService = new TimeCaptureMethodService(
 			$this->userSettingsMapper,
 			$this->auditLogMapper,
+			$config,
 			$l10n,
 		);
 

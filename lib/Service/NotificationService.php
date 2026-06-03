@@ -33,6 +33,7 @@ class NotificationService
 	private IUserManager $userManager;
 	private IConfig $config;
 	private AbsenceWorkingDaysResolver $workingDaysResolver;
+	private TimeCaptureMethodService $timeCaptureMethodService;
 
 	public function __construct(
 		INotificationManager $notificationManager,
@@ -41,6 +42,7 @@ class NotificationService
 		IUserManager $userManager,
 		IConfig $config,
 		AbsenceWorkingDaysResolver $workingDaysResolver,
+		TimeCaptureMethodService $timeCaptureMethodService,
 	) {
 		$this->notificationManager = $notificationManager;
 		$this->l10n = $l10n;
@@ -48,6 +50,7 @@ class NotificationService
 		$this->userManager = $userManager;
 		$this->config = $config;
 		$this->workingDaysResolver = $workingDaysResolver;
+		$this->timeCaptureMethodService = $timeCaptureMethodService;
 	}
 
 	/**
@@ -338,6 +341,10 @@ class NotificationService
 	{
 		$user = $this->userManager->get($userId);
 		if ($user === null || !$user->isEnabled()) {
+			return false;
+		}
+
+		if (!$this->timeCaptureMethodService->isClockStampingEnabled($userId)) {
 			return false;
 		}
 

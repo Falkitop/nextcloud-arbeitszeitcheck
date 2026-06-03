@@ -45,10 +45,13 @@ test.describe('Admin employees — atomic profile save', () => {
 				effectiveFrom,
 				effectiveTo: user.workingTimeModelEndDate || user.userWorkingTimeModel?.endDate || null,
 			},
-			timeCapture: {
-				clockStampingEnabled: user.timeCapture?.clockStampingEnabled !== false,
-				manualTimeEntryEnabled: user.timeCapture?.manualTimeEntryEnabled !== false,
-			},
+			timeCapture: (() => {
+				const preferences = user.timeCapture?.preferences || user.timeCapture || {}
+				return {
+					clockStampingEnabled: preferences.clockStampingEnabled !== false,
+					manualTimeEntryEnabled: preferences.manualTimeEntryEnabled !== false,
+				}
+			})(),
 			overtime: {
 				trackingFrom: user.overtimeTrackingFrom || null,
 				openingBalance: {

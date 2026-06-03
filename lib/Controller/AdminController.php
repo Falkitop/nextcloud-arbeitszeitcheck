@@ -618,6 +618,7 @@ class AdminController extends Controller
 				'total' => $totalCount,
 				'urlGenerator' => $this->urlGenerator,
 				'l' => $this->l10n,
+				'organizationTimeCapture' => $this->timeCaptureMethodService->getOrganizationDefaults(),
 			],
 		));
 		return $this->configureCSP($response, 'admin');
@@ -672,6 +673,8 @@ class AdminController extends Controller
 			'vacationRolloverIncludeUnusedAnnual' => $this->appConfig->getAppValueString(Constants::CONFIG_VACATION_ROLLOVER_INCLUDE_UNUSED_ANNUAL, '0') === '1',
 			'timeEntryChangesRequireApproval' => $this->appConfig->getAppValueString(Constants::CONFIG_TIME_ENTRY_CHANGES_REQUIRE_APPROVAL, '0') === '1',
 			'manualTimeEntriesRequireApproval' => $this->appConfig->getAppValueString(Constants::CONFIG_MANUAL_TIME_ENTRIES_REQUIRE_APPROVAL, '0') === '1',
+			'clockStampingEnabled' => $this->timeCaptureMethodService->isOrganizationClockStampingEnabled(),
+			'manualTimeEntryEnabled' => $this->timeCaptureMethodService->isOrganizationManualTimeEntryEnabled(),
 			'accessAllowedGroups' => $this->getAllowedAccessGroupsFromConfig(),
 			'appAdminUserIds' => $this->getConfiguredAppAdminUserIds(),
 			'projectCheckIntegrationEnabled' => $this->appManager->isEnabledForUser('projectcheck')
@@ -1570,6 +1573,8 @@ class AdminController extends Controller
 				'vacationCarryoverMaxDays' => $this->appConfig->getAppValueString(Constants::CONFIG_VACATION_CARRYOVER_MAX_DAYS, ''),
 				'vacationRolloverEnabled' => $this->appConfig->getAppValueString(Constants::CONFIG_VACATION_ROLLOVER_ENABLED, '1') === '1',
 				'vacationRolloverIncludeUnusedAnnual' => $this->appConfig->getAppValueString(Constants::CONFIG_VACATION_ROLLOVER_INCLUDE_UNUSED_ANNUAL, '0') === '1',
+				'clockStampingEnabled' => $this->timeCaptureMethodService->isOrganizationClockStampingEnabled(),
+				'manualTimeEntryEnabled' => $this->timeCaptureMethodService->isOrganizationManualTimeEntryEnabled(),
 				'accessAllowedGroups' => $this->getAllowedAccessGroupsFromConfig(),
 				'appAdminUserIds' => $this->getConfiguredAppAdminUserIds(),
 			];
@@ -1774,6 +1779,26 @@ class AdminController extends Controller
 				$normalizedAdminUserIds = $this->normalizeAppAdminUserIds($userIds);
 				$this->appConfig->setAppValueString(Constants::CONFIG_APP_ADMIN_USER_IDS, json_encode($normalizedAdminUserIds));
 				$updatedSettings['appAdminUserIds'] = $normalizedAdminUserIds;
+			}
+
+			if (array_key_exists('clockStampingEnabled', $params) || array_key_exists('manualTimeEntryEnabled', $params)) {
+				try {
+					$orgCapture = $this->timeCaptureMethodService->setOrganizationDefaults([
+						'clockStampingEnabled' => array_key_exists('clockStampingEnabled', $params)
+							? filter_var($params['clockStampingEnabled'], FILTER_VALIDATE_BOOLEAN)
+							: $this->timeCaptureMethodService->isOrganizationClockStampingEnabled(),
+						'manualTimeEntryEnabled' => array_key_exists('manualTimeEntryEnabled', $params)
+							? filter_var($params['manualTimeEntryEnabled'], FILTER_VALIDATE_BOOLEAN)
+							: $this->timeCaptureMethodService->isOrganizationManualTimeEntryEnabled(),
+					], $this->getPerformedBy());
+					$updatedSettings['clockStampingEnabled'] = $orgCapture['clockStampingEnabled'];
+					$updatedSettings['manualTimeEntryEnabled'] = $orgCapture['manualTimeEntryEnabled'];
+				} catch (BusinessRuleException $e) {
+					return new JSONResponse([
+						'success' => false,
+						'error' => $e->getMessage(),
+					], Http::STATUS_BAD_REQUEST);
+				}
 			}
 
 			if (empty($updatedSettings)) {
@@ -2901,7 +2926,11 @@ class AdminController extends Controller
 						'ruleSetId' => $entitlementPreview['ruleSetId'],
 						'calculationTrace' => $entitlementPreview['trace'],
 					],
-					'timeCapture' => $this->timeCaptureMethodService->getSettings($userId),
+					'timeCapture' => array_merge(
+						$this->timeCaptureMethodService->getSettings($userId),
+						['preferences' => $this->timeCaptureMethodService->getUserPreferences($userId)],
+					),
+					'organizationTimeCapture' => $this->timeCaptureMethodService->getOrganizationDefaults(),
 					'availableWorkingTimeModels' => array_map(function ($model) {
 						return [
 							'id' => $model->getId(),

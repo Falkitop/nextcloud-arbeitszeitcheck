@@ -710,8 +710,12 @@
         const overrideReason = policy.overrideReason || '';
         const entitlementPreview = user.entitlementPreview || null;
         const timeCapture = user.timeCapture || {};
-        const clockStampingEnabled = timeCapture.clockStampingEnabled !== false;
-        const manualTimeEntryEnabled = timeCapture.manualTimeEntryEnabled !== false;
+        const orgCapture = getOrganizationTimeCapture(user);
+        const preferences = timeCapture.preferences || timeCapture;
+        const clockStampingEnabled = preferences.clockStampingEnabled !== false;
+        const manualTimeEntryEnabled = preferences.manualTimeEntryEnabled !== false;
+        const orgClockDisabled = !orgCapture.clockStampingEnabled;
+        const orgManualDisabled = !orgCapture.manualTimeEntryEnabled;
 
         let modelOptions = `<option value="">${noModelLabel}</option>`;
         models.forEach(model => {
@@ -776,16 +780,17 @@
                 <section class="user-edit-section user-edit-section--capture" aria-labelledby="user-edit-capture-heading">
                     <h3 id="user-edit-capture-heading" class="user-edit-section__heading">${Utils.escapeHtml(t('timeRecordingMethods', 'Time recording'))}</h3>
                     <p id="user-edit-capture-intro" class="form-help user-edit-capture__intro">${Utils.escapeHtml(t('timeRecordingMethodsIntro', 'Choose how this employee may record working time. At least one method must stay enabled.'))}</p>
-                    <div class="user-edit-capture__grid" role="group" aria-labelledby="user-edit-capture-heading" aria-describedby="user-edit-capture-intro user-edit-capture-error">
-                        <label class="user-edit-capture__card">
-                            <input type="checkbox" id="user-clock-stamping" name="clockStampingEnabled" value="1" class="user-edit-capture__checkbox"${clockStampingEnabled ? ' checked' : ''}>
+                    ${(orgClockDisabled || orgManualDisabled) ? `<p id="user-edit-capture-org-note" class="form-help form-help--note user-edit-capture__org-note">${Utils.escapeHtml(t('timeRecordingOrgRestrictionNote', 'Greyed-out options are disabled organisation-wide in Global settings. You can only restrict this person further.'))}</p>` : ''}
+                    <div class="user-edit-capture__grid" role="group" aria-labelledby="user-edit-capture-heading" aria-describedby="user-edit-capture-intro user-edit-capture-error${orgClockDisabled || orgManualDisabled ? ' user-edit-capture-org-note' : ''}">
+                        <label class="user-edit-capture__card${orgClockDisabled ? ' user-edit-capture__card--locked' : ''}">
+                            <input type="checkbox" id="user-clock-stamping" name="clockStampingEnabled" value="1" class="user-edit-capture__checkbox"${clockStampingEnabled ? ' checked' : ''}${orgClockDisabled ? ' disabled aria-disabled="true"' : ''} data-user-preference="${clockStampingEnabled ? '1' : '0'}">
                             <span class="user-edit-capture__card-body">
                                 <span class="user-edit-capture__card-title">${Utils.escapeHtml(t('clockStampingLabel', 'Clock in / out (stamping)'))}</span>
                                 <span class="user-edit-capture__card-text">${Utils.escapeHtml(t('clockStampingHelp', 'Live punch clock on the dashboard and in the mobile app.'))}</span>
                             </span>
                         </label>
-                        <label class="user-edit-capture__card">
-                            <input type="checkbox" id="user-manual-entry" name="manualTimeEntryEnabled" value="1" class="user-edit-capture__checkbox"${manualTimeEntryEnabled ? ' checked' : ''}>
+                        <label class="user-edit-capture__card${orgManualDisabled ? ' user-edit-capture__card--locked' : ''}">
+                            <input type="checkbox" id="user-manual-entry" name="manualTimeEntryEnabled" value="1" class="user-edit-capture__checkbox"${manualTimeEntryEnabled ? ' checked' : ''}${orgManualDisabled ? ' disabled aria-disabled="true"' : ''} data-user-preference="${manualTimeEntryEnabled ? '1' : '0'}">
                             <span class="user-edit-capture__card-body">
                                 <span class="user-edit-capture__card-title">${Utils.escapeHtml(t('manualTimeEntryLabel', 'Manual time entries'))}</span>
                                 <span class="user-edit-capture__card-text">${Utils.escapeHtml(t('manualTimeEntryHelp', 'Add completed work blocks by date and time in the web app.'))}</span>
@@ -1065,7 +1070,7 @@
         });
         triggerPreview();
 
-        bindTimeCaptureValidation(form);
+        bindTimeCaptureValidation(form, orgCapture);
 
         const cancelBtn = modal.querySelector('[data-action="close-modal"]');
         if (cancelBtn) {
@@ -1073,7 +1078,19 @@
         }
     }
 
-    function bindTimeCaptureValidation(form) {
+    function getOrganizationTimeCapture(user) {
+        const org = (user && user.organizationTimeCapture)
+            || (window.ArbeitszeitCheck && window.ArbeitszeitCheck.adminUsersConfig
+                && window.ArbeitszeitCheck.adminUsersConfig.organizationTimeCapture)
+            || { clockStampingEnabled: true, manualTimeEntryEnabled: true };
+        return {
+            clockStampingEnabled: org.clockStampingEnabled !== false,
+            manualTimeEntryEnabled: org.manualTimeEntryEnabled !== false,
+        };
+    }
+
+    function bindTimeCaptureValidation(form, orgCapture) {
+        const org = orgCapture || getOrganizationTimeCapture(null);
         const clockEl = form.querySelector('#user-clock-stamping');
         const manualEl = form.querySelector('#user-manual-entry');
         const errorEl = form.querySelector('#user-edit-capture-error');
@@ -1081,7 +1098,9 @@
             return;
         }
         const validate = () => {
-            const ok = clockEl.checked || manualEl.checked;
+            const clockEffective = org.clockStampingEnabled && clockEl.checked;
+            const manualEffective = org.manualTimeEntryEnabled && manualEl.checked;
+            const ok = clockEffective || manualEffective;
             errorEl.hidden = ok;
             if (!ok) {
                 errorEl.textContent = auMsg(
@@ -1104,9 +1123,19 @@
     function readTimeCapturePayload(form) {
         const clockEl = form.querySelector('#user-clock-stamping');
         const manualEl = form.querySelector('#user-manual-entry');
+        const readPreference = (el) => {
+            if (!el) {
+                return false;
+            }
+            if (el.disabled) {
+                return el.getAttribute('data-user-preference') === '1';
+            }
+            el.setAttribute('data-user-preference', el.checked ? '1' : '0');
+            return el.checked;
+        };
         return {
-            clockStampingEnabled: !!(clockEl && clockEl.checked),
-            manualTimeEntryEnabled: !!(manualEl && manualEl.checked),
+            clockStampingEnabled: readPreference(clockEl),
+            manualTimeEntryEnabled: readPreference(manualEl),
         };
     }
 

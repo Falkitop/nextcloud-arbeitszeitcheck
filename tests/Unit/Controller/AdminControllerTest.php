@@ -742,6 +742,55 @@ class AdminControllerTest extends TestCase
 		$this->assertStringContainsString('No valid settings provided', $data['error']);
 	}
 
+	public function testUpdateAdminSettingsUpdatesOrganizationTimeCapture(): void
+	{
+		$this->timeCaptureMethodService->method('isOrganizationClockStampingEnabled')->willReturn(true);
+		$this->timeCaptureMethodService->method('isOrganizationManualTimeEntryEnabled')->willReturn(true);
+		$this->request->method('getParams')
+			->willReturn([
+				'clockStampingEnabled' => false,
+				'manualTimeEntryEnabled' => true,
+			]);
+		$this->timeCaptureMethodService->expects($this->once())
+			->method('setOrganizationDefaults')
+			->with(
+				['clockStampingEnabled' => false, 'manualTimeEntryEnabled' => true],
+				'system',
+			)
+			->willReturn([
+				'clockStampingEnabled' => false,
+				'manualTimeEntryEnabled' => true,
+			]);
+
+		$response = $this->controller->updateAdminSettings();
+		$data = $response->getData();
+
+		$this->assertTrue($data['success']);
+		$this->assertFalse($data['settings']['clockStampingEnabled']);
+		$this->assertTrue($data['settings']['manualTimeEntryEnabled']);
+	}
+
+	public function testUpdateAdminSettingsRejectsDisablingBothOrganizationTimeCaptureMethods(): void
+	{
+		$this->timeCaptureMethodService->method('isOrganizationClockStampingEnabled')->willReturn(true);
+		$this->timeCaptureMethodService->method('isOrganizationManualTimeEntryEnabled')->willReturn(true);
+		$this->request->method('getParams')
+			->willReturn([
+				'clockStampingEnabled' => false,
+				'manualTimeEntryEnabled' => false,
+			]);
+		$this->timeCaptureMethodService->expects($this->once())
+			->method('setOrganizationDefaults')
+			->willThrowException(new \OCA\ArbeitszeitCheck\Exception\BusinessRuleException('At least one method is required'));
+
+		$response = $this->controller->updateAdminSettings();
+
+		$this->assertEquals(Http::STATUS_BAD_REQUEST, $response->getStatus());
+		$data = $response->getData();
+		$this->assertFalse($data['success']);
+		$this->assertStringContainsString('method is required', $data['error']);
+	}
+
 	/**
 	 * Test getStatistics returns statistics
 	 */

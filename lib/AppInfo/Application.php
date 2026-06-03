@@ -173,6 +173,7 @@ class Application extends App implements IBootstrap {
 			return new \OCA\ArbeitszeitCheck\Service\TimeCaptureMethodService(
 				$c->query(\OCA\ArbeitszeitCheck\Db\UserSettingsMapper::class),
 				$c->query(\OCA\ArbeitszeitCheck\Db\AuditLogMapper::class),
+				$c->query(\OCP\IConfig::class),
 				$c->query(\OCP\IL10N::class),
 			);
 		});
@@ -542,7 +543,8 @@ class Application extends App implements IBootstrap {
 				$c->query(\OCA\ArbeitszeitCheck\Db\UserSettingsMapper::class),
 				$c->query(\OCP\IUserManager::class),
 				$c->query(\OCP\IConfig::class),
-				$c->query(\OCA\ArbeitszeitCheck\Util\AbsenceWorkingDaysResolver::class)
+				$c->query(\OCA\ArbeitszeitCheck\Util\AbsenceWorkingDaysResolver::class),
+				$c->query(\OCA\ArbeitszeitCheck\Service\TimeCaptureMethodService::class),
 			);
 		});
 

@@ -354,6 +354,111 @@
   }
 }
 
+/* ===== ORGANISATION TIME RECORDING METHODS ===== */
+.admin-time-capture__status {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 0.5rem);
+  margin-bottom: var(--space-4, 1rem);
+  padding: var(--space-3, 0.75rem) var(--space-4, 1rem);
+  border-radius: var(--border-radius-large, 10px);
+  border: 1px solid var(--color-border, var(--arbeitszeitcheck-color-border));
+  background: color-mix(in srgb, var(--color-main-background) 92%, var(--color-primary-element) 8%);
+}
+
+/*
+ * The status pill reuses the shared, WCAG-AA `.azc-badge` design system
+ * (css/common/badges.css): dark semantic "ink" text on a light semantic tint.
+ * Inside this column-flex container it must not stretch to full width.
+ */
+.admin-time-capture__status .azc-badge {
+  align-self: flex-start;
+}
+
+.admin-time-capture__status-text {
+  margin: 0;
+  font-size: var(--font-size-default, 1rem);
+  line-height: 1.5;
+  color: var(--color-main-text);
+}
+
+.admin-time-capture-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.admin-time-capture__grid {
+  display: grid;
+  gap: var(--space-3, 0.75rem);
+  grid-template-columns: 1fr;
+  margin-bottom: var(--space-4, 1rem);
+}
+
+@media (min-width: 520px) {
+  .admin-time-capture__grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.admin-time-capture__card {
+  display: flex;
+  gap: var(--space-3, 0.75rem);
+  align-items: flex-start;
+  padding: var(--space-3, 0.75rem);
+  border: 2px solid var(--color-border, var(--arbeitszeitcheck-color-border));
+  border-radius: var(--border-radius-large, 10px);
+  background: var(--color-main-background);
+  cursor: pointer;
+  min-height: 5.5rem;
+}
+
+.admin-time-capture__card:has(.admin-time-capture__checkbox:checked) {
+  border-color: var(--color-primary-element, #0082c9);
+  background: color-mix(in srgb, var(--color-main-background) 90%, var(--color-primary-element) 10%);
+}
+
+.admin-time-capture__card:has(.admin-time-capture__checkbox:focus-visible) {
+  outline: 2px solid var(--color-primary-element, #0082c9);
+  outline-offset: 2px;
+}
+
+.admin-time-capture__checkbox {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-top: 0.15rem;
+  flex-shrink: 0;
+  accent-color: var(--color-primary-element, #0082c9);
+}
+
+.admin-time-capture__card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 0.25rem);
+}
+
+.admin-time-capture__card-title {
+  font-weight: 600;
+  color: var(--color-main-text);
+  line-height: 1.35;
+}
+
+.admin-time-capture__card-text {
+  font-size: var(--arbeitszeitcheck-font-size-sm, 0.875rem);
+  color: var(--color-text-maxcontrast);
+  line-height: 1.45;
+}
+
+.admin-time-capture__error {
+  margin: var(--space-2, 0.5rem) 0 0;
+}
+
+.admin-time-capture__card:has(.admin-time-capture__checkbox:disabled) {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
 /* ===== REDUCED MOTION ===== */
 @media (prefers-reduced-motion: reduce) {
   .admin-settings-form .btn {

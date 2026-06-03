@@ -63,6 +63,77 @@
         initAppAdminsPicker();
         initAccessGroupsPicker();
         initProjectCheckAdminToggle();
+        initOrganizationTimeCapture();
+    }
+
+    function initOrganizationTimeCapture() {
+        const clockEl = Utils.$('#clockStampingEnabled');
+        const manualEl = Utils.$('#manualTimeEntryEnabled');
+        const errorEl = Utils.$('#admin-time-capture-error');
+        if (!clockEl || !manualEl || !errorEl) {
+            return;
+        }
+        const badge = Utils.$('#admin-time-capture-status-badge');
+        const status = Utils.$('#admin-time-capture-status-text');
+        const t = (key, fallback) => (window.t ? window.t('arbeitszeitcheck', key) : fallback);
+
+        function syncStatus() {
+            const clockOn = !!clockEl.checked;
+            const manualOn = !!manualEl.checked;
+            if (badge) {
+                if (clockOn && manualOn) {
+                    badge.textContent = t('Both methods active', 'Both methods active');
+                    badge.className = 'azc-badge azc-badge--info';
+                } else if (clockOn) {
+                    badge.textContent = t('Stamping only', 'Stamping only');
+                    badge.className = 'azc-badge azc-badge--success';
+                } else if (manualOn) {
+                    badge.textContent = t('Manual entries only', 'Manual entries only');
+                    badge.className = 'azc-badge azc-badge--warning';
+                } else {
+                    badge.textContent = t('No method selected', 'No method selected');
+                    badge.className = 'azc-badge azc-badge--danger';
+                }
+            }
+            if (status) {
+                if (clockOn && manualOn) {
+                    status.textContent = t(
+                        'Employees can clock in/out on the dashboard and add manual time entries.',
+                        'Employees can clock in/out on the dashboard and add manual time entries.'
+                    );
+                } else if (clockOn) {
+                    status.textContent = t(
+                        'Employees must use the punch clock. Manual time entries are hidden for everyone.',
+                        'Employees must use the punch clock. Manual time entries are hidden for everyone.'
+                    );
+                } else if (manualOn) {
+                    status.textContent = t(
+                        'Employees add completed work blocks by date and time. The punch clock is hidden for everyone.',
+                        'Employees add completed work blocks by date and time. The punch clock is hidden for everyone.'
+                    );
+                } else {
+                    status.textContent = t(
+                        'Select at least one method before saving.',
+                        'Select at least one method before saving.'
+                    );
+                }
+            }
+        }
+
+        const validate = () => {
+            const ok = clockEl.checked || manualEl.checked;
+            errorEl.hidden = ok;
+            if (!ok) {
+                errorEl.textContent = window.ArbeitszeitCheck?.l10n?.timeCaptureAtLeastOneOrg
+                    || (window.t && window.t('arbeitszeitcheck', 'Enable clock in/out or manual time entries — at least one method is required for the organisation.'))
+                    || 'Enable clock in/out or manual time entries — at least one method is required for the organisation.';
+            }
+            syncStatus();
+            return ok;
+        };
+        Utils.on(clockEl, 'change', validate);
+        Utils.on(manualEl, 'change', validate);
+        syncStatus();
     }
 
     function initProjectCheckAdminToggle() {
@@ -219,6 +290,8 @@
         formData.statutoryAutoReseed = isChecked(formData.statutoryAutoReseed);
         formData.timeEntryChangesRequireApproval = isChecked(formData.timeEntryChangesRequireApproval);
         formData.manualTimeEntriesRequireApproval = isChecked(formData.manualTimeEntriesRequireApproval);
+        formData.clockStampingEnabled = isChecked(formData.clockStampingEnabled);
+        formData.manualTimeEntryEnabled = isChecked(formData.manualTimeEntryEnabled);
         // Always send (unchecked checkboxes are omitted from FormData; server only updates keys that are present).
         formData.projectCheckIntegrationEnabled = isChecked(formData.projectCheckIntegrationEnabled);
         const accessGroupsRaw = formData['accessAllowedGroups[]'];
@@ -491,6 +564,13 @@
             return fail(
                 window.ArbeitszeitCheck?.l10n?.monthClosureGraceDaysRange || (window.t && window.t('arbeitszeitcheck', 'Grace days after month end must be between 0 and 90')) || 'Grace days after month end must be between 0 and 90',
                 'monthClosureGraceDaysAfterEom'
+            );
+        }
+
+        if (!data.clockStampingEnabled && !data.manualTimeEntryEnabled) {
+            return fail(
+                window.ArbeitszeitCheck?.l10n?.timeCaptureAtLeastOneOrg || (window.t && window.t('arbeitszeitcheck', 'Enable clock in/out or manual time entries — at least one method is required for the organisation.')) || 'Enable clock in/out or manual time entries — at least one method is required for the organisation.',
+                'clockStampingEnabled'
             );
         }
 

@@ -213,6 +213,12 @@ final class Constants
 	/** User setting: when absent or truthy, employee may create manual time entries. Default enabled. */
 	public const SETTING_MANUAL_TIME_ENTRY_ENABLED = 'manual_time_entry_enabled';
 
+	/** App config: organisation allows clock in/out (stamping). Default on. */
+	public const CONFIG_CLOCK_STAMPING_ENABLED = 'clock_stamping_enabled';
+
+	/** App config: organisation allows manual time entries. Default on. */
+	public const CONFIG_MANUAL_TIME_ENTRY_ENABLED = 'manual_time_entry_enabled';
+
 	/** App config: require manager approval for edits to completed time entries. Default off. */
 	public const CONFIG_TIME_ENTRY_CHANGES_REQUIRE_APPROVAL = 'time_entry_changes_require_approval';
 

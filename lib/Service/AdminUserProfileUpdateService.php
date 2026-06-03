@@ -71,7 +71,7 @@ class AdminUserProfileUpdateService
 		// Pre-flight validation (read-only) before opening a transaction.
 		$this->preflightWorkingTimeModel($userId, $workingTimeModel);
 		$this->preflightVacationPolicy($userId, $vacationPolicy);
-		$this->preflightTimeCapture($timeCapture);
+		$this->preflightTimeCapture($userId, $timeCapture);
 		$this->preflightOvertime($overtime);
 
 		return $this->atomic(function () use ($userId, $workingTimeModel, $vacationPolicy, $timeCapture, $overtime, $performedBy): array {
@@ -344,7 +344,7 @@ class AdminUserProfileUpdateService
 			);
 		}
 
-		$this->preflightTimeCapture($params);
+		$this->preflightTimeCapture($userId, $params);
 
 		try {
 			$updated = $this->timeCaptureMethodService->setSettings($userId, $settings, $performedBy);
@@ -453,7 +453,7 @@ class AdminUserProfileUpdateService
 	/**
 	 * @param array<string, mixed> $params
 	 */
-	private function preflightTimeCapture(array $params): void
+	private function preflightTimeCapture(string $userId, array $params): void
 	{
 		if ($params === []) {
 			return;
@@ -464,9 +464,23 @@ class AdminUserProfileUpdateService
 		$manual = array_key_exists('manualTimeEntryEnabled', $params)
 			? filter_var($params['manualTimeEntryEnabled'], FILTER_VALIDATE_BOOLEAN)
 			: null;
+		// Universal guard: disabling both methods is invalid regardless of the
+		// organisation ceiling. Enforced here so the request is rejected before
+		// any persistence is attempted, independent of the org-aware check below.
 		if ($clock === false && $manual === false) {
 			throw new AdminUserProfileUpdateException(
 				$this->l10n->t('Enable clock in/out or manual time entries — at least one method is required.')
+			);
+		}
+		// Organisation-aware guard: e.g. enabling only a method the organisation
+		// has disabled would leave the employee with no effective method.
+		try {
+			$this->timeCaptureMethodService->validateUserPreferences($userId, $clock, $manual);
+		} catch (BusinessRuleException $e) {
+			throw new AdminUserProfileUpdateException(
+				$e->getMessage() === $this->l10n->t('At least one time recording method must stay enabled for each employee.')
+					? $this->l10n->t('Enable clock in/out or manual time entries — at least one method is required.')
+					: $e->getMessage()
 			);
 		}
 	}

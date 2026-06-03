@@ -352,6 +352,8 @@ class PageController extends Controller
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in PageController::dashboard: ' . $e->getMessage(), ["exception" => $e]);
 			$errorMessage = $this->buildSafePageErrorMessage($e);
+			$user = $this->userSession->getUser();
+			$userId = $user !== null ? $user->getUID() : '';
 			$navFlags = $this->getNavigationFlagsForSession();
 			$response = new TemplateResponse('arbeitszeitcheck', 'dashboard', $this->buildShellParams(
 				'dashboard',
@@ -385,9 +387,9 @@ class PageController extends Controller
 					'vacation_year' => (int)date('Y'),
 				],
 				'error' => $errorMessage,
-				'timeCapture' => [
-					'clockStampingEnabled' => true,
-					'manualTimeEntryEnabled' => true,
+				'timeCapture' => $userId !== '' ? $this->resolveTimeCaptureSettings($userId) : [
+					'clockStampingEnabled' => false,
+					'manualTimeEntryEnabled' => false,
 				],
 			]);
 			return $this->configureCSP($response);
@@ -457,6 +459,8 @@ class PageController extends Controller
 			\OCP\Log\logger('arbeitszeitcheck')->error('Error in PageController::timeEntries: ' . $e->getMessage(), ["exception" => $e]);
 			$errorMessage = $this->buildSafePageErrorMessage($e);
 			$navFlags = $this->getNavigationFlagsForSession();
+			$user = $this->userSession->getUser();
+			$userId = $user !== null ? $user->getUID() : '';
 			$response = new TemplateResponse('arbeitszeitcheck', 'time-entries', $this->buildTimeEntriesShellParams('list', $navFlags) + [
 				'entries' => [],
 				'mode' => 'list',
@@ -465,6 +469,10 @@ class PageController extends Controller
 				'maxDailyHours' => 10.0,
 				'complianceStrictMode' => false,
 				'monthClosureEnabled' => false,
+				'timeCapture' => $userId !== '' ? $this->resolveTimeCaptureSettings($userId) : [
+					'clockStampingEnabled' => false,
+					'manualTimeEntryEnabled' => false,
+				],
 			]);
 			return $this->configureCSP($response);
 		}
@@ -848,6 +856,32 @@ class PageController extends Controller
 				'stats' => ['total_time_entries' => 0, 'total_absences' => 0],
 			]);
 			return $this->configureCSP($response);
+		}
+	}
+
+	/**
+	 * Resolve effective time capture for templates. Never defaults to both enabled —
+	 * on failure we fall back to organisation defaults, then to both disabled.
+	 *
+	 * @return array{clockStampingEnabled: bool, manualTimeEntryEnabled: bool}
+	 */
+	private function resolveTimeCaptureSettings(string $userId): array
+	{
+		try {
+			return $this->timeCaptureMethodService->getSettings($userId);
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->warning(
+				'Could not resolve user time capture settings, using organisation defaults',
+				['userId' => $userId, 'exception' => $e],
+			);
+			try {
+				return $this->timeCaptureMethodService->getOrganizationDefaults();
+			} catch (\Throwable $inner) {
+				return [
+					'clockStampingEnabled' => false,
+					'manualTimeEntryEnabled' => false,
+				];
+			}
 		}
 	}
 

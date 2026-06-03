@@ -88,6 +88,7 @@ class TimeTrackingService
 		$this->timeCaptureMethodService = $timeCaptureMethodService ?? new TimeCaptureMethodService(
 			$userSettingsMapper,
 			$auditLogMapper,
+			$config,
 			$l10n,
 		);
 	}

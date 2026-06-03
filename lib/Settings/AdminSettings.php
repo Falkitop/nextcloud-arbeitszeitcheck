@@ -83,6 +83,8 @@ class AdminSettings implements ISettings
 			'statutoryAutoReseed' => $this->appConfig->getAppValueString('statutory_auto_reseed', '1') === '1',
 			'retentionPeriod' => (int)$this->appConfig->getAppValueString('retention_period', '2'),
 			'defaultWorkingHours' => (float)$this->appConfig->getAppValueString('default_working_hours', '8'),
+			'clockStampingEnabled' => $this->appConfig->getAppValueString(Constants::CONFIG_CLOCK_STAMPING_ENABLED, '1') === '1',
+			'manualTimeEntryEnabled' => $this->appConfig->getAppValueString(Constants::CONFIG_MANUAL_TIME_ENTRY_ENABLED, '1') === '1',
 			'accessAllowedGroups' => $this->readAccessAllowedGroups(),
 			'appAdminUserIds' => $this->readConfiguredAppAdminUserIds(),
 			'projectCheckIntegrationEnabled' => $this->appManager->isEnabledForUser('projectcheck')

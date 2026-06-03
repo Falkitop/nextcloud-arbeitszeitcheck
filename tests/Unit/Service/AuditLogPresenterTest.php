@@ -32,6 +32,7 @@ class AuditLogPresenterTest extends TestCase
 	public function testFormatActionUsesKnownLabel(): void
 	{
 		$this->assertSame('Time capture methods updated', $this->presenter->formatAction('user_time_capture_methods_updated'));
+		$this->assertSame('Organisation time recording methods updated', $this->presenter->formatAction('organization_time_capture_methods_updated'));
 	}
 
 	public function testFormatEntityTypeUsesKnownLabel(): void

@@ -13,6 +13,7 @@ namespace OCA\ArbeitszeitCheck\Tests\Unit\Service;
 
 use OCA\ArbeitszeitCheck\Db\UserSettingsMapper;
 use OCA\ArbeitszeitCheck\Service\NotificationService;
+use OCA\ArbeitszeitCheck\Service\TimeCaptureMethodService;
 use OCA\ArbeitszeitCheck\Util\AbsenceWorkingDaysResolver;
 use OCP\IConfig;
 use OCP\IL10N;
@@ -43,6 +44,9 @@ class NotificationServiceTest extends TestCase
 	/** @var AbsenceWorkingDaysResolver|MockObject */
 	private $workingDaysResolver;
 
+	/** @var TimeCaptureMethodService|MockObject */
+	private $timeCaptureMethodService;
+
 	/** @var NotificationService */
 	private $service;
 
@@ -64,6 +68,7 @@ class NotificationServiceTest extends TestCase
 				}
 				return 0.0;
 			});
+		$this->timeCaptureMethodService = $this->createMock(TimeCaptureMethodService::class);
 
 		// Simple translation passthrough
 		$this->l10n->method('t')
@@ -80,7 +85,8 @@ class NotificationServiceTest extends TestCase
 			$this->userSettingsMapper,
 			$this->userManager,
 			$this->config,
-			$this->workingDaysResolver
+			$this->workingDaysResolver,
+			$this->timeCaptureMethodService,
 		);
 	}
 
@@ -199,10 +205,34 @@ class NotificationServiceTest extends TestCase
 			->with('user1')
 			->willReturn($user);
 
+		$this->timeCaptureMethodService->expects($this->once())
+			->method('isClockStampingEnabled')
+			->with('user1')
+			->willReturn(true);
+
 		$this->config->expects($this->once())
 			->method('getAppValue')
 			->with('arbeitszeitcheck', NotificationService::CONFIG_MISSING_CLOCK_IN_REMINDERS_ENABLED, '1')
 			->willReturn('0');
+
+		$this->assertFalse($this->service->shouldSendMissingClockInReminder('user1'));
+	}
+
+	public function testShouldSendMissingClockInReminderReturnsFalseWhenStampingDisabled(): void
+	{
+		$user = $this->createMock(IUser::class);
+		$user->method('isEnabled')->willReturn(true);
+		$this->userManager->expects($this->once())
+			->method('get')
+			->with('user1')
+			->willReturn($user);
+
+		$this->timeCaptureMethodService->expects($this->once())
+			->method('isClockStampingEnabled')
+			->with('user1')
+			->willReturn(false);
+
+		$this->config->expects($this->never())->method('getAppValue');
 
 		$this->assertFalse($this->service->shouldSendMissingClockInReminder('user1'));
 	}
@@ -215,6 +245,11 @@ class NotificationServiceTest extends TestCase
 			->method('get')
 			->with('user1')
 			->willReturn($user);
+
+		$this->timeCaptureMethodService->expects($this->once())
+			->method('isClockStampingEnabled')
+			->with('user1')
+			->willReturn(true);
 
 		$this->config->expects($this->once())
 			->method('getAppValue')
