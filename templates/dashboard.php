@@ -989,6 +989,13 @@ $arbeitszeitCheckFormatHours = static function (float $hours): string {
                     window.ArbeitszeitCheckUtils.ajax(completeUrl, {
                         method: 'POST',
                         data: { completed: true }
+                    }).catch(function (err) {
+                        const fallback = <?php echo json_encode($l->t('Could not save onboarding status. If this continues, ask an administrator to run the server upgrade.'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+                        const msg = (err && err.message) ? String(err.message) : fallback;
+                        const region = document.getElementById('azc-alert-region');
+                        if (region) {
+                            region.textContent = msg;
+                        }
                     });
                 }
             }

@@ -123,4 +123,5 @@ $roleSlug = (string)($_['roleSlug'] ?? 'employee');
 				<?php endif; ?>
 			</div>
 		</header>
+		<?php include __DIR__ . '/schema-upgrade-callout.php'; ?>
 		<main id="azc-main-content" class="azc-main" tabindex="-1" aria-labelledby="azc-page-title">

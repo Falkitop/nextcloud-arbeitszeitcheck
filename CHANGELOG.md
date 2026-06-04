@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.3.23 - 2026-06-04
+
+### Fixed
+
+- **Install and upgrade path hardened.** `appinfo/info.xml` now declares MySQL/PostgreSQL under `<dependencies>` (required by `MigrationService` for correct schema checks). **`EnsureArbeitszeitCheckSchema`** runs on install and before every post-migration repair chain so missing tables are recreated and failures surface in `occ upgrade` logs instead of a half-updated app with no UI feedback. Schema checks use the **active** table set only (legacy `at_absence_calendar` was dropped in migration 1012 and must not block upgrades). Repair steps use `OC\DB\Connection` for `MigrationService`, matching core `occ upgrade`.
+- **Post-migration repair DI.** `ReleaseStuckPendingAbsences` is registered in `Application.php` with `AbsenceService` (same as `BackfillAbsenceDays` + `HolidayService`) so `occ upgrade` never instantiates repair steps with wrong constructor arguments after partial deploys.
+- **Admin schema banner.** All admin pages show a critical callout when tables are missing, with pluralized guidance to run `occ upgrade` and deploy the full app bundle.
+- **Onboarding API no longer fakes success** when the database is incomplete — returns `SCHEMA_NOT_READY` (503) with a clear message instead of “will be saved after database migration”.
+- **Health endpoint** reports incomplete schema (missing table count) before the generic connection check.
+
+### Added
+
+- **`SchemaHealth`**, **`EnsureArbeitszeitCheckSchemaTest`**, and extended **`UpgradeRepairIntegrationTest`** for the production upgrade container path.
+
+## 1.3.22 - 2026-06-04
+
+### Fixed
+
+- **App upgrade / repair steps**: `HolidayService` dependency injection now passes `HolidaySuppressionMapper` as the second constructor argument (was incorrectly `UserSettingsMapper`), fixing fatal errors when enabling or updating the app (`Argument #2 ($suppressionMapper) must be of type HolidaySuppressionMapper`). Deploy the full app bundle — partial file copies leave repair jobs broken.
+
 ## 1.3.21 - 2026-06-04
 
 ### Added
@@ -16,8 +36,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Nextcloud Administration settings panel**: organisation time capture checkboxes now load persisted values (previously always showed both methods enabled).
 - **Employee time capture validation**: disabling both methods is rejected before persistence (HTTP 400, not 500).
 - **Admin settings status badge**: uses shared WCAG-AA `.azc-badge` variants instead of low-contrast solid fills.
-
-## Unreleased
 
 ## 1.3.20 - 2026-06-03
 

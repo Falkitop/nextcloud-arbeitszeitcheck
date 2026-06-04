@@ -13,6 +13,7 @@ namespace OCA\ArbeitszeitCheck\Controller;
 
 use OCA\ArbeitszeitCheck\Service\ComplianceService;
 use OCA\ArbeitszeitCheck\Service\ProjectCheckIntegrationService;
+use OCA\ArbeitszeitCheck\Support\SchemaHealth;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
@@ -84,25 +85,38 @@ class HealthController extends Controller
 	private function checkDatabase(): array
 	{
 		try {
+			$schema = SchemaHealth::assess($this->db);
+			if (!$schema['ready']) {
+				return [
+					'status' => 'unhealthy',
+					'message' => $this->l10n->n(
+						'Database schema incomplete (%n missing table)',
+						'Database schema incomplete (%n missing tables)',
+						$schema['missing_count'],
+					),
+					'missing_tables' => $schema['missing_count'],
+				];
+			}
+
 			// Execute a minimal DB round-trip that works across supported drivers.
 			$result = $this->db->executeQuery('SELECT 1')->fetchOne();
 
 			if ((string)$result === '1') {
 				return [
 					'status' => 'healthy',
-					'message' => $this->l10n->t('Database connection successful')
-				];
-			} else {
-				return [
-					'status' => 'unhealthy',
-					'message' => $this->l10n->t('Database query failed')
+					'message' => $this->l10n->t('Database connection successful'),
 				];
 			}
+
+			return [
+				'status' => 'unhealthy',
+				'message' => $this->l10n->t('Database query failed'),
+			];
 		} catch (\Throwable $e) {
 			// Do not expose raw exception to PublicPage health endpoint
 			return [
 				'status' => 'unhealthy',
-				'message' => $this->l10n->t('Database connection failed')
+				'message' => $this->l10n->t('Database connection failed'),
 			];
 		}
 	}

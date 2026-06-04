@@ -16,7 +16,10 @@ use OCA\ArbeitszeitCheck\Db\AuditLogMapper;
 use OCA\ArbeitszeitCheck\Service\CSPService;
 use OCA\ArbeitszeitCheck\Service\FrontEndAssetService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
+use OCA\ArbeitszeitCheck\Support\SchemaHealth;
+use OCP\IDBConnection;
 use OCP\IURLGenerator;
+use OCP\Server;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
@@ -349,23 +352,23 @@ class SettingsController extends Controller
 			$userId = $user->getUID();
 			$completed = $this->request->getParam('completed', true);
 
-			// Try to set the setting, but handle table not existing gracefully
+			if (!$this->isDatabaseSchemaReady()) {
+				return new JSONResponse([
+					'success' => false,
+					'error' => $this->l10n->t('Database update required. Ask an administrator to run “Update apps” or `php occ upgrade`, then try again.'),
+					'code' => 'SCHEMA_NOT_READY',
+				], Http::STATUS_SERVICE_UNAVAILABLE);
+			}
+
 			try {
 				$this->userSettingsMapper->setSetting($userId, 'onboarding_completed', $completed ? '1' : '0');
 			} catch (DBException $e) {
-				// Table doesn't exist yet - just return success (setting will be saved when table is created)
-				\OCP\Log\logger('arbeitszeitcheck')->warning('Settings table not found, cannot save setting', ['exception' => $e]);
+				\OCP\Log\logger('arbeitszeitcheck')->error('Settings table not found while schema was reported ready', ['exception' => $e]);
 				return new JSONResponse([
-					'success' => true,
-					'message' => $this->l10n->t('Onboarding status will be saved after database migration')
-				]);
-			} catch (\Throwable $e) {
-				// Any other error (including PDO exceptions) - log and return success to avoid breaking the UI
-				\OCP\Log\logger('arbeitszeitcheck')->warning('Error setting onboarding setting: ' . $e->getMessage() . ' | Class: ' . get_class($e), ["exception" => $e]);
-				return new JSONResponse([
-					'success' => true,
-					'message' => $this->l10n->t('Onboarding status will be saved after database migration')
-				]);
+					'success' => false,
+					'error' => $this->l10n->t('Database update required. Ask an administrator to run “Update apps” or `php occ upgrade`, then try again.'),
+					'code' => 'SCHEMA_NOT_READY',
+				], Http::STATUS_SERVICE_UNAVAILABLE);
 			}
 
 			// Create audit log entry (only if mapper is available)
@@ -393,6 +396,16 @@ class SettingsController extends Controller
 				'success' => false,
 				'error' => $this->l10n->t('Failed to update onboarding status')
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+	}
+
+	private function isDatabaseSchemaReady(): bool
+	{
+		try {
+			return SchemaHealth::isReady(Server::get(IDBConnection::class));
+		} catch (\Throwable $e) {
+			\OCP\Log\logger('arbeitszeitcheck')->warning('Schema readiness check failed', ['exception' => $e]);
+			return false;
 		}
 	}
 }

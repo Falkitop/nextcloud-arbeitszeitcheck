@@ -51,6 +51,7 @@ use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use OCA\ArbeitszeitCheck\Support\OpeningBalanceYearValidator;
+use OCA\ArbeitszeitCheck\Support\SchemaHealth;
 use OCA\ArbeitszeitCheck\Support\StrictYmdDates;
 use OCA\ArbeitszeitCheck\Support\TariffRuleModuleValidator;
 use OCA\ArbeitszeitCheck\Support\UserDirectorySearch;
@@ -226,7 +227,9 @@ class AdminController extends Controller
 	 */
 	private function buildAdminShellParams(string $pageId, string $title, string $help): array
 	{
-		return $this->buildShellParams($pageId, $title, $help, $this->buildAdminNavFlags(), $this->l10n->t('Administration'));
+		return $this->buildShellParams($pageId, $title, $help, $this->buildAdminNavFlags(), $this->l10n->t('Administration')) + [
+			'schema_health' => SchemaHealth::assess($this->db),
+		];
 	}
 
 	/**

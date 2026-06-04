@@ -14,6 +14,8 @@ namespace OCA\ArbeitszeitCheck\AppInfo;
 
 use OCA\ArbeitszeitCheck\Capabilities;
 use OCA\ArbeitszeitCheck\Repair\BackfillAbsenceDays;
+use OCA\ArbeitszeitCheck\Repair\EnsureArbeitszeitCheckSchema;
+use OCA\ArbeitszeitCheck\Repair\ReleaseStuckPendingAbsences;
 use OCA\ArbeitszeitCheck\Listener\LoadSidebarScripts;
 use OCA\ArbeitszeitCheck\Listener\CSPListener;
 use OCA\ArbeitszeitCheck\Listener\TimeClientBootstrapListener;
@@ -296,10 +298,23 @@ class Application extends App implements IBootstrap {
 			);
 		});
 
-		$context->registerService(BackfillAbsenceDays::class, function($c) {
+		$context->registerService(EnsureArbeitszeitCheckSchema::class, function ($c): EnsureArbeitszeitCheckSchema {
+			return new EnsureArbeitszeitCheckSchema(
+				$c->query(IDBConnection::class),
+			);
+		});
+
+		$context->registerService(BackfillAbsenceDays::class, function ($c): BackfillAbsenceDays {
 			return new BackfillAbsenceDays(
 				$c->query(\OCA\ArbeitszeitCheck\Db\AbsenceMapper::class),
-				$c->query(HolidayService::class)
+				$c->query(HolidayService::class),
+			);
+		});
+
+		$context->registerService(ReleaseStuckPendingAbsences::class, function ($c): ReleaseStuckPendingAbsences {
+			return new ReleaseStuckPendingAbsences(
+				$c->query(\OCA\ArbeitszeitCheck\Db\AbsenceMapper::class),
+				$c->query(AbsenceService::class),
 			);
 		});
 
