@@ -22,6 +22,7 @@ use OCA\ArbeitszeitCheck\Service\IconCatalog;
 
 $calloutVariant = (string)($calloutVariant ?? 'info');
 $calloutRole = (string)($calloutRole ?? 'status');
+$calloutHint = (string)($calloutHint ?? '');
 $calloutElement = (string)($calloutElement ?? 'aside');
 $calloutBanner = ($calloutBanner ?? true) !== false;
 $calloutId = isset($calloutId) ? (string)$calloutId : '';

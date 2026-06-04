@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.3.24 - 2026-06-04
+
+### Fixed
+
+- **Dashboard widget**: `DashboardDeskletRenderService` now uses `\OCP\Template` instead of the non-existent `OCP\ITemplateManager`, fixing `Could not load lazy dashboard widget: EmployeeStatusWidget` on the Nextcloud home dashboard.
+- **Callout partial**: `alert-callout.php` defaults `$calloutHint` to an empty string so includes without a hint no longer emit PHP notices on the main app pages.
+
 ## 1.3.23 - 2026-06-04
 
 ### Fixed
