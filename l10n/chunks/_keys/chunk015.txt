@@ -1,0 +1,150 @@
+Substitution requests: Approve or decline requests to cover for colleagues
+Success
+Successfully clocked in
+Successfully clocked out
+Suggested next step
+Summary
+Summary (one row per person)
+Summary matches the on-screen team totals. Detailed time entries lists each booking line (respects midnight split in admin settings).
+Summary of current overtime settings. Change values under Notifications & overtime.
+Sun
+Sunday
+Sunday Work Detected (ArbZG §§9-10)
+Sunday work
+Sunday work is generally prohibited with exceptions
+Take Break Now
+Take Breaks
+Take a break when required, or clock out when you finish.
+Tariff / collective agreement
+Tariff rule based
+Tariff rule set
+Tariff rule set ID
+Tariff rule set is no longer valid for the selected layer effective date
+Tariff rule set is no longer valid for the selected policy date
+Tariff rule set must be empty for manual fixed mode
+Tariff rule set must be empty for this vacation mode
+Tariff rule set not active
+Tariff rule set not found
+Tariff rule set starts after policy effective date
+Tariff rule set starts after the layer effective date
+Team
+Team / cohort policies
+Team / cohort policy
+Team Members
+Team compliance
+Team created
+Team deleted
+Team download content
+Team download is only available for the working time export. Switch to personal scope to download absence or compliance data.
+Team file download is only available for the working time export.
+Team id is required for scope=team
+Team is required
+Team list
+Team managers
+Team members
+Team members and managers
+Team members overview
+Team name
+Team name is required
+Team not found
+Team overtime alerts
+Team overview
+Team policy
+Team reports require selecting a team member
+Team selected
+Team statistics
+Team status
+Team updated
+Team vacation policies
+Team vacation policy not found
+Teams
+Teams and departments
+Teams and locations
+Teams, Abteilungen oder andere Organisationseinheiten in einer flexiblen Hierarchie definieren. Mitglieder und Leitungen zuweisen. Wenn unten aktiviert, können Leitungen Abwesenheiten und Zeitkorrekturen ihrer Einheiten freigeben.
+Technical details (audit)
+Technical error: Required fields for the holiday could not be found.
+The "Reopen month" button runs immediately and only performs this reopening step. It is not saved with "Save all settings" at the bottom of the page.
+The calendar year this opening balance applies to (same year as in employees’ vacation statistics—usually the current year). When a new year starts or after migrating from another system, set the Resturlaub opening balance for that year here or use the CSV import command; the app does not roll balances forward automatically.
+The calendar year this opening balance belongs to—the same year shown in vacation statistics. Use the year you are booking against (often the current year).
+The dashboard shows your daily, weekly, and monthly working hours, overtime balance, and vacation days remaining.
+The default federal state could not be saved.
+The download contains one row per team member for the selected period.
+The download lists each time entry line for your team (several rows per person if there are multiple entries; overnight shifts may appear as two rows when midnight split is enabled).
+The end date must be on or after the start date.
+The federal state for an employee is set by administrators or managers, for example in %1$sEmployee settings%2$s. If no own state is configured there, the default state configured here is used.
+The first day of your absence
+The first day to include in the report. Click the calendar icon to pick a date. Example: If you want a report for January, select January 1st.
+The following layer determined your entitlement:
+The following reason was provided for the rejection of this absence request:
+The format is incorrect. Please check the format and try again.
+The last day of your absence
+The last day to include in the report. Click the calendar icon to pick a date. Example: If you want a report for January, select January 31st.
+The most hours someone can work in one day. German law allows up to 8 hours normally, or 10 hours in special cases. Example: Enter 10 to allow up to 10 hours per day.
+The normal number of hours people work each day. This is used for new employees until you set their individual working hours. Example: Enter 8 for a standard 8-hour workday.
+The seal applies to one full calendar month. Only calendar months that have ended and contain at least one time entry are listed.
+The selected user does not exist or is disabled.
+The system automatically tracks your working hours and ensures compliance with legal requirements.
+The system will automatically calculate when you need to take breaks according to German labor law. For example, if you work more than 6 hours, you must take at least a 30-minute break.
+The system will automatically check if working hours follow German labor law. For example, it will warn if someone works more than 8 hours per day without a break.
+The system will automatically track your hours and remind you to take breaks
+The table below shows your proposed times until a decision is made. You can withdraw a request using the Withdraw button.
+There are issues with your working time that need attention. Please check the list below and fix them.
+There are no time entries in this calendar month.
+There are some issues with your working time that need attention. Please check the list below and fix them.
+These numbers only count approved vacation. Carryover days must be used for vacation days on or before the expiry date; after that, new requests use your regular annual entitlement first.
+These recipients are used for both overtime and undertime alerts. Use valid email addresses separated by commas. Duplicates are removed automatically.
+These settings are the same as in the ArbeitszeitCheck app. Use the full app view for navigation to all admin tools (employees, holidays, audit log, and more).
+These settings define if and when HR receives email updates for absence workflows.
+This Month
+This Week
+This Week:
+This app helps you record your work time and follow German labor law. Here's how to get started:
+This calendar month is finalized. Contact an administrator if a correction must be made.
+This default applies to every employee who has no individual rule, no team policy, and no model default for the chosen date range.
+This entry has a pending correction request. Deleting it may affect the approval process.
+This federal state is used automatically when no own state is configured for employees or teams.
+This federal state is used automatically when no specific state is set for employees or teams.
+This field
+This is the last calendar day in each year when carryover from the opening balance (Resturlaub) may still be used for vacation. You enter each person's opening balance per calendar year under Users. After this date, new vacation requests can only use the annual vacation entitlement from the working time model—not carryover. This applies to everyone.
+This list is filled automatically if app-owned teams are enabled.
+This period overlaps with an existing %1$s (%2$s – %3$s).
+This permanently removes your time entries, absences, and settings from ArbeitszeitCheck.
+This quick tour will help you get started with time tracking. You can skip this tour at any time.
+This request is waiting for approval, but no approver is assigned to your team in the app. Contact your administrator to fix the team setup, or wait until the system can process it.
+This session was left unfinished. Set the correct end time and save — the entry will then be recorded as completed.
+This shows how well your working time follows German labor law. 100% means everything is perfect.
+This starts a manual compliance scan for all users. Review the violations list afterward; no data is changed automatically.
+This time entry cannot be corrected.
+This time entry cannot be deleted.
+This time entry overlaps with existing entries: %s
+This time entry was changed by someone else. Please reload and try again.
+This time entry would exceed the maximum daily working hours of 10 hours (ArbZG §3). Total daily hours would be %s hours.
+This week
+This week (%s)
+This widget is only available for app administrators.
+Threshold values must be valid numbers.
+Thu
+Thursday
+Tie-break details (candidate teams)
+Tie-breaking when teams overlap
+Time Entries
+Time Entries for {date}
+Time Entries: View, add, edit, or delete all your working time records
+Time Entry Details
+Time Entry Form
+Time Tracking
+Time Tracking Dashboard
+Time capture methods updated
+Time entries
+Time entries layout
+Time entries: View, create, and edit working time records
+Time entry
+Time entry corrected successfully.
+Time entry correction
+Time entry correction approved successfully
+Time entry correction rejected
+Time entry corrections
+Time entry created successfully
+Time entry deleted successfully
+Time entry has no start time
+Time entry is not pending approval

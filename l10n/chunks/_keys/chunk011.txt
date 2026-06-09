@@ -1,0 +1,150 @@
+Only users in the Nextcloud admin group are listed. Changes take effect immediately after saving.
+Open
+Open (month status)
+Open My settings in the ArbeitszeitCheck app (in the left menu, above Administration), then use the section “ProjectCheck connection” and click Save connection.
+Open Organization
+Open ProjectCheck connection settings
+Open absences
+Open admin dashboard
+Open administration status
+Open audit log
+Open calendar
+Open dashboard to finish session
+Open employee absences
+Open employee management to assign working time models and vacation entitlements
+Open employee time entries
+Open full settings in app
+Open full settings in the app without saving
+Open global administration settings
+Open in app
+Open issues
+Open manager dashboard
+Open my ProjectCheck connection
+Open navigation menu
+Open notification settings
+Open overtime payout audit
+Open quick actions
+Open revision PDFs for employees
+Open team settings
+Open the full ArbeitszeitCheck admin settings in the app
+Open time entries
+Open time tracking
+Open working time models to define standard schedules
+Open your time entries to see proposed times or withdraw the request.
+Opening balance hours must be a number between -9999 and 9999.
+Opening balance of carryover days for the selected calendar year (Resturlaub), e.g. from HR or migration. This is not the annual vacation entitlement from the working time model. The last day carryover can be used is set globally in Admin settings.
+Opening balance year must be a four-digit year (e.g. 2026).
+Opening balance year must be between 2000 and 2100.
+Opening overtime balance (hours)
+Operation completed successfully
+Optional
+Optional description
+Optional description for this time entry
+Optional description or notes about this work period
+Optional notes for your manager
+Optional reason for declining (leave empty for none):
+Optional reason for rejection (leave empty for none):
+Optional reason or notes for your absence request
+Optional: Add notes or details about this work period (e.g., project work, meetings, tasks)
+Optional: Record your break times. Breaks of at least 15 minutes count toward legal requirements (ArbZG §4).
+Optional: Record your break times. Breaks of at least 15 minutes count toward legal requirements (ArbZG §4). You can add multiple breaks.
+Optional: Record your break times. German law requires breaks for work over 6 hours: 30 minutes for 6-9 hours, 45 minutes for 9+ hours. Shorter shifts have no break requirements. Automatic breaks are added when needed for compliance. You can add additional manual breaks.
+Optional: When did your break end?
+Optional: When did your break end? Use automatic breaks for legal compliance.
+Optional: When did your break start?
+Optional: When did your break start? Use automatic breaks for legal compliance.
+Optionally choose a colleague who will cover your tasks during your absence.
+Optionally select a specific user. Leave empty to include all users.
+Organisation default
+Organisation default history
+Organisation time recording methods updated
+Organisation vacation default not found
+Organisationsstruktur
+Organization
+Organization and teams
+Organization reference timezone for stored work times
+Organization structure
+Organizational structure
+Original:
+Outcome
+Over: yellow %s / red %s · Under: yellow %s / red %s
+Overlaps existing organisation default %1$d (%2$s). Adjust the date range or delete the existing row.
+Overtime
+Overtime Balance:
+Overtime Report
+Overtime Stichtag
+Overtime alerts are disabled by the administrator.
+Overtime and undertime traffic light
+Overtime balance
+Overtime balance alerts are disabled by your administrator. Your balance above is still updated.
+Overtime balance and history
+Overtime payout audit
+Overtime payroll shortcuts
+Overtime policy (active)
+Overtime red threshold (hours)
+Overtime tracking from (Stichtag)
+Overtime tracking from (optional)
+Overtime tracking start date saved for the new account.
+Overtime yellow threshold (hours)
+Overtime: yellow from %1$s h, red from %2$s h. Undertime: yellow from %3$s h, red from %4$s h.
+Overview
+Overview of working time compliance across your team.
+Overview of your vacation days and sick leave
+Overview of your working hours, break time, and overtime for today.
+Overview of your working time and status
+PDF (for printing or viewing)
+Page
+Page {page} of {pages}
+Parent team
+Parent unit
+Parental Leave
+Parental leave
+Part-Time
+Part-time
+Partial Day
+Partial team history
+Past Only
+Past absences are allowed
+Past record
+Pause
+Pause or Clock Out
+Pause or clock out
+Paused
+Paused · Worked so far: %1$s
+Payout audit
+Payout history
+Payroll must record the overtime payout for this month before you can finalize.
+Pending
+Pending Absences
+Pending Approval
+Pending Requests
+Pending approvals
+Pending requests
+Pending substitution requests
+People
+Period
+Period Details
+Period Information
+Period and download
+Period and duration
+Period: %1$s to %2$s
+Period: %s
+Personal Information
+Personal Leave
+Personal reasons
+Personal setting — not on this page
+Pick a month that already has sealed data, then download the same revision-secure PDF for each person you are allowed to access.
+Pick a team to see who would be affected.
+Pick a working time model to see who would be affected.
+Pick the active rule set that defines this entitlement.
+Pick the day you actually returned. Must be before the original end date.
+Pick the month that was already finalized for this person.
+Pick the start and end date for your report.
+Pick the time period for your report. For daily or weekly reports, we will adjust the dates automatically.
+Pick the time period for your report. The selected range applies to the export and preview.
+Please choose who should be included in the report.
+Please correct the highlighted fields and try again.
+Please enter a number that is at least {min}. You entered {actual}.
+Please enter a number that is no more than {max}. You entered {actual}.
+Please enter a valid date
+Please enter a valid date (dd.mm.yyyy).
