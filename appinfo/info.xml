@@ -13,6 +13,11 @@
 	<summary lang="fr">Suivi du temps de travail avec contrôles de conformité ArbZG/RGPD directement dans votre Nextcloud</summary>
 	<summary lang="da">Tidsregistrering med ArbZG/GDPR-overholdelseskontrol direkte i din Nextcloud</summary>
 	<summary lang="es">Registro de tiempo con comprobaciones de cumplimiento ArbZG/RGPD directamente en tu Nextcloud</summary>
+	<summary lang="nl">Tijdregistratie met ArbZG/AVG-nalevingscontroles direct in uw Nextcloud</summary>
+	<summary lang="it">Registrazione ore con controlli di conformità ArbZG/GDPR direttamente nel tuo Nextcloud</summary>
+	<summary lang="pl">Rejestracja czasu z kontrolą zgodności ArbZG/RODO bezpośrednio w Twoim Nextcloud</summary>
+	<summary lang="sv">Tidsregistrering med ArbZG/GDPR-efterlevnadskontroller direkt i din Nextcloud</summary>
+	<summary lang="nb">Tidsregistrering med ArbZG/GDPR-samsvarskontroller direkte i din Nextcloud</summary>
 	<description><![CDATA[
 # ArbeitszeitCheck
 
