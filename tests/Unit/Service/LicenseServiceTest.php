@@ -136,6 +136,37 @@ class LicenseServiceTest extends TestCase
 		$this->assertSame(5, $service->getMobileSeatLimit());
 	}
 
+	public function testUpsertMergeClearsZeroSeatFields(): void
+	{
+		$existing = new LicenseState();
+		$existing->setId(1);
+		$existing->setMobileSeats(5);
+		$existing->setTerminalDevices(1);
+		$existing->resetUpdatedFields();
+
+		$incoming = new LicenseState();
+		$incoming->setCustomerId('term-only');
+		$incoming->setValidUntil(new \DateTime('2027-12-31'));
+		$incoming->setMobileSeats(0);
+		$incoming->setTerminalDevices(3);
+		$incoming->setBundle(0);
+		$incoming->setKeyAppliedAt(new \DateTime('2026-06-10'));
+		$incoming->setPayloadB64('payload');
+		$incoming->setSignatureB64('sig');
+
+		$existing->setCustomerId($incoming->getCustomerId());
+		$existing->setValidUntil($incoming->getValidUntil());
+		$existing->setMobileSeats($incoming->getMobileSeats());
+		$existing->setTerminalDevices($incoming->getTerminalDevices());
+		$existing->setBundle($incoming->getBundle());
+		$existing->setKeyAppliedAt($incoming->getKeyAppliedAt());
+		$existing->setPayloadB64($incoming->getPayloadB64());
+		$existing->setSignatureB64($incoming->getSignatureB64());
+
+		$this->assertSame(0, $existing->getMobileSeats());
+		$this->assertSame(3, $existing->getTerminalDevices());
+	}
+
 	private function makeService(LicenseStateMapper $mapper): LicenseService
 	{
 		$time = $this->createMock(ITimeFactory::class);

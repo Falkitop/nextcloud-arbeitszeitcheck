@@ -35,8 +35,15 @@ class LicenseStateMapper extends QBMapper
 	{
 		$existing = $this->findCurrent();
 		if ($existing !== null) {
-			$state->setId($existing->getId());
-			return $this->update($state);
+			$existing->setCustomerId($state->getCustomerId());
+			$existing->setValidUntil($state->getValidUntil());
+			$existing->setMobileSeats($state->getMobileSeats());
+			$existing->setTerminalDevices($state->getTerminalDevices());
+			$existing->setBundle($state->getBundle());
+			$existing->setKeyAppliedAt($state->getKeyAppliedAt());
+			$existing->setPayloadB64($state->getPayloadB64());
+			$existing->setSignatureB64($state->getSignatureB64());
+			return $this->update($existing);
 		}
 		return $this->insert($state);
 	}
