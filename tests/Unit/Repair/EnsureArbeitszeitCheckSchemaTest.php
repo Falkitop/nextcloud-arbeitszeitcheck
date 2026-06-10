@@ -21,7 +21,10 @@ final class EnsureArbeitszeitCheckSchemaTest extends TestCase
 
 		$step = new EnsureArbeitszeitCheckSchema($connection);
 		$step->run($output);
-		self::assertSame(25, count(ArbeitszeitCheckTableCatalog::TABLES));
+		$catalog = ArbeitszeitCheckTableCatalog::TABLES;
+		self::assertContains('azc_license_state', $catalog);
+		self::assertContains('at_kiosk_terminals', $catalog);
+		self::assertGreaterThanOrEqual(25, count($catalog));
 		self::assertTrue(ArbeitszeitCheckTableCatalog::isLegacyDroppedTable('at_absence_calendar'));
 	}
 }

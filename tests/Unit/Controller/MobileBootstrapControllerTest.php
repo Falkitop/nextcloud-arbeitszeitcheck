@@ -7,6 +7,8 @@ namespace OCA\ArbeitszeitCheck\Tests\Unit\Controller;
 use OCA\ArbeitszeitCheck\Capabilities;
 use OCA\ArbeitszeitCheck\Controller\MobileBootstrapController;
 use OCA\ArbeitszeitCheck\Service\DashboardWidgetDataService;
+use OCA\ArbeitszeitCheck\Service\LicenseService;
+use OCA\ArbeitszeitCheck\Service\MobileSeatService;
 use OCA\ArbeitszeitCheck\Service\OvertimeBankService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCP\App\IAppManager;
@@ -50,6 +52,16 @@ class MobileBootstrapControllerTest extends TestCase {
 		$capabilities = $this->createMock(Capabilities::class);
 		$capabilities->method('getCapabilities')->willReturn(['arbeitszeitcheck' => ['version' => '1.3.9']]);
 
+		$license = $this->createMock(LicenseService::class);
+		$license->method('isMobilePlanActive')->willReturn(false);
+		$license->method('getValidUntil')->willReturn(null);
+		$license->method('buildEnvelope')->willReturn(null);
+		$license->method('getMobileSeatLimit')->willReturn(0);
+
+		$seats = $this->createMock(MobileSeatService::class);
+		$seats->method('isUserAllowed')->willReturn(false);
+		$seats->method('getAssignedCount')->willReturn(0);
+
 		$controller = new MobileBootstrapController(
 			'arbeitszeitcheck',
 			$this->createMock(IRequest::class),
@@ -62,6 +74,8 @@ class MobileBootstrapControllerTest extends TestCase {
 			$appConfig,
 			$l10nFactory,
 			$capabilities,
+			$license,
+			$seats,
 		);
 
 		$response = $controller->bootstrap();
@@ -89,6 +103,8 @@ class MobileBootstrapControllerTest extends TestCase {
 			$this->createMock(IAppConfig::class),
 			$this->createMock(L10NFactory::class),
 			$this->createMock(Capabilities::class),
+			$this->createMock(LicenseService::class),
+			$this->createMock(MobileSeatService::class),
 		);
 
 		$response = $controller->bootstrap();

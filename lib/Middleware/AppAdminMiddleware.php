@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace OCA\ArbeitszeitCheck\Middleware;
 
 use OCA\ArbeitszeitCheck\Controller\AdminController;
+use OCA\ArbeitszeitCheck\Controller\KioskAdminController;
+use OCA\ArbeitszeitCheck\Controller\LicenseAdminController;
 use OCA\ArbeitszeitCheck\Exception\NotAppAdminException;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCP\AppFramework\Http;
@@ -28,7 +30,9 @@ final class AppAdminMiddleware extends Middleware
 
 	public function beforeController($controller, $methodName): void
 	{
-		if (!$controller instanceof AdminController) {
+		if (!$controller instanceof AdminController
+			&& !$controller instanceof LicenseAdminController
+			&& !$controller instanceof KioskAdminController) {
 			return;
 		}
 

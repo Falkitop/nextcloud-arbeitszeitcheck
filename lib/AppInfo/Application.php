@@ -23,6 +23,8 @@ use OCA\ArbeitszeitCheck\Listener\LoadUsersSettingsArbeitszeitListener;
 use OCA\ArbeitszeitCheck\Listener\UserDeletedListener;
 use OCA\ArbeitszeitCheck\Middleware\AppAccessMiddleware;
 use OCA\ArbeitszeitCheck\Middleware\AppAdminMiddleware;
+use OCA\ArbeitszeitCheck\Middleware\ClientLicenseMiddleware;
+use OCA\ArbeitszeitCheck\Middleware\KioskLicenseMiddleware;
 use OCA\ArbeitszeitCheck\Notification\Notifier;
 use OCA\ArbeitszeitCheck\Service\TimeTrackingService;
 use OCA\ArbeitszeitCheck\Service\AbsenceService;
@@ -90,6 +92,28 @@ class Application extends App implements IBootstrap {
 			);
 		});
 		$context->registerMiddleware(AppAccessMiddleware::class);
+
+		$context->registerService(ClientLicenseMiddleware::class, function ($c): ClientLicenseMiddleware {
+			return new ClientLicenseMiddleware(
+				$c->query(\OCP\IRequest::class),
+				$c->query(\OCP\IUserSession::class),
+				$c->query(\OCA\ArbeitszeitCheck\Service\LicenseService::class),
+				$c->query(\OCA\ArbeitszeitCheck\Service\MobileSeatService::class),
+				$c->query(\Psr\Log\LoggerInterface::class),
+			);
+		});
+		$context->registerMiddleware(ClientLicenseMiddleware::class);
+
+		$context->registerService(KioskLicenseMiddleware::class, function ($c): KioskLicenseMiddleware {
+			return new KioskLicenseMiddleware(
+				$c->query(\OCP\IRequest::class),
+				$c->query(\OCA\ArbeitszeitCheck\Service\Kiosk\KioskSettingsService::class),
+				$c->query(\OCA\ArbeitszeitCheck\Service\LicenseService::class),
+				$c->query(\OCA\ArbeitszeitCheck\Service\Kiosk\KioskTerminalService::class),
+				$c->query(\Psr\Log\LoggerInterface::class),
+			);
+		});
+		$context->registerMiddleware(KioskLicenseMiddleware::class);
 
 		// Register event listeners
 		$context->registerEventListener(LoadSidebar::class, LoadSidebarScripts::class);
@@ -259,6 +283,22 @@ class Application extends App implements IBootstrap {
 		$context->registerService(\OCA\ArbeitszeitCheck\Db\TeamManagerMapper::class, function($c) {
 			return new \OCA\ArbeitszeitCheck\Db\TeamManagerMapper(
 				$c->query(IDBConnection::class)
+			);
+		});
+
+		$context->registerService(\OCA\ArbeitszeitCheck\Db\LicenseStateMapper::class, function ($c) {
+			return new \OCA\ArbeitszeitCheck\Db\LicenseStateMapper(
+				$c->query(IDBConnection::class),
+			);
+		});
+		$context->registerService(\OCA\ArbeitszeitCheck\Db\MobileSeatMapper::class, function ($c) {
+			return new \OCA\ArbeitszeitCheck\Db\MobileSeatMapper(
+				$c->query(IDBConnection::class),
+			);
+		});
+		$context->registerService(\OCA\ArbeitszeitCheck\Db\TerminalDeviceMapper::class, function ($c) {
+			return new \OCA\ArbeitszeitCheck\Db\TerminalDeviceMapper(
+				$c->query(IDBConnection::class),
 			);
 		});
 
@@ -709,6 +749,29 @@ class Application extends App implements IBootstrap {
 				$c->query(\OCP\IUserManager::class),
 				$c->query(TeamResolverService::class),
 				$c->query(\Psr\Log\LoggerInterface::class)
+			);
+		});
+
+		$context->registerService(\OCA\ArbeitszeitCheck\Service\LicenseService::class, function ($c) {
+			return new \OCA\ArbeitszeitCheck\Service\LicenseService(
+				$c->query(\OCA\ArbeitszeitCheck\Db\LicenseStateMapper::class),
+				$c->query(\OCP\AppFramework\Utility\ITimeFactory::class),
+				$c->query(\Psr\Log\LoggerInterface::class),
+			);
+		});
+		$context->registerService(\OCA\ArbeitszeitCheck\Service\MobileSeatService::class, function ($c) {
+			return new \OCA\ArbeitszeitCheck\Service\MobileSeatService(
+				$c->query(\OCA\ArbeitszeitCheck\Db\MobileSeatMapper::class),
+				$c->query(\OCA\ArbeitszeitCheck\Service\LicenseService::class),
+				$c->query(\OCP\IUserManager::class),
+				$c->query(\OCP\AppFramework\Utility\ITimeFactory::class),
+			);
+		});
+		$context->registerService(\OCA\ArbeitszeitCheck\Service\TerminalDeviceService::class, function ($c) {
+			return new \OCA\ArbeitszeitCheck\Service\TerminalDeviceService(
+				$c->query(\OCA\ArbeitszeitCheck\Db\TerminalDeviceMapper::class),
+				$c->query(\OCA\ArbeitszeitCheck\Service\LicenseService::class),
+				$c->query(\OCP\IDBConnection::class),
 			);
 		});
 

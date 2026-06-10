@@ -32,6 +32,10 @@ use OCA\ArbeitszeitCheck\Db\UserVacationPolicyAssignmentMapper;
 use OCA\ArbeitszeitCheck\Db\EntitlementComputationSnapshotMapper;
 use OCA\ArbeitszeitCheck\Db\TeamMemberMapper;
 use OCA\ArbeitszeitCheck\Db\TeamManagerMapper;
+use OCA\ArbeitszeitCheck\Db\MobileSeatMapper;
+use OCA\ArbeitszeitCheck\Db\KioskCredMapper;
+use OCA\ArbeitszeitCheck\Db\KioskSessionMapper;
+use OCA\ArbeitszeitCheck\Service\Kiosk\KioskSettingsService;
 use OCA\ArbeitszeitCheck\Service\NotificationService;
 use OCP\IL10N;
 use Psr\Log\LoggerInterface;
@@ -52,6 +56,10 @@ class UserDeletedListener implements IEventListener
 		private readonly UserWorkingTimeModelMapper $userWorkingTimeModelMapper,
 		private readonly TeamMemberMapper $teamMemberMapper,
 		private readonly TeamManagerMapper $teamManagerMapper,
+		private readonly MobileSeatMapper $mobileSeatMapper,
+		private readonly KioskCredMapper $kioskCredMapper,
+		private readonly KioskSessionMapper $kioskSessionMapper,
+		private readonly KioskSettingsService $kioskSettingsService,
 		private readonly VacationYearBalanceMapper $vacationYearBalanceMapper,
 		private readonly VacationRolloverLogMapper $vacationRolloverLogMapper,
 		private readonly UserOvertimeYearBalanceMapper $userOvertimeYearBalanceMapper,
@@ -88,6 +96,10 @@ class UserDeletedListener implements IEventListener
 			$this->entitlementComputationSnapshotMapper->deleteByUser($userId);
 			$this->teamMemberMapper->deleteByUserId($userId);
 			$this->teamManagerMapper->deleteByUserId($userId);
+			$this->mobileSeatMapper->deleteByUserId($userId);
+			$this->kioskCredMapper->deleteByUserId($userId);
+			$this->kioskSessionMapper->deleteByUserId($userId);
+			$this->kioskSettingsService->setUserKioskAllowed($userId, false);
 		} catch (\Throwable $e) {
 			$this->logger->error('Error cleaning up arbeitszeitcheck data for deleted user', [
 				'app' => 'arbeitszeitcheck',

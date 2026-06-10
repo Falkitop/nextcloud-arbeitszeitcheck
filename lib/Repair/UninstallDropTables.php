@@ -32,6 +32,10 @@ final class UninstallDropTables implements IRepairStep
 	 * Kept in sync by the DB-standards linter.
 	 */
 	public const TABLES = [
+		'at_kiosk_creds',
+		'at_kiosk_enrollment',
+		'at_kiosk_sessions',
+		'at_kiosk_terminals',
 		'at_absence_calendar',
 		'at_absences',
 		'at_audit',
@@ -58,6 +62,9 @@ final class UninstallDropTables implements IRepairStep
 		'at_vacation_rollover_log',
 		'at_vacation_year_balance',
 		'at_violations',
+		'azc_license_state',
+		'azc_mobile_seat',
+		'azc_terminal_device',
 	];
 
 	public function __construct(

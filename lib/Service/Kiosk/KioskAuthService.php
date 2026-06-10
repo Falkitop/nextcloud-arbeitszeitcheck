@@ -1,0 +1,190 @@
+<?php
+
+declare(strict_types=1);
+
+namespace OCA\ArbeitszeitCheck\Service\Kiosk;
+
+use OCA\ArbeitszeitCheck\Constants;
+use OCA\ArbeitszeitCheck\Db\AuditLogMapper;
+use OCA\ArbeitszeitCheck\Db\KioskCred;
+use OCA\ArbeitszeitCheck\Db\KioskCredMapper;
+use OCA\ArbeitszeitCheck\Db\KioskSession;
+use OCA\ArbeitszeitCheck\Db\KioskSessionMapper;
+use OCA\ArbeitszeitCheck\Db\KioskTerminal;
+use OCA\ArbeitszeitCheck\Db\TimeEntry;
+use OCA\ArbeitszeitCheck\Kiosk\KioskCrypto;
+use OCA\ArbeitszeitCheck\Service\PermissionService;
+use OCA\ArbeitszeitCheck\Service\TimeCaptureMethodService;
+use OCA\ArbeitszeitCheck\Service\TimeTrackingService;
+use OCP\AppFramework\Utility\ITimeFactory;
+use OCP\IUserManager;
+
+class KioskAuthService
+{
+	public function __construct(
+		private readonly KioskCredentialService $credentialService,
+		private readonly KioskCredMapper $credMapper,
+		private readonly KioskSessionMapper $sessionMapper,
+		private readonly KioskSettingsService $settingsService,
+		private readonly PermissionService $permissionService,
+		private readonly TimeCaptureMethodService $timeCaptureMethodService,
+		private readonly TimeTrackingService $timeTrackingService,
+		private readonly IUserManager $userManager,
+		private readonly AuditLogMapper $auditLogMapper,
+		private readonly ITimeFactory $timeFactory,
+	) {
+	}
+
+	/**
+	 * @return array{sessionToken: string, userId: string, displayName: string, status: string, workedSecondsToday: int, allowedActions: list<string>}
+	 */
+	public function identify(KioskTerminal $terminal, string $method, ?string $rfidUid, ?string $userId, ?string $pin): array
+	{
+		$this->sessionMapper->deleteExpiredForTerminal($terminal->getTerminalId(), $this->timeFactory->getDateTime());
+
+		$cred = match ($method) {
+			'rfid' => $this->resolveRfidCredential($rfidUid ?? ''),
+			'pin' => $this->resolvePinCredential($userId ?? '', $pin ?? ''),
+			default => throw new KioskException('KIOSK_CREDENTIAL_UNKNOWN'),
+		};
+
+		$userIdResolved = $cred->getUserId();
+		$this->assertUserEligible($userIdResolved);
+
+		$this->credentialService->resetFailedAttempts($cred);
+		$sessionToken = KioskCrypto::generateToken();
+		$now = $this->timeFactory->getDateTime();
+		$expires = (clone $now)->modify('+' . Constants::KIOSK_SESSION_TTL_SECONDS . ' seconds');
+
+		$session = new KioskSession();
+		$session->setTerminalId($terminal->getTerminalId());
+		$session->setUserId($userIdResolved);
+		$session->setTokenHash(KioskCrypto::hashSecret($sessionToken));
+		$session->setExpiresAt($expires);
+		$session->setCreatedAt($now);
+		$this->sessionMapper->insert($session);
+
+		$user = $this->userManager->get($userIdResolved);
+		$statusData = $this->timeTrackingService->getStatus($userIdResolved);
+		$kioskStatus = $this->mapKioskStatus((string)($statusData['status'] ?? 'clocked_out'));
+		$allowedActions = $this->mapAllowedActions($kioskStatus);
+		$workedSeconds = (int)round(((float)($statusData['working_today_hours'] ?? 0)) * 3600);
+
+		$this->auditLogMapper->logAction($userIdResolved, 'kiosk_identify_ok', 'kiosk_session', $session->getId(), null, [
+			'method' => $method,
+			'terminalId' => $terminal->getTerminalId(),
+		], $userIdResolved);
+
+		return [
+			'sessionToken' => $sessionToken,
+			'userId' => $userIdResolved,
+			'displayName' => $user !== null ? $user->getDisplayName() : $userIdResolved,
+			'status' => $kioskStatus,
+			'workedSecondsToday' => $workedSeconds,
+			'allowedActions' => $allowedActions,
+		];
+	}
+
+	public function validateSession(KioskTerminal $terminal, string $sessionToken): KioskSession
+	{
+		$now = $this->timeFactory->getDateTime();
+		$session = $this->sessionMapper->findValidSession($terminal->getTerminalId(), $sessionToken, $now);
+		if ($session === null) {
+			throw new KioskException('KIOSK_SESSION_INVALID');
+		}
+		return $session;
+	}
+
+	public function assertUserEligibleForAction(string $userId): void
+	{
+		$this->assertUserEligible($userId);
+	}
+
+	/** @return list<array{userId: string, displayName: string}> */
+	public function listPinUsers(): array
+	{
+		$users = [];
+		foreach ($this->credMapper->findAllWithPin() as $cred) {
+			$userId = $cred->getUserId();
+			if (!$this->settingsService->isUserKioskAllowed($userId)) {
+				continue;
+			}
+			if (!$this->permissionService->isUserAllowedByAccessGroups($userId)) {
+				continue;
+			}
+			$user = $this->userManager->get($userId);
+			if ($user === null) {
+				continue;
+			}
+			$users[] = [
+				'userId' => $userId,
+				'displayName' => $user->getDisplayName(),
+			];
+		}
+		usort($users, static fn (array $a, array $b): int => strcasecmp($a['displayName'], $b['displayName']));
+		return $users;
+	}
+
+	private function resolveRfidCredential(string $rfidUid): KioskCred
+	{
+		$cred = $this->credentialService->findCredByRfidUid($rfidUid);
+		if ($cred === null) {
+			$this->auditLogMapper->logAction('', 'kiosk_identify_failed', 'kiosk_cred', null, null, ['method' => 'rfid']);
+			throw new KioskException('KIOSK_CREDENTIAL_UNKNOWN');
+		}
+		if ($this->credentialService->isLocked($cred)) {
+			throw new KioskException('PIN_LOCKED');
+		}
+		return $cred;
+	}
+
+	private function resolvePinCredential(string $userId, string $pin): KioskCred
+	{
+		if ($userId === '' || $pin === '') {
+			throw new KioskException('PIN_INVALID');
+		}
+		$cred = $this->credMapper->findByUserAndType($userId, 'pin');
+		if ($cred === null) {
+			$this->auditLogMapper->logAction($userId, 'kiosk_identify_failed', 'kiosk_cred', null, null, ['method' => 'pin']);
+			throw new KioskException('KIOSK_CREDENTIAL_UNKNOWN');
+		}
+		if ($this->credentialService->isLocked($cred)) {
+			throw new KioskException('PIN_LOCKED');
+		}
+		if (!$this->credentialService->verifyPin($cred, $pin)) {
+			$this->credentialService->recordFailedAttempt($cred);
+			$this->auditLogMapper->logAction($userId, 'kiosk_identify_failed', 'kiosk_cred', $cred->getId(), null, ['method' => 'pin']);
+			throw new KioskException('PIN_INVALID');
+		}
+		return $cred;
+	}
+
+	private function assertUserEligible(string $userId): void
+	{
+		$this->credentialService->assertUserKioskAllowed($userId);
+		if (!$this->permissionService->isUserAllowedByAccessGroups($userId)) {
+			throw new KioskException('KIOSK_USER_NOT_ALLOWED');
+		}
+		$this->timeCaptureMethodService->assertClockStampingAllowed($userId);
+	}
+
+	private function mapKioskStatus(string $rawStatus): string
+	{
+		return match ($rawStatus) {
+			TimeEntry::STATUS_ACTIVE => 'working',
+			TimeEntry::STATUS_BREAK => 'on_break',
+			TimeEntry::STATUS_PAUSED => 'off',
+			default => 'off',
+		};
+	}
+
+	/** @return list<string> */
+	private function mapAllowedActions(string $kioskStatus): array
+	{
+		return match ($kioskStatus) {
+			'working' => ['clock_out', 'break_start'],
+			'on_break' => ['break_end', 'clock_out'],
+			default => ['clock_in'],
+		};
+	}
+}

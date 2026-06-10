@@ -58,6 +58,8 @@ $isAdminTeams = strpos($currentPage, '/admin/teams') !== false;
 $isAdminVacationLayers = strpos($currentPage, '/admin/vacation-layers') !== false;
 $isAdminAuditLog = strpos($currentPage, '/admin/audit-log') !== false;
 $isAdminSettingsPage = strpos($currentPage, '/admin/settings') !== false;
+$isAdminLicensePage = strpos($currentPage, '/admin/license') !== false;
+$isAdminKioskPage = strpos($currentPage, '/admin/kiosk') !== false;
 $isAdminNotificationsPage = strpos($currentPage, '/admin/notifications') !== false;
 $isAdminOvertimePayoutsPage = strpos($currentPage, '/admin/overtime-payouts') !== false;
 $isAdminOvertimePayoutAuditPage = strpos($currentPage, '/admin/overtime-payout-audit') !== false;
@@ -263,6 +265,20 @@ $monthClosureEnabledNav = array_key_exists('monthClosureEnabled', $_)
                                 title="<?php p($l->t('View audit log')); ?>"
                                 aria-label="<?php p($l->t('Open audit log')); ?>">
                                 <span><?php p($l->t('Audit log')); ?></span>
+                            </a>
+                        </li>
+                        <li class="<?php p($isAdminLicensePage ? 'active' : ''); ?>" <?php p($isAdminLicensePage ? 'aria-current="page"' : ''); ?>>
+                            <a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.license_admin.index')); ?>"
+                                title="<?php p($l->t('Organisation license for Mobile and Terminal apps')); ?>"
+                                aria-label="<?php p($l->t('Open license settings')); ?>">
+                                <span><?php p($l->t('License')); ?></span>
+                            </a>
+                        </li>
+                        <li class="<?php p($isAdminKioskPage ? 'active' : ''); ?>" <?php p($isAdminKioskPage ? 'aria-current="page"' : ''); ?>>
+                            <a href="<?php p($urlGenerator->linkToRoute('arbeitszeitcheck.kiosk_admin.index')); ?>"
+                                title="<?php p($l->t('Foyer kiosk terminals and employee badges')); ?>"
+                                aria-label="<?php p($l->t('Open kiosk administration')); ?>">
+                                <span><?php p($l->t('Kiosk')); ?></span>
                             </a>
                         </li>
                         <li class="<?php p($isAdminSettingsPage ? 'active' : ''); ?>" <?php p($isAdminSettingsPage ? 'aria-current="page"' : ''); ?>>

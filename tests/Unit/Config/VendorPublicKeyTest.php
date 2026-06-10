@@ -1,0 +1,44 @@
+<?php
+
+declare(strict_types=1);
+
+namespace OCA\ArbeitszeitCheck\Tests\Unit\Config;
+
+use OCA\ArbeitszeitCheck\Config\VendorPublicKey;
+use PHPUnit\Framework\TestCase;
+
+final class VendorPublicKeyTest extends TestCase
+{
+	protected function tearDown(): void
+	{
+		putenv('AZC_VENDOR_PUBLIC_KEY_B64');
+		parent::tearDown();
+	}
+
+	public function testDefaultPublicKeyMatchesFixture(): void
+	{
+		self::assertSame(VendorPublicKey::DEFAULT_PUBLIC_KEY_B64, VendorPublicKey::publicKeyB64());
+		self::assertSame(32, strlen(VendorPublicKey::bytes()));
+	}
+
+	public function testEnvironmentOverride(): void
+	{
+		$custom = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+		putenv('AZC_VENDOR_PUBLIC_KEY_B64=' . $custom);
+		self::assertSame($custom, VendorPublicKey::publicKeyB64());
+	}
+
+	public function testPublicKeyFromDevTestSeedFile(): void
+	{
+		$fixturePath = dirname(__DIR__, 2) . '/fixtures/license_azc2.json';
+		$fixture = json_decode((string)file_get_contents($fixturePath), true, 512, JSON_THROW_ON_ERROR);
+		$tmpdir = sys_get_temp_dir() . '/azc-vendor-key-test-' . bin2hex(random_bytes(4));
+		mkdir($tmpdir);
+		$seedPath = $tmpdir . '/seed';
+		file_put_contents($seedPath, bin2hex(hash('sha256', 'arbeitszeitcheck-azc2-test-signing-v1', true)));
+		self::assertSame(
+			(string)$fixture['publicKeyB64'],
+			VendorPublicKey::publicKeyB64FromSeedFile($seedPath),
+		);
+	}
+}

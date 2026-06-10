@@ -13,6 +13,11 @@ This folder contains the documentation included with ArbeitszeitCheck for admini
 | [Compliance-Implementation.de.md](Compliance-Implementation.de.md) | Same content in German |
 | [Developer-Documentation.en.md](Developer-Documentation.en.md) | Architecture, development setup, contribution guidelines, and technical notes (including vacation carryover / Resturlaub, assignable-manager / auto-approval semantics, HR notification matrix, overtime/undertime traffic light design, vacation entitlement policy engine with layered L0–L3 resolution, tariff rule sets/snapshots, production legacy flag `layered_entitlements_enabled`, centralized frontend URL/security guardrails, mobile/iPhone UX implementation notes, **`TemplateL10n` / JS l10n partials**, **time entry create/edit form** (auto-break toggle, break indexing), **time entry correction UI/API**) |
 | [Compliance-Time-Entry-Workflows.de.md](Compliance-Time-Entry-Workflows.de.md) | Audit-relevant time-entry workflows (four-eyes, correction request/withdraw, manager approve/correct); German |
+| [Terminal-NFC-Setup.de.md](Terminal-NFC-Setup.de.md) | IT guide: NFC badges, PIN, tap-to-learn enrollment for foyer Terminal app |
+| [Terminal-Kiosk-Android.de.md](Terminal-Kiosk-Android.de.md) | Android kiosk mode / lock task for foyer tablets |
+| [IT-Onboarding-Checklist.de.md](IT-Onboarding-Checklist.de.md) | Combined IT checklist: license, mobile seats, kiosk setup |
+| [Admin-License.en.md](Admin-License.en.md) | Administrator guide: AZC2 org license, mobile seats, terminal devices |
+| [Admin-License.de.md](Admin-License.de.md) | Admin-Anleitung: Organisationslizenz, Mobile-Sitze, Terminal-Geräte |
 
 ## Related Test Documentation
 

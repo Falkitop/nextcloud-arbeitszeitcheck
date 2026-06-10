@@ -136,6 +136,25 @@ final class Constants
 	/** App config: when "1", employees may finalize months (revision-safe snapshot + lock). Default off. */
 	public const CONFIG_MONTH_CLOSURE_ENABLED = 'month_closure_enabled';
 
+	/** Kiosk feature gate — default off until admin enables. */
+	public const CONFIG_KIOSK_ENABLED = 'kiosk_enabled';
+
+	/** Per-install HMAC salt for RFID lookup hashes (never store raw UIDs). */
+	public const CONFIG_KIOSK_RFID_SALT = 'kiosk_rfid_hmac_salt';
+
+	public const KIOSK_PAIRING_TTL_SECONDS = 600;
+
+	public const KIOSK_SESSION_TTL_SECONDS = 60;
+
+	public const KIOSK_ENROLLMENT_TTL_SECONDS = 300;
+
+	public const KIOSK_MAX_FAILED_ATTEMPTS = 5;
+
+	public const KIOSK_LOCKOUT_SECONDS = 300;
+
+	/** User preference: employee may use foyer kiosk. */
+	public const USER_PREF_KIOSK_ALLOWED = 'kiosk_allowed';
+
 	/**
 	 * IANA timezone name for calendar-day boundaries (paused “today”, daily totals, exports).
 	 * @see Version1015Date20260415120000

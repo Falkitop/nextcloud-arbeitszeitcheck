@@ -50,6 +50,7 @@ trait PageShellTrait
 		'admin-dashboard',
 		'admin-users',
 		'admin-notifications',
+		'admin-license',
 		'admin-settings',
 		'admin-overtime-payouts',
 		'admin-overtime-payout-audit',

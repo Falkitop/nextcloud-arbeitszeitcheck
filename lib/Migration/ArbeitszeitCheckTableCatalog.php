@@ -23,6 +23,13 @@ final class ArbeitszeitCheckTableCatalog
 
 	/** @var list<string> */
 	public const TABLES = [
+		'azc_license_state',
+		'azc_mobile_seat',
+		'azc_terminal_device',
+		'at_kiosk_creds',
+		'at_kiosk_enrollment',
+		'at_kiosk_sessions',
+		'at_kiosk_terminals',
 		'at_absences',
 		'at_audit',
 		'at_entitlement_snapshots',

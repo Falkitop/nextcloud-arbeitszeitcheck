@@ -1,0 +1,180 @@
+/**
+ * Admin kiosk page styles
+ *
+ * @license AGPL-3.0-or-later
+ */
+
+.azc-kiosk-page .azc-kiosk-section {
+	margin-bottom: 1.5rem;
+}
+
+.azc-kiosk-section__header {
+	margin-bottom: 1rem;
+}
+
+.azc-kiosk-section__lead {
+	color: var(--color-text-maxcontrast);
+	margin-top: 0.25rem;
+	max-width: 52rem;
+	line-height: 1.5;
+}
+
+.azc-kiosk-toggle {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	margin: 1rem 0;
+	min-height: 2.75rem;
+}
+
+.azc-kiosk-toggle input[type='checkbox'] {
+	width: 1.25rem;
+	height: 1.25rem;
+}
+
+.azc-kiosk-form {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.75rem;
+	align-items: flex-end;
+	margin-bottom: 1rem;
+}
+
+.azc-kiosk-form--grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+	gap: 1rem;
+}
+
+.azc-kiosk-form__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.75rem;
+	margin-bottom: 1rem;
+}
+
+.azc-kiosk-page .azc-btn {
+	min-height: 2.75rem;
+	min-width: 2.75rem;
+	padding: 0.5rem 1rem;
+}
+
+.azc-kiosk-page .azc-btn--small {
+	min-height: 2.75rem;
+	padding: 0.375rem 0.75rem;
+}
+
+.azc-kiosk-modal-backdrop {
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.45);
+	z-index: 9998;
+}
+
+.azc-kiosk-modal {
+	position: fixed;
+	left: 50%;
+	top: 50%;
+	transform: translate(-50%, -50%);
+	z-index: 9999;
+	margin: 0;
+	padding: 1.5rem;
+	max-width: min(28rem, calc(100vw - 2rem));
+	width: 100%;
+	border: 2px solid var(--color-primary-element);
+	border-radius: var(--border-radius-large);
+	background: var(--color-main-background);
+	box-shadow: 0 0.5rem 2rem rgba(0, 0, 0, 0.2);
+}
+
+.azc-kiosk-modal__hint {
+	color: var(--color-text-maxcontrast);
+	margin: 0.5rem 0 1rem;
+	line-height: 1.5;
+}
+
+.azc-kiosk-pairing__code {
+	font-family: var(--font-face-monospace, monospace);
+	font-size: clamp(1.25rem, 4vw, 1.75rem);
+	font-weight: 700;
+	letter-spacing: 0.15em;
+	text-align: center;
+	padding: 1rem;
+	margin: 1rem 0;
+	background: var(--color-background-dark);
+	border-radius: var(--border-radius);
+	word-break: break-all;
+}
+
+.azc-kiosk-user-results {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	border: 1px solid var(--color-border);
+	border-radius: var(--border-radius);
+	max-height: 12rem;
+	overflow-y: auto;
+}
+
+.azc-kiosk-user-results button {
+	width: 100%;
+	text-align: left;
+	padding: 0.75rem;
+	min-height: 2.75rem;
+	background: transparent;
+	border: none;
+	cursor: pointer;
+}
+
+.azc-kiosk-user-results button:hover,
+.azc-kiosk-user-results button:focus-visible {
+	background: var(--color-background-hover);
+	outline: 2px solid var(--color-primary-element);
+	outline-offset: -2px;
+}
+
+.azc-kiosk-enrollment-status {
+	min-height: 1.5rem;
+	font-weight: 600;
+	margin-bottom: 0.5rem;
+}
+
+.azc-kiosk-allowed-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	min-height: 2.75rem;
+	cursor: pointer;
+}
+
+.azc-kiosk-allowed-input {
+	width: 1.25rem;
+	height: 1.25rem;
+	margin: 0;
+}
+
+.azc-kiosk-allowed-visual {
+	font-weight: 700;
+	min-width: 1.25rem;
+	text-align: center;
+}
+
+body.azc-kiosk-modal-open {
+	overflow: hidden;
+}
+
+@media (max-width: 768px) {
+	.azc-kiosk-form {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.azc-kiosk-form__actions .azc-btn {
+		width: 100%;
+	}
+
+	.azc-table-wrap {
+		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
+	}
+}

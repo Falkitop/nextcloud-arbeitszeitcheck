@@ -6,6 +6,8 @@ namespace OCA\ArbeitszeitCheck\Controller;
 
 use OCA\ArbeitszeitCheck\Capabilities;
 use OCA\ArbeitszeitCheck\Service\DashboardWidgetDataService;
+use OCA\ArbeitszeitCheck\Service\LicenseService;
+use OCA\ArbeitszeitCheck\Service\MobileSeatService;
 use OCA\ArbeitszeitCheck\Service\MonthClosureFeature;
 use OCA\ArbeitszeitCheck\Service\OvertimeBankService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
@@ -37,6 +39,8 @@ class MobileBootstrapController extends Controller {
 		private readonly IAppConfig $appConfig,
 		private readonly L10NFactory $l10nFactory,
 		private readonly Capabilities $capabilities,
+		private readonly LicenseService $licenseService,
+		private readonly MobileSeatService $mobileSeatService,
 	) {
 		parent::__construct($appName, $request);
 	}
@@ -60,6 +64,11 @@ class MobileBootstrapController extends Controller {
 
 		$locale = $this->l10nFactory->findLanguage('arbeitszeitcheck', $userId);
 
+		$planActive = $this->licenseService->isMobilePlanActive();
+		$validUntil = $this->licenseService->getValidUntil();
+		$enabledForUser = $planActive && $this->mobileSeatService->isUserAllowed($userId);
+		$envelope = $enabledForUser ? $this->licenseService->buildEnvelope() : null;
+
 		return new JSONResponse([
 			'success' => true,
 			'data' => [
@@ -78,6 +87,17 @@ class MobileBootstrapController extends Controller {
 						'clockStampingEnabled' => true,
 						'manualTimeEntryEnabled' => true,
 					],
+				],
+				'licensing' => [
+					'mobile' => [
+						'planActive' => $planActive,
+						'enabledForUser' => $enabledForUser,
+						'seats' => $this->licenseService->getMobileSeatLimit(),
+						'seatsAssigned' => $this->mobileSeatService->getAssignedCount(),
+						'expiresAt' => $validUntil?->format('Y-m-d'),
+						'source' => $planActive ? 'org_license' : 'none',
+					],
+					'envelope' => $envelope,
 				],
 			],
 		]);

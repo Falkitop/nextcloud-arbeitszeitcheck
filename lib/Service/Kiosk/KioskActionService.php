@@ -1,0 +1,97 @@
+<?php
+
+declare(strict_types=1);
+
+namespace OCA\ArbeitszeitCheck\Service\Kiosk;
+
+use OCA\ArbeitszeitCheck\Db\AuditLogMapper;
+use OCA\ArbeitszeitCheck\Db\KioskSession;
+use OCA\ArbeitszeitCheck\Db\KioskSessionMapper;
+use OCA\ArbeitszeitCheck\Db\KioskTerminal;
+use OCA\ArbeitszeitCheck\Exception\BusinessRuleException;
+use OCA\ArbeitszeitCheck\Exception\MonthFinalizedException;
+use OCA\ArbeitszeitCheck\Service\TimeTrackingService;
+use OCP\IL10N;
+
+class KioskActionService
+{
+	public function __construct(
+		private readonly KioskAuthService $authService,
+		private readonly KioskSessionMapper $sessionMapper,
+		private readonly TimeTrackingService $timeTrackingService,
+		private readonly AuditLogMapper $auditLogMapper,
+		private readonly IL10N $l10n,
+	) {
+	}
+
+	/**
+	 * @return array{newStatus: string, message: string}
+	 */
+	public function performAction(KioskTerminal $terminal, string $sessionToken, string $action): array
+	{
+		$session = $this->authService->validateSession($terminal, $sessionToken);
+		$userId = $session->getUserId();
+		$this->authService->assertUserEligibleForAction($userId);
+
+		try {
+			$newStatus = match ($action) {
+				'clock_in' => $this->doClockIn($userId),
+				'clock_out' => $this->doClockOut($userId),
+				'break_start' => $this->doStartBreak($userId),
+				'break_end' => $this->doEndBreak($userId),
+				default => throw new KioskException('KIOSK_ACTION_INVALID'),
+			};
+		} catch (MonthFinalizedException) {
+			throw new KioskException('MONTH_FINALIZED');
+		} catch (BusinessRuleException) {
+			throw new KioskException('KIOSK_ACTION_INVALID');
+		}
+
+		$this->sessionMapper->markUsed($session);
+		$this->auditLogMapper->logAction($userId, 'kiosk_action', 'kiosk_session', $session->getId(), null, [
+			'action' => $action,
+			'terminalId' => $terminal->getTerminalId(),
+			'newStatus' => $newStatus,
+		], $userId);
+
+		return [
+			'newStatus' => $newStatus,
+			'message' => $this->actionMessage($action),
+		];
+	}
+
+	private function doClockIn(string $userId): string
+	{
+		$this->timeTrackingService->clockIn($userId);
+		return 'working';
+	}
+
+	private function doClockOut(string $userId): string
+	{
+		$this->timeTrackingService->clockOut($userId);
+		return 'off';
+	}
+
+	private function doStartBreak(string $userId): string
+	{
+		$this->timeTrackingService->startBreak($userId);
+		return 'on_break';
+	}
+
+	private function doEndBreak(string $userId): string
+	{
+		$this->timeTrackingService->endBreak($userId);
+		return 'working';
+	}
+
+	private function actionMessage(string $action): string
+	{
+		return match ($action) {
+			'clock_in' => $this->l10n->t('Clocked in'),
+			'clock_out' => $this->l10n->t('Clocked out'),
+			'break_start' => $this->l10n->t('Break started'),
+			'break_end' => $this->l10n->t('Break ended'),
+			default => $this->l10n->t('Action completed'),
+		};
+	}
+}

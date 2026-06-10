@@ -53,6 +53,7 @@ $pageIcons = [
 	'admin-teams' => 'building-2',
 	'admin-vacation-layers' => 'layers',
 	'admin-audit-log' => 'scroll-text',
+	'admin-license' => 'key',
 	'admin-settings' => 'shield',
 	'access-denied' => 'lock',
 ];
