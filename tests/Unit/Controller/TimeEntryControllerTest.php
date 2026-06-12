@@ -29,6 +29,7 @@ use OCA\ArbeitszeitCheck\Service\NavigationFlagsService;
 use OCA\ArbeitszeitCheck\Service\TeamResolverService;
 use OCA\ArbeitszeitCheck\Service\NotificationService;
 use OCA\ArbeitszeitCheck\Service\MonthClosureGuard;
+use OCA\ArbeitszeitCheck\Service\TimeEntryDeletionPolicy;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\IConfig;
@@ -172,6 +173,14 @@ class TimeEntryControllerTest extends TestCase
 		]);
 		$this->timeCaptureMethodService->method('isManualTimeEntryEnabled')->willReturn(true);
 
+		$this->config->method('getAppValue')->willReturnCallback(static fn ($app, $key, $default) => $default);
+
+		$deletionPolicy = new TimeEntryDeletionPolicy(
+			$this->config,
+			$this->monthClosureGuard,
+			$this->l10n,
+		);
+
 		$this->controller = new TimeEntryController(
 			'arbeitszeitcheck',
 			$this->request,
@@ -198,6 +207,7 @@ class TimeEntryControllerTest extends TestCase
 			$projectCheckIntegration,
 			$this->createMock(\OCA\ArbeitszeitCheck\Service\ProjectCheckLaborTimeSyncService::class),
 			$this->timeCaptureMethodService,
+			$deletionPolicy,
 		);
 	}
 
@@ -721,9 +731,42 @@ class TimeEntryControllerTest extends TestCase
 	}
 
 	/**
-	 * Test delete returns error when entry is not manual
+	 * Test delete removes stamped entry within the edit window
 	 */
-	public function testDeleteReturnsErrorWhenNotManual(): void
+	public function testDeleteRemovesStampedEntryWithinEditWindow(): void
+	{
+		$userId = 'testuser';
+		$entryId = 1;
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn($userId);
+
+		$this->userSession->method('getUser')->willReturn($user);
+
+		$entry = new TimeEntry();
+		$entry->setId($entryId);
+		$entry->setUserId($userId);
+		$entry->setIsManualEntry(false);
+		$entry->setStatus(TimeEntry::STATUS_COMPLETED);
+		$entry->setStartTime(new \DateTime('-2 days 09:00:00'));
+		$entry->setEndTime(new \DateTime('-2 days 17:00:00'));
+		$entry->setCreatedAt(new \DateTime());
+		$entry->setUpdatedAt(new \DateTime());
+
+		$this->timeEntryMapper->method('find')->willReturn($entry);
+		$this->timeEntryMapper->expects($this->once())
+			->method('delete')
+			->with($entry);
+
+		$response = $this->controller->delete($entryId);
+		$data = $response->getData();
+
+		$this->assertTrue($data['success']);
+	}
+
+	/**
+	 * Test delete returns error when stamped entry is outside the edit window
+	 */
+	public function testDeleteReturnsErrorWhenStampedOutsideEditWindow(): void
 	{
 		$userId = 'testuser';
 		$entryId = 1;
@@ -749,7 +792,7 @@ class TimeEntryControllerTest extends TestCase
 		$this->assertEquals(Http::STATUS_BAD_REQUEST, $response->getStatus());
 		$data = $response->getData();
 		$this->assertFalse($data['success']);
-		$this->assertStringContainsString('Cannot delete automatic', $data['error']);
+		$this->assertSame('edit_window_expired', $data['error_code']);
 	}
 
 	// NOTE: A legacy `stats()` endpoint existed previously but is no longer part of `TimeEntryController`.

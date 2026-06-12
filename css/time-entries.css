@@ -1115,6 +1115,81 @@
     gap: 0.35rem;
 }
 
+/* Delete in row actions: solid error surface for WCAG 2.1 AA contrast (not a pale tint). */
+#app-content.azc-app--time-entries .azc-table-actions .btn--danger.btn-delete-entry {
+    background-color: var(--color-error-element, var(--color-error, #c92a2a));
+    border-color: var(--color-error-element, var(--color-error, #c92a2a));
+    color: var(--color-error-element-text, #ffffff);
+    font-weight: 600;
+}
+
+#app-content.azc-app--time-entries .azc-table-actions .btn--danger.btn-delete-entry:hover:not(:disabled),
+#app-content.azc-app--time-entries .azc-table-actions .btn--danger.btn-delete-entry:focus-visible {
+    background-color: var(--color-error-element-hover, var(--color-error-hover, #a61e1e));
+    border-color: var(--color-error-element-hover, var(--color-error-hover, #a61e1e));
+    color: var(--color-error-element-text, #ffffff);
+}
+
+#app-content.azc-app--time-entries .azc-action-hint {
+    margin: 0;
+    max-width: 18rem;
+    font-size: var(--azc-fs-sm, 0.875rem);
+    line-height: 1.45;
+    color: var(--azc-muted, var(--color-text-maxcontrast));
+}
+
+#app-content.azc-app--time-entries .time-entries-page__deletion-guide {
+    margin: 0;
+}
+
+#app-content.azc-app--time-entries .time-entries-page__deletion-guide-title {
+    margin: 0 0 var(--azc-space-2, 0.5rem);
+    font-size: var(--azc-fs-base, 1rem);
+}
+
+/* Row actions: full button row on desktop; collapsible menu on small screens. */
+#app-content.azc-app--time-entries .azc-row-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--azc-space-2, 0.5rem);
+    width: 100%;
+}
+
+#app-content.azc-app--time-entries .azc-row-actions__toggle {
+    display: none;
+}
+
+#app-content.azc-app--time-entries .azc-row-actions__panel {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--azc-space-2, 0.5rem);
+}
+
+@media (max-width: 47.9375rem) {
+    #app-content.azc-app--time-entries .azc-row-actions__toggle {
+        display: inline-flex;
+        width: 100%;
+        justify-content: center;
+        min-height: 44px;
+    }
+
+    #app-content.azc-app--time-entries .azc-row-actions__panel {
+        display: none;
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    #app-content.azc-app--time-entries .azc-row-actions.is-open .azc-row-actions__panel {
+        display: flex;
+    }
+
+    #app-content.azc-app--time-entries .azc-row-actions__panel .btn,
+    #app-content.azc-app--time-entries .azc-row-actions__panel .azc-action-hint {
+        width: 100%;
+    }
+}
+
 .actions-cell .btn-complete-entry > span[aria-hidden="true"] {
     font-weight: 700;
 }

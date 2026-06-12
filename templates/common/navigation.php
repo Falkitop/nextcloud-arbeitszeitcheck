@@ -15,7 +15,7 @@ declare(strict_types=1);
 use OCA\ArbeitszeitCheck\Constants;
 use OCP\Util;
 
-// Ensure navigation scripts load on all pages with sidebar (mobile menu, keyboard nav, SVG icons)
+// Ensure navigation scripts load on all pages with sidebar (submenu toggles, keyboard nav, SVG icons)
 Util::addScript('arbeitszeitcheck', 'common/navigation');
 Util::addScript('arbeitszeitcheck', 'common/navigation-icons');
 
@@ -92,22 +92,8 @@ $monthClosureEnabledNav = array_key_exists('monthClosureEnabled', $_)
     <p id="azc-skiplinks-help" class="visually-hidden">
         <?php p($l->t('Help: These skip links let you jump directly to the main content or to the app navigation.')); ?>
     </p>
-    <!-- Mobile hamburger menu button -->
-    <button class="nav-mobile-toggle"
-        id="nav-mobile-toggle"
-        aria-label="<?php p($l->t('Open navigation menu')); ?>"
-        aria-expanded="false"
-        aria-controls="app-navigation"
-        title="<?php p($l->t('Click to open or close the navigation menu')); ?>">
-        <span class="hamburger-line"></span>
-        <span class="hamburger-line"></span>
-        <span class="hamburger-line"></span>
-    </button>
 
-    <!-- Mobile overlay background -->
-    <div class="nav-mobile-overlay" id="nav-mobile-overlay" aria-hidden="true"></div>
-
-    <div id="app-navigation" role="navigation" aria-label="<?php p($l->t('Main navigation')); ?>">
+    <div id="app-navigation" class="azc-nav" role="navigation" aria-label="<?php p($l->t('Main navigation')); ?>">
         <!-- Sidebar Header -->
         <div class="sidebar-header">
             <div class="app-brand">

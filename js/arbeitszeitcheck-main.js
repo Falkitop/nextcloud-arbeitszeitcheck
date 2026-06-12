@@ -740,6 +740,28 @@
         },
 
         /**
+         * Collapsible per-row action menus on narrow viewports.
+         */
+        initRowActionsMenus: function() {
+            const toggles = document.querySelectorAll('.azc-row-actions__toggle');
+            toggles.forEach((toggle) => {
+                if (toggle.dataset.rowActionsAttached === 'true') {
+                    return;
+                }
+                toggle.dataset.rowActionsAttached = 'true';
+                toggle.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const wrap = toggle.closest('.azc-row-actions');
+                    if (!wrap) {
+                        return;
+                    }
+                    const isOpen = wrap.classList.toggle('is-open');
+                    toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+                });
+            });
+        },
+
+        /**
          * Initialize time entries page functionality
          */
         initTimeEntries: function() {
@@ -841,9 +863,15 @@
             // before the table existed (e.g. dynamic re-render).
             this.attachCompletePausedHandlers();
 
+            this.initRowActionsMenus();
+
             // Delete buttons in table rows
             const deleteButtons = document.querySelectorAll('table tbody .btn-delete[data-entry-id]');
             deleteButtons.forEach(button => {
+                if (button.dataset.deleteHandlerAttached === 'true') {
+                    return;
+                }
+                button.dataset.deleteHandlerAttached = 'true';
                 button.addEventListener('click', (e) => {
                     e.preventDefault();
                     const entryId = button.dataset.entryId;
@@ -874,30 +902,66 @@
                         return '/apps/arbeitszeitcheck/api/time-entries/' + encodeURIComponent(entryId) + '/deletion-impact';
                     };
 
+                    const parseServerWarnings = () => {
+                        const raw = button.getAttribute('data-delete-warnings');
+                        if (!raw) {
+                            return [];
+                        }
+                        try {
+                            const parsed = JSON.parse(raw);
+                            return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+                        } catch (e) {
+                            return [];
+                        }
+                    };
+
+                    const buildConfirmMessage = (warnings) => {
+                        const list = Array.isArray(warnings) ? warnings.filter(Boolean) : [];
+                        if (list.length === 0) {
+                            return baseConfirmMsg;
+                        }
+                        return baseConfirmMsg + '\n\n' + list.join('\n');
+                    };
+
                     const loadDeletionConfirmMessage = () => {
                         return this.callApi(resolveImpactUrl(), 'GET', null, false)
                             .then((response) => {
                                 const impact = response && response.impact ? response.impact : null;
                                 if (!impact) {
-                                    return baseConfirmMsg;
+                                    const fallbackWarnings = parseServerWarnings();
+                                    if (fallbackWarnings.length === 0) {
+                                        throw new Error(
+                                            this.config.l10n?.deleteImpactCheckFailed
+                                            || mainT('This page is out of date. Reload the page, then try again.')
+                                        );
+                                    }
+                                    return buildConfirmMessage(fallbackWarnings);
                                 }
                                 if (impact.canDelete === false) {
-                                    const blockMsg = (impact.warnings && impact.warnings.length)
-                                        ? impact.warnings.join(' ')
-                                        : mainT('This time entry cannot be deleted.');
-                                    throw new Error(blockMsg);
+                                    const blockMsg = impact.blockMessage
+                                        || mainT('This time entry cannot be deleted.');
+                                    const blocked = new Error(blockMsg);
+                                    blocked.isDeleteBlocked = true;
+                                    throw blocked;
                                 }
-                                const warnings = Array.isArray(impact.warnings) ? impact.warnings.filter(Boolean) : [];
-                                if (warnings.length === 0) {
-                                    return baseConfirmMsg;
-                                }
-                                return baseConfirmMsg + '\n\n' + warnings.join('\n');
+                                const warnings = Array.isArray(impact.warnings)
+                                    ? impact.warnings.filter(Boolean)
+                                    : parseServerWarnings();
+                                return buildConfirmMessage(warnings);
                             })
                             .catch((err) => {
-                                if (err && err.message && err.message !== mainT('An error occurred')) {
+                                if (err && err.isDeleteBlocked) {
                                     throw err;
                                 }
-                                return baseConfirmMsg;
+                                if (err && err.message && err.message !== mainT('An error occurred')) {
+                                    const blocked = new Error(err.message);
+                                    blocked.isDeleteBlocked = true;
+                                    throw blocked;
+                                }
+                                throw new Error(
+                                    this.config.l10n?.deleteImpactCheckFailed
+                                    || mainT('This page is out of date. Reload the page, then try again.')
+                                );
                             });
                     };
 
@@ -929,7 +993,17 @@
                         })
                         .catch((error) => {
                             console.error('Error deleting time entry:', error);
-                            this.showError(error && error.message ? error.message : (this.config.l10n?.error || mainT('An error occurred')));
+                            const msg = error && error.message
+                                ? error.message
+                                : (this.config.l10n?.error || mainT('An error occurred'));
+                            const blockCode = error.response && error.response.error_code;
+                            if (error.isDeleteBlocked || blockCode) {
+                                return this.alertBlockingMain(
+                                    msg,
+                                    this.config.l10n?.cannotDeleteTimeEntryTitle
+                                );
+                            }
+                            this.showError(msg);
                         })
                         .finally(() => {
                             button.disabled = false;
@@ -1395,6 +1469,33 @@
          * @param {object} [options]
          * @returns {Promise<boolean>}
          */
+        /**
+         * Informational modal when deletion is blocked (not a toast).
+         *
+         * @param {string} message
+         * @param {string} [title]
+         * @returns {Promise<void>}
+         */
+        alertBlockingMain: function(message, title) {
+            const alertTitle = title || this.config.l10n?.cannotDeleteTimeEntryTitle
+                || mainT('Cannot delete time entry');
+            const azc = (typeof window !== 'undefined') &&
+                (window.AzcComponents || window.ArbeitszeitCheckComponents);
+            if (azc && typeof azc.alertDialog === 'function') {
+                return azc.alertDialog({
+                    title: alertTitle,
+                    message: message,
+                });
+            }
+            if (typeof OC !== 'undefined' && OC.dialogs && typeof OC.dialogs.alert === 'function') {
+                return new Promise((resolve) => {
+                    OC.dialogs.alert(message, alertTitle, resolve, true);
+                });
+            }
+            this.showError(message);
+            return Promise.resolve();
+        },
+
         confirmDestructiveMain: function(message, title, options) {
             const opts = options || {};
             const azc = (typeof window !== 'undefined') &&

@@ -23,6 +23,21 @@ describe('ArbeitszeitCheckComponents confirmDialog', () => {
     }
   })
 
+  it('alertDialog shows a single dismiss button', async () => {
+    const Components = window.ArbeitszeitCheckComponents
+    const promise = Components.alertDialog({
+      title: 'Cannot delete time entry',
+      message: 'This month is finalized.',
+    })
+
+    expect(document.querySelector('.confirm-dialog__cancel')).toBeFalsy()
+    const confirm = document.querySelector('.confirm-dialog__confirm')
+    expect(confirm).toBeTruthy()
+    confirm.click()
+
+    await expect(promise).resolves.toBeUndefined()
+  })
+
   it('resolves false when cancel is clicked', async () => {
     const Components = window.ArbeitszeitCheckComponents
     const promise = Components.confirmDialog({

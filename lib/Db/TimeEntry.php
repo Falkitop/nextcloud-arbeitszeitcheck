@@ -526,15 +526,40 @@ class TimeEntry extends Entity
 	}
 
 	/**
-	 * Whether the entry's owner may delete it.
+	 * Whether the entry's owner may delete it (entity-level rules only).
 	 *
-	 * Manual entries can always be deleted. Paused (orphaned automatic) entries
-	 * are also deletable because they were never properly completed and have no
-	 * approved payroll impact.
+	 * Manual entries and paused (orphaned) sessions are deletable. Completed
+	 * clocked entries follow the same edit window as {@see canEdit()}. Month
+	 * closure, pending-correction workflow, and manager approval are enforced
+	 * in {@see \OCA\ArbeitszeitCheck\Service\TimeEntryDeletionPolicy}.
 	 */
-	public function canDelete(): bool
+	public function canDelete(int $editWindowDays = 14): bool
 	{
-		return $this->isManualEntry || $this->status === self::STATUS_PAUSED;
+		if ($this->isLockedForEmployeeEdit()) {
+			return false;
+		}
+
+		if (in_array($this->status, [self::STATUS_ACTIVE, self::STATUS_BREAK], true)) {
+			return false;
+		}
+
+		if ($this->status === self::STATUS_PENDING_APPROVAL) {
+			return $this->isManualEntry;
+		}
+
+		if ($this->status === self::STATUS_PAUSED) {
+			return true;
+		}
+
+		if ($this->isManualEntry) {
+			return in_array($this->status, [self::STATUS_COMPLETED, self::STATUS_REJECTED], true);
+		}
+
+		if ($this->status === self::STATUS_COMPLETED) {
+			return $this->canEdit($editWindowDays);
+		}
+
+		return false;
 	}
 
 	/**
@@ -593,6 +618,7 @@ class TimeEntry extends Entity
 				? $pendingProposal['breaks']
 				: $breaksData,
 			'canEdit' => $this->canEdit(),
+			'canDelete' => $this->canDelete(),
 			'canRequestCorrection' => $this->canRequestCorrection(),
 			'isLockedForEmployeeEdit' => $this->isLockedForEmployeeEdit(),
 		];

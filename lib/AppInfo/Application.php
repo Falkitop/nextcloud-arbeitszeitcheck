@@ -340,6 +340,14 @@ class Application extends App implements IBootstrap {
 			);
 		});
 
+		$context->registerService(\OCA\ArbeitszeitCheck\Service\TimeEntryDeletionPolicy::class, function ($c) {
+			return new \OCA\ArbeitszeitCheck\Service\TimeEntryDeletionPolicy(
+				$c->query(\OCP\IConfig::class),
+				$c->query(\OCA\ArbeitszeitCheck\Service\MonthClosureGuard::class),
+				$c->query(\OCP\IL10N::class),
+			);
+		});
+
 		$context->registerService(EnsureArbeitszeitCheckSchema::class, function ($c): EnsureArbeitszeitCheckSchema {
 			return new EnsureArbeitszeitCheckSchema(
 				$c->query(IDBConnection::class),

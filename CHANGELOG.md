@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.4.1 - 2026-06-12
+
+### Fixed
+
+- **Data loss after Nextcloud upgrade:** `UninstallDropTables` preserves tables and settings on disable (pass 1); full cleanup runs only on app removal (pass 2). Fixes auto-disable during server upgrades wiping data when the app is re-enabled.
+
 ## 1.3.24 - 2026-06-04
 
 ### Fixed

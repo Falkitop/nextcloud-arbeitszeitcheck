@@ -527,6 +527,22 @@ const ArbeitszeitCheckComponents = {
     return this.showConfirmDialog(options);
   },
 
+  /**
+   * Single-button informational dialog (WCAG alertdialog).
+   *
+   * @param {Object} options
+   * @returns {Promise<void>}
+   */
+  alertDialog(options = {}) {
+    const gotIt = window.t ? window.t('arbeitszeitcheck', 'Got it') : 'Got it';
+    return this.showConfirmDialog({
+      ...options,
+      alertOnly: true,
+      confirmLabel: options.confirmLabel || gotIt,
+      variant: options.variant || 'info',
+    }).then(() => {});
+  },
+
   showConfirmDialog(options = {}) {
     const {
       title = '',
@@ -534,6 +550,7 @@ const ArbeitszeitCheckComponents = {
       confirmLabel = (window.t ? window.t('arbeitszeitcheck', 'Confirm') : 'Confirm'),
       cancelLabel  = (window.t ? window.t('arbeitszeitcheck', 'Cancel') : 'Cancel'),
       variant = 'info',
+      alertOnly = false,
       requireCheckbox = false,
       checkboxLabel = (window.t ? window.t('arbeitszeitcheck', 'I understand this action cannot be undone') : 'I understand this action cannot be undone'),
       requireReason = false,
@@ -603,6 +620,11 @@ const ArbeitszeitCheckComponents = {
       if (requireReason) describedBy.push(`${dialogId}-reason`);
       dialog.setAttribute('aria-describedby', describedBy.join(' '));
 
+      const footerButtons = alertOnly
+        ? `<button type="button" class="btn btn--primary confirm-dialog__confirm">${this._escapeHtml(confirmLabel)}</button>`
+        : `<button type="button" class="btn btn--secondary confirm-dialog__cancel">${this._escapeHtml(cancelLabel)}</button>
+          <button type="button" class="btn btn--${isDestructive ? 'danger' : 'primary'} confirm-dialog__confirm" ${isDestructive ? 'disabled' : ''}>${this._escapeHtml(confirmLabel)}</button>`;
+
       dialog.innerHTML = `
         <div class="modal-header">
           <span class="confirm-dialog__icon" aria-hidden="true">${iconHtml}</span>
@@ -612,9 +634,8 @@ const ArbeitszeitCheckComponents = {
           <p class="confirm-dialog__message" id="${dialogId}-message">${this._escapeHtml(message)}</p>
           ${extraFields}
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn--secondary confirm-dialog__cancel">${this._escapeHtml(cancelLabel)}</button>
-          <button type="button" class="btn btn--${isDestructive ? 'danger' : 'primary'} confirm-dialog__confirm" ${isDestructive ? 'disabled' : ''}>${this._escapeHtml(confirmLabel)}</button>
+        <div class="modal-footer${alertOnly ? ' modal-footer--single' : ''}">
+          ${footerButtons}
         </div>
       `;
 
@@ -646,8 +667,8 @@ const ArbeitszeitCheckComponents = {
       validateConfirmEnabled();
 
       setTimeout(() => {
-        const cancelBtn = dialog.querySelector('.confirm-dialog__cancel');
-        if (cancelBtn) cancelBtn.focus();
+        const focusTarget = alertOnly ? confirmBtn : dialog.querySelector('.confirm-dialog__cancel');
+        if (focusTarget) focusTarget.focus();
       }, 50);
 
       const cleanup = (result) => {
@@ -662,26 +683,29 @@ const ArbeitszeitCheckComponents = {
 
       confirmBtn.addEventListener('click', () => {
         if (confirmBtn.disabled) return;
-        cleanup({
+        cleanup(alertOnly ? true : {
           confirmed: true,
           reason: reasonField ? reasonField.value.trim() : '',
         });
       });
-      dialog.querySelector('.confirm-dialog__cancel').addEventListener('click', () => cleanup(false));
+      const cancelBtn = dialog.querySelector('.confirm-dialog__cancel');
+      if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => cleanup(false));
+      }
 
       const keyHandler = (e) => {
-        if (e.key === 'Escape' && !isDestructive) {
+        if (e.key === 'Escape' && (!isDestructive || alertOnly)) {
           document.removeEventListener('keydown', keyHandler);
-          cleanup(false);
+          cleanup(alertOnly ? true : false);
         }
       };
       document.addEventListener('keydown', keyHandler);
 
-      if (!isDestructive) {
+      if (!isDestructive || alertOnly) {
         backdrop.addEventListener('click', (e) => {
           if (e.target === backdrop) {
             document.removeEventListener('keydown', keyHandler);
-            cleanup(false);
+            cleanup(alertOnly ? true : false);
           }
         });
       }

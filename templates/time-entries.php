@@ -17,6 +17,8 @@ use OCA\ArbeitszeitCheck\Support\BadgeVariant;
 // Assets registered by PageController / TimeEntryController
 
 $entries = $_['entries'] ?? [];
+$deletionEligibility = $_['deletionEligibility'] ?? [];
+$editWindowDays = \OCA\ArbeitszeitCheck\Constants::EDIT_WINDOW_DAYS;
 $urlGenerator = $_['urlGenerator'] ?? \OCP\Server::get(\OCP\IURLGenerator::class);
 $stats = $_['stats'] ?? [];
 $monthClosureEnabled = !empty($_['monthClosureEnabled']);
@@ -61,6 +63,15 @@ require __DIR__ . '/common/user-display-timezone.php';
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <div class="azc-callout azc-callout--info time-entries-page__deletion-guide" role="region" aria-labelledby="time-entries-deletion-guide-title">
+                <h2 id="time-entries-deletion-guide-title" class="azc-callout__title time-entries-page__deletion-guide-title">
+                    <?php p($l->t('Changing or removing time entries')); ?>
+                </h2>
+                <p class="azc-callout__text">
+                    <?php p($l->t('For clocked entries less than %d days old: use Edit to change times, or Delete to remove the entry entirely. Older clocked entries: use Request correction. Entries in a finalized month or approved by your manager cannot be deleted here.', [$editWindowDays])); ?>
+                </p>
             </div>
 
             <div class="header-actions azc-page-actions-source">
@@ -1003,7 +1014,16 @@ require __DIR__ . '/common/user-display-timezone.php';
                                             </span>
                                         </td>
                                         <td class="actions-cell" data-label="<?php p($l->t('Actions')); ?>">
-                                            <div class="azc-table-actions" role="group" aria-label="<?php p($l->t('Actions')); ?>">
+                                            <?php $rowActionsEntryId = $entry->getId(); ?>
+                                            <div class="azc-row-actions" data-entry-id="<?php p((string)$rowActionsEntryId); ?>">
+                                                <button type="button"
+                                                    class="btn btn--sm btn--secondary azc-row-actions__toggle"
+                                                    aria-expanded="false"
+                                                    aria-controls="row-actions-<?php p((string)$rowActionsEntryId); ?>"
+                                                    aria-label="<?php p($l->t('Open actions for this entry')); ?>">
+                                                    <?php p($l->t('Actions')); ?>
+                                                </button>
+                                            <div class="azc-table-actions azc-row-actions__panel" id="row-actions-<?php p((string)$rowActionsEntryId); ?>" role="group" aria-label="<?php p($l->t('Actions')); ?>">
                                             <?php
                                             $isPaused = $entry->getStatus() === \OCA\ArbeitszeitCheck\Db\TimeEntry::STATUS_PAUSED;
                                             // One-click completion for paused entries — the most common recovery action.
@@ -1054,17 +1074,49 @@ require __DIR__ . '/common/user-display-timezone.php';
                                                 </button>
                                             <?php endif; ?>
                                             <?php
-                                            $canDelete = $entry->canDelete();
+                                            $entryId = $rowActionsEntryId;
+                                            $deleteEligibility = $deletionEligibility[$entryId] ?? null;
+                                            $canDelete = $deleteEligibility !== null
+                                                ? (bool)$deleteEligibility['canDelete']
+                                                : $entry->canDelete($editWindowDays);
+                                            $deleteBlockCode = is_array($deleteEligibility)
+                                                ? ($deleteEligibility['blockCode'] ?? null)
+                                                : null;
+                                            $deleteBlockMessage = is_array($deleteEligibility)
+                                                ? ($deleteEligibility['blockMessage'] ?? null)
+                                                : null;
+                                            $deleteWarnings = is_array($deleteEligibility)
+                                                ? ($deleteEligibility['warnings'] ?? [])
+                                                : [];
                                             if ($canDelete):
+                                                $deleteWarningsJson = json_encode(
+                                                    array_values(array_filter($deleteWarnings, static fn ($w) => is_string($w) && $w !== '')),
+                                                    JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE
+                                                );
                                             ?>
                                                 <button class="btn btn--sm btn--danger btn-delete btn-delete-entry"
-                                                    data-entry-id="<?php p($entry->getId()); ?>"
+                                                    data-entry-id="<?php p($entryId); ?>"
+                                                    <?php if ($deleteWarningsJson !== false && $deleteWarningsJson !== '[]'): ?>
+                                                    data-delete-warnings="<?php p($deleteWarningsJson); ?>"
+                                                    <?php endif; ?>
                                                     title="<?php p($l->t('Delete this time entry permanently. This cannot be undone.')); ?>"
                                                     type="button"
                                                     aria-label="<?php p($l->t('Delete this time entry permanently')); ?>">
                                                     <?php p($l->t('Delete')); ?>
                                                 </button>
+                                            <?php
+                                            elseif (
+                                                is_string($deleteBlockMessage)
+                                                && $deleteBlockMessage !== ''
+                                                && $deleteBlockCode !== 'cancel_correction_first'
+                                                && in_array($deleteBlockCode, ['manager_approved', 'session_active'], true)
+                                            ):
+                                            ?>
+                                                <p class="azc-action-hint" role="note">
+                                                    <?php p($deleteBlockMessage); ?>
+                                                </p>
                                             <?php endif; ?>
+                                            </div>
                                             </div>
                                         </td>
                                     </tr>

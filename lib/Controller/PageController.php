@@ -23,6 +23,7 @@ use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
 use OCA\ArbeitszeitCheck\Service\NavigationFlagsService;
 use OCA\ArbeitszeitCheck\Service\ProjectCheckIntegrationService;
 use OCA\ArbeitszeitCheck\Service\TimeCaptureMethodService;
+use OCA\ArbeitszeitCheck\Service\TimeEntryDeletionPolicy;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCA\ArbeitszeitCheck\Service\TeamResolverService;
 use OCA\ArbeitszeitCheck\Service\OvertimeDisplayService;
@@ -69,6 +70,7 @@ class PageController extends Controller
 	private NavigationFlagsService $navigationFlags;
 	private ProjectCheckIntegrationService $projectCheckIntegration;
 	private TimeCaptureMethodService $timeCaptureMethodService;
+	private TimeEntryDeletionPolicy $deletionPolicy;
 	private IL10N $l10n;
 
 	/**
@@ -108,6 +110,7 @@ class PageController extends Controller
 		NavigationFlagsService $navigationFlags,
 		ProjectCheckIntegrationService $projectCheckIntegration,
 		TimeCaptureMethodService $timeCaptureMethodService,
+		TimeEntryDeletionPolicy $deletionPolicy,
 		IL10N $l10n
 	) {
 		parent::__construct($appName, $request);
@@ -130,6 +133,7 @@ class PageController extends Controller
 		$this->navigationFlags = $navigationFlags;
 		$this->projectCheckIntegration = $projectCheckIntegration;
 		$this->timeCaptureMethodService = $timeCaptureMethodService;
+		$this->deletionPolicy = $deletionPolicy;
 		$this->l10n = $l10n;
 		$this->setCspService($cspService);
 	}
@@ -435,8 +439,14 @@ class PageController extends Controller
 			$navFlags = $this->getNavigationFlags($userId);
 			$navFlags['pendingCorrectionCount'] = $pendingCorrectionCount;
 			
+			$deletionEligibility = [];
+			foreach ($entries as $entry) {
+				$deletionEligibility[$entry->getId()] = $this->deletionPolicy->evaluate($entry);
+			}
+
 			$params = $this->buildTimeEntriesShellParams('list', $navFlags) + [
 				'entries' => $entries,
+				'deletionEligibility' => $deletionEligibility,
 				'mode' => 'list',
 				'stats' => [
 					'total_time_entries' => $timeEntryCount,

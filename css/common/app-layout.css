@@ -47,7 +47,7 @@
   text-align: left;
 }
 
-@media (min-width: 769px) {
+@media (min-width: 1024px) {
   #content.app-arbeitszeitcheck #arbeitszeitcheck-app,
   #content.app-arbeitszeitcheck .arbeitszeitcheck-app {
     display: flex;

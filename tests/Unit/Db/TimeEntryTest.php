@@ -29,6 +29,48 @@ class TimeEntryTest extends TestCase
 		$this->assertEqualsWithDelta(7.5, $entry->getDurationHours(), 0.0001); // 8h total - 0.5h break
 	}
 
+	public function testCanDeleteManualCompletedEntry(): void
+	{
+		$entry = new TimeEntry();
+		$entry->setIsManualEntry(true);
+		$entry->setStatus(TimeEntry::STATUS_COMPLETED);
+		$entry->setStartTime(new \DateTime('-30 days'));
+
+		$this->assertTrue($entry->canDelete());
+	}
+
+	public function testCanDeleteStampedEntryWithinEditWindow(): void
+	{
+		$entry = new TimeEntry();
+		$entry->setIsManualEntry(false);
+		$entry->setStatus(TimeEntry::STATUS_COMPLETED);
+		$entry->setStartTime(new \DateTime('-3 days 09:00:00'));
+		$entry->setEndTime(new \DateTime('-3 days 17:00:00'));
+
+		$this->assertTrue($entry->canDelete());
+	}
+
+	public function testCannotDeleteStampedEntryOutsideEditWindow(): void
+	{
+		$entry = new TimeEntry();
+		$entry->setIsManualEntry(false);
+		$entry->setStatus(TimeEntry::STATUS_COMPLETED);
+		$entry->setStartTime(new \DateTime('2024-01-01 09:00:00'));
+		$entry->setEndTime(new \DateTime('2024-01-01 17:00:00'));
+
+		$this->assertFalse($entry->canDelete());
+	}
+
+	public function testCannotDeleteActiveStampedSession(): void
+	{
+		$entry = new TimeEntry();
+		$entry->setIsManualEntry(false);
+		$entry->setStatus(TimeEntry::STATUS_ACTIVE);
+		$entry->setStartTime(new \DateTime('-1 hour'));
+
+		$this->assertFalse($entry->canDelete());
+	}
+
 	public function testGetBreakDurationHoursCanIncludeShortBreaksWhenConfigured(): void
 	{
 		$entry = new TimeEntry();

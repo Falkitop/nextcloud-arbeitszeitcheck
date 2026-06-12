@@ -1225,6 +1225,10 @@ body[data-theme-dark-highcontrast] .form-input.form-select option {
   justify-content: flex-start;
 }
 
+.modal-footer--single {
+  justify-content: center;
+}
+
 .modal-footer--center {
   justify-content: center;
 }

@@ -7,6 +7,7 @@ namespace OCA\ArbeitszeitCheck\Repair;
 use OC\DB\Connection;
 use OC\DB\MigrationService;
 use OCA\ArbeitszeitCheck\Migration\ArbeitszeitCheckTableCatalog;
+use OCP\IConfig;
 use OCP\IDBConnection;
 use OCP\Server;
 use OCP\Migration\IOutput;
@@ -22,6 +23,7 @@ final class EnsureArbeitszeitCheckSchema implements IRepairStep
 {
 	public function __construct(
 		private readonly IDBConnection $connection,
+		private readonly IConfig $config,
 	) {
 	}
 
@@ -32,6 +34,8 @@ final class EnsureArbeitszeitCheckSchema implements IRepairStep
 
 	public function run(IOutput $output): void
 	{
+		$this->config->deleteAppValue(UninstallDropTables::APP_ID, UninstallDropTables::REPAIR_PASS_KEY);
+
 		$missingBefore = $this->missingTables();
 		if ($missingBefore === []) {
 			$output->info('ArbeitszeitCheck: all ' . count(ArbeitszeitCheckTableCatalog::TABLES) . ' tables are present.');

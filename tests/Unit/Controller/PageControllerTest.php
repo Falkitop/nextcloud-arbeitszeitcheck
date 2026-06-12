@@ -116,6 +116,13 @@ class PageControllerTest extends TestCase
 			'manualTimeEntryEnabled' => true,
 		]);
 
+		$monthClosureGuard = $this->createMock(\OCA\ArbeitszeitCheck\Service\MonthClosureGuard::class);
+		$deletionPolicy = new \OCA\ArbeitszeitCheck\Service\TimeEntryDeletionPolicy(
+			$config,
+			$monthClosureGuard,
+			$l10n,
+		);
+
 		$this->controller = new PageController(
 			'arbeitszeitcheck',
 			$request,
@@ -139,6 +146,7 @@ class PageControllerTest extends TestCase
 			$navigationFlags,
 			$projectCheckIntegration,
 			$timeCaptureMethodService,
+			$deletionPolicy,
 			$l10n,
 		);
 	}

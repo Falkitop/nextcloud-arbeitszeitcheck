@@ -143,18 +143,12 @@ SV_EXTRA: dict[str, str] = {
 
 
 def main() -> None:
-    from apply_quality_fixes import IT_MANUAL, PL_MANUAL, SV_NB_SHARED
-
     pl_fixes = json.loads((L10N / "_quality_fixes_pl.json").read_text(encoding="utf-8"))
-    pl_fixes.update(PL_MANUAL)
     pl_fixes.update(EXTRA.get("pl", {}))
     sv_fixes = json.loads((L10N / "_quality_fixes_sv.json").read_text(encoding="utf-8"))
-    sv_fixes.update(SV_NB_SHARED.get("sv", {}))
     sv_fixes.update(SV_EXTRA)
     nb_fixes = dict(EXTRA.get("nb", {}))
-    nb_fixes.update(SV_NB_SHARED.get("nb", {}))
-    it_fixes = dict(IT_MANUAL)
-    it_fixes.update(EXTRA.get("it", {}))
+    it_fixes = dict(EXTRA.get("it", {}))
 
     print(f"PL: {apply_fixes('pl', pl_fixes)} fixes")
     print(f"SV: {apply_fixes('sv', sv_fixes)} fixes")

@@ -31,6 +31,7 @@ use OCA\ArbeitszeitCheck\Service\NavigationFlagsService;
 use OCA\ArbeitszeitCheck\Service\ProjectCheckIntegrationService;
 use OCA\ArbeitszeitCheck\Service\ProjectCheckLaborTimeSyncService;
 use OCA\ArbeitszeitCheck\Service\TimeCaptureMethodService;
+use OCA\ArbeitszeitCheck\Service\TimeEntryDeletionPolicy;
 use OCA\ArbeitszeitCheck\Exception\BusinessRuleException;
 use OCA\ArbeitszeitCheck\Exception\MonthFinalizedException;
 use OCP\Lock\LockedException;
@@ -78,6 +79,7 @@ class TimeEntryController extends Controller
 	private ProjectCheckIntegrationService $projectCheckIntegration;
 	private ProjectCheckLaborTimeSyncService $projectCheckLaborSync;
 	private TimeCaptureMethodService $timeCaptureMethodService;
+	private TimeEntryDeletionPolicy $deletionPolicy;
 
 	public function __construct(
 		string $appName,
@@ -105,6 +107,7 @@ class TimeEntryController extends Controller
 		ProjectCheckIntegrationService $projectCheckIntegration,
 		ProjectCheckLaborTimeSyncService $projectCheckLaborSync,
 		TimeCaptureMethodService $timeCaptureMethodService,
+		TimeEntryDeletionPolicy $deletionPolicy,
 	) {
 		parent::__construct($appName, $request);
 		$this->timeEntryMapper = $timeEntryMapper;
@@ -130,6 +133,7 @@ class TimeEntryController extends Controller
 		$this->projectCheckIntegration = $projectCheckIntegration;
 		$this->projectCheckLaborSync = $projectCheckLaborSync;
 		$this->timeCaptureMethodService = $timeCaptureMethodService;
+		$this->deletionPolicy = $deletionPolicy;
 	}
 
 	/**
@@ -162,6 +166,14 @@ class TimeEntryController extends Controller
 			return $this->jsonMonthFinalizedConflict();
 		}
 		return null;
+	}
+
+	private function deleteBlockHttpStatus(?string $blockCode): int
+	{
+		return match ($blockCode) {
+			'month_finalized', 'cancel_correction_first' => Http::STATUS_CONFLICT,
+			default => Http::STATUS_BAD_REQUEST,
+		};
 	}
 
 	/**
@@ -325,6 +337,16 @@ class TimeEntryController extends Controller
 		\OCP\Util::addScript('arbeitszeitcheck', 'time-entry-form-accessibility');
 		if ($this->config->getAppValue('arbeitszeitcheck', Constants::CONFIG_MONTH_CLOSURE_ENABLED, '0') === '1') {
 			\OCP\Util::addScript('arbeitszeitcheck', 'month-closure');
+		}
+
+		if (!isset($pageData['deletionEligibility']) && isset($pageData['entries']) && is_array($pageData['entries'])) {
+			$deletionEligibility = [];
+			foreach ($pageData['entries'] as $entry) {
+				if ($entry instanceof TimeEntry) {
+					$deletionEligibility[$entry->getId()] = $this->deletionPolicy->evaluate($entry);
+				}
+			}
+			$pageData['deletionEligibility'] = $deletionEligibility;
 		}
 
 		return \array_merge($this->buildTimeEntriesShellParams('list', $navFlags), $pageData);
@@ -1747,22 +1769,15 @@ class TimeEntryController extends Controller
 				], Http::STATUS_FORBIDDEN);
 			}
 
-			// Check if entry can be deleted (manual entries + orphaned paused entries)
-			$canDelete = $entry->canDelete();
+			$eligibility = $this->deletionPolicy->evaluate($entry);
 			$impact = [
-				'canDelete' => $canDelete,
-				'isManualEntry' => $entry->getIsManualEntry(),
-				'status' => $entry->getStatus(),
-				'warnings' => []
+				'canDelete' => $eligibility['canDelete'],
+				'isManualEntry' => $eligibility['isManualEntry'],
+				'status' => $eligibility['status'],
+				'blockCode' => $eligibility['blockCode'],
+				'blockMessage' => $eligibility['blockMessage'],
+				'warnings' => $eligibility['warnings'],
 			];
-
-			if (!$canDelete) {
-				$impact['warnings'][] = $this->l10n->t('Only manual time entries can be deleted. Automatic entries cannot be deleted.');
-			}
-
-			if ($entry->getStatus() === TimeEntry::STATUS_PENDING_APPROVAL) {
-				$impact['warnings'][] = $this->l10n->t('This entry has a pending correction request. Deleting it may affect the approval process.');
-			}
 
 			return new JSONResponse([
 				'success' => true,
@@ -2116,25 +2131,13 @@ class TimeEntryController extends Controller
 				], Http::STATUS_FORBIDDEN);
 			}
 
-			$mcDel = $this->assertGuardTimeEntry($entry);
-			if ($mcDel !== null) {
-				return $mcDel;
-			}
-
-			if ($entry->getStatus() === TimeEntry::STATUS_PENDING_APPROVAL && $this->requiresChangeApproval()) {
+			$eligibility = $this->deletionPolicy->evaluate($entry);
+			if (!$eligibility['canDelete']) {
 				return new JSONResponse([
 					'success' => false,
-					'error' => $this->l10n->t('Withdraw the pending correction first using “Cancel correction” instead of deleting this entry.'),
-					'error_code' => 'cancel_correction_first',
-				], Http::STATUS_CONFLICT);
-			}
-
-			// Check if entry can be deleted (manual entries + orphaned paused entries)
-			if (!$entry->canDelete()) {
-				return new JSONResponse([
-					'success' => false,
-					'error' => $this->l10n->t('Cannot delete automatic time entries')
-				], Http::STATUS_BAD_REQUEST);
+					'error' => $eligibility['blockMessage'] ?? $this->l10n->t('This time entry cannot be deleted.'),
+					'error_code' => $eligibility['blockCode'],
+				], $this->deleteBlockHttpStatus($eligibility['blockCode']));
 			}
 
 			// Get entry data before deletion for audit log

@@ -1,7 +1,7 @@
 /**
  * Responsive Design CSS for ArbeitszeitCheck App
- * Ensures all pages work properly on mobile devices
- * Follows projectcheck pattern
+ * Mobile/tablet navigation uses Nextcloud core (#app-navigation-toggle /
+ * body.snapjs-left below 1024px), same as BudgetCheck and DutyCheck.
  *
  * @copyright Copyright (c) 2024, Nextcloud GmbH
  * @license AGPL-3.0-or-later
@@ -10,8 +10,8 @@
 /* ===== MAIN APP LAYOUT RESPONSIVE (100% SCREEN) ===== */
 /* Use 100dvh where supported for mobile viewport; fallback to 100vh. */
 
-/* Desktop: Side-by-side layout, 100% width, scrollable content */
-@media (min-width: 769px) {
+/* Desktop: Side-by-side layout (Nextcloud core drawer below 1024px). */
+@media (min-width: 1024px) {
   /* Flex container: fills #content (below 50px header) */
   #arbeitszeitcheck-app,
   #app.arbeitszeitcheck-app,
@@ -59,8 +59,8 @@
   }
 }
 
-/* Mobile: Stacked layout, 100% width, scrollable, mobile menu */
-@media (max-width: 768px) {
+/* Mobile / tablet: stacked layout; NC core #app-navigation-toggle below 1024px. */
+@media (max-width: 1023px) {
   #arbeitszeitcheck-app,
   #app,
   .arbeitszeitcheck-app {
@@ -74,27 +74,7 @@
     overflow-x: hidden;
   }
 
-  /* Navigation is hidden by default, shown via mobile menu */
-  #app-navigation,
-  .arbeitszeitcheck-navigation-wrapper {
-    position: fixed;
-    left: 0;
-    top: var(--azc-overlay-top, var(--header-height, 50px));
-    width: 280px;
-    max-width: 85vw;
-    height: var(--azc-overlay-height, calc(100dvh - var(--header-height, 50px)));
-    z-index: 2000;
-    transform: translateX(-100%);
-    transition: transform 0.3s ease-in-out;
-    box-shadow: var(--shadow-xl);
-  }
-
-  #app-navigation.mobile-open,
-  .arbeitszeitcheck-navigation-wrapper.mobile-open {
-    transform: translateX(0);
-  }
-
-  /* Content: 100% width, scrollable, clear of header + mobile menu button */
+  /* Content: full width, scrollable */
   #app-content,
   .arbeitszeitcheck-content-wrapper {
     width: 100% !important;
@@ -105,8 +85,7 @@
     overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
-    /* Keep first section clear of mobile menu button and iPhone safe area. */
-    padding-top: calc(env(safe-area-inset-top, 0px) + 52px + var(--space-3));
+    padding-top: calc(env(safe-area-inset-top, 0px) + var(--space-2));
     padding-bottom: calc(var(--space-6) + env(safe-area-inset-bottom, 0px));
     box-sizing: border-box;
   }
@@ -270,13 +249,22 @@
   }
 }
 
-/* ===== TABLET ADJUSTMENTS ===== */
+/* ===== TABLET / SMALL DESKTOP ADJUSTMENTS ===== */
 
-@media (min-width: 769px) and (max-width: 1024px) {
-  #app-navigation,
+@media (min-width: 769px) and (max-width: 1023px) {
+  #app-content-wrapper,
+  .arbeitszeitcheck-content {
+    padding: var(--space-6) var(--space-4);
+  }
+}
+
+@media (min-width: 1024px) and (max-width: 1280px) {
+  #content.app-arbeitszeitcheck #app-navigation,
   .arbeitszeitcheck-navigation-wrapper {
     width: 240px;
     min-width: 240px;
+    max-width: 240px;
+    flex: 0 0 240px;
   }
 
   #app-content-wrapper,
@@ -396,9 +384,7 @@
 
 @media print {
   #app-navigation,
-  .arbeitszeitcheck-navigation-wrapper,
-  .nav-mobile-toggle,
-  .nav-mobile-overlay {
+  .arbeitszeitcheck-navigation-wrapper {
     display: none !important;
   }
 
