@@ -12,11 +12,23 @@ use OCA\ArbeitszeitCheck\Service\LicenseService;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\IRequest;
+use OCP\IL10N;
+use OCP\L10N\IFactory;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
 class KioskLicenseMiddlewareTest extends TestCase
 {
+	private function l10nFactory(): IFactory
+	{
+		$l10n = $this->createMock(IL10N::class);
+		$l10n->method('t')->willReturnArgument(0);
+		$factory = $this->createMock(IFactory::class);
+		$factory->method('get')->willReturn($l10n);
+
+		return $factory;
+	}
+
 	public function testUnlicensedOrgGets402OnKioskAction(): void
 	{
 		$request = $this->createMock(IRequest::class);
@@ -43,6 +55,7 @@ class KioskLicenseMiddlewareTest extends TestCase
 			$settings,
 			$license,
 			$terminals,
+			$this->l10nFactory(),
 			$this->createMock(LoggerInterface::class),
 		);
 
@@ -67,6 +80,7 @@ class KioskLicenseMiddlewareTest extends TestCase
 			$settings,
 			$license,
 			$this->createMock(KioskTerminalService::class),
+			$this->l10nFactory(),
 			$this->createMock(LoggerInterface::class),
 		);
 
@@ -81,6 +95,7 @@ class KioskLicenseMiddlewareTest extends TestCase
 			$this->createMock(KioskSettingsService::class),
 			$this->createMock(LicenseService::class),
 			$this->createMock(KioskTerminalService::class),
+			$this->l10nFactory(),
 			$this->createMock(LoggerInterface::class),
 		);
 
@@ -92,6 +107,7 @@ class KioskLicenseMiddlewareTest extends TestCase
 		$this->assertInstanceOf(JSONResponse::class, $response);
 		$this->assertSame(Http::STATUS_PAYMENT_REQUIRED, $response->getStatus());
 		$data = $response->getData();
-		$this->assertSame('TERMINAL_LICENSE_REQUIRED', $data['error']);
+		$this->assertSame('TERMINAL_LICENSE_REQUIRED', $data['code']);
+		$this->assertSame('ArbeitszeitCheck Terminal is not licensed for this organisation.', $data['error']);
 	}
 }

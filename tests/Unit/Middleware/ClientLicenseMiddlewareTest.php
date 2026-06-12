@@ -13,11 +13,23 @@ use OCP\AppFramework\Http\JSONResponse;
 use OCP\IRequest;
 use OCP\IUser;
 use OCP\IUserSession;
+use OCP\IL10N;
+use OCP\L10N\IFactory;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
 class ClientLicenseMiddlewareTest extends TestCase
 {
+	private function l10nFactory(): IFactory
+	{
+		$l10n = $this->createMock(IL10N::class);
+		$l10n->method('t')->willReturnArgument(0);
+		$factory = $this->createMock(IFactory::class);
+		$factory->method('get')->willReturn($l10n);
+
+		return $factory;
+	}
+
 	public function testUnassignedMobileUserGets402(): void
 	{
 		$request = $this->createMock(IRequest::class);
@@ -45,6 +57,7 @@ class ClientLicenseMiddlewareTest extends TestCase
 			$userSession,
 			$license,
 			$seats,
+			$this->l10nFactory(),
 			$this->createMock(LoggerInterface::class),
 		);
 
@@ -78,6 +91,7 @@ class ClientLicenseMiddlewareTest extends TestCase
 			$userSession,
 			$license,
 			$this->createMock(MobileSeatService::class),
+			$this->l10nFactory(),
 			$this->createMock(LoggerInterface::class),
 		);
 
@@ -100,6 +114,7 @@ class ClientLicenseMiddlewareTest extends TestCase
 			$this->createMock(IUserSession::class),
 			$license,
 			$this->createMock(MobileSeatService::class),
+			$this->l10nFactory(),
 			$this->createMock(LoggerInterface::class),
 		);
 
@@ -131,6 +146,7 @@ class ClientLicenseMiddlewareTest extends TestCase
 			$userSession,
 			$license,
 			$seats,
+			$this->l10nFactory(),
 			$this->createMock(LoggerInterface::class),
 		);
 
@@ -146,6 +162,7 @@ class ClientLicenseMiddlewareTest extends TestCase
 			$this->createMock(IUserSession::class),
 			$this->createMock(LicenseService::class),
 			$this->createMock(MobileSeatService::class),
+			$this->l10nFactory(),
 			$this->createMock(LoggerInterface::class),
 		);
 
@@ -157,6 +174,8 @@ class ClientLicenseMiddlewareTest extends TestCase
 		$this->assertInstanceOf(JSONResponse::class, $response);
 		$this->assertSame(Http::STATUS_PAYMENT_REQUIRED, $response->getStatus());
 		$data = $response->getData();
-		$this->assertSame('LICENSE_REQUIRED', $data['error']);
+		$this->assertSame('LICENSE_REQUIRED', $data['code']);
+		$this->assertSame('ArbeitszeitCheck Mobile is not licensed for this user.', $data['error']);
+		$this->assertSame('ArbeitszeitCheck Mobile is not licensed for this user.', $data['message']);
 	}
 }

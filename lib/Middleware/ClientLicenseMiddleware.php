@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\ArbeitszeitCheck\Middleware;
 
+use OCA\ArbeitszeitCheck\AppInfo\Application;
 use OCA\ArbeitszeitCheck\Service\LicenseService;
 use OCA\ArbeitszeitCheck\Service\MobileSeatService;
 use OCP\AppFramework\Http;
@@ -11,6 +12,7 @@ use OCP\AppFramework\Http\JSONResponse;
 use OCP\AppFramework\Middleware;
 use OCP\IRequest;
 use OCP\IUserSession;
+use OCP\L10N\IFactory;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -36,6 +38,7 @@ class ClientLicenseMiddleware extends Middleware
 		private readonly IUserSession $userSession,
 		private readonly LicenseService $licenseService,
 		private readonly MobileSeatService $mobileSeatService,
+		private readonly IFactory $l10nFactory,
 		private readonly LoggerInterface $logger,
 	) {
 	}
@@ -79,13 +82,20 @@ class ClientLicenseMiddleware extends Middleware
 			throw $exception;
 		}
 
+		$l = $this->l10nFactory->get(Application::APP_ID);
+		$message = $exception->getReason() === 'no_plan'
+			? $l->t('ArbeitszeitCheck Mobile is not licensed for this organisation.')
+			: $l->t('ArbeitszeitCheck Mobile is not licensed for this user.');
+		$adminHint = $l->t('Ask your administrator to assign a mobile seat or add an organisation license.');
+
 		return new JSONResponse([
 			'success' => false,
-			'error' => 'LICENSE_REQUIRED',
-			'message' => 'ArbeitszeitCheck Mobile is not licensed for this user.',
+			'error' => $message,
+			'message' => $message,
+			'code' => 'LICENSE_REQUIRED',
 			'licensing' => [
 				'purchaseUrl' => 'https://software-by-design.de/arbeitszeitcheck/mobile',
-				'adminHint' => 'Ask your administrator to assign a mobile seat or add an organisation license.',
+				'adminHint' => $adminHint,
 			],
 		], Http::STATUS_PAYMENT_REQUIRED);
 	}

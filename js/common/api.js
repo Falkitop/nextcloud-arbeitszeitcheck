@@ -103,16 +103,59 @@ const AzcApi = {
     return true;
   },
 
+  /**
+   * True when a string looks like an API/machine code rather than user-facing text.
+   * @param {string} value
+   * @returns {boolean}
+   */
+  isMachineErrorCode(value) {
+    if (typeof value !== 'string' || value === '') {
+      return false;
+    }
+    if (/\s/.test(value)) {
+      return false;
+    }
+    return /^[A-Z][A-Z0-9_]*$/.test(value) || /^[a-z][a-z0-9_]+$/.test(value);
+  },
+
+  /**
+   * @param {string} msgid
+   * @returns {string}
+   */
+  translate(msgid) {
+    return window.t ? window.t('arbeitszeitcheck', msgid) : msgid;
+  },
+
   mapApiError(data, status) {
     if (data && typeof data === 'object') {
-      if (typeof data.error === 'string' && data.error !== '') {
+      if (typeof data.error === 'string' && data.error !== '' && !this.isMachineErrorCode(data.error)) {
         return data.error;
       }
       if (data.error && typeof data.error.message === 'string') {
         return data.error.message;
       }
-      if (typeof data.message === 'string' && data.message !== '') {
+      if (typeof data.message === 'string' && data.message !== '' && !this.isMachineErrorCode(data.message)) {
         return data.message;
+      }
+      const code = (typeof data.code === 'string' && data.code)
+        || (typeof data.error === 'string' && data.error)
+        || (typeof data.message === 'string' && data.message);
+      if (code === 'app_access_denied' || code === 'access_denied') {
+        return this.translate(
+          'You do not have access to ArbeitszeitCheck. Your account is not among the users or groups allowed to use this app.',
+        );
+      }
+      if (code === 'LICENSE_REQUIRED') {
+        return this.translate('ArbeitszeitCheck Mobile is not licensed for this user.');
+      }
+      if (code === 'TERMINAL_LICENSE_REQUIRED') {
+        return this.translate('ArbeitszeitCheck Terminal is not licensed for this organisation.');
+      }
+      if (code === 'KIOSK_DISABLED') {
+        return this.translate('Kiosk mode is not enabled on this server.');
+      }
+      if (code === 'KIOSK_TERMINAL_UNAUTHORIZED') {
+        return this.translate('Terminal token invalid or revoked.');
       }
     }
     if (status === 403) {
@@ -125,9 +168,9 @@ const AzcApi = {
         ? window.t('arbeitszeitcheck', 'Not found or no access.')
         : 'Not found or no access.';
     }
-    return window.t
-      ? window.t('arbeitszeitcheck', 'An unexpected error occurred. Please try again.')
-      : 'An unexpected error occurred. Please try again.';
+    return this.translate(
+      'An unexpected error occurred. Please try again. If the problem continues, contact your administrator.',
+    );
   },
 };
 

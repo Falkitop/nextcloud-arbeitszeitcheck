@@ -4,103 +4,158 @@
 declare(strict_types=1);
 
 /**
- * Compare printf-style placeholder arity between l10n/en.json and l10n/de.json
- * for the same message keys. Mismatches cause runtime ValueError when IL10N
- * renders a translation with the wrong number of parameters.
+ * Ensures every translated string keeps the same placeholders as the English
+ * source value (not the msgid: this app uses key-style ids such as "maxLength"
+ * whose placeholders only appear in the en.json value).
+ *
+ * Checked per string, against en.json, for every locale:
+ *   - printf-style placeholders consumed by IL10N/vsprintf: %s %d %1$s %2$d ...
+ *     (compared as the multiset of consumed argument positions, so reordering
+ *     via %1$s/%2$s is allowed but dropping/duplicating an argument is not)
+ *   - literal %% escapes (IL10N always runs vsprintf, a bare % is a bug)
+ *   - named tokens like {project} used by JS t() and notification rich objects
+ *   - plural arrays: every form must carry the same tokens as the en forms
+ *
+ * Modeled on apps/projectcheck/scripts/check-l10n-placeholders.php, extended
+ * to all locales.
+ *
+ * Exit 0 = OK, 1 = mismatch printed to STDERR.
  *
  * Usage (from app root):
  *   php scripts/check-l10n-placeholders.php
  *
- * Exit codes: 0 = OK, 1 = mismatches or invalid JSON.
+ * @copyright Copyright (c) 2026, Nextcloud GmbH
+ * @license AGPL-3.0-or-later
  */
 
-$root = dirname(__DIR__);
-$enPath = $root . '/l10n/en.json';
-$dePath = $root . '/l10n/de.json';
-
-foreach ([$enPath, $dePath] as $p) {
-	if (!is_readable($p)) {
-		fwrite(STDERR, "Missing or unreadable: {$p}\n");
-		exit(1);
-	}
-}
-
-$en = json_decode((string)file_get_contents($enPath), true, 512, JSON_THROW_ON_ERROR);
-$de = json_decode((string)file_get_contents($dePath), true, 512, JSON_THROW_ON_ERROR);
-
-if (!is_array($en) || !is_array($de)) {
-	fwrite(STDERR, "Expected JSON objects in en.json / de.json\n");
-	exit(1);
-}
+$base = __DIR__ . '/../l10n';
+$locales = ['de', 'fr', 'es', 'da', 'nl', 'it', 'pl', 'sv', 'nb'];
 
 /**
- * Count vsprintf-style placeholders, ignoring escaped %% pairs.
- * Matches common Nextcloud patterns: %s %d %.2f %1$s %2$d
+ * Extract a normalized placeholder signature of a string.
+ *
+ * @return array{positions: list<int>, named: list<string>, escapes: int}
  */
-function placeholder_count(string $s): int
-{
-	if ($s === '' || !str_contains($s, '%')) {
-		return 0;
+function azPlaceholderSignature(string $s): array {
+	$positions = [];
+	$named = [];
+	$escapes = 0;
+	$auto = 0;
+	preg_match_all('/%%|%(\d+)\$[sd]|%[sd]|\{([A-Za-z0-9_]+)\}/', $s, $m, PREG_SET_ORDER);
+	foreach ($m as $hit) {
+		if ($hit[0] === '%%') {
+			$escapes++;
+		} elseif (isset($hit[2]) && $hit[2] !== '') {
+			$named[] = $hit[2];
+		} elseif (isset($hit[1]) && $hit[1] !== '') {
+			$positions[] = (int)$hit[1];
+		} else {
+			$auto++;
+			$positions[] = $auto;
+		}
 	}
-	$t = str_replace('%%', '', $s);
-	if (!preg_match_all(
-		'/%(?:[1-9]\d*\$)?[-+ ]?(?:\d+|\*)?(?:\.\d+)?[sdifeEgGFouxXbc]/',
-		$t,
-		$m
-	)) {
-		return 0;
-	}
-	return count($m[0]);
+	sort($positions);
+	sort($named);
+	return ['positions' => $positions, 'named' => $named, 'escapes' => $escapes];
 }
 
-$mismatches = [];
-$missingInDe = [];
+function azSignatureToString(array $sig): string {
+	$parts = [];
+	foreach ($sig['positions'] as $p) {
+		$parts[] = "%{$p}\$_";
+	}
+	foreach ($sig['named'] as $n) {
+		$parts[] = '{' . $n . '}';
+	}
+	if ($sig['escapes'] > 0) {
+		$parts[] = '%% x' . $sig['escapes'];
+	}
+	return $parts === [] ? '(none)' : implode(', ', $parts);
+}
 
-foreach ($en as $key => $enVal) {
-	if (!is_string($enVal) || !str_contains($enVal, '%')) {
-		continue;
+$enPath = $base . '/en.json';
+if (!is_file($enPath)) {
+	fwrite(STDERR, "Missing locale file: $enPath\n");
+	exit(1);
+}
+$en = json_decode((string)file_get_contents($enPath), true, 512, JSON_THROW_ON_ERROR);
+$enT = $en['translations'] ?? [];
+
+$failed = false;
+
+foreach ($locales as $lang) {
+	$path = $base . '/' . $lang . '.json';
+	if (!is_file($path)) {
+		fwrite(STDERR, "Missing locale file: $path\n");
+		exit(1);
 	}
-	$cEn = placeholder_count($enVal);
-	if ($cEn === 0) {
-		continue;
-	}
-	if (!array_key_exists($key, $de)) {
-		$missingInDe[] = $key;
-		continue;
-	}
-	$deVal = $de[$key];
-	if (!is_string($deVal)) {
-		$mismatches[] = [$key, $cEn, 'non-string de value'];
-		continue;
-	}
-	$cDe = placeholder_count($deVal);
-	if ($cEn !== $cDe) {
-		$mismatches[] = [$key, $cEn, $cDe];
+	$cat = json_decode((string)file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+	$trans = $cat['translations'] ?? [];
+
+	foreach ($enT as $key => $enVal) {
+		if (!array_key_exists($key, $trans)) {
+			continue; // parity script reports missing keys
+		}
+		$val = $trans[$key];
+
+		if (is_array($enVal)) {
+			if (!is_array($val) || $val === []) {
+				$failed = true;
+				fwrite(STDERR, "{$lang}.json plural shape mismatch for key: {$key}\n");
+				continue;
+			}
+			$enSig = azPlaceholderSignature(implode(' ', $enVal));
+			// every plural form of the en source carries the same tokens; require
+			// each translated form to match the first en form's signature
+			$formSig = azPlaceholderSignature((string)$enVal[0]);
+			foreach ($val as $i => $form) {
+				$sig = azPlaceholderSignature((string)$form);
+				if ($sig !== $formSig) {
+					$failed = true;
+					fwrite(STDERR, "{$lang}.json placeholder mismatch in plural form {$i} for key: {$key}\n");
+					fwrite(STDERR, '  expected: ' . azSignatureToString($formSig) . "\n");
+					fwrite(STDERR, '  got:      ' . azSignatureToString($sig) . "\n");
+				}
+			}
+			continue;
+		}
+
+		$enSig = azPlaceholderSignature((string)$enVal);
+		if ($enSig === ['positions' => [], 'named' => [], 'escapes' => 0]) {
+			continue;
+		}
+		$sig = azPlaceholderSignature((string)$val);
+		if ($sig !== $enSig) {
+			$failed = true;
+			fwrite(STDERR, "{$lang}.json placeholder mismatch for key: {$key}\n");
+			fwrite(STDERR, '  expected: ' . azSignatureToString($enSig) . "\n");
+			fwrite(STDERR, '  got:      ' . azSignatureToString($sig) . "\n");
+		}
 	}
 }
 
-if ($missingInDe !== []) {
-	fwrite(STDERR, 'Keys with placeholders in en.json missing in de.json: ' . count($missingInDe) . "\n");
-	foreach (array_slice($missingInDe, 0, 30) as $k) {
-		fwrite(STDERR, "  - {$k}\n");
+// self-check: en msgids with printf placeholders must match their en value
+foreach ($enT as $key => $enVal) {
+	if (is_array($enVal)) {
+		continue;
 	}
-	if (count($missingInDe) > 30) {
-		fwrite(STDERR, '  ... and ' . (count($missingInDe) - 30) . " more\n");
+	$keySig = azPlaceholderSignature($key);
+	if ($keySig['positions'] === [] && $keySig['named'] === []) {
+		continue;
+	}
+	$valSig = azPlaceholderSignature((string)$enVal);
+	if ($valSig['positions'] !== $keySig['positions'] || $valSig['named'] !== $keySig['named']) {
+		$failed = true;
+		fwrite(STDERR, "en.json value placeholder mismatch against its own msgid: {$key}\n");
+		fwrite(STDERR, '  msgid: ' . azSignatureToString($keySig) . "\n");
+		fwrite(STDERR, '  value: ' . azSignatureToString($valSig) . "\n");
 	}
 }
 
-if ($mismatches !== []) {
-	fwrite(STDERR, 'Placeholder count mismatches (en vs de): ' . count($mismatches) . "\n");
-	foreach ($mismatches as $row) {
-		[$key, $a, $b] = $row;
-		fwrite(STDERR, "  - {$key}: en={$a} de={$b}\n");
-	}
+if ($failed) {
+	fwrite(STDERR, "\nl10n placeholder check FAILED.\n");
 	exit(1);
 }
 
-if ($missingInDe !== []) {
-	exit(1);
-}
-
-fwrite(STDOUT, "l10n placeholder check: OK (en/de arity aligned for keyed strings with placeholders).\n");
+echo "l10n placeholder check OK (printf + named tokens match en for de/fr/es/da/nl/it/pl/sv/nb).\n";
 exit(0);

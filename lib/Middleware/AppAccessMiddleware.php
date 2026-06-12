@@ -19,7 +19,7 @@ use Psr\Log\LoggerInterface;
 
 /**
  * App entry gate — blocks users who are not allowed to use ArbeitszeitCheck
- * before any controller action runs (parity with BudgetCheck / MobilityCheck).
+ * before any controller action runs (parity with BudgetCheck / ProjectCheck).
  */
 class AppAccessMiddleware extends Middleware
 {
@@ -74,18 +74,25 @@ class AppAccessMiddleware extends Middleware
 			|| str_contains($contentType, 'application/json')
 			|| $xRequestedWith === 'xmlhttprequest';
 
+		$l = $this->l10nFactory->get(Application::APP_ID);
+		$message = $l->t('You do not have access to ArbeitszeitCheck. Your account is not among the users or groups allowed to use this app.');
+		$hint = $l->t('Ask a Nextcloud or ArbeitszeitCheck administrator to enable the app for your account or add you to an allowed group.');
+
 		if ($isApi || $wantsJson) {
+			// `error` is surfaced verbatim in UI toasts (forms, deletion modal), so it must
+			// be a human-readable, localized sentence. `code` stays machine-readable.
 			return new JSONResponse([
 				'ok' => false,
-				'error' => ['code' => 'access_denied'],
-				'message' => 'access_denied',
+				'error' => $message,
+				'message' => $message,
+				'hint' => $hint,
+				'code' => 'app_access_denied',
 			], Http::STATUS_FORBIDDEN);
 		}
 
-		$l = $this->l10nFactory->get(Application::APP_ID);
 		$response = new TemplateResponse(Application::APP_ID, 'access-denied', [
-			'message' => $l->t('You do not have access to ArbeitszeitCheck. Your account is not among the users or groups allowed to use this app.'),
-			'hint' => $l->t('Ask a Nextcloud or ArbeitszeitCheck administrator to enable the app for your account or add you to an allowed group.'),
+			'message' => $message,
+			'hint' => $hint,
 			'homeUrl' => $this->urlGenerator->linkToDefaultPageUrl(),
 			'l' => $l,
 		]);
