@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.4.2 - 2026-06-12
+
+### Fixed
+
+- **Broken app upgrade (1.3.x → 1.4.x):** `EnsureArbeitszeitCheckSchema` was registered in `Application.php` with only `IDBConnection` while the repair step also requires `IConfig`, causing `ArgumentCountError` during `occ upgrade` / web updater and leaving the app stuck on “needs upgrade” with missing navigation routes. All repair steps from `info.xml` are now explicitly registered in the container; **`RepairStepDiRegistrationTest`** and extended **`UpgradeRepairIntegrationTest`** guard against recurrence.
+
 ## 1.4.1 - 2026-06-12
 
 ### Fixed

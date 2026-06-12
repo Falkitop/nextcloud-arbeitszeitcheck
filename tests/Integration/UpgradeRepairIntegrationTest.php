@@ -8,6 +8,7 @@ use OCA\ArbeitszeitCheck\Repair\BackfillAbsenceDays;
 use OCA\ArbeitszeitCheck\Repair\EnsureArbeitszeitCheckSchema;
 use OCA\ArbeitszeitCheck\Repair\ReleaseStuckPendingAbsences;
 use OCA\ArbeitszeitCheck\Repair\RepairOrphanedPausedEntries;
+use OCA\ArbeitszeitCheck\Repair\UninstallDropTables;
 use OCA\ArbeitszeitCheck\Service\AbsenceService;
 use OCA\ArbeitszeitCheck\Service\HolidayService;
 use OCP\Migration\IOutput;
@@ -26,6 +27,7 @@ class UpgradeRepairIntegrationTest extends TestCase
 			BackfillAbsenceDays::class,
 			ReleaseStuckPendingAbsences::class,
 			RepairOrphanedPausedEntries::class,
+			UninstallDropTables::class,
 		] as $class) {
 			$step = \OC::$server->get($class);
 			$this->assertInstanceOf($class, $step);

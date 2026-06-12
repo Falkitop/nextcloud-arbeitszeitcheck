@@ -1,3 +1,15 @@
+## 1.4.2 – 2026-06-12
+
+### Behoben
+
+- **Fehlgeschlagenes App-Upgrade (1.3.x → 1.4.x):** `EnsureArbeitszeitCheckSchema` war in `Application.php` nur mit `IDBConnection` registriert, der Reparaturschritt benötigt aber auch `IConfig` — das führte zu `ArgumentCountError` bei `occ upgrade` / Web-Updater und ließ die App im Zustand „Upgrade erforderlich“ mit fehlender Navigation hängen. Alle Reparaturschritte aus `info.xml` sind jetzt explizit im Container registriert; **`RepairStepDiRegistrationTest`** und erweiterter **`UpgradeRepairIntegrationTest`** verhindern ein Wiederauftreten.
+
+## 1.4.1 – 2026-06-12
+
+### Behoben
+
+- **Datenverlust nach Nextcloud-Upgrade:** `UninstallDropTables` erhält Tabellen und Einstellungen beim Deaktivieren (Durchlauf 1); die vollständige Bereinigung läuft nur beim Entfernen der App (Durchlauf 2). Behebt, dass das automatische Deaktivieren bei Server-Upgrades die Daten löschte, wenn die App wieder aktiviert wurde.
+
 ## 1.3.10 – 2026-05-30
 
 ### Behoben

@@ -16,6 +16,8 @@ use OCA\ArbeitszeitCheck\Capabilities;
 use OCA\ArbeitszeitCheck\Repair\BackfillAbsenceDays;
 use OCA\ArbeitszeitCheck\Repair\EnsureArbeitszeitCheckSchema;
 use OCA\ArbeitszeitCheck\Repair\ReleaseStuckPendingAbsences;
+use OCA\ArbeitszeitCheck\Repair\RepairOrphanedPausedEntries;
+use OCA\ArbeitszeitCheck\Repair\UninstallDropTables;
 use OCA\ArbeitszeitCheck\Listener\LoadSidebarScripts;
 use OCA\ArbeitszeitCheck\Listener\CSPListener;
 use OCA\ArbeitszeitCheck\Listener\TimeClientBootstrapListener;
@@ -366,6 +368,19 @@ class Application extends App implements IBootstrap {
 			return new ReleaseStuckPendingAbsences(
 				$c->query(\OCA\ArbeitszeitCheck\Db\AbsenceMapper::class),
 				$c->query(AbsenceService::class),
+			);
+		});
+
+		$context->registerService(RepairOrphanedPausedEntries::class, function ($c): RepairOrphanedPausedEntries {
+			return new RepairOrphanedPausedEntries(
+				$c->query(IDBConnection::class),
+			);
+		});
+
+		$context->registerService(UninstallDropTables::class, function ($c): UninstallDropTables {
+			return new UninstallDropTables(
+				$c->query(IDBConnection::class),
+				$c->query(\OCP\IConfig::class),
 			);
 		});
 

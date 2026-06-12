@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\ArbeitszeitCheck\Service;
 
+use OCA\ArbeitszeitCheck\Util\TemplateL10n;
 use OCP\IL10N;
 use OCP\IURLGenerator;
 
@@ -48,36 +49,38 @@ class DashboardDeskletConfigService
 	 */
 	private function buildL10n(): array
 	{
+		$l = $this->l10n;
+
 		return [
-			'working' => $this->l10n->t('Working'),
-			'onBreak' => $this->l10n->t('On Break'),
-			'paused' => $this->l10n->t('Paused'),
-			'clockedOut' => $this->l10n->t('Clocked Out'),
-			'statusLine' => $this->l10n->t('Status: %1$s'),
-			'workedToday' => $this->l10n->t('Worked today'),
-			'sessionDuration' => $this->l10n->t('Session'),
-			'clockIn' => $this->l10n->t('Clock In'),
-			'startBreak' => $this->l10n->t('Start Break'),
-			'endBreak' => $this->l10n->t('End Break'),
-			'clockOut' => $this->l10n->t('Clock Out'),
-			'openDashboard' => $this->l10n->t('Open full dashboard'),
-			'openTimeEntries' => $this->l10n->t('Open time entries'),
-			'teamOverview' => $this->l10n->t('Team overview'),
-			'companyOverview' => $this->l10n->t('Company overview'),
-			'lastUpdated' => $this->l10n->t('Last updated: %1$s'),
-			'actionFailed' => $this->l10n->t('Action failed'),
-			'actionDone' => $this->l10n->t('%1$s successful'),
-			'networkError' => $this->l10n->t('Could not load status. Please check your connection.'),
-			'sessionExpired' => $this->l10n->t('Your session has expired. Please refresh the page and try again.'),
-			'noTeamMembers' => $this->l10n->t('No team members found.'),
-			'noUsersFound' => $this->l10n->t('No users found.'),
-			'peopleRow' => $this->l10n->t('%1$s: %2$s (%3$s h)'),
-			'stampingDisabledTitle' => $this->l10n->t('Clock in/out is turned off for you'),
-			'stampingDisabledBodyManual' => $this->l10n->t('Add your hours under Time entries in the app.'),
-			'stampingDisabledBody' => $this->l10n->t('Contact HR if you need to record time.'),
-			'stampingDisabledPausedBody' => $this->l10n->t('Finish the paused session on the dashboard, or contact your administrator.'),
-			'deskletTitle' => $this->l10n->t('Quick time tracking'),
-			'deskletLead' => $this->l10n->t('Clock in, take a break, or clock out from here.'),
+			'working' => TemplateL10n::translate($l, 'Working'),
+			'onBreak' => TemplateL10n::translate($l, 'On Break'),
+			'paused' => TemplateL10n::translate($l, 'Paused'),
+			'clockedOut' => TemplateL10n::translate($l, 'Clocked Out'),
+			'statusLine' => TemplateL10n::translate($l, 'Status: %1$s'),
+			'workedToday' => TemplateL10n::translate($l, 'Worked today'),
+			'sessionDuration' => TemplateL10n::translate($l, 'Session'),
+			'clockIn' => TemplateL10n::translate($l, 'Clock In'),
+			'startBreak' => TemplateL10n::translate($l, 'Start Break'),
+			'endBreak' => TemplateL10n::translate($l, 'End Break'),
+			'clockOut' => TemplateL10n::translate($l, 'Clock Out'),
+			'openDashboard' => TemplateL10n::translate($l, 'Open full dashboard'),
+			'openTimeEntries' => TemplateL10n::translate($l, 'Open time entries'),
+			'teamOverview' => TemplateL10n::translate($l, 'Team overview'),
+			'companyOverview' => TemplateL10n::translate($l, 'Company overview'),
+			'lastUpdated' => TemplateL10n::translate($l, 'Last updated: %1$s'),
+			'actionFailed' => TemplateL10n::translate($l, 'Action failed'),
+			'actionDone' => TemplateL10n::translate($l, '%1$s successful'),
+			'networkError' => TemplateL10n::translate($l, 'Could not load status. Please check your connection.'),
+			'sessionExpired' => TemplateL10n::translate($l, 'Your session has expired. Please refresh the page and try again.'),
+			'noTeamMembers' => TemplateL10n::translate($l, 'No team members found.'),
+			'noUsersFound' => TemplateL10n::translate($l, 'No users found.'),
+			'peopleRow' => TemplateL10n::translate($l, '%1$s: %2$s (%3$s h)'),
+			'stampingDisabledTitle' => TemplateL10n::translate($l, 'Clock in/out is turned off for you'),
+			'stampingDisabledBodyManual' => TemplateL10n::translate($l, 'Add your hours under Time entries in the app.'),
+			'stampingDisabledBody' => TemplateL10n::translate($l, 'Contact HR if you need to record time.'),
+			'stampingDisabledPausedBody' => TemplateL10n::translate($l, 'Finish the paused session on the dashboard, or contact your administrator.'),
+			'deskletTitle' => TemplateL10n::translate($l, 'Quick time tracking'),
+			'deskletLead' => TemplateL10n::translate($l, 'Clock in, take a break, or clock out from here.'),
 		];
 	}
 }
