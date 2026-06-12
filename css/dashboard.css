@@ -632,7 +632,8 @@
 }
 
 #app-content.azc-app--dashboard .azc-dashboard-punch__timer--secondary {
-    opacity: 0.92;
+    /* Do not dim the whole block — opacity tanks timer-value contrast on dark themes */
+    border-style: dashed;
 }
 
 #app-content.azc-app--dashboard .azc-dashboard-punch__meta {
@@ -791,6 +792,24 @@
     font-weight: 700;
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.02em;
+    /* NC *-text tokens are lightened/darkened per theme for readable foreground ink */
+    color: var(--color-main-text, var(--azc-text));
+}
+
+#app-content.azc-app--dashboard .dashboard-status-card--active .timer-value {
+    color: var(--color-success-text, var(--color-main-text));
+}
+
+#app-content.azc-app--dashboard .dashboard-status-card--break .break-timer .timer-value {
+    color: var(--color-warning-text, var(--color-main-text));
+}
+
+#app-content.azc-app--dashboard .dashboard-status-card--break .session-timer .timer-value {
+    color: var(--color-text-maxcontrast, var(--color-main-text));
+}
+
+#app-content.azc-app--dashboard .dashboard-status-card--paused .timer-value {
+    color: var(--color-warning-text, var(--color-main-text));
 }
 
 #app-content.azc-app--dashboard .azc-dashboard-punch .timer-label,
@@ -860,7 +879,7 @@
     font-family: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', 'Courier New', monospace;
     font-size: 2.5rem;
     font-weight: 700;
-    color: var(--arbeitszeitcheck-color-primary);
+    color: var(--color-main-text, var(--arbeitszeitcheck-color-text));
     display: block;
     visibility: visible;
     opacity: 1;
@@ -870,21 +889,29 @@
 }
 
 .dashboard-status-card--active .timer-value {
-    color: var(--arbeitszeitcheck-color-success);
+    color: var(--color-success-text, var(--color-main-text));
 }
 
-.dashboard-status-card--break .timer-value {
-    color: var(--arbeitszeitcheck-color-warning);
+.dashboard-status-card--break .break-timer .timer-value {
+    color: var(--color-warning-text, var(--color-main-text));
+}
+
+.dashboard-status-card--break .session-timer .timer-value {
+    color: var(--color-text-maxcontrast, var(--color-main-text));
+}
+
+.dashboard-status-card--paused .timer-value {
+    color: var(--color-warning-text, var(--color-main-text));
 }
 
 /* Timer warnings for maximum working hours (ArbZG §3) */
 .timer-value.timer-warning {
-    color: var(--arbeitszeitcheck-color-warning);
+    color: var(--color-warning-text, var(--color-main-text));
     animation: pulse-warning 2s ease-in-out infinite;
 }
 
 .timer-value.timer-error {
-    color: var(--arbeitszeitcheck-color-error);
+    color: var(--color-error-text, var(--color-main-text));
     animation: pulse-error 1s ease-in-out infinite;
 }
 
@@ -915,7 +942,6 @@
 }
 
 .dashboard-status-card__timer--secondary {
-    opacity: 0.75;
     margin-top: var(--azc-space-4, 1rem);
 }
 

@@ -552,7 +552,7 @@ class TimeEntryFormManager {
 			if (existingBreaks.length >= this.maxBreaks) {
 				if (window.OC && OC.Notification) {
 					OC.Notification.showTemporary(
-						t('maxBreaksAllowed'),
+						t('maxBreaksAllowed').replace(/%(\d+\$)?d/, String(this.maxBreaks)),
 						{ type: 'error', timeout: 3000 }
 					);
 				}

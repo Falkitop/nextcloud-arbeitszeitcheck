@@ -56,7 +56,7 @@
     font-weight: bold;
     display: block;
     margin-top: 5px;
-    color: var(--color-primary);
+    color: var(--color-main-text);
 }
 
 .action-buttons {

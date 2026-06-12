@@ -351,6 +351,7 @@ class Application extends App implements IBootstrap {
 		$context->registerService(EnsureArbeitszeitCheckSchema::class, function ($c): EnsureArbeitszeitCheckSchema {
 			return new EnsureArbeitszeitCheckSchema(
 				$c->query(IDBConnection::class),
+				$c->query(\OCP\IConfig::class),
 			);
 		});
 

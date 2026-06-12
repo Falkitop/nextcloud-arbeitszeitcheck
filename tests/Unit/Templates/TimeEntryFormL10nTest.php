@@ -39,14 +39,15 @@ class TimeEntryFormL10nTest extends TestCase {
 		);
 	}
 
-	public function testMaxBreaksAllowedUsesNumericPlaceholder(): void {
+	public function testMaxBreaksAllowedPreservesNumericPlaceholder(): void {
 		$l = $this->createMock(\OCP\IL10N::class);
 		$l->method('t')->willReturnCallback(static function (string $id, array $params): string {
 			return vsprintf($id, $params);
 		});
 
+		// The placeholder survives translation; js/time-entry-form.js substitutes the limit.
 		$this->assertSame(
-			'Maximum of 0 breaks allowed',
+			'Maximum of %d breaks allowed',
 			TemplateL10n::translate($l, 'Maximum of %d breaks allowed'),
 		);
 	}

@@ -13,14 +13,32 @@ final class TemplateL10n {
 	public const JSON_ENCODE_FLAGS = JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE;
 
 	/**
+	 * Numeric base for sentinel values used to round-trip %d placeholders through vsprintf.
+	 * The formatted sentinel is replaced with the original placeholder after translation.
+	 */
+	private const NUMERIC_SENTINEL_BASE = 1908074000;
+
+	/**
+	 * Translate a message id without crashing on printf-style placeholders.
+	 *
+	 * When no parameters are given, placeholders (%s, %d, %1$s, %2$d, …) are preserved
+	 * verbatim in the translated string so they can be substituted client-side.
+	 *
 	 * @param list<mixed> $parameters
 	 */
 	public static function translate(IL10N $l, string $id, array $parameters = []): string {
-		if ($parameters === []) {
-			$parameters = self::placeholderArguments($id);
+		if ($parameters !== []) {
+			return (string)$l->t($id, $parameters);
 		}
 
-		return (string) $l->t($id, $parameters);
+		[$arguments, $restore] = self::placeholderPreservingArguments($id);
+		if ($arguments === []) {
+			return (string)$l->t($id);
+		}
+
+		$translated = (string)$l->t($id, $arguments);
+
+		return $restore === [] ? $translated : strtr($translated, $restore);
 	}
 
 	/**
@@ -38,36 +56,47 @@ final class TemplateL10n {
 	}
 
 	/**
-	 * Default vsprintf arguments when a message still contains format placeholders after translation.
-	 * Mirrors templates/common/teams-l10n.php (%s → literal "%s" for client-side replacement).
+	 * Default vsprintf arguments when a message contains format placeholders.
+	 * %s placeholders are passed through as their own literal (vsprintf('%1$s', ['%1$s'])
+	 * is a fixed point); %d placeholders use numeric sentinels restored by translate().
 	 *
 	 * @return list<int|string>
 	 */
 	public static function placeholderArguments(string $id): array {
-		if (preg_match_all('/%(\d+)\$s/', $id, $matches) !== false && $matches[1] !== []) {
-			$max = max(array_map('intval', $matches[1]));
-			$args = [];
-			for ($i = 1; $i <= $max; $i++) {
-				$args[] = '%' . $i . '$s';
+		return self::placeholderPreservingArguments($id)[0];
+	}
+
+	/**
+	 * @return array{0: list<int|string>, 1: array<string, string>}
+	 */
+	private static function placeholderPreservingArguments(string $id): array {
+		if (preg_match_all('/%(?:(\d+)\$)?[sd]/', $id, $matches, PREG_SET_ORDER) === false || $matches === []) {
+			return [[], []];
+		}
+
+		$argumentsByPosition = [];
+		$restore = [];
+		$sequential = 0;
+		foreach ($matches as $match) {
+			$spec = $match[0];
+			// PHP's argument pointer is only advanced by non-positional specs
+			$position = ($match[1] ?? '') !== '' ? ((int)$match[1]) - 1 : $sequential++;
+
+			if (str_ends_with($spec, 'd')) {
+				$sentinel = self::NUMERIC_SENTINEL_BASE + $position;
+				$argumentsByPosition[$position] = $sentinel;
+				$restore[(string)$sentinel] = $spec;
+			} else {
+				$argumentsByPosition[$position] = $spec;
 			}
-
-			return $args;
 		}
 
-		if (preg_match_all('/%(?:\d+\$)?[dif]/', $id, $matches) !== false && $matches[0] !== []) {
-			$args = [];
-			foreach ($matches[0] as $spec) {
-				$args[] = (str_ends_with($spec, 'd') || str_ends_with($spec, 'i')) ? 0 : '%s';
-			}
-
-			return $args;
+		$arguments = [];
+		$maxPosition = max(array_keys($argumentsByPosition));
+		for ($i = 0; $i <= $maxPosition; $i++) {
+			$arguments[] = $argumentsByPosition[$i] ?? '';
 		}
 
-		$sprintfCount = substr_count($id, '%s');
-		if ($sprintfCount > 0) {
-			return array_fill(0, $sprintfCount, '%s');
-		}
-
-		return [];
+		return [$arguments, $restore];
 	}
 }

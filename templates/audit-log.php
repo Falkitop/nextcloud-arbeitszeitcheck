@@ -243,26 +243,28 @@ $rangeEnd = min($total, $offset + $shownCount);
 </div>
 
 <?php
-$auditLogViewerL10n = [
-	'Loading…' => $l->t('Loading…'),
-	'Error loading audit logs' => $l->t('Error loading audit logs'),
-	'Failed to load audit logs. Please try again.' => $l->t('Failed to load audit logs. Please try again.'),
-	'No audit log entries found' => $l->t('No audit log entries found'),
-	'Date and time' => $l->t('Date and time'),
-	'Employee' => $l->t('Employee'),
-	'Action' => $l->t('Action'),
-	'What was changed' => $l->t('What was changed'),
-	'Who did it' => $l->t('Who did it'),
-	'0 entries' => $l->t('0 entries'),
-	'%1$d–%2$d of %3$d entries' => $l->t('%1$d–%2$d of %3$d entries'),
-	'Page %1$d of %2$d' => $l->t('Page %1$d of %2$d'),
-	'Previous' => $l->t('Previous'),
-	'Next' => $l->t('Next'),
-	'Start date must be before or equal to end date' => $l->t('Start date must be before or equal to end date'),
-	'Please enter valid dates in dd.mm.yyyy format.' => $l->t('Please enter valid dates in dd.mm.yyyy format.'),
-	'Date range must not exceed %d days. Please narrow the range.' => $l->t('Date range must not exceed %d days. Please narrow the range.'),
-	'User filter is too long.' => $l->t('User filter is too long.'),
-];
+// Placeholder strings (%d etc.) must go through TemplateL10n: a bare $l->t() without
+// arguments crashes vsprintf on PHP 8, and the JS substitutes the placeholders itself.
+$auditLogViewerL10n = \OCA\ArbeitszeitCheck\Util\TemplateL10n::mapFromMessageIds($l, [
+	'Loading…',
+	'Error loading audit logs',
+	'Failed to load audit logs. Please try again.',
+	'No audit log entries found',
+	'Date and time',
+	'Employee',
+	'Action',
+	'What was changed',
+	'Who did it',
+	'0 entries',
+	'%1$d–%2$d of %3$d entries',
+	'Page %1$d of %2$d',
+	'Previous',
+	'Next',
+	'Start date must be before or equal to end date',
+	'Please enter valid dates in dd.mm.yyyy format.',
+	'Date range must not exceed %d days. Please narrow the range.',
+	'User filter is too long.',
+]);
 ?>
 <script nonce="<?php p($_['cspNonce'] ?? ''); ?>">
 window.ArbeitszeitCheck = window.ArbeitszeitCheck || {};
