@@ -879,14 +879,14 @@
                         return;
                     }
 
-                    const baseConfirmMsg = this.config.l10n?.confirmDeleteTimeEntry ||
-                                     this.config.l10n?.confirmDelete ||
-                                     mainT('Are you sure you want to delete this time entry?');
+                    const baseConfirmMsg = mainT('Are you sure you want to delete this time entry?') || this.config.l10n?.confirmDeleteTimeEntry || this.config.l10n?.confirmDelete;
                     const confirmTitle = this.config.l10n?.confirmDeleteTimeEntryTitle ||
                                      mainT('Delete time entry');
                     const dialogOpts = (typeof OC !== 'undefined' && OC.dialogs)
                         ? { type: OC.dialogs.YES_NO_BUTTONS, modal: true }
                         : {};
+
+                    console.log(this.config.l10n);
 
                     button.disabled = true;
                     button.setAttribute('aria-busy', 'true');
