@@ -18,6 +18,7 @@ use OCA\ArbeitszeitCheck\Db\WorkingTimeModelMapper;
 use OCA\ArbeitszeitCheck\Exception\AdminUserProfileUpdateException;
 use OCA\ArbeitszeitCheck\Service\AdminUserProfileUpdateService;
 use OCA\ArbeitszeitCheck\Service\TimeCaptureMethodService;
+use OCA\ArbeitszeitCheck\Service\UserEmploymentSettingsService;
 use OCA\ArbeitszeitCheck\Service\UserOvertimeSettingsService;
 use OCA\ArbeitszeitCheck\Service\VacationAllocationService;
 use OCP\IUser;
@@ -48,6 +49,7 @@ class AdminUserProfileUpdateServiceTest extends TestCase
 		$tariffRuleSetMapper = $this->createMock(TariffRuleSetMapper::class);
 		$this->vacationPolicyMapper = $this->createMock(UserVacationPolicyAssignmentMapper::class);
 		$userOvertimeSettingsService = $this->createMock(UserOvertimeSettingsService::class);
+		$userEmploymentSettingsService = $this->createMock(UserEmploymentSettingsService::class);
 		$timeCaptureMethodService = $this->createMock(TimeCaptureMethodService::class);
 		$l10n = $this->createMock(IL10N::class);
 		$l10n->method('t')->willReturnCallback(fn ($s) => $s);
@@ -64,6 +66,7 @@ class AdminUserProfileUpdateServiceTest extends TestCase
 			$tariffRuleSetMapper,
 			$this->vacationPolicyMapper,
 			$userOvertimeSettingsService,
+			$userEmploymentSettingsService,
 			$timeCaptureMethodService,
 			$l10n,
 			$db,
@@ -150,6 +153,7 @@ class AdminUserProfileUpdateServiceTest extends TestCase
 			$this->createMock(TariffRuleSetMapper::class),
 			$this->vacationPolicyMapper,
 			$overtime,
+			$this->createMock(UserEmploymentSettingsService::class),
 			$timeCapture,
 			$l10n,
 			$db,

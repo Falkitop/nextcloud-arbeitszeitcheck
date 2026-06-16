@@ -260,6 +260,7 @@
 					vacationCarryoverMaxDays: vacationCarryoverMaxDaysVal,
 					vacationRolloverEnabled: isChecked(formData.get('vacationRolloverEnabled')),
 					vacationRolloverIncludeUnusedAnnual: isChecked(formData.get('vacationRolloverIncludeUnusedAnnual')),
+					vacationProrationMethod: String(formData.get('vacationProrationMethod') || 'twelfths'),
 					sendIcalApprovedAbsences: isChecked(formData.get('sendIcalApprovedAbsences')),
 					sendIcalToSubstitute: isChecked(formData.get('sendIcalToSubstitute')),
 					sendIcalToManagers: isChecked(formData.get('sendIcalToManagers')),

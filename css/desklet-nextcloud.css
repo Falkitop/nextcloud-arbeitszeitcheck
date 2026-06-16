@@ -15,7 +15,25 @@
 	overflow: visible;
 }
 
-#app-dashboard .panel:has(a[href*="/apps/arbeitszeitcheck/"]) .dz-mount {
+/* Punch-clock desklet: top of the employee-status panel, native list hidden */
+#app-dashboard .panel--content:has([data-arbeitszeitcheck-desklet]) > .dashboard-widget {
+	display: none;
+}
+
+#app-dashboard .panel:has([data-arbeitszeitcheck-desklet]) .dz-mount {
+	margin: 0 0 var(--space-4, 1rem);
+	padding: 0;
+	border-top: none;
+	width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+}
+
+#app-dashboard .panel:has([data-arbeitszeitcheck-desklet]) .dz-mount--nc-dashboard .dz-header-section {
+	display: none;
+}
+
+#app-dashboard .panel:has(a[href*="/apps/arbeitszeitcheck/"]) .dz-mount:not(:has([data-arbeitszeitcheck-desklet])) {
 	margin-top: var(--space-4, 1rem);
 	padding-top: var(--space-4, 1rem);
 	border-top: 1px solid var(--color-border);

@@ -39,7 +39,7 @@ class DashboardWidgetController extends Controller {
 		$userId = $this->getUserId();
 		return new JSONResponse([
 			'success' => true,
-			'data' => $this->widgetDataService->getEmployeeWidgetData($userId),
+			'data' => $this->widgetDataService->getEmployeeStatusSummary($userId),
 		]);
 	}
 

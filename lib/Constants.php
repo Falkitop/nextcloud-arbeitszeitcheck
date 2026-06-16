@@ -226,6 +226,57 @@ final class Constants
 	/** User setting key: ISO Y-m-d date from which overtime balance is tracked (null = Jan 1 legacy). */
 	public const SETTING_OVERTIME_TRACKING_FROM = 'overtime_tracking_from';
 
+	/**
+	 * User setting key: ISO Y-m-d employment start date (Eintrittsdatum).
+	 * When set, the annual vacation entitlement is prorated for the (first)
+	 * calendar year the employee was hired in. Empty = no proration (legacy:
+	 * full annual entitlement regardless of partial years).
+	 */
+	public const SETTING_EMPLOYMENT_START = 'employment_start';
+
+	/**
+	 * User setting key: ISO Y-m-d employment end date (Austrittsdatum).
+	 * When set, the annual vacation entitlement is prorated for the (last)
+	 * calendar year the employee leaves in. Empty = open-ended employment.
+	 */
+	public const SETTING_EMPLOYMENT_END = 'employment_end';
+
+	/**
+	 * App config: method used to prorate annual vacation entitlement for
+	 * employees whose employment does not span the full calendar year
+	 * (see {@see self::SETTING_EMPLOYMENT_START} / {@see self::SETTING_EMPLOYMENT_END}).
+	 * One of {@see self::VACATION_PRORATION_METHOD_TWELFTHS} (default) or
+	 * {@see self::VACATION_PRORATION_METHOD_DAILY}. Only takes effect for
+	 * employees who actually have an employment start and/or end on file.
+	 */
+	public const CONFIG_VACATION_PRORATION_METHOD = 'vacation_proration_method';
+
+	/**
+	 * Full-month proration (Zwölftelung) per German BUrlG §5: each calendar
+	 * month touched by the employment relationship contributes 1/12 of the
+	 * annual entitlement; the prorated result is rounded up to a full day when
+	 * its fractional part is at least half a day (§5(2)), and never rounded
+	 * down below the proportional minimum.
+	 */
+	public const VACATION_PRORATION_METHOD_TWELFTHS = 'twelfths';
+
+	/**
+	 * Exact daily proration: `annual_days × (covered_calendar_days / days_in_year)`,
+	 * rounded to two decimal places. Use when month-granular Zwölftelung is
+	 * not desired (e.g. company policy / collective agreement).
+	 */
+	public const VACATION_PRORATION_METHOD_DAILY = 'daily';
+
+	/** Default proration method when the app config is unset. */
+	public const DEFAULT_VACATION_PRORATION_METHOD = self::VACATION_PRORATION_METHOD_TWELFTHS;
+
+	/**
+	 * Algorithm version stamped into the proration trace so payroll auditors
+	 * can replay a prorated entitlement deterministically. Increment when the
+	 * proration arithmetic or month-counting rule changes.
+	 */
+	public const VACATION_PRORATION_ALGORITHM_VERSION = 1;
+
 	/** User setting: when absent or truthy, employee may use clock in/out (stamping). Default enabled. */
 	public const SETTING_CLOCK_STAMPING_ENABLED = 'clock_stamping_enabled';
 

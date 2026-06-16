@@ -7,6 +7,7 @@ namespace OCA\ArbeitszeitCheck\Dashboard;
 use OCA\ArbeitszeitCheck\AppInfo\Application;
 use OCA\ArbeitszeitCheck\Service\DashboardDeskletRenderService;
 use OCA\ArbeitszeitCheck\Service\DashboardWidgetDataService;
+use OCA\ArbeitszeitCheck\Support\DashboardWidgetAssetBootstrap;
 use OCA\ArbeitszeitCheck\Support\TimeClientBootstrap;
 use OCP\AppFramework\Services\IInitialState;
 use OCP\Dashboard\IAPIWidgetV2;
@@ -19,7 +20,6 @@ use OCP\Dashboard\Model\WidgetItems;
 use OCP\IL10N;
 use OCP\IURLGenerator;
 use OCP\IUserSession;
-use OCP\Util;
 
 class EmployeeStatusWidget implements IAPIWidgetV2, IButtonWidget, IIconWidget, IReloadableWidget {
 	use RegistersTimeClientTrait;
@@ -68,16 +68,19 @@ class EmployeeStatusWidget implements IAPIWidgetV2, IButtonWidget, IIconWidget, 
 	}
 
 	public function load(): void {
-		$this->registerTimeClientForWidget($this->timeClientBootstrap);
+		// Desklet needs time formatting only — not the full utils bundle (avoids
+		// duplicate script execution when NC injects widget assets repeatedly).
+		$this->timeClientBootstrap->register(false);
 		$this->registerDeskletStylesForWidget();
-		Util::addScript(Application::APP_ID, 'dashboard-widgets');
-		Util::addStyle(Application::APP_ID, 'dashboard-widgets');
+		DashboardWidgetAssetBootstrap::registerDeskletAssets();
 
 		$user = $this->userSession->getUser();
 		if ($user !== null) {
+			$desklet = $this->deskletRenderService->renderForUser($user->getUID());
+			$desklet['widgetPanelId'] = $this->getId();
 			$this->initialState->provideInitialState(
 				self::INITIAL_STATE_DESKLET,
-				$this->deskletRenderService->renderForUser($user->getUID()),
+				$desklet,
 			);
 		}
 	}

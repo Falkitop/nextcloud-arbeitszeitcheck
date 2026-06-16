@@ -110,6 +110,25 @@ class AbsenceControllerTest extends TestCase
 		});
 
 		$this->vacationEntitlementEngine = $this->createMock(\OCA\ArbeitszeitCheck\Service\VacationEntitlementEngine::class);
+		$vacationProrationService = $this->createMock(\OCA\ArbeitszeitCheck\Service\VacationProrationService::class);
+		$vacationProrationService->method('prorateForYear')
+			->willReturnCallback(static function (string $uid, int $year, float $full): array {
+				return [
+					'days' => $full,
+					'full_days' => $full,
+					'prorated' => false,
+					'method' => 'twelfths',
+					'months_covered' => 12,
+					'covered_days' => 365,
+					'days_in_year' => 365,
+					'covered_from' => sprintf('%04d-01-01', $year),
+					'covered_to' => sprintf('%04d-12-31', $year),
+					'employment_start' => null,
+					'employment_end' => null,
+					'employed_in_year' => true,
+					'algorithm_version' => 1,
+				];
+			});
 		$localeFormat = $this->createMock(LocaleFormatService::class);
 		$localeFormat->method('clientHints')->willReturn([]);
 		$navigationFlags = new NavigationFlagsService(
@@ -132,6 +151,7 @@ class AbsenceControllerTest extends TestCase
 			$this->config,
 			$this->monthClosureService,
 			$this->vacationEntitlementEngine,
+			$vacationProrationService,
 			$localeFormat,
 			$navigationFlags
 		);

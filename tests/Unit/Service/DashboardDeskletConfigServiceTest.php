@@ -6,6 +6,7 @@ namespace OCA\ArbeitszeitCheck\Tests\Unit\Service;
 
 use OCA\ArbeitszeitCheck\Service\DashboardDeskletConfigService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
+use OCP\App\IAppManager;
 use OCP\IL10N;
 use OCP\IURLGenerator;
 use PHPUnit\Framework\TestCase;
@@ -24,7 +25,10 @@ class DashboardDeskletConfigServiceTest extends TestCase {
 		$permissions->method('canAccessManagerDashboard')->willReturn(false);
 		$permissions->method('isAdmin')->willReturn(false);
 
-		$service = new DashboardDeskletConfigService($urlGenerator, $permissions, $l10n);
+		$appManager = $this->createMock(IAppManager::class);
+		$appManager->method('getAppWebPath')->willReturn('/custom_apps/arbeitszeitcheck');
+
+		$service = new DashboardDeskletConfigService($urlGenerator, $permissions, $l10n, $appManager);
 		$config = $service->buildForUser('alice');
 		$l10nMap = $config['l10n'];
 

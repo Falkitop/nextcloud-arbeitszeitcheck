@@ -121,9 +121,15 @@
       ? String(payload.matchedLayer)
       : ((trace && trace.matched_layer) ? String(trace.matched_layer) : '—');
     const matchedHuman = layerHuman(matched);
-    const days = (payload && payload.effectiveEntitlementDays != null)
+    const fullDays = (payload && payload.effectiveEntitlementDays != null)
       ? payload.effectiveEntitlementDays
       : trace.result_days;
+    const isProrated = !!(payload && payload.prorated === true);
+    // Headline shows what the employee actually gets this year (prorated when
+    // a partial employment year applies), falling back to the full figure.
+    const days = (isProrated && payload && payload.proratedEntitlementDays != null)
+      ? payload.proratedEntitlementDays
+      : fullDays;
     const asOf = (payload && payload.asOfDate) || trace.as_of_date || '';
 
     const steps = layers.map(function (layer) {
@@ -166,6 +172,25 @@
         + '</p>';
     }
 
+    let prorationNote = '';
+    if (isProrated) {
+      let tpl;
+      if (payload && payload.employedInYear === false) {
+        tpl = tt('prorationNoteNone');
+      } else if (payload && payload.prorationMethod === 'daily') {
+        tpl = tt('prorationNoteDaily');
+      } else {
+        tpl = tt('prorationNoteTwelfths');
+      }
+      const noteText = String(tpl)
+        .replace('{prorated}', formatDays(days))
+        .replace('{full}', formatDays(fullDays))
+        .replace('{months}', String((payload && payload.prorationMonthsCovered != null) ? payload.prorationMonthsCovered : ''));
+      prorationNote = '<p class="entitlement-explain-dialog__proration" role="note">'
+        + escapeHtml(noteText)
+        + '</p>';
+    }
+
     let asOfLine = '';
     if (asOf) {
       const asOfTpl = tt('asOfDate');
@@ -185,6 +210,7 @@
       + '<span class="entitlement-explain-dialog__summary-value">' + escapeHtml(formatDays(days)) + '</span>'
       + '<span class="entitlement-explain-dialog__summary-unit">' + escapeHtml(tt('daysPerYear')) + '</span>'
       + '</p>'
+      + prorationNote
       + asOfLine
       + '<p class="entitlement-explain-dialog__lead">'
       + '<span class="entitlement-explain-dialog__lead-text">' + escapeHtml(tt('layerDeterminedLead')) + '</span> '

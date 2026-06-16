@@ -184,6 +184,17 @@
   color: var(--color-text-lighter);
 }
 
+#edit-user-modal .entitlement-preview__proration {
+  margin: var(--space-2, 0.5rem) 0 0;
+  padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
+  border-radius: var(--border-radius, 6px);
+  border-left: 3px solid var(--color-primary-element, #0082c9);
+  background: color-mix(in srgb, var(--color-primary-element, #0082c9) 8%, var(--color-main-background));
+  color: var(--color-main-text);
+  font-size: var(--arbeitszeitcheck-font-size-sm, 0.875rem);
+  line-height: 1.5;
+}
+
 #edit-user-modal .entitlement-preview__summary {
   margin: var(--space-2, 0.5rem) 0 0;
   font-size: var(--arbeitszeitcheck-font-size-sm, 0.875rem);

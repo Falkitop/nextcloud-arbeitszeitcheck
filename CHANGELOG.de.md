@@ -1,3 +1,13 @@
+## 1.5.0 – 2026-06-16
+
+### Hinzugefügt
+
+- **Anteiliger Urlaub bei unterjährigem Ein-/Austritt** ([#23](https://github.com/aSoftwareByDesignRepository/nextcloud-arbeitszeitcheck/issues/23)): Beschäftigte, die unterjährig ein- oder austreten, erhalten ihren Jahresurlaubsanspruch jetzt anteilig zum tatsächlich beschäftigten Teil des Jahres gekürzt, statt immer die vollen Jahres­tage zu bekommen.
+  - Neues optionales **Eintrittsdatum** und **Austrittsdatum** je Mitarbeitende unter *Mitarbeitende → Bearbeiten*. Sind beide leer, erfolgt keine Kürzung (voller Anspruch, unverändertes bisheriges Verhalten).
+  - Neue globale Admin-Einstellung **Anteiliger Urlaub → Berechnungsmethode**: *Volle Monate (Zwölftelung, deutscher Standard)* — 1/12 je angefangenem Beschäftigungsmonat, ein Bruchteil von mindestens einem halben Tag wird aufgerundet (§ 5 BUrlG); oder *Exakte Tage* — Jahresanspruch × beschäftigte Tage ÷ Tage des Jahres.
+  - Die Anspruchsvorschau im Admin-Bereich und der Erklär-Dialog „Wie wird mein Urlaubsanspruch berechnet?“ für Beschäftigte zeigen den gekürzten Wert mit deutlichem Hinweis, sodass die angezeigte Zahl stets dem nutzbaren Saldo entspricht.
+  - Die Kürzung wird zur Nachvollziehbarkeit im Berechnungs-Trace und in historischen Snapshots festgehalten.
+
 ## 1.4.2 – 2026-06-12
 
 ### Behoben

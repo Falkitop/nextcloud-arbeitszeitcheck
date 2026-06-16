@@ -6,6 +6,13 @@
  * @license AGPL-3.0-or-later
  */
 
+(function () {
+	'use strict';
+
+	if (typeof window !== 'undefined' && window.ArbeitszeitCheckUtils) {
+		return;
+	}
+
 const ArbeitszeitCheckUtils = {
   // ===== API DATE/TIME (contract with PHP `format('c')`) =====
 
@@ -994,11 +1001,15 @@ const ArbeitszeitCheckUtils = {
  */
 (function initArbeitszeitCheckL10n() {
   if (typeof window === 'undefined') return;
+  if (window.ArbeitszeitCheck?._commonL10nInitialized) return;
 
   window.ArbeitszeitCheck = window.ArbeitszeitCheck || {};
+  window.ArbeitszeitCheck._commonL10nInitialized = true;
   window.ArbeitszeitCheck.l10n = window.ArbeitszeitCheck.l10n || {};
 
-  const tt = (typeof window.t === 'function')
+  const canTranslate = typeof window.t === 'function'
+    && (window.OC?.L10N || (typeof OC !== 'undefined' && OC?.L10N));
+  const tt = canTranslate
     ? (s) => window.t('arbeitszeitcheck', s)
     : (s) => s;
 
@@ -1039,3 +1050,5 @@ const ArbeitszeitCheckUtils = {
 if (typeof window !== 'undefined') {
   window.ArbeitszeitCheckUtils = ArbeitszeitCheckUtils;
 }
+
+})();

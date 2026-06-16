@@ -297,6 +297,38 @@ class ExportControllerTest extends TestCase
 		$this->assertStringContainsString('.csv', $contentDisposition);
 	}
 
+	public function testAbsencesExportAsCsvSanitisesFormulaInjectionPayloads(): void
+	{
+		$userId = 'testuser';
+		$user = $this->createMock(IUser::class);
+		$user->method('getUID')->willReturn($userId);
+		$this->userSession->method('getUser')->willReturn($user);
+
+		$absence = new Absence();
+		$absence->setId(1);
+		$absence->setUserId($userId);
+		$absence->setType(Absence::TYPE_VACATION);
+		$absence->setStartDate(new \DateTime('2024-06-01'));
+		$absence->setEndDate(new \DateTime('2024-06-01'));
+		$absence->setDays(1);
+		$absence->setReason('=HYPERLINK("http://evil.example","click")');
+		$absence->setStatus(Absence::STATUS_APPROVED);
+		$absence->setApproverComment('  +SUM(1,1)');
+		$absence->setApprovedAt(null);
+		$absence->setCreatedAt(new \DateTime('2024-05-01'));
+		$absence->setUpdatedAt(new \DateTime('2024-05-01'));
+
+		$this->absenceMapper->expects($this->once())
+			->method('findByUserAndDateRange')
+			->willReturn([$absence]);
+
+		$response = $this->controller->absences('csv', '2024-06-01', '2024-06-30');
+		$this->assertInstanceOf(DataDownloadResponse::class, $response);
+		$content = (string)$response->render();
+		$this->assertStringContainsString('\'=HYPERLINK(""http://evil.example"",""click"")', $content);
+		$this->assertStringContainsString('\'  +SUM(1,1)', $content);
+	}
+
 	/**
 	 * Test absences export uses default date range
 	 */

@@ -2037,6 +2037,10 @@ class ManagerController extends Controller
 
 	private function csvEscape(string $value): string
 	{
+		// Neutralize formula injection in spreadsheet clients.
+		if ($value !== '' && preg_match('/^[\x00-\x20]*[=+\-@]/u', $value) === 1) {
+			$value = "'" . $value;
+		}
 		if (str_contains($value, ';') || str_contains($value, '"') || str_contains($value, "\n")) {
 			return '"' . str_replace('"', '""', $value) . '"';
 		}

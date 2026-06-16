@@ -136,8 +136,9 @@
      * @param {string} summaryText
      * @param {object|string|null|undefined} traceObject
      * @param {function(string, string): string} t
+     * @param {object|null|undefined} prorationPreview
      */
-    function paintEntitlementPreview(previewEl, days, sourceLabel, summaryText, traceObject, t) {
+    function paintEntitlementPreview(previewEl, days, sourceLabel, summaryText, traceObject, t, prorationPreview) {
         if (!previewEl) {
             return;
         }
@@ -170,6 +171,79 @@
         if (technical) {
             technical.textContent = technicalJson;
         }
+
+        paintProrationNote(previewEl, prorationPreview, t);
+    }
+
+    /**
+     * Create, update, or remove the proration note under the entitlement preview.
+     *
+     * @param {HTMLElement|null} previewEl
+     * @param {object|null|undefined} prorationPreview
+     * @param {function(string, string): string} t
+     */
+    function paintProrationNote(previewEl, prorationPreview, t) {
+        if (!previewEl) {
+            return;
+        }
+        let prorationEl = previewEl.querySelector('.entitlement-preview__proration');
+        const noteHtml = buildProrationNoteHtml(prorationPreview, t);
+        if (!noteHtml) {
+            if (prorationEl) {
+                prorationEl.remove();
+            }
+            return;
+        }
+        if (!prorationEl) {
+            prorationEl = document.createElement('p');
+            prorationEl.className = 'entitlement-preview__proration';
+            const anchor = previewEl.querySelector('.entitlement-preview__meta')
+                || previewEl.querySelector('.entitlement-preview__value');
+            if (anchor && anchor.parentNode) {
+                anchor.insertAdjacentElement('afterend', prorationEl);
+            } else {
+                previewEl.appendChild(prorationEl);
+            }
+        }
+        prorationEl.outerHTML = noteHtml;
+    }
+
+    /**
+     * Map simulate/profile API fields to the preview proration shape.
+     *
+     * @param {object|null|undefined} resp
+     * @returns {object|null}
+     */
+    function buildProrationPreviewFromResponse(resp) {
+        if (!resp || !resp.prorated) {
+            return null;
+        }
+        return {
+            days: resp.proratedEntitlementDays,
+            fullYearDays: resp.fullYearEntitlementDays != null
+                ? resp.fullYearEntitlementDays
+                : resp.effectiveEntitlementDays,
+            prorated: true,
+            prorationMethod: resp.prorationMethod,
+            monthsCovered: resp.monthsCovered,
+            employedInYear: resp.employedInYear,
+        };
+    }
+
+    /**
+     * Headline days for the preview: prorated when applicable.
+     *
+     * @param {object|null|undefined} resp
+     * @returns {number}
+     */
+    function previewDaysFromResponse(resp) {
+        if (!resp) {
+            return 0;
+        }
+        if (resp.prorated && resp.proratedEntitlementDays != null) {
+            return Number(resp.proratedEntitlementDays);
+        }
+        return Number(resp.effectiveEntitlementDays || 0);
     }
 
     function buildEntitlementPreviewHtml(entitlementPreview, t) {
@@ -192,8 +266,38 @@
 
         return `<p class="entitlement-preview__value">${Utils.escapeHtml(valueText)}</p>
             <p class="entitlement-preview__meta">${Utils.escapeHtml(metaText)}</p>
+            ${buildProrationNoteHtml(entitlementPreview, t)}
             <p class="entitlement-preview__summary"${summaryText ? '' : ' hidden'}>${Utils.escapeHtml(summaryText)}</p>
             ${detailsBlock}`;
+    }
+
+    /**
+     * Human-readable note explaining a pro-rata reduction for a partial
+     * employment year, e.g. "Prorated for partial year: 20 of 30 days
+     * (employed 8 of 12 months)". Returns an empty string when the full annual
+     * entitlement applies, so the preview stays uncluttered for the common case.
+     */
+    function buildProrationNoteHtml(entitlementPreview, t) {
+        if (!entitlementPreview || !entitlementPreview.prorated) {
+            return '';
+        }
+        const full = formatPreviewDays(entitlementPreview.fullYearDays);
+        const prorated = formatPreviewDays(entitlementPreview.days);
+        let note;
+        if (entitlementPreview.employedInYear === false) {
+            note = t('entitlementNotEmployedThisYear', 'No entitlement this year: the employment period does not cover this calendar year.');
+        } else if (entitlementPreview.prorationMethod === 'daily') {
+            note = (t('entitlementProratedDaily', 'Prorated for partial year: {prorated} of {full} days (daily method).'))
+                .replace('{prorated}', prorated)
+                .replace('{full}', full);
+        } else {
+            const months = String(entitlementPreview.monthsCovered != null ? entitlementPreview.monthsCovered : '');
+            note = (t('entitlementProratedTwelfths', 'Prorated for partial year: {prorated} of {full} days (employed {months} of 12 months).'))
+                .replace('{prorated}', prorated)
+                .replace('{full}', full)
+                .replace('{months}', months);
+        }
+        return `<p class="entitlement-preview__proration">${Utils.escapeHtml(note)}</p>`;
     }
 
     /** Prefer server-injected l10n; window.t may be unavailable. */
@@ -687,6 +791,10 @@
         const endIso = user.workingTimeModelEndDate ?? user.userWorkingTimeModel?.endDate ?? null;
         const startVal = (startIso && convertISOToEuropean(startIso)) || '';
         const endVal = (endIso && convertISOToEuropean(endIso)) || '';
+        const employmentStartIso = user.employmentStart ?? null;
+        const employmentEndIso = user.employmentEnd ?? null;
+        const employmentStartVal = (employmentStartIso && convertISOToEuropean(employmentStartIso)) || '';
+        const employmentEndVal = (employmentEndIso && convertISOToEuropean(employmentEndIso)) || '';
         const currentState = user.germanState || '';
         const policy = user.vacationPolicy || {};
         const inheritLowerLayers = !!policy.inheritLowerLayers;
@@ -882,6 +990,20 @@
                     <p class="form-help">${t('endDateHelp', 'Leave empty if the assignment has no end date')}</p>
                 </div>
                 </section>
+                <section class="user-edit-section" aria-labelledby="user-edit-employment-heading">
+                    <h3 id="user-edit-employment-heading" class="user-edit-section__heading">${Utils.escapeHtml(t('employmentPeriod', 'Employment period (for pro-rata vacation)'))}</h3>
+                    <p id="user-edit-employment-intro" class="form-help form-help--block">${Utils.escapeHtml(t('employmentPeriodIntro', 'Set the hire date (and leaving date, if any). When the employment does not cover the whole calendar year, the annual vacation entitlement is reduced proportionally. Leave both empty for the full annual entitlement.'))}</p>
+                <div class="form-group">
+                    <label for="user-employment-start" class="form-label">${Utils.escapeHtml(t('employmentStart', 'Employment start date (Eintrittsdatum)'))}</label>
+                    <input type="text" id="user-employment-start" name="employmentStart" class="form-input datepicker-input" placeholder="${datePlaceholder}" pattern="\\d{2}\\.\\d{2}\\.\\d{4}" maxlength="10" value="${employmentStartVal}" autocomplete="off" aria-describedby="user-employment-start-help">
+                    <p id="user-employment-start-help" class="form-help">${Utils.escapeHtml(t('employmentStartHelp', 'First day of employment. Vacation for the year of hire is prorated from this date.'))} ${Utils.escapeHtml(t('formatDdmmyyyy', 'Format: dd.mm.yyyy'))}</p>
+                </div>
+                <div class="form-group">
+                    <label for="user-employment-end" class="form-label">${Utils.escapeHtml(t('employmentEnd', 'Employment end date (Austrittsdatum)'))}</label>
+                    <input type="text" id="user-employment-end" name="employmentEnd" class="form-input datepicker-input" placeholder="${datePlaceholder}" pattern="\\d{2}\\.\\d{2}\\.\\d{4}" maxlength="10" value="${employmentEndVal}" autocomplete="off" aria-describedby="user-employment-end-help">
+                    <p id="user-employment-end-help" class="form-help">${Utils.escapeHtml(t('employmentEndHelp', 'Last day of employment. Leave empty for ongoing employment. Vacation for the year of leaving is prorated up to this date.'))}</p>
+                </div>
+                </section>
                 <div class="form-actions">
                     <button type="button" class="btn btn--secondary" data-action="close-modal">${cancelLabel}</button>
                     <button type="submit" class="btn btn--primary">${saveLabel}</button>
@@ -905,7 +1027,7 @@
 
         const dp = window.ArbeitszeitCheckDatepicker;
         if (dp && dp.initializeDatepicker) {
-            ['user-start-date', 'user-end-date', 'user-overtime-tracking-from'].forEach((id) => {
+            ['user-start-date', 'user-end-date', 'user-overtime-tracking-from', 'user-employment-start', 'user-employment-end'].forEach((id) => {
                 const el = document.getElementById(id);
                 if (el) {
                     dp.initializeDatepicker(el, {});
@@ -928,57 +1050,36 @@
         const modelEl = document.getElementById('user-model');
         const previewEl = document.getElementById('user-entitlement-preview');
         const startDateEl = document.getElementById('user-start-date');
+        const employmentStartEl = document.getElementById('user-employment-start');
+        const employmentEndEl = document.getElementById('user-employment-end');
         let previewTimer = null;
         const previewToISO = resolveToISO();
 
-        const renderEntitlementPreview = function(days, sourceLabel, summaryOrTrace, traceObject) {
+        const readEmploymentDraftFromForm = function() {
+            const startRaw = String(employmentStartEl?.value || '').trim();
+            const endRaw = String(employmentEndEl?.value || '').trim();
+            return {
+                start: startRaw ? (previewToISO(startRaw) || '') : '',
+                end: endRaw ? (previewToISO(endRaw) || '') : '',
+            };
+        };
+
+        const renderEntitlementPreview = function(days, sourceLabel, summaryOrTrace, traceObject, prorationPreview) {
             const summaryText = typeof summaryOrTrace === 'string' ? summaryOrTrace : '';
             const trace = traceObject != null
                 ? traceObject
                 : (typeof summaryOrTrace === 'object' ? summaryOrTrace : null);
-            paintEntitlementPreview(previewEl, days, sourceLabel, summaryText, trace, t);
-        };
-
-        const getSelectedModel = function() {
-            const selectedId = parseInt(String(modelEl?.value || ''), 10);
-            if (!Number.isFinite(selectedId)) {
-                return null;
-            }
-            return (Array.isArray(models) ? models : []).find((m) => Number(m.id) === selectedId) || null;
+            paintEntitlementPreview(previewEl, days, sourceLabel, summaryText, trace, t, prorationPreview || null);
         };
 
         const computeLocalPreview = function() {
             const mode = String(vacationModeEl?.value || 'manual_fixed');
-            const manualDaysVal = parseLocalizedDecimal(manualDaysEl?.value);
-            // "Inherit" hands resolution back to L2/L1/L0 — local heuristics
-            // can't predict that, so we always ask the engine.
-            if (mode === 'manual_fixed' || mode === 'manual_exception') {
-                const days = Number.isFinite(manualDaysVal) ? manualDaysVal : 0;
-                renderEntitlementPreview(
-                    days,
-                    localizedEntitlementSourceLabel(mode === 'manual_exception' ? 'manual_exception' : 'manual', t),
-                    t('previewTraceManual', 'Uses manually entered annual days.'),
-                    null
-                );
-                return;
-            }
-            if (mode === 'model_based_simple') {
-                const selectedModel = getSelectedModel();
-                const workDaysPerWeek = Number(selectedModel?.workDaysPerWeek || 5);
-                const days = 30 * (workDaysPerWeek / 5);
-                renderEntitlementPreview(
-                    days,
-                    localizedEntitlementSourceLabel('simple_model', t),
-                    t('previewTraceModel', 'Formula: 30 × (work days per week ÷ 5).'),
-                    null
-                );
-                return;
-            }
             if (mode === 'tariff_rule_based' && !(tariffRuleSetEl?.value)) {
                 renderEntitlementPreview(
                     0,
                     t('sourceTariff', 'Tariff'),
                     t('previewSelectTariffRuleSet', 'Select a tariff rule set to see the preview.'),
+                    null,
                     null
                 );
                 return;
@@ -986,7 +1087,9 @@
 
             const payload = {
                 userId: user.userId,
-                asOfDate: (startDateEl?.value && previewToISO(startDateEl.value)) || (window.ArbeitszeitCheckTime ? window.ArbeitszeitCheckTime.todayYmd() : new Date().toISOString().slice(0, 10)),
+                asOfDate: (startDateEl?.value && previewToISO(startDateEl.value))
+                    || (window.ArbeitszeitCheckTime ? window.ArbeitszeitCheckTime.todayYmd() : new Date().toISOString().slice(0, 10)),
+                employment: readEmploymentDraftFromForm(),
                 draftPolicy: {
                     vacationMode: mode,
                     inheritLowerLayers: mode === 'inherit',
@@ -1005,6 +1108,7 @@
                             0,
                             t('notAvailable', 'Not available'),
                             resp?.error || t('previewTraceError', 'Preview unavailable.'),
+                            null,
                             null
                         );
                         return;
@@ -1012,10 +1116,11 @@
                     const src = localizedEntitlementSourceLabel(resp.source, t);
                     const trace = resp.calculationTrace || null;
                     renderEntitlementPreview(
-                        resp.effectiveEntitlementDays || 0,
+                        previewDaysFromResponse(resp),
                         src,
                         buildEntitlementPreviewSummary(trace, t),
-                        trace
+                        trace,
+                        buildProrationPreviewFromResponse(resp)
                     );
                 },
                 onError: function() {
@@ -1023,6 +1128,7 @@
                         0,
                         t('notAvailable', 'Not available'),
                         t('previewTraceError', 'Preview unavailable.'),
+                        null,
                         null
                     );
                 }
@@ -1061,7 +1167,7 @@
             vacationModeEl.addEventListener('change', toggleVacationModeFields);
             toggleVacationModeFields();
         }
-        [manualDaysEl, tariffRuleSetEl, overrideReasonEl, modelEl, startDateEl].forEach((el) => {
+        [manualDaysEl, tariffRuleSetEl, overrideReasonEl, modelEl, startDateEl, employmentStartEl, employmentEndEl].forEach((el) => {
             if (!el) {
                 return;
             }
@@ -1225,6 +1331,8 @@
         trackingFrom: '#user-overtime-tracking-from',
         openingBalanceYear: '#user-overtime-opening-year',
         openingBalanceHours: '#user-overtime-opening',
+        employmentStart: '#user-employment-start',
+        employmentEnd: '#user-employment-end',
     };
 
     /**
@@ -1385,6 +1493,17 @@
             markInvalid(endEl, auMsg('endDateAfterStart', 'The end date must be on or after the start date.'));
         }
 
+        // 7. Employment period: valid optional dates and start <= end.
+        const empStartEl = form.querySelector('#user-employment-start');
+        const empEndEl = form.querySelector('#user-employment-end');
+        assertValidOptionalDate(empStartEl, empStartEl?.value);
+        assertValidOptionalDate(empEndEl, empEndEl?.value);
+        const empStartIso = toISO(String(empStartEl?.value || '').trim());
+        const empEndIso = toISO(String(empEndEl?.value || '').trim());
+        if (isIso(empStartIso) && isIso(empEndIso) && empEndIso < empStartIso) {
+            markInvalid(empEndEl, auMsg('employmentEndAfterStart', 'The employment end date must be on or after the employment start date.'));
+        }
+
         return firstInvalid;
     }
 
@@ -1495,7 +1614,16 @@
             }
         };
 
-        return { workingTimeModel, vacationPolicy, timeCapture, overtime };
+        // Employment period (Eintritts-/Austrittsdatum) drives pro-rata vacation
+        // entitlement in partial years. Empty strings clear the stored value.
+        const employmentStartRaw = String(form.querySelector('#user-employment-start')?.value || '').trim();
+        const employmentEndRaw = String(form.querySelector('#user-employment-end')?.value || '').trim();
+        const employment = {
+            start: employmentStartRaw ? (toISO(employmentStartRaw) || '') : '',
+            end: employmentEndRaw ? (toISO(employmentEndRaw) || '') : ''
+        };
+
+        return { workingTimeModel, vacationPolicy, timeCapture, overtime, employment };
     }
 
     /**

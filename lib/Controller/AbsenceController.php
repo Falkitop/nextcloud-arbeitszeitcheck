@@ -20,6 +20,7 @@ use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCA\ArbeitszeitCheck\Service\TeamResolverService;
 use OCA\ArbeitszeitCheck\Service\MonthClosureService;
 use OCA\ArbeitszeitCheck\Service\VacationEntitlementEngine;
+use OCA\ArbeitszeitCheck\Service\VacationProrationService;
 use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
 use OCA\ArbeitszeitCheck\Service\NavigationFlagsService;
 use OCA\ArbeitszeitCheck\Exception\BusinessRuleException;
@@ -59,6 +60,7 @@ class AbsenceController extends Controller
 	private IConfig $config;
 	private MonthClosureService $monthClosureService;
 	private VacationEntitlementEngine $vacationEntitlementEngine;
+	private VacationProrationService $vacationProrationService;
 	private LocaleFormatService $localeFormat;
 	private NavigationFlagsService $navigationFlags;
 
@@ -77,6 +79,7 @@ class AbsenceController extends Controller
 		IConfig $config,
 		MonthClosureService $monthClosureService,
 		VacationEntitlementEngine $vacationEntitlementEngine,
+		VacationProrationService $vacationProrationService,
 		LocaleFormatService $localeFormat,
 		NavigationFlagsService $navigationFlags
 	) {
@@ -92,6 +95,7 @@ class AbsenceController extends Controller
 		$this->config = $config;
 		$this->monthClosureService = $monthClosureService;
 		$this->vacationEntitlementEngine = $vacationEntitlementEngine;
+		$this->vacationProrationService = $vacationProrationService;
 		$this->localeFormat = $localeFormat;
 		$this->navigationFlags = $navigationFlags;
 		$this->setCspService($cspService);
@@ -1435,10 +1439,26 @@ class AbsenceController extends Controller
 			$asOfDate = new \DateTime($asOfRaw);
 			$result = $this->vacationEntitlementEngine->computeForDate($userId, $asOfDate);
 			$redactedTrace = $this->vacationEntitlementEngine->redactTraceForUser($result['trace']);
+
+			// Apply the same partial-year proration that the actual vacation
+			// balance uses, so the employee-facing explainer never shows the
+			// full annual figure while the usable balance is reduced.
+			$fullDays = (float)$result['days'];
+			$proration = $this->vacationProrationService->prorateForYear(
+				$userId,
+				(int)$asOfDate->format('Y'),
+				$fullDays
+			);
+
 			return new JSONResponse([
 				'success' => true,
 				'asOfDate' => $asOfDate->format('Y-m-d'),
-				'effectiveEntitlementDays' => (float)$result['days'],
+				'effectiveEntitlementDays' => $fullDays,
+				'proratedEntitlementDays' => (float)$proration['days'],
+				'prorated' => (bool)$proration['prorated'],
+				'prorationMethod' => (string)$proration['method'],
+				'prorationMonthsCovered' => (int)$proration['months_covered'],
+				'employedInYear' => (bool)$proration['employed_in_year'],
 				'matchedLayer' => $result['matchedLayer'],
 				'trace' => $redactedTrace,
 			]);

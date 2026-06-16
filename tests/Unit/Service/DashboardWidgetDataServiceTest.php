@@ -120,6 +120,57 @@ class DashboardWidgetDataServiceTest extends TestCase {
 		$this->assertSame('08:30', $data['sessionStartFormatted']);
 	}
 
+	public function testEmployeeStatusSummaryReturnsLeanPayloadWithoutHeavyQueries(): void {
+		$timeTrackingService = $this->createMock(TimeTrackingService::class);
+		$timeTrackingService->method('getStatus')->with('u1')->willReturn([
+			'status' => 'active',
+			'working_today_hours' => 3.25,
+			'current_session_duration' => 11700,
+			'server_now' => '2026-01-15T12:00:00+01:00',
+			'server_timezone' => 'Europe/Berlin',
+			'current_entry' => [
+				'startTime' => '2026-01-15T08:30:00+01:00',
+			],
+		]);
+
+		// The desklet summary must NOT trigger the expensive overtime / vacation /
+		// traffic-light computations that the full widget payload performs.
+		$overtime = $this->createMock(OvertimeService::class);
+		$overtime->expects($this->never())->method('getWeeklyOvertime');
+		$absence = $this->createMock(AbsenceService::class);
+		$absence->expects($this->never())->method('getVacationStats');
+		$display = $this->createMock(OvertimeDisplayService::class);
+		$display->expects($this->never())->method('getYearToDateBalanceForTrafficLight');
+		$display->expects($this->never())->method('buildTrafficLightViewModel');
+		$timeTrackingService->expects($this->never())->method('getBreakStatus');
+
+		$service = new DashboardWidgetDataService(
+			$timeTrackingService,
+			$overtime,
+			$display,
+			$this->createMock(OvertimeBankService::class),
+			$absence,
+			$this->createMock(AbsenceMapper::class),
+			$this->createMock(TeamResolverService::class),
+			$this->createMock(PermissionService::class),
+			$this->createMock(IUserManager::class),
+			$this->createTimeZoneService(),
+			$this->createTimeCaptureMethodService(),
+		);
+
+		$data = $service->getEmployeeStatusSummary('u1');
+
+		$this->assertSame('active', $data['status']);
+		$this->assertSame(3.25, $data['workingTodayHours']);
+		$this->assertSame(11700, $data['currentSessionDuration']);
+		$this->assertSame('08:30', $data['sessionStartFormatted']);
+		$this->assertSame('Europe/Berlin', $data['serverTimezone']);
+		$this->assertTrue($data['timeCapture']['clockStampingEnabled']);
+		// Heavy fields are intentionally absent from the lean payload.
+		$this->assertArrayNotHasKey('cumulativeBalance', $data);
+		$this->assertArrayNotHasKey('vacationRemaining', $data);
+	}
+
 	public function testEmployeeWidgetDataExposesBreakStartTimeIso(): void {
 		$timeTrackingService = $this->createMock(TimeTrackingService::class);
 		$timeTrackingService->method('getStatus')->with('u1')->willReturn([

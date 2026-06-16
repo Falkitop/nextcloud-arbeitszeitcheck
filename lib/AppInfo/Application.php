@@ -220,6 +220,7 @@ class Application extends App implements IBootstrap {
 				$c->query(\OCA\ArbeitszeitCheck\Db\TariffRuleSetMapper::class),
 				$c->query(\OCA\ArbeitszeitCheck\Db\UserVacationPolicyAssignmentMapper::class),
 				$c->query(\OCA\ArbeitszeitCheck\Service\UserOvertimeSettingsService::class),
+				$c->query(\OCA\ArbeitszeitCheck\Service\UserEmploymentSettingsService::class),
 				$c->query(\OCA\ArbeitszeitCheck\Service\TimeCaptureMethodService::class),
 				$c->query(\OCP\IL10N::class),
 				$c->query(IDBConnection::class),
@@ -552,6 +553,20 @@ class Application extends App implements IBootstrap {
 			);
 		});
 
+		$context->registerService(\OCA\ArbeitszeitCheck\Service\UserEmploymentSettingsService::class, function($c) {
+			return new \OCA\ArbeitszeitCheck\Service\UserEmploymentSettingsService(
+				$c->query(\OCA\ArbeitszeitCheck\Db\UserSettingsMapper::class),
+				$c->query(\OCA\ArbeitszeitCheck\Db\AuditLogMapper::class),
+			);
+		});
+
+		$context->registerService(\OCA\ArbeitszeitCheck\Service\VacationProrationService::class, function($c) {
+			return new \OCA\ArbeitszeitCheck\Service\VacationProrationService(
+				$c->query(\OCA\ArbeitszeitCheck\Service\UserEmploymentSettingsService::class),
+				$c->query(\OCP\IConfig::class),
+			);
+		});
+
 		$context->registerService(VacationAllocationService::class, function($c) {
 			return new VacationAllocationService(
 				$c->query(\OCP\IConfig::class),
@@ -561,7 +576,8 @@ class Application extends App implements IBootstrap {
 				$c->query(\OCA\ArbeitszeitCheck\Db\VacationYearBalanceMapper::class),
 				$c->query(HolidayService::class),
 				$c->query(\OCA\ArbeitszeitCheck\Service\VacationEntitlementEngine::class),
-				$c->query(\OCA\ArbeitszeitCheck\Service\EntitlementSnapshotService::class)
+				$c->query(\OCA\ArbeitszeitCheck\Service\EntitlementSnapshotService::class),
+				$c->query(\OCA\ArbeitszeitCheck\Service\VacationProrationService::class)
 			);
 		});
 

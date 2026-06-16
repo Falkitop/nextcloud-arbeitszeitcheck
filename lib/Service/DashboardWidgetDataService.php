@@ -30,6 +30,38 @@ class DashboardWidgetDataService {
 	) {
 	}
 
+	/**
+	 * Lean status payload for the dashboard desklet.
+	 *
+	 * The desklet only renders the current punch-clock state, today's hours, the
+	 * running session and the time-capture flags. It must NOT trigger the heavy
+	 * overtime/vacation/traffic-light computations that {@see getEmployeeWidgetData()}
+	 * performs for the native widget and the mobile bootstrap (those generated
+	 * ~100 queries per poll, every 30s, per user). Keep this method query-cheap.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function getEmployeeStatusSummary(string $userId): array {
+		$status = $this->timeTrackingService->getStatus($userId);
+
+		$sessionStartFormatted = $this->formatInstantForWidget(
+			(string)($status['current_entry']['startTime'] ?? ''),
+			$userId
+		);
+
+		return [
+			'userId'                 => $userId,
+			'status'                 => (string)($status['status'] ?? 'clocked_out'),
+			'workingTodayHours'      => (float)($status['working_today_hours'] ?? 0.0),
+			'currentSessionDuration' => (int)($status['current_session_duration'] ?? 0),
+			// Drift-safe timer anchor (same fields as GET /api/clock/status).
+			'serverNow'              => (string)($status['server_now'] ?? ''),
+			'serverTimezone'         => (string)($status['server_timezone'] ?? ''),
+			'sessionStartFormatted'  => $sessionStartFormatted,
+			'timeCapture'            => $this->timeCaptureMethodService->getSettings($userId),
+		];
+	}
+
 	public function getEmployeeWidgetData(string $userId): array {
 		$status = $this->timeTrackingService->getStatus($userId);
 

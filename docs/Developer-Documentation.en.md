@@ -664,7 +664,24 @@ Today’s entitlement work introduces a policy-driven engine that separates enti
   - `entitlement_source`
   - `entitlement_rule_set_id`
   - `entitlement_trace`
+  - `entitlement_full_year` (full annual entitlement before proration)
+  - `proration` (the full proration result; see below)
 - Each compute call stores a snapshot in `at_entitlement_snapshots` for auditability and future diagnostics.
+
+**Pro-rata proration for partial employment years (issue #23)**
+
+The engine and layers always resolve the **full** calendar-year entitlement. Proration to a partial year is a separate, composable step so it applies uniformly regardless of which layer (L0–L3 or legacy) produced the number.
+
+- `UserEmploymentSettingsService` stores an optional per-user **employment start** (`employment_start`) and **employment end** (`employment_end`) date as plain user settings (no schema migration; same pattern as the overtime "tracking from" Stichtag). Empty ⇒ no proration. Writes enforce `start <= end`, are change-audited (`user_employment_start_updated` / `user_employment_end_updated`), and normalise to date-only midnight.
+- `VacationProrationService` performs the reduction for a concrete `(user, year)`:
+  - `prorateForYear(userId, year, fullAnnualDays)` reads the employment dates and the configured method.
+  - `computeProration(year, fullAnnualDays, start, end, method)` is a **pure static** function (exhaustively unit-tested) returning `days`, `full_days`, `prorated`, `method`, `months_covered`, `covered_days`, `days_in_year`, `covered_from`, `covered_to`, `employed_in_year`, `employment_start`, `employment_end`, `algorithm_version`.
+  - **`twelfths`** (`Constants::VACATION_PRORATION_METHOD_TWELFTHS`, default): `full × monthsCovered / 12`, where any calendar month touched by the employment counts in full (employee-favourable); a fractional part ≥ 0.5 rounds **up** to a full day (BUrlG §5), and the result never exceeds the full entitlement.
+  - **`daily`** (`Constants::VACATION_PRORATION_METHOD_DAILY`): `full × coveredDays / daysInYear`, rounded to 2 decimals (leap years use 366).
+  - Fail-closed: an inverted period or an employment window that does not intersect the year yields `0` with `employed_in_year = false`.
+- The configured method is the app config key `Constants::CONFIG_VACATION_PRORATION_METHOD` (admin UI: **Admin notifications → Pro-rata vacation**), validated via `VacationProrationService::normalizeMethod()`.
+- Consumers: `VacationAllocationService` (usable balance and allocation validation), `AdminController` (admin list/profile entitlement preview: `fullYearDays`, `prorated`, `prorationMethod`, `monthsCovered`), and `AbsenceController::entitlementTrace` (employee explainer: `effectiveEntitlementDays` = full, `proratedEntitlementDays`, `prorated`, `prorationMethod`, `prorationMonthsCovered`, `employedInYear`).
+- `Constants::VACATION_PRORATION_ALGORITHM_VERSION` is embedded in every proration result and stored in the entitlement trace so recomputations remain auditable across algorithm changes.
 
 **Migration and compatibility**
 

@@ -20,7 +20,10 @@ const BOOTSTRAP = {
   hintContactHr: 'Contact HR',
   loading: 'Loading…',
   loadError: 'Load failed',
-  closeLabel: 'Close'
+  closeLabel: 'Close',
+  prorationNoteTwelfths: 'Reduced for your employment period this year: {prorated} of {full} days (employed {months} of 12 months).',
+  prorationNoteDaily: 'Reduced for your employment period this year: {prorated} of {full} days.',
+  prorationNoteNone: 'You were not employed during this calendar year, so no vacation is granted for it.'
 }
 
 function mountDialog() {
@@ -90,6 +93,32 @@ describe('entitlement-explainer', () => {
       expect(body.querySelector('.entitlement-explain-dialog__step--applied')).toBeTruthy()
     })
     expect(window.ArbeitszeitCheckUtils.ajax).toHaveBeenCalled()
+  })
+
+  it('shows prorated headline and note for a mid-year joiner', async () => {
+    window.ArbeitszeitCheckUtils.ajax.mockResolvedValue({
+      success: true,
+      asOfDate: '2026-06-01',
+      effectiveEntitlementDays: 30,
+      proratedEntitlementDays: 20,
+      prorated: true,
+      prorationMethod: 'twelfths',
+      prorationMonthsCovered: 8,
+      employedInYear: true,
+      matchedLayer: 'L1',
+      trace: { layers_evaluated: [{ layer: 'L1', matched: true }] }
+    })
+
+    document.getElementById('entitlement-explain').click()
+    await vi.waitFor(() => {
+      const body = document.getElementById('entitlement-explain-body')
+      const value = body.querySelector('.entitlement-explain-dialog__summary-value')
+      expect(value.textContent).toContain('20')
+      const note = body.querySelector('.entitlement-explain-dialog__proration')
+      expect(note).toBeTruthy()
+      expect(note.textContent).toContain('20 of 30 days')
+      expect(note.textContent).toContain('8 of 12 months')
+    })
   })
 
   it('is closed on init even when markup had open attribute', () => {

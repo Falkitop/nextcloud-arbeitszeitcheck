@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.5.0 - 2026-06-16
+
+### Added
+
+- **Pro-rata vacation for partial employment years** ([#23](https://github.com/aSoftwareByDesignRepository/nextcloud-arbeitszeitcheck/issues/23)): employees who join or leave mid-year now have their annual vacation entitlement reduced to the part of the year actually worked, instead of always receiving the full year's days.
+  - New optional **employment start date (Eintrittsdatum)** and **employment end date (Austrittsdatum)** per employee under *Employees → Edit*. Both empty means no proration (full entitlement, unchanged historic behaviour).
+  - New global admin setting **Pro-rata vacation → Proration method**: *Full months (Zwölftelung, German default)* — 1/12 per calendar month touched by the employment, with a fraction of half a day or more rounded up (BUrlG §5); or *Exact days* — annual entitlement × covered days ÷ days in year.
+  - The admin entitlement preview and the employee-facing "How is my vacation entitlement computed?" explainer both show the reduced figure with a clear note, so the displayed number always matches the usable balance.
+  - Proration is recorded in the entitlement trace and historical snapshots for audit purposes.
+
 ## 1.4.2 - 2026-06-12
 
 ### Fixed

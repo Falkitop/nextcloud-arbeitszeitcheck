@@ -22,7 +22,12 @@ $l10n = is_array($config['l10n'] ?? null) ? $config['l10n'] : [];
 	</header>
 
 	<p id="dz-live-status" class="dz-sr-only" aria-live="polite" aria-atomic="true"></p>
-	<p id="dz-error" class="dz-error" role="alert" hidden></p>
+
+	<div id="dz-error-panel" class="dz-error-panel" role="alert" aria-live="assertive" hidden>
+		<p id="dz-error" class="dz-error-panel__text"></p>
+		<button type="button" class="btn btn-secondary dz-retry" id="dz-retry"><?php p($l10n['tryAgain'] ?? $l->t('Try again')); ?></button>
+	</div>
+
 	<p id="dz-feedback" class="dz-feedback" role="status" hidden></p>
 
 	<section class="dz-section dz-status-section" id="dz-status-section" aria-labelledby="dz-status-section-title" aria-busy="false">
@@ -36,7 +41,7 @@ $l10n = is_array($config['l10n'] ?? null) ? $config['l10n'] : [];
 			<div class="dz-status-card__header">
 				<div class="dz-status-title-wrap">
 					<span id="dz-status-icon" class="dz-status-icon" aria-hidden="true"></span>
-					<div class="dz-status-headlines">
+					<div class="dz-status-headings">
 						<p class="dz-status-eyebrow"><?php p($l->t('Current status')); ?></p>
 						<p id="dz-status-badge" class="dz-status-badge" data-status="clocked_out"><?php p($l10n['clockedOut'] ?? $l->t('Clocked Out')); ?></p>
 						<p id="dz-status-text" class="dz-status-text"></p>
@@ -45,12 +50,12 @@ $l10n = is_array($config['l10n'] ?? null) ? $config['l10n'] : [];
 			</div>
 			<div class="dz-status-metrics" role="list">
 				<div class="dz-metric" role="listitem">
-					<p class="dz-metric__label"><?php p($l10n['workedToday'] ?? $l->t('Worked today')); ?></p>
-					<p class="dz-metric__value" id="dz-worked-today">0.00</p>
+					<p class="dz-metric__label" id="dz-worked-today-label"><?php p($l10n['workedToday'] ?? $l->t('Worked today')); ?></p>
+					<p class="dz-metric__value" id="dz-worked-today" aria-labelledby="dz-worked-today-label">—</p>
 				</div>
 				<div class="dz-metric" role="listitem">
-					<p class="dz-metric__label"><?php p($l10n['sessionDuration'] ?? $l->t('Session')); ?></p>
-					<p class="dz-metric__value" id="dz-session-duration">00:00</p>
+					<p class="dz-metric__label" id="dz-session-label"><?php p($l10n['sessionDuration'] ?? $l->t('Session')); ?></p>
+					<p class="dz-metric__value" id="dz-session-duration" aria-labelledby="dz-session-label">—</p>
 				</div>
 			</div>
 		</article>
@@ -62,29 +67,29 @@ $l10n = is_array($config['l10n'] ?? null) ? $config['l10n'] : [];
 			<button type="button" class="btn btn-danger" id="dz-clock-out"><?php p($l10n['clockOut'] ?? $l->t('Clock Out')); ?></button>
 		</div>
 
-		<p id="dz-last-updated" class="dz-last-updated"></p>
+		<p id="dz-last-updated" class="dz-last-updated" aria-live="polite"></p>
 	</section>
 
 	<?php if (!empty($config['isManager'])): ?>
-	<section class="dz-section" aria-labelledby="dz-team-section-title">
+	<section class="dz-section dz-section--team" aria-labelledby="dz-team-section-title">
 		<div class="dz-section__header">
 			<h3 id="dz-team-section-title" class="dz-section__title"><?php p($l10n['teamOverview'] ?? $l->t('Team overview')); ?></h3>
 		</div>
-		<div id="dz-manager-list" class="dz-people-list" role="region" aria-live="polite"></div>
+		<div id="dz-manager-list" class="dz-people-list" role="region" aria-live="polite" aria-busy="false"></div>
 	</section>
 	<?php endif; ?>
 
 	<?php if (!empty($config['isAdmin'])): ?>
-	<section class="dz-section" aria-labelledby="dz-admin-section-title">
+	<section class="dz-section dz-section--admin" aria-labelledby="dz-admin-section-title">
 		<div class="dz-section__header">
 			<h3 id="dz-admin-section-title" class="dz-section__title"><?php p($l10n['companyOverview'] ?? $l->t('Company overview')); ?></h3>
 		</div>
-		<div id="dz-admin-list" class="dz-people-list" role="region" aria-live="polite"></div>
+		<div id="dz-admin-list" class="dz-people-list" role="region" aria-live="polite" aria-busy="false"></div>
 	</section>
 	<?php endif; ?>
 
-	<div class="dz-link-row">
+	<nav class="dz-link-row" aria-label="<?php p($l->t('Quick navigation')); ?>">
 		<a class="btn btn-secondary" href="<?php p($config['dashboardUrl'] ?? ''); ?>"><?php p($l10n['openDashboard'] ?? $l->t('Open full dashboard')); ?></a>
 		<a class="btn btn-secondary" href="<?php p($config['timeEntriesUrl'] ?? ''); ?>"><?php p($l10n['openTimeEntries'] ?? $l->t('Open time entries')); ?></a>
-	</div>
+	</nav>
 </div>

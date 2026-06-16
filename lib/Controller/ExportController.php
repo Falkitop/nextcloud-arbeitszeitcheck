@@ -44,6 +44,24 @@ class ExportController extends Controller
 	private IConfig $config;
 	private PermissionService $permissionService;
 
+	/**
+	 * Guard CSV exports against spreadsheet formula injection.
+	 */
+	private static function sanitizeCsvCellValue(string $value): string
+	{
+		if ($value === '') {
+			return $value;
+		}
+		if (preg_match('/^[\x00-\x20]*[=+\-@]/u', $value) === 1) {
+			return "'" . $value;
+		}
+		$first = $value[0];
+		if ($first === "\t" || $first === "\r" || $first === "\n") {
+			return "'" . $value;
+		}
+		return $value;
+	}
+
 	private function parseDateYmd(?string $value, string $fieldName): ?\DateTime
 	{
 		if ($value === null || trim($value) === '') {
@@ -405,7 +423,11 @@ class ExportController extends Controller
 		if (!empty($data)) {
 			fputcsv($fp, array_keys($data[0]));
 			foreach ($data as $row) {
-				fputcsv($fp, $row);
+				$sanitizedRow = array_map(
+					static fn ($value): string => self::sanitizeCsvCellValue((string)$value),
+					array_values($row)
+				);
+				fputcsv($fp, $sanitizedRow);
 			}
 		} else {
 			fputcsv($fp, ['message', 'No data available']);

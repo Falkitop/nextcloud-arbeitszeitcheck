@@ -14,6 +14,7 @@ use OCA\ArbeitszeitCheck\Service\EntitlementSnapshotService;
 use OCA\ArbeitszeitCheck\Service\HolidayService;
 use OCA\ArbeitszeitCheck\Service\VacationAllocationService;
 use OCA\ArbeitszeitCheck\Service\VacationEntitlementEngine;
+use OCA\ArbeitszeitCheck\Service\VacationProrationService;
 use OCP\IConfig;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
@@ -29,6 +30,7 @@ class VacationAllocationServiceTest extends TestCase
 		HolidayService $holiday,
 		?VacationEntitlementEngine $engine = null,
 		?EntitlementSnapshotService $snapshotService = null,
+		?VacationProrationService $prorationService = null,
 	): VacationAllocationService {
 		if ($engine === null) {
 			$engine = $this->createMock(VacationEntitlementEngine::class);
@@ -42,6 +44,32 @@ class VacationAllocationServiceTest extends TestCase
 			]);
 		}
 		$snapshotService = $snapshotService ?? $this->createMock(EntitlementSnapshotService::class);
+		if ($prorationService === null) {
+			$prorationService = $this->createMock(VacationProrationService::class);
+		}
+		if ($prorationService instanceof MockObject) {
+			$prorationService->method('getConfiguredMethod')
+				->willReturn(Constants::VACATION_PRORATION_METHOD_TWELFTHS);
+			// Default: passthrough (no employment dates → full entitlement).
+			$prorationService->method('prorateForYear')
+				->willReturnCallback(static function (string $uid, int $year, float $full): array {
+					return [
+						'days' => $full,
+						'full_days' => $full,
+						'prorated' => false,
+						'method' => Constants::VACATION_PRORATION_METHOD_TWELFTHS,
+						'months_covered' => 12,
+						'covered_days' => 365,
+						'days_in_year' => 365,
+						'covered_from' => sprintf('%04d-01-01', $year),
+						'covered_to' => sprintf('%04d-12-31', $year),
+						'employment_start' => null,
+						'employment_end' => null,
+						'employed_in_year' => true,
+						'algorithm_version' => Constants::VACATION_PRORATION_ALGORITHM_VERSION,
+					];
+				});
+		}
 		return new VacationAllocationService(
 			$config,
 			$absenceMapper,
@@ -50,7 +78,8 @@ class VacationAllocationServiceTest extends TestCase
 			$balanceMapper,
 			$holiday,
 			$engine,
-			$snapshotService
+			$snapshotService,
+			$prorationService
 		);
 	}
 
@@ -360,5 +389,63 @@ class VacationAllocationServiceTest extends TestCase
 		$snapshot->expects($this->once())->method('store');
 		$s = $this->makeService($config, $absenceMapper, $userWtm, $settings, $balance, $holiday, $engine, $snapshot);
 		$s->computeYearAllocation('u1', 2026, null, null, null, new \DateTime('2026-02-15'));
+	}
+
+	/**
+	 * Regression for issue #23: a mid-year joiner must have the full annual
+	 * entitlement reduced to the prorated amount in the allocation result.
+	 */
+	public function testProrationReducesAnnualEntitlementInAllocation(): void
+	{
+		$config = $this->createMock(IConfig::class);
+		$config->method('getAppValue')->willReturnMap([
+			['arbeitszeitcheck', Constants::CONFIG_VACATION_CARRYOVER_EXPIRY_MONTH, '3', '3'],
+			['arbeitszeitcheck', Constants::CONFIG_VACATION_CARRYOVER_EXPIRY_DAY, '31', '31'],
+		]);
+		$absenceMapper = $this->createMock(AbsenceMapper::class);
+		$absenceMapper->method('findVacationApprovedOverlappingYear')->willReturn([]);
+		$userWtm = $this->createMock(UserWorkingTimeModelMapper::class);
+		$userWtm->method('findCurrentByUser')->willReturn(null);
+		$settings = $this->createMock(UserSettingsMapper::class);
+		$settings->method('getIntegerSetting')->willReturn(30);
+		$balance = $this->createMock(VacationYearBalanceMapper::class);
+		$balance->method('getCarryoverDays')->willReturn(0.0);
+		$holiday = $this->createMock(HolidayService::class);
+
+		$engine = $this->createMock(VacationEntitlementEngine::class);
+		$engine->method('computeForDate')->willReturn([
+			'days' => 30.0,
+			'source' => 'manual',
+			'ruleSetId' => null,
+			'trace' => [],
+		]);
+
+		$proration = $this->createMock(VacationProrationService::class);
+		$proration->method('getConfiguredMethod')->willReturn(Constants::VACATION_PRORATION_METHOD_TWELFTHS);
+		$proration->method('prorateForYear')->willReturn([
+			'days' => 20.0,
+			'full_days' => 30.0,
+			'prorated' => true,
+			'method' => Constants::VACATION_PRORATION_METHOD_TWELFTHS,
+			'months_covered' => 8,
+			'covered_days' => 245,
+			'days_in_year' => 365,
+			'covered_from' => '2026-05-01',
+			'covered_to' => '2026-12-31',
+			'employment_start' => '2026-05-01',
+			'employment_end' => null,
+			'employed_in_year' => true,
+			'algorithm_version' => Constants::VACATION_PRORATION_ALGORITHM_VERSION,
+		]);
+
+		$s = $this->makeService($config, $absenceMapper, $userWtm, $settings, $balance, $holiday, $engine, null, $proration);
+		$r = $s->computeYearAllocation('u1', 2026, null, null, null, new \DateTime('2026-06-01'));
+
+		$this->assertEqualsWithDelta(30.0, $r['entitlement_full_year'], 0.001);
+		$this->assertEqualsWithDelta(20.0, $r['total_remaining_for_new_requests'], 0.001);
+		$this->assertEqualsWithDelta(20.0, $r['annual_remaining_after_approved'], 0.001);
+		$this->assertTrue($r['proration']['prorated']);
+		$this->assertEqualsWithDelta(20.0, $r['proration']['days'], 0.001);
+		$this->assertSame(8, $r['proration']['months_covered']);
 	}
 }

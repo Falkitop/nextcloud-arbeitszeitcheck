@@ -161,6 +161,28 @@ class AdminControllerTest extends TestCase
 		]);
 		$this->layeredVacationDefaultsService = $this->createMock(\OCA\ArbeitszeitCheck\Service\LayeredVacationDefaultsService::class);
 		$this->userOvertimeSettingsService = $this->createMock(UserOvertimeSettingsService::class);
+		$userEmploymentSettingsService = $this->createMock(\OCA\ArbeitszeitCheck\Service\UserEmploymentSettingsService::class);
+		$vacationProrationService = $this->createMock(\OCA\ArbeitszeitCheck\Service\VacationProrationService::class);
+		$vacationProrationService->method('getConfiguredMethod')
+			->willReturn(Constants::VACATION_PRORATION_METHOD_TWELFTHS);
+		$vacationProrationService->method('prorateForYear')
+			->willReturnCallback(static function (string $uid, int $year, float $full): array {
+				return [
+					'days' => $full,
+					'full_days' => $full,
+					'prorated' => false,
+					'method' => Constants::VACATION_PRORATION_METHOD_TWELFTHS,
+					'months_covered' => 12,
+					'covered_days' => 365,
+					'days_in_year' => 365,
+					'covered_from' => sprintf('%04d-01-01', $year),
+					'covered_to' => sprintf('%04d-12-31', $year),
+					'employment_start' => null,
+					'employment_end' => null,
+					'employed_in_year' => true,
+					'algorithm_version' => Constants::VACATION_PRORATION_ALGORITHM_VERSION,
+				];
+			});
 		$this->timeCaptureMethodService = $this->createMock(TimeCaptureMethodService::class);
 		$this->timeCaptureMethodService->method('getSettings')->willReturn([
 			'clockStampingEnabled' => true,
@@ -189,6 +211,7 @@ class AdminControllerTest extends TestCase
 			$this->tariffRuleSetMapper,
 			$this->userVacationPolicyAssignmentMapper,
 			$this->userOvertimeSettingsService,
+			$userEmploymentSettingsService,
 			$this->timeCaptureMethodService,
 			$l10n,
 			$db,
@@ -225,6 +248,8 @@ class AdminControllerTest extends TestCase
 			$this->vacationEntitlementEngine,
 			$this->layeredVacationDefaultsService,
 			$this->userOvertimeSettingsService,
+			$userEmploymentSettingsService,
+			$vacationProrationService,
 			$this->timeCaptureMethodService,
 			$adminUserProfileUpdateService,
 			$auditLogPresenter,
@@ -317,6 +342,21 @@ class AdminControllerTest extends TestCase
 		$this->assertStringContainsString('"\'=cmd|/c calc"', $body);
 		$this->assertStringContainsString('"\'+attacker@example.com"', $body);
 		$this->assertStringContainsString('"Bob"', $body);
+	}
+
+	public function testGetDashboardEmployeesCsvExportSanitisesWhitespacePrefixedFormulaInjection(): void
+	{
+		$this->userManager->method('search')->willReturn([
+			$this->makeUserMock('alice', '  =SUM(1,2)', " \t+attacker@example.com"),
+		]);
+		$this->timeEntryMapper->method('findDistinctUserIdsByDate')->willReturn([]);
+		$this->userOvertimeSettingsService->method('listUserIdsWithTrackingFrom')->willReturn([]);
+
+		$response = $this->controller->getDashboardEmployees('all', null, null, null, 'csv');
+		$this->assertInstanceOf(DataDownloadResponse::class, $response);
+		$body = (string)$response->render();
+		$this->assertStringContainsString('"\'  =SUM(1,2)"', $body);
+		$this->assertStringContainsString("\"' \t+attacker@example.com\"", $body);
 	}
 
 	/**
@@ -1936,7 +1976,68 @@ class AdminControllerTest extends TestCase
 
 		$this->assertTrue($data['success']);
 		$this->assertSame(28.5, $data['effectiveEntitlementDays']);
+		$this->assertSame(28.5, $data['fullYearEntitlementDays']);
+		$this->assertSame(28.5, $data['proratedEntitlementDays']);
+		$this->assertFalse($data['prorated']);
 		$this->assertSame('manual', $data['source']);
+	}
+
+	public function testSimulateVacationPolicyAppliesDraftEmploymentProration(): void
+	{
+		$this->request->method('getParams')->willReturn([
+			'userId' => 'alice',
+			'asOfDate' => '2026-06-01',
+			'employment' => [
+				'start' => '2026-05-01',
+				'end' => '',
+			],
+			'draftPolicy' => [
+				'vacationMode' => Constants::VACATION_MODE_MANUAL_FIXED,
+				'manualDays' => 30,
+			],
+		]);
+		$user = $this->createMock(IUser::class);
+		$this->userManager->method('get')->with('alice')->willReturn($user);
+
+		$this->vacationEntitlementEngine->method('computeForPolicy')
+			->willReturn([
+				'days' => 30.0,
+				'source' => 'manual',
+				'ruleSetId' => null,
+				'trace' => [],
+			]);
+		$this->vacationEntitlementEngine->method('roundDays')
+			->willReturnCallback(static fn (float $v) => round($v, 2));
+
+		$response = $this->controller->simulateVacationPolicy();
+		$data = $response->getData();
+
+		$this->assertTrue($data['success']);
+		$this->assertSame(30.0, $data['effectiveEntitlementDays']);
+		$this->assertSame(20.0, $data['proratedEntitlementDays']);
+		$this->assertTrue($data['prorated']);
+		$this->assertSame(8, $data['monthsCovered']);
+	}
+
+	public function testSimulateVacationPolicyRejectsInvertedEmploymentDates(): void
+	{
+		$this->request->method('getParams')->willReturn([
+			'userId' => 'alice',
+			'asOfDate' => '2026-06-01',
+			'employment' => [
+				'start' => '2026-08-01',
+				'end' => '2026-03-01',
+			],
+		]);
+		$user = $this->createMock(IUser::class);
+		$this->userManager->method('get')->with('alice')->willReturn($user);
+		$this->vacationEntitlementEngine->expects($this->never())->method('computeForDate');
+
+		$response = $this->controller->simulateVacationPolicy();
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
+		$data = $response->getData();
+		$this->assertFalse($data['success']);
+		$this->assertArrayHasKey('errors', $data);
 	}
 
 	public function testSimulateVacationPolicyReturns404ForUnknownUser(): void

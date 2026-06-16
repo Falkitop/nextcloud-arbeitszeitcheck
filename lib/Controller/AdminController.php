@@ -45,7 +45,9 @@ use OCA\ArbeitszeitCheck\Service\LayeredVacationNotFoundException;
 use OCA\ArbeitszeitCheck\Service\LayeredVacationValidationException;
 use OCA\ArbeitszeitCheck\Service\VacationAllocationService;
 use OCA\ArbeitszeitCheck\Service\VacationEntitlementEngine;
+use OCA\ArbeitszeitCheck\Service\VacationProrationService;
 use OCA\ArbeitszeitCheck\Service\UserOvertimeSettingsService;
+use OCA\ArbeitszeitCheck\Service\UserEmploymentSettingsService;
 use OCA\ArbeitszeitCheck\Service\TimeCaptureMethodService;
 use OCA\ArbeitszeitCheck\Service\PermissionService;
 use OCA\ArbeitszeitCheck\Service\LocaleFormatService;
@@ -127,6 +129,8 @@ class AdminController extends Controller
 	private VacationEntitlementEngine $vacationEntitlementEngine;
 	private LayeredVacationDefaultsService $layeredVacationDefaultsService;
 	private UserOvertimeSettingsService $userOvertimeSettingsService;
+	private UserEmploymentSettingsService $userEmploymentSettingsService;
+	private VacationProrationService $vacationProrationService;
 	private TimeCaptureMethodService $timeCaptureMethodService;
 	private AdminUserProfileUpdateService $adminUserProfileUpdateService;
 	private AuditLogPresenter $auditLogPresenter;
@@ -165,6 +169,8 @@ class AdminController extends Controller
 		VacationEntitlementEngine $vacationEntitlementEngine,
 		LayeredVacationDefaultsService $layeredVacationDefaultsService,
 		UserOvertimeSettingsService $userOvertimeSettingsService,
+		UserEmploymentSettingsService $userEmploymentSettingsService,
+		VacationProrationService $vacationProrationService,
 		TimeCaptureMethodService $timeCaptureMethodService,
 		AdminUserProfileUpdateService $adminUserProfileUpdateService,
 		AuditLogPresenter $auditLogPresenter,
@@ -200,6 +206,8 @@ class AdminController extends Controller
 		$this->vacationEntitlementEngine = $vacationEntitlementEngine;
 		$this->layeredVacationDefaultsService = $layeredVacationDefaultsService;
 		$this->userOvertimeSettingsService = $userOvertimeSettingsService;
+		$this->userEmploymentSettingsService = $userEmploymentSettingsService;
+		$this->vacationProrationService = $vacationProrationService;
 		$this->timeCaptureMethodService = $timeCaptureMethodService;
 		$this->adminUserProfileUpdateService = $adminUserProfileUpdateService;
 		$this->auditLogPresenter = $auditLogPresenter;
@@ -397,6 +405,75 @@ class AdminController extends Controller
 		return $this->parseStrictYmdDateParam($trimmed);
 	}
 
+	/**
+	 * Optional calendar day as {@see \DateTimeImmutable} at midnight.
+	 *
+	 * @return array{\DateTimeImmutable|null, null}|array{null, JSONResponse}
+	 */
+	private function parseOptionalImmutableYmdParam(mixed $raw): array
+	{
+		[$dt, $err] = $this->parseOptionalEffectiveToParam($raw);
+		if ($err !== null) {
+			return [null, $err];
+		}
+		if ($dt === null) {
+			return [null, null];
+		}
+
+		return [\DateTimeImmutable::createFromMutable($dt)->setTime(0, 0, 0), null];
+	}
+
+	/**
+	 * Employment period for entitlement simulation: draft values from the
+	 * request override stored settings when an `employment` object is present
+	 * (admin user-edit preview). Absent keys inside that object fall back to
+	 * the persisted value so partial payloads remain safe.
+	 *
+	 * @param array<string, mixed> $params
+	 * @return array{0: ?\DateTimeImmutable, 1: ?\DateTimeImmutable, 2: ?JSONResponse}
+	 */
+	private function resolveSimulateEmploymentDates(string $userId, array $params): array
+	{
+		$employment = $params['employment'] ?? null;
+		if (!is_array($employment)) {
+			return [
+				$this->userEmploymentSettingsService->getEmploymentStart($userId),
+				$this->userEmploymentSettingsService->getEmploymentEnd($userId),
+				null,
+			];
+		}
+
+		if (array_key_exists('start', $employment)) {
+			[$start, $err] = $this->parseOptionalImmutableYmdParam($employment['start']);
+			if ($err !== null) {
+				return [null, null, $err];
+			}
+		} else {
+			$start = $this->userEmploymentSettingsService->getEmploymentStart($userId);
+		}
+
+		if (array_key_exists('end', $employment)) {
+			[$end, $err] = $this->parseOptionalImmutableYmdParam($employment['end']);
+			if ($err !== null) {
+				return [null, null, $err];
+			}
+		} else {
+			$end = $this->userEmploymentSettingsService->getEmploymentEnd($userId);
+		}
+
+		if ($start !== null && $end !== null && $start > $end) {
+			return [null, null, new JSONResponse([
+				'success' => false,
+				'error' => $this->l10n->t('Employment start date must be on or before the employment end date.'),
+				'errors' => ['employment' => [
+					'end' => $this->l10n->t('The employment end date must be on or after the employment start date.'),
+				]],
+			], Http::STATUS_BAD_REQUEST)];
+		}
+
+		return [$start, $end, null];
+	}
+
 	private function profileUpdateExceptionResponse(AdminUserProfileUpdateException $e): JSONResponse
 	{
 		$payload = [
@@ -442,6 +519,7 @@ class AdminController extends Controller
 				'vacationPolicy' => is_array($params['vacationPolicy'] ?? null) ? $params['vacationPolicy'] : [],
 				'timeCapture' => is_array($params['timeCapture'] ?? null) ? $params['timeCapture'] : [],
 				'overtime' => is_array($params['overtime'] ?? null) ? $params['overtime'] : [],
+				'employment' => is_array($params['employment'] ?? null) ? $params['employment'] : [],
 			];
 			$result = $this->adminUserProfileUpdateService->updateProfile(
 				$userId,
@@ -1957,6 +2035,7 @@ class AdminController extends Controller
 				'vacationCarryoverMaxDays' => Constants::CONFIG_VACATION_CARRYOVER_MAX_DAYS,
 				'vacationRolloverEnabled' => Constants::CONFIG_VACATION_ROLLOVER_ENABLED,
 				'vacationRolloverIncludeUnusedAnnual' => Constants::CONFIG_VACATION_ROLLOVER_INCLUDE_UNUSED_ANNUAL,
+				'vacationProrationMethod' => Constants::CONFIG_VACATION_PRORATION_METHOD,
 			];
 
 			foreach ($allowedKeys as $paramKey => $configKey) {
@@ -1977,6 +2056,10 @@ class AdminController extends Controller
 					'vacationRolloverIncludeUnusedAnnual',
 				], true)) {
 					$value = ($value === true || $value === 'true' || $value === '1') ? '1' : '0';
+				} elseif ($paramKey === 'vacationProrationMethod') {
+					// Whitelist to the two known methods; anything else falls
+					// back to the safe default (full-month Zwölftelung).
+					$value = VacationProrationService::normalizeMethod((string)$value);
 				} elseif ($paramKey === 'vacationCarryoverExpiryMonth') {
 					$value = (string)max(1, min(12, (int)$value));
 				} elseif ($paramKey === 'vacationCarryoverExpiryDay') {
@@ -2170,6 +2253,9 @@ class AdminController extends Controller
 			'vacationCarryoverMaxDays' => $this->appConfig->getAppValueString(Constants::CONFIG_VACATION_CARRYOVER_MAX_DAYS, ''),
 			'vacationRolloverEnabled' => $this->appConfig->getAppValueString(Constants::CONFIG_VACATION_ROLLOVER_ENABLED, '1') === '1',
 			'vacationRolloverIncludeUnusedAnnual' => $this->appConfig->getAppValueString(Constants::CONFIG_VACATION_ROLLOVER_INCLUDE_UNUSED_ANNUAL, '0') === '1',
+			'vacationProrationMethod' => VacationProrationService::normalizeMethod(
+				$this->appConfig->getAppValueString(Constants::CONFIG_VACATION_PRORATION_METHOD, Constants::DEFAULT_VACATION_PRORATION_METHOD)
+			),
 			'requireSubstituteTypes' => $requireSubstituteTypes,
 			'sendIcalApprovedAbsences' => $this->appConfig->getAppValueString('send_ical_approved_absences', '1') === '1',
 			'sendIcalToSubstitute' => $this->appConfig->getAppValueString('send_ical_to_substitute', '0') === '1',
@@ -2526,7 +2612,12 @@ class AdminController extends Controller
 			}
 
 			usort($rows, static function (array $a, array $b): int {
-				return strcasecmp((string)$a['displayName'], (string)$b['displayName']);
+				$displayNameComparison = strcasecmp((string)$a['displayName'], (string)$b['displayName']);
+				if ($displayNameComparison !== 0) {
+					return $displayNameComparison;
+				}
+				// Secondary key keeps pagination deterministic for duplicate names.
+				return strcmp((string)$a['userId'], (string)$b['userId']);
 			});
 
 			$total = count($rows);
@@ -2574,16 +2665,20 @@ class AdminController extends Controller
 	 * Mitigate CSV-formula injection for downstream spreadsheet consumers.
 	 *
 	 * Excel / LibreOffice interpret cells starting with `=`, `+`, `-`, `@`,
-	 * `\t`, or `\r` as formulas. Prefixing such values with a single quote
-	 * neutralises them without changing the visible text once imported.
+	 * or control characters as formulas. Some clients also ignore leading
+	 * whitespace before formula markers. Prefixing such values with a single
+	 * quote neutralises them without changing the visible text once imported.
 	 */
 	private static function sanitizeCsvCellValue(string $value): string
 	{
 		if ($value === '') {
 			return $value;
 		}
+		if (preg_match('/^[\x00-\x20]*[=+\-@]/u', $value) === 1) {
+			return "'" . $value;
+		}
 		$first = $value[0];
-		if ($first === '=' || $first === '+' || $first === '-' || $first === '@' || $first === "\t" || $first === "\r") {
+		if ($first === "\t" || $first === "\r" || $first === "\n") {
 			return "'" . $value;
 		}
 		return $value;
@@ -2653,6 +2748,8 @@ class AdminController extends Controller
 					}
 					$policy = $this->userVacationPolicyAssignmentMapper->findCurrentByUser($userId);
 					$entitlementPreview = $this->vacationEntitlementEngine->computeForDate($userId, new \DateTimeImmutable('today'));
+					$entitlementFullDays = round((float)$entitlementPreview['days'], 2);
+					$entitlementProration = $this->vacationProrationService->prorateForYear($userId, $currentYear, $entitlementFullDays);
 
 					// Get current working time model assignment
 					$currentModel = $this->userWorkingTimeModelMapper->findCurrentByUser($userId);
@@ -2702,11 +2799,17 @@ class AdminController extends Controller
 							'inheritLowerLayers' => $policy->isInherit(),
 						] : null,
 						'entitlementPreview' => [
-							'days' => round((float)$entitlementPreview['days'], 2),
+							'days' => (float)$entitlementProration['days'],
+							'fullYearDays' => $entitlementFullDays,
+							'prorated' => (bool)$entitlementProration['prorated'],
+							'prorationMethod' => $entitlementProration['method'],
+							'monthsCovered' => $entitlementProration['months_covered'],
 							'source' => $entitlementPreview['source'],
 							'ruleSetId' => $entitlementPreview['ruleSetId'],
 						],
 						'overtimeTrackingFrom' => $this->userOvertimeSettingsService->getTrackingFrom($userId)?->format('Y-m-d'),
+						'employmentStart' => $this->userEmploymentSettingsService->getEmploymentStart($userId)?->format('Y-m-d'),
+						'employmentEnd' => $this->userEmploymentSettingsService->getEmploymentEnd($userId)?->format('Y-m-d'),
 					];
 				} catch (\Throwable $e) {
 					\OCP\Log\logger('arbeitszeitcheck')->error('Error building admin user payload: ' . $e->getMessage(), [
@@ -2887,6 +2990,8 @@ class AdminController extends Controller
 			$currentYear = (int)date('Y');
 			$policy = $this->findVacationPolicyForAdminEdit($userId, $startDate);
 			$entitlementPreview = $this->vacationEntitlementEngine->computeForDate($userId, new \DateTimeImmutable('today'));
+			$entitlementFullDays = round((float)$entitlementPreview['days'], 2);
+			$entitlementProration = $this->vacationProrationService->prorateForYear($userId, $currentYear, $entitlementFullDays);
 
 			return new JSONResponse([
 				'success' => true,
@@ -2900,6 +3005,8 @@ class AdminController extends Controller
 					'overtimeTrackingFrom' => $this->userOvertimeSettingsService->getTrackingFrom($userId)?->format('Y-m-d'),
 					'overtimeOpeningBalanceHours' => $this->userOvertimeSettingsService->getOpeningBalanceHours($userId, $currentYear),
 					'overtimeOpeningBalanceYear' => $currentYear,
+					'employmentStart' => $this->userEmploymentSettingsService->getEmploymentStart($userId)?->format('Y-m-d'),
+					'employmentEnd' => $this->userEmploymentSettingsService->getEmploymentEnd($userId)?->format('Y-m-d'),
 					'workingTimeModel' => $workingTimeModel ? [
 						'id' => $workingTimeModel->getId(),
 						'name' => $workingTimeModel->getName(),
@@ -2924,10 +3031,16 @@ class AdminController extends Controller
 						'inheritLowerLayers' => $policy->isInherit(),
 					] : null,
 					'entitlementPreview' => [
-						'days' => round((float)$entitlementPreview['days'], 2),
+						'days' => (float)$entitlementProration['days'],
+						'fullYearDays' => $entitlementFullDays,
+						'prorated' => (bool)$entitlementProration['prorated'],
+						'prorationMethod' => $entitlementProration['method'],
+						'monthsCovered' => $entitlementProration['months_covered'],
+						'employedInYear' => (bool)($entitlementProration['employed_in_year'] ?? true),
 						'source' => $entitlementPreview['source'],
 						'ruleSetId' => $entitlementPreview['ruleSetId'],
 						'calculationTrace' => $entitlementPreview['trace'],
+						'prorationTrace' => $entitlementProration,
 					],
 					'timeCapture' => array_merge(
 						$this->timeCaptureMethodService->getSettings($userId),
@@ -3882,6 +3995,10 @@ class AdminController extends Controller
 			if ($asOfErr !== null) {
 				return $asOfErr;
 			}
+			[$employmentStart, $employmentEnd, $employmentErr] = $this->resolveSimulateEmploymentDates($userId, $params);
+			if ($employmentErr !== null) {
+				return $employmentErr;
+			}
 			$draftPolicy = $params['draftPolicy'] ?? null;
 			// REQ-WF-05: optional hypothetical team membership for what-if
 			// scenarios ("what would this user's entitlement be if we moved
@@ -3955,15 +4072,34 @@ class AdminController extends Controller
 					$this->vacationEntitlementEngine->clearHypotheticalTeams($userId);
 				}
 			}
+
+			$fullYearDays = $this->vacationEntitlementEngine->roundDays((float)$result['days']);
+			$simYear = (int)$asOfDate->format('Y');
+			$proration = VacationProrationService::computeProration(
+				$simYear,
+				$fullYearDays,
+				$employmentStart,
+				$employmentEnd,
+				$this->vacationProrationService->getConfiguredMethod()
+			);
+
 			return new JSONResponse([
 				'success' => true,
 				'userId' => $userId,
 				'asOfDate' => $asOfDate->format('Y-m-d'),
-				'effectiveEntitlementDays' => $this->vacationEntitlementEngine->roundDays((float)$result['days']),
+				// Full calendar-year entitlement from the policy engine (layer sim).
+				'effectiveEntitlementDays' => $fullYearDays,
+				'fullYearEntitlementDays' => $fullYearDays,
+				'proratedEntitlementDays' => (float)$proration['days'],
+				'prorated' => (bool)$proration['prorated'],
+				'prorationMethod' => (string)$proration['method'],
+				'monthsCovered' => (int)$proration['months_covered'],
+				'employedInYear' => (bool)$proration['employed_in_year'],
 				'source' => $result['source'],
 				'ruleSetId' => $result['ruleSetId'],
 				'hypotheticalTeamIds' => $hypotheticalTeamIds,
 				'calculationTrace' => $result['trace'],
+				'prorationTrace' => $proration,
 			]);
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error('simulateVacationPolicy failed: ' . $e->getMessage(), ['exception' => $e]);
@@ -4489,12 +4625,13 @@ class AdminController extends Controller
 			// Add data rows
 			foreach ($data as $row) {
 				$csv .= implode(',', array_map(function ($value) {
-					return '"' . str_replace('"', '""', (string)$value) . '"';
+					$sanitized = self::sanitizeCsvCellValue((string)$value);
+					return '"' . str_replace('"', '""', $sanitized) . '"';
 				}, array_values($row))) . "\n";
 			}
 		}
 
-		return new DataDownloadResponse($csv, $filename, 'text/csv');
+		return new DataDownloadResponse($csv, $filename, 'text/csv; charset=utf-8');
 	}
 
 	/**

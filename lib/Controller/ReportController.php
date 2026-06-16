@@ -676,6 +676,21 @@ class ReportController extends Controller
 		return $user ? $user->getDisplayName() : $userId;
 	}
 
+	private static function sanitizeCsvCellValue(string $value): string
+	{
+		if ($value === '') {
+			return $value;
+		}
+		if (preg_match('/^[\x00-\x20]*[=+\-@]/u', $value) === 1) {
+			return "'" . $value;
+		}
+		$first = $value[0];
+		if ($first === "\t" || $first === "\r" || $first === "\n") {
+			return "'" . $value;
+		}
+		return $value;
+	}
+
 	/**
 	 * @param list<array<string, mixed>> $rows
 	 */
@@ -700,7 +715,7 @@ class ReportController extends Controller
 				} elseif (!is_string($v)) {
 					$v = (string)$v;
 				}
-				$line[] = $v;
+				$line[] = self::sanitizeCsvCellValue($v);
 			}
 			fputcsv($fp, $line);
 		}
@@ -739,8 +754,8 @@ class ReportController extends Controller
 					continue;
 				}
 				$row = [
-					$member['user_id'] ?? '',
-					$member['display_name'] ?? '',
+					self::sanitizeCsvCellValue((string)($member['user_id'] ?? '')),
+					self::sanitizeCsvCellValue((string)($member['display_name'] ?? '')),
 					isset($member['total_hours']) ? (string)$member['total_hours'] : '',
 					isset($member['required_hours']) ? (string)$member['required_hours'] : '',
 					isset($member['overtime_hours']) ? (string)$member['overtime_hours'] : '',

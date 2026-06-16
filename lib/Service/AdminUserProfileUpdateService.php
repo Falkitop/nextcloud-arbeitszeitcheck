@@ -44,6 +44,7 @@ class AdminUserProfileUpdateService
 		private readonly TariffRuleSetMapper $tariffRuleSetMapper,
 		private readonly UserVacationPolicyAssignmentMapper $userVacationPolicyAssignmentMapper,
 		private readonly UserOvertimeSettingsService $userOvertimeSettingsService,
+		private readonly UserEmploymentSettingsService $userEmploymentSettingsService,
 		private readonly TimeCaptureMethodService $timeCaptureMethodService,
 		private readonly IL10N $l10n,
 		private readonly IDBConnection $db,
@@ -55,7 +56,8 @@ class AdminUserProfileUpdateService
 	 *   workingTimeModel?: array<string, mixed>,
 	 *   vacationPolicy?: array<string, mixed>,
 	 *   timeCapture?: array<string, mixed>,
-	 *   overtime?: array<string, mixed>
+	 *   overtime?: array<string, mixed>,
+	 *   employment?: array<string, mixed>
 	 * } $payload
 	 * @return array<string, mixed>
 	 */
@@ -67,19 +69,22 @@ class AdminUserProfileUpdateService
 		$vacationPolicy = is_array($payload['vacationPolicy'] ?? null) ? $payload['vacationPolicy'] : [];
 		$timeCapture = is_array($payload['timeCapture'] ?? null) ? $payload['timeCapture'] : [];
 		$overtime = is_array($payload['overtime'] ?? null) ? $payload['overtime'] : [];
+		$employment = is_array($payload['employment'] ?? null) ? $payload['employment'] : [];
 
 		// Pre-flight validation (read-only) before opening a transaction.
 		$this->preflightWorkingTimeModel($userId, $workingTimeModel);
 		$this->preflightVacationPolicy($userId, $vacationPolicy);
 		$this->preflightTimeCapture($userId, $timeCapture);
 		$this->preflightOvertime($overtime);
+		$this->preflightEmployment($userId, $employment);
 
-		return $this->atomic(function () use ($userId, $workingTimeModel, $vacationPolicy, $timeCapture, $overtime, $performedBy): array {
+		return $this->atomic(function () use ($userId, $workingTimeModel, $vacationPolicy, $timeCapture, $overtime, $employment, $performedBy): array {
 			$result = ['success' => true];
 			$result = array_merge($result, $this->applyWorkingTimeModel($userId, $workingTimeModel, $performedBy));
 			$result = array_merge($result, $this->applyVacationPolicy($userId, $vacationPolicy, $performedBy));
 			$result = array_merge($result, $this->applyTimeCaptureSettings($userId, $timeCapture, $performedBy));
 			$result = array_merge($result, $this->applyOvertimeSettings($userId, $overtime, $performedBy));
+			$result = array_merge($result, $this->applyEmploymentSettings($userId, $employment, $performedBy));
 
 			return $result;
 		}, $this->db);
@@ -320,6 +325,90 @@ class AdminUserProfileUpdateService
 			'overtimeOpeningBalanceHours' => $this->userOvertimeSettingsService->getOpeningBalanceHours($userId, $currentYear),
 			'overtimeOpeningBalanceYear' => $currentYear,
 		];
+	}
+
+	/**
+	 * Persist the employment period (Eintritts-/Austrittsdatum) that drives
+	 * pro-rata vacation entitlement in partial years. Empty strings clear the
+	 * respective date; absent keys leave the stored value untouched.
+	 *
+	 * @param array<string, mixed> $params
+	 * @return array<string, mixed>
+	 */
+	public function applyEmploymentSettings(string $userId, array $params, string $performedBy): array
+	{
+		if ($params === []) {
+			return [];
+		}
+		$this->preflightEmployment($userId, $params);
+
+		[$start, $end] = $this->resolveEmploymentPeriod($userId, $params);
+
+		try {
+			$this->userEmploymentSettingsService->setEmploymentPeriod($userId, $start, $end, $performedBy);
+		} catch (\InvalidArgumentException $e) {
+			throw new AdminUserProfileUpdateException(
+				$this->l10n->t('Employment start date must be on or before the employment end date.')
+			);
+		}
+
+		return [
+			'employmentStart' => $this->userEmploymentSettingsService->getEmploymentStart($userId)?->format('Y-m-d'),
+			'employmentEnd' => $this->userEmploymentSettingsService->getEmploymentEnd($userId)?->format('Y-m-d'),
+		];
+	}
+
+	/**
+	 * @param array<string, mixed> $params
+	 */
+	private function preflightEmployment(string $userId, array $params): void
+	{
+		if ($params === []) {
+			return;
+		}
+		$this->assertUserExists($userId);
+		[$start, $end] = $this->resolveEmploymentPeriod($userId, $params);
+		if ($start !== null && $end !== null && $start > $end) {
+			throw new AdminUserProfileUpdateException(
+				$this->l10n->t('Employment start date must be on or before the employment end date.')
+			);
+		}
+	}
+
+	/**
+	 * Resolve the target (start, end) pair for the employment period from the
+	 * request, falling back to the currently stored value for any endpoint the
+	 * caller did not supply.
+	 *
+	 * @param array<string, mixed> $params
+	 * @return array{0: ?\DateTimeImmutable, 1: ?\DateTimeImmutable}
+	 */
+	private function resolveEmploymentPeriod(string $userId, array $params): array
+	{
+		$start = array_key_exists('start', $params)
+			? $this->parseOptionalImmutableYmd($params['start'])
+			: $this->userEmploymentSettingsService->getEmploymentStart($userId);
+		$end = array_key_exists('end', $params)
+			? $this->parseOptionalImmutableYmd($params['end'])
+			: $this->userEmploymentSettingsService->getEmploymentEnd($userId);
+
+		return [$start, $end];
+	}
+
+	private function parseOptionalImmutableYmd(mixed $raw): ?\DateTimeImmutable
+	{
+		if ($raw === null || $raw === '') {
+			return null;
+		}
+		if (!is_scalar($raw)) {
+			throw new AdminUserProfileUpdateException($this->l10n->t('Invalid date; use YYYY-MM-DD.'));
+		}
+		$trimmed = trim((string)$raw);
+		if ($trimmed === '') {
+			return null;
+		}
+
+		return \DateTimeImmutable::createFromMutable($this->parseStrictYmd($trimmed))->setTime(0, 0, 0);
 	}
 
 	/**

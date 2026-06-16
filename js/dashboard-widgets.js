@@ -1,6 +1,17 @@
 (function () {
 	'use strict';
 
+	if (window.__arbeitszeitcheckDeskletLoader) {
+		return;
+	}
+	window.__arbeitszeitcheckDeskletLoader = true;
+
+	const APP_PATH_FRAGMENTS = [
+		'/apps/arbeitszeitcheck/',
+		'/custom_apps/arbeitszeitcheck/',
+	];
+	const DEFAULT_WIDGET_PANEL_ID = 'arbeitszeitcheck-employee-status';
+
 	function loadDeskletInitialState() {
 		try {
 			if (window.OCP?.InitialState && typeof window.OCP.InitialState.loadState === 'function') {
@@ -15,18 +26,37 @@
 		return null;
 	}
 
-	function findDeskletMountPoint() {
+	function pathTargetsApp(pathname) {
+		return APP_PATH_FRAGMENTS.some((fragment) => pathname.includes(fragment));
+	}
+
+	function findDeskletMountPoint(widgetPanelId) {
 		const root = document.getElementById('app-dashboard');
 		if (!root) {
 			return null;
 		}
-		const panels = root.querySelectorAll('.panel');
-		for (let i = 0; i < panels.length; i++) {
-			const panel = panels[i];
-			if (panel.querySelector('a[href*="/apps/arbeitszeitcheck/"]')) {
+
+		const panelId = (typeof widgetPanelId === 'string' && widgetPanelId !== '')
+			? widgetPanelId
+			: DEFAULT_WIDGET_PANEL_ID;
+		const marker = root.querySelector(`[data-id="${panelId}"]`);
+		if (marker) {
+			const panel = marker.closest('.panel');
+			if (panel) {
 				return panel.querySelector('.panel--content') || panel;
 			}
 		}
+
+		const panels = root.querySelectorAll('.panel');
+		for (let i = 0; i < panels.length; i++) {
+			const panel = panels[i];
+			const header = panel.querySelector('.panel--header h2');
+			const title = header ? String(header.textContent || '').trim() : '';
+			if (/my work status/i.test(title)) {
+				return panel.querySelector('.panel--content') || panel;
+			}
+		}
+
 		return null;
 	}
 
@@ -39,27 +69,87 @@
 		if (!html) {
 			return null;
 		}
-		const mount = findDeskletMountPoint();
+		const mount = findDeskletMountPoint(state.widgetPanelId);
 		if (!mount || mount.querySelector('[data-arbeitszeitcheck-desklet]')) {
 			return null;
 		}
 		const wrap = document.createElement('div');
-		wrap.className = 'dz-mount';
+		wrap.className = 'dz-mount dz-mount--nc-dashboard';
 		wrap.setAttribute('data-arbeitszeitcheck-desklet-mount', '1');
 		wrap.innerHTML = html;
-		mount.appendChild(wrap);
-		return document.getElementById('dz-config');
+		mount.insertBefore(wrap, mount.firstChild);
+		return wrap.querySelector('#dz-config');
 	}
 
 	function resolveConfigElement() {
-		let el = document.getElementById('dz-config');
-		if (!el) {
-			el = mountDeskletWorkspaceFromInitialState();
+		const existing = document.querySelector('[data-arbeitszeitcheck-desklet] #dz-config');
+		if (existing) {
+			return existing;
 		}
-		return el;
+		return mountDeskletWorkspaceFromInitialState();
+	}
+
+	/**
+	 * Only allow same-origin URLs that target this app's API routes.
+	 *
+	 * @param {string} url
+	 * @returns {boolean}
+	 */
+	function isSafeAppUrl(url) {
+		if (typeof url !== 'string') {
+			return false;
+		}
+		const trimmed = url.trim();
+		if (trimmed === '') {
+			return false;
+		}
+		if (/^https?:\/\//i.test(trimmed)) {
+			try {
+				const parsed = new URL(trimmed);
+				return parsed.origin === window.location.origin
+					&& pathTargetsApp(parsed.pathname);
+			} catch (_e) {
+				return false;
+			}
+		}
+		if (trimmed.startsWith('//')) {
+			return false;
+		}
+		return trimmed.startsWith('/')
+			&& pathTargetsApp(trimmed);
+	}
+
+	function normalizeDeskletUrl(url) {
+		if (typeof url !== 'string') {
+			return '';
+		}
+		const trimmed = url.trim();
+		if (trimmed === '') {
+			return '';
+		}
+		if (/^https?:\/\//i.test(trimmed)) {
+			return trimmed;
+		}
+		if (trimmed.startsWith('/') && window.OC?.generateUrl) {
+			const route = trimmed.replace(/^\/index\.php\//, '');
+			try {
+				return window.OC.generateUrl(route);
+			} catch (_e) {
+				return trimmed;
+			}
+		}
+		return trimmed;
 	}
 
 	function bootDesklet(configEl) {
+		const workspace = configEl.closest('[data-arbeitszeitcheck-desklet]');
+		if (workspace?.dataset.dzInitialized === '1') {
+			return;
+		}
+		if (workspace) {
+			workspace.dataset.dzInitialized = '1';
+		}
+
 		let config;
 		try {
 			config = JSON.parse(configEl.textContent);
@@ -71,7 +161,7 @@
 			return;
 		}
 
-		runDesklet(config);
+		runDesklet(config, workspace);
 	}
 
 	function scheduleDeskletBoot() {
@@ -97,151 +187,133 @@
 		}, 250);
 	}
 
-	function runDesklet(config) {
-	// l10n is guaranteed to be an object after the guard above
-	const l10n = (config.l10n && typeof config.l10n === 'object') ? config.l10n : {};
+	function runDesklet(config, workspace) {
+		const l10n = (config.l10n && typeof config.l10n === 'object') ? config.l10n : {};
+		const root = workspace || document;
+		const el = (id) => root.querySelector('#' + id);
 
-	// ── CSRF token ─────────────────────────────────────────────────────────────
-	const requestToken = (() => {
-		const meta = document.head.querySelector('meta[name="requesttoken"]');
-		return meta ? meta.getAttribute('content') : '';
-	})();
+		const statusSectionEl = el('dz-status-section');
+		const statusCardEl = el('dz-status-card');
+		const statusBadgeEl = el('dz-status-badge');
+		const statusTextEl = el('dz-status-text');
+		const statusIconEl = el('dz-status-icon');
+		const workedTodayEl = el('dz-worked-today');
+		const sessionEl = el('dz-session-duration');
+		const feedbackEl = el('dz-feedback');
+		const lastUpdatedEl = el('dz-last-updated');
+		const liveStatusEl = el('dz-live-status');
+		const managerListEl = el('dz-manager-list');
+		const adminListEl = el('dz-admin-list');
+		const errorPanelEl = el('dz-error-panel');
+		const errorEl = el('dz-error');
+		const retryBtn = el('dz-retry');
+		const actionButtons = ['dz-clock-in', 'dz-start-break', 'dz-end-break', 'dz-clock-out']
+			.map((id) => el(id))
+			.filter(Boolean);
 
-	// ── Fetch helper ───────────────────────────────────────────────────────────
-	const api = (url, method = 'GET') => fetch(url, {
-		method,
-		headers: {
-			'Accept': 'application/json',
-			'Content-Type': 'application/json',
-			'requesttoken': requestToken,
-		},
-		credentials: 'same-origin',
-	});
-
-	// ── Element references ─────────────────────────────────────────────────────
-	const statusSectionEl = document.getElementById('dz-status-section');
-	const statusCardEl    = document.getElementById('dz-status-card');
-	const statusBadgeEl   = document.getElementById('dz-status-badge');
-	const statusTextEl    = document.getElementById('dz-status-text');
-	const statusIconEl    = document.getElementById('dz-status-icon');
-	const workedTodayEl   = document.getElementById('dz-worked-today');
-	const sessionEl       = document.getElementById('dz-session-duration');
-	const feedbackEl      = document.getElementById('dz-feedback');
-	const lastUpdatedEl   = document.getElementById('dz-last-updated');
-	const liveStatusEl    = document.getElementById('dz-live-status');
-	const managerListEl   = document.getElementById('dz-manager-list');
-	const adminListEl     = document.getElementById('dz-admin-list');
-	const errorEl         = document.getElementById('dz-error');
-	const actionButtons   = ['dz-clock-in', 'dz-start-break', 'dz-end-break', 'dz-clock-out']
-		.map((id) => document.getElementById(id))
-		.filter(Boolean);
-
-	// ── Status tracking ────────────────────────────────────────────────────────
-	let lastKnown = {
-		status: 'clocked_out',
-		workingTodayHours: 0,
-		currentSessionDuration: 0,
-		clockStampingEnabled: true,
-		manualTimeEntryEnabled: true,
-	};
-	let mutationInFlight = false;
-
-	// ── Helpers ────────────────────────────────────────────────────────────────
-	const statusLabel = (status) => {
-		switch (status) {
-			case 'active': return l10n.working    || 'Working';
-			case 'break':  return l10n.onBreak    || 'On Break';
-			case 'paused': return l10n.paused     || 'Paused';
-			case 'completed': return l10n.clockedOut || 'Clocked Out';
-			default:       return l10n.clockedOut || 'Clocked Out';
-		}
-	};
-
-	const timeApi = () => window.ArbeitszeitCheckTime || null;
-
-	const formatDuration = (seconds) => {
-		const api = timeApi();
-		if (api) {
-			const formatted = api.formatDuration(seconds);
-			// Widget shows HH:MM (drop seconds for compact display).
-			return formatted.length >= 8 ? formatted.slice(0, 5) : formatted;
-		}
-		const s = Math.max(0, Math.floor(Number(seconds) || 0));
-		const h = Math.floor(s / 3600);
-		const m = Math.floor((s % 3600) / 60);
-		return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
-	};
-
-	const formatHours = (hours) => Number.isFinite(hours) ? hours.toFixed(2) : '0.00';
-
-	const statusIcon = (status) => {
-		const map = {
-			active: 'clock',
-			break: 'coffee',
-			paused: 'pause',
+		let lastKnown = {
+			status: 'clocked_out',
+			workingTodayHours: 0,
+			currentSessionDuration: 0,
+			clockStampingEnabled: true,
+			manualTimeEntryEnabled: true,
 		};
-		const name = map[status] || 'circle';
-		if (typeof window.AzcCatalog !== 'undefined' && typeof window.AzcCatalog.render === 'function') {
-			return window.AzcCatalog.render(name, 'dashboard-widget-status-icon');
-		}
-		return '';
-	};
+		let mutationInFlight = false;
+		let sessionTickTimer = null;
+		let sessionTickBase = null;
 
-	const formatTime = (value) => {
-		const api = timeApi();
-		if (api) {
-			return api.formatTime(value, { withSeconds: true }) || '';
-		}
-		const date = value instanceof Date ? value : new Date(value);
-		return new Intl.DateTimeFormat(undefined, {
-			hour: '2-digit',
-			minute: '2-digit',
-			second: '2-digit',
-		}).format(date);
-	};
+		const statusLabel = (status) => {
+			switch (status) {
+				case 'active': return l10n.working || 'Working';
+				case 'break': return l10n.onBreak || 'On Break';
+				case 'paused': return l10n.paused || 'Paused';
+				case 'completed': return l10n.clockedOut || 'Clocked Out';
+				default: return l10n.clockedOut || 'Clocked Out';
+			}
+		};
 
-	const showFeedback = (message) => {
-		if (!feedbackEl) {
-			return;
-		}
-		feedbackEl.textContent = message;
-		feedbackEl.removeAttribute('hidden');
-	};
+		const timeApi = () => window.ArbeitszeitCheckTime || null;
 
-	const hideFeedback = () => {
-		if (!feedbackEl) {
-			return;
-		}
-		feedbackEl.setAttribute('hidden', '');
-	};
+		const formatDuration = (seconds) => {
+			const api = timeApi();
+			if (api) {
+				const formatted = api.formatDuration(seconds);
+				return formatted.length >= 8 ? formatted.slice(0, 5) : formatted;
+			}
+			const s = Math.max(0, Math.floor(Number(seconds) || 0));
+			const h = Math.floor(s / 3600);
+			const m = Math.floor((s % 3600) / 60);
+			return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+		};
 
-	const announce = (message) => {
-		if (!liveStatusEl || !message) {
-			return;
-		}
-		liveStatusEl.textContent = '';
-		window.setTimeout(() => {
-			liveStatusEl.textContent = message;
-		}, 10);
-	};
+		const formatHours = (hours) => Number.isFinite(hours) ? hours.toFixed(2) : '0.00';
 
-	const updateLastRefreshed = () => {
-		if (!lastUpdatedEl) {
-			return;
-		}
-		const template = l10n.lastUpdated || 'Last updated: %1$s';
-		const now = timeApi() ? timeApi().serverNow() : new Date();
-		lastUpdatedEl.textContent = template.replace('%1$s', formatTime(now));
-	};
+		const statusIcon = (status) => {
+			const map = {
+				active: 'clock',
+				break: 'coffee',
+				paused: 'pause',
+			};
+			const name = map[status] || 'circle';
+			if (typeof window.AzcCatalog !== 'undefined' && typeof window.AzcCatalog.render === 'function') {
+				return window.AzcCatalog.render(name, 'dashboard-widget-status-icon');
+			}
+			return '';
+		};
 
-	// Normalise status data regardless of whether it comes from the employee
-	// widget API (camelCase) or a raw clock-action response (snake_case).
-	const normaliseStatus = (raw) => {
+		const formatTime = (value) => {
+			const api = timeApi();
+			if (api) {
+				return api.formatTime(value, { withSeconds: true }) || '';
+			}
+			const date = value instanceof Date ? value : new Date(value);
+			return new Intl.DateTimeFormat(undefined, {
+				hour: '2-digit',
+				minute: '2-digit',
+				second: '2-digit',
+			}).format(date);
+		};
+
+		const showFeedback = (message) => {
+			if (!feedbackEl) {
+				return;
+			}
+			feedbackEl.textContent = message;
+			feedbackEl.removeAttribute('hidden');
+		};
+
+		const hideFeedback = () => {
+			if (feedbackEl) {
+				feedbackEl.setAttribute('hidden', '');
+			}
+		};
+
+		const announce = (message) => {
+			if (!liveStatusEl || !message) {
+				return;
+			}
+			liveStatusEl.textContent = '';
+			window.setTimeout(() => {
+				liveStatusEl.textContent = message;
+			}, 10);
+		};
+
+		const updateLastRefreshed = () => {
+			if (!lastUpdatedEl) {
+				return;
+			}
+			const template = l10n.lastUpdated || 'Last updated: %1$s';
+			const now = timeApi() ? timeApi().serverNow() : new Date();
+			lastUpdatedEl.textContent = template.replace('%1$s', formatTime(now));
+		};
+
+		const normaliseStatus = (raw) => {
 		if (!raw || typeof raw !== 'object') {
 			return {
 				status: 'clocked_out',
 				workingTodayHours: 0,
 				currentSessionDuration: 0,
+				sessionStartFormatted: '',
 				clockStampingEnabled: true,
 				manualTimeEntryEnabled: true,
 			};
@@ -252,369 +324,494 @@
 		return {
 			status: String(raw.status ?? 'clocked_out'),
 			workingTodayHours: parseFloat(
-				raw.workingTodayHours ?? raw.working_today_hours ?? 0
+				raw.workingTodayHours ?? raw.working_today_hours ?? 0,
 			),
 			currentSessionDuration: parseInt(
 				raw.currentSessionDuration ?? raw.current_session_duration ?? 0,
-				10
+				10,
+			),
+			sessionStartFormatted: String(
+				raw.sessionStartFormatted ?? raw.session_start_formatted ?? '',
 			),
 			clockStampingEnabled: capture.clockStampingEnabled !== false,
 			manualTimeEntryEnabled: capture.manualTimeEntryEnabled !== false,
 		};
 	};
 
-	const getEffectiveButtonStates = (status, clockStampingEnabled) => {
-		const states = { ...(BUTTON_STATES[status] ?? BUTTON_STATES.clocked_out) };
-		if (!clockStampingEnabled) {
-			states['dz-clock-in'] = false;
-		}
-		return states;
-	};
+		const setLoading = (loading) => {
+			if (statusSectionEl) {
+				statusSectionEl.setAttribute('aria-busy', loading ? 'true' : 'false');
+			}
+			if (managerListEl) {
+				managerListEl.setAttribute('aria-busy', loading ? 'true' : 'false');
+			}
+			if (adminListEl) {
+				adminListEl.setAttribute('aria-busy', loading ? 'true' : 'false');
+			}
+		};
 
-	// ── Loading state ──────────────────────────────────────────────────────────
-	const setLoading = (loading) => {
-		if (statusSectionEl) {
-			statusSectionEl.setAttribute('aria-busy', loading ? 'true' : 'false');
-		}
-	};
+		const showError = (message) => {
+			const text = message || l10n.statusLoadError || l10n.networkError || 'Could not load status.';
+			if (errorEl) {
+				errorEl.textContent = text;
+			}
+			if (errorPanelEl) {
+				errorPanelEl.removeAttribute('hidden');
+			}
+		};
 
-	// ── Error display ──────────────────────────────────────────────────────────
-	const showError = (message) => {
-		if (!errorEl) {
-			return;
-		}
-		errorEl.textContent = message;
-		errorEl.removeAttribute('hidden');
-	};
+		const hideError = () => {
+			if (errorPanelEl) {
+				errorPanelEl.setAttribute('hidden', '');
+			}
+		};
 
-	const hideError = () => {
-		if (!errorEl) {
-			return;
-		}
-		errorEl.setAttribute('hidden', '');
-	};
+		const setButtonsLocked = (locked) => {
+			actionButtons.forEach((btn) => {
+				btn.disabled = locked;
+				btn.setAttribute('aria-disabled', locked ? 'true' : 'false');
+				btn.classList.toggle('btn--loading', locked);
+			});
+		};
 
-	const setButtonsLocked = (locked) => {
-		actionButtons.forEach((btn) => {
-			btn.disabled = locked;
-			btn.setAttribute('aria-disabled', locked ? 'true' : 'false');
-			btn.classList.toggle('btn--loading', locked);
-		});
-	};
+		const stopSessionTicker = () => {
+			if (sessionTickTimer) {
+				window.clearInterval(sessionTickTimer);
+				sessionTickTimer = null;
+			}
+			sessionTickBase = null;
+		};
 
-	const BUTTON_STATES = {
-		clocked_out: { 'dz-clock-in': true,  'dz-start-break': false, 'dz-end-break': false, 'dz-clock-out': false },
-		active:      { 'dz-clock-in': false, 'dz-start-break': true,  'dz-end-break': false, 'dz-clock-out': true  },
-		break:       { 'dz-clock-in': false, 'dz-start-break': false, 'dz-end-break': true,  'dz-clock-out': true },
-		paused:      { 'dz-clock-in': true,  'dz-start-break': false, 'dz-end-break': false, 'dz-clock-out': true  },
-		completed:   { 'dz-clock-in': true,  'dz-start-break': false, 'dz-end-break': false, 'dz-clock-out': false },
-	};
+		const startSessionTicker = (baseDuration, status) => {
+			stopSessionTicker();
+			if (!sessionEl || (status !== 'active' && status !== 'break')) {
+				return;
+			}
+			sessionTickBase = {
+				duration: Math.max(0, Number(baseDuration) || 0),
+				at: Date.now(),
+			};
+			sessionTickTimer = window.setInterval(() => {
+				if (!sessionTickBase || !sessionEl) {
+					return;
+				}
+				const elapsed = Math.floor((Date.now() - sessionTickBase.at) / 1000);
+				sessionEl.textContent = formatDuration(sessionTickBase.duration + elapsed);
+			}, 1000);
+		};
 
-	const captureNoticeEl = document.getElementById('dz-capture-notice');
+		const BUTTON_STATES = {
+			clocked_out: { 'dz-clock-in': true, 'dz-start-break': false, 'dz-end-break': false, 'dz-clock-out': false },
+			active: { 'dz-clock-in': false, 'dz-start-break': true, 'dz-end-break': false, 'dz-clock-out': true },
+			break: { 'dz-clock-in': false, 'dz-start-break': false, 'dz-end-break': true, 'dz-clock-out': true },
+			paused: { 'dz-clock-in': true, 'dz-start-break': false, 'dz-end-break': false, 'dz-clock-out': true },
+			completed: { 'dz-clock-in': true, 'dz-start-break': false, 'dz-end-break': false, 'dz-clock-out': false },
+		};
 
-	const updateCaptureNotice = (data) => {
-		if (!captureNoticeEl) {
-			return;
-		}
-		const stampingOff = data.clockStampingEnabled === false;
-		const showNotice = stampingOff
-			&& (data.status === 'clocked_out' || data.status === 'paused');
-		if (!showNotice) {
-			captureNoticeEl.setAttribute('hidden', '');
-			captureNoticeEl.textContent = '';
-			return;
-		}
-		const title = l10n.stampingDisabledTitle || 'Clock in/out is turned off';
-		const body = data.status === 'paused'
-			? (l10n.stampingDisabledPausedBody
-				|| 'Finish the paused session on the dashboard, or contact your administrator.')
-			: (data.manualTimeEntryEnabled
-				? (l10n.stampingDisabledBodyManual
-					|| 'Add your hours under Time entries in the app.')
-				: (l10n.stampingDisabledBody
-					|| 'Contact HR if you need to record time.'));
-		captureNoticeEl.removeAttribute('hidden');
-		captureNoticeEl.innerHTML = '';
-		const titleEl = document.createElement('p');
-		titleEl.className = 'dz-capture-notice__title';
-		titleEl.textContent = title;
-		const textEl = document.createElement('p');
-		textEl.className = 'dz-capture-notice__text';
-		textEl.textContent = body;
-		captureNoticeEl.appendChild(titleEl);
-		captureNoticeEl.appendChild(textEl);
-		captureNoticeEl.setAttribute('role', 'status');
-	};
+		const captureNoticeEl = el('dz-capture-notice');
 
-	const updateButtonStates = (status, clockStampingEnabled = true) => {
-		if (mutationInFlight) {
-			setButtonsLocked(true);
-			return;
-		}
+		const getEffectiveButtonStates = (status, clockStampingEnabled) => {
+			const states = { ...(BUTTON_STATES[status] ?? BUTTON_STATES.clocked_out) };
+			if (!clockStampingEnabled) {
+				states['dz-clock-in'] = false;
+			}
+			return states;
+		};
+
+		const updateCaptureNotice = (data) => {
+			if (!captureNoticeEl) {
+				return;
+			}
+			const stampingOff = data.clockStampingEnabled === false;
+			const showNotice = stampingOff
+				&& (data.status === 'clocked_out' || data.status === 'paused');
+			if (!showNotice) {
+				captureNoticeEl.setAttribute('hidden', '');
+				captureNoticeEl.textContent = '';
+				return;
+			}
+			const title = l10n.stampingDisabledTitle || 'Clock in/out is turned off';
+			const body = data.status === 'paused'
+				? (l10n.stampingDisabledPausedBody
+					|| 'Finish the paused session on the dashboard, or contact your administrator.')
+				: (data.manualTimeEntryEnabled
+					? (l10n.stampingDisabledBodyManual
+						|| 'Add your hours under Time entries in the app.')
+					: (l10n.stampingDisabledBody
+						|| 'Contact HR if you need to record time.'));
+			captureNoticeEl.removeAttribute('hidden');
+			captureNoticeEl.innerHTML = '';
+			const titleEl = document.createElement('p');
+			titleEl.className = 'dz-capture-notice__title';
+			titleEl.textContent = title;
+			const textEl = document.createElement('p');
+			textEl.className = 'dz-capture-notice__text';
+			textEl.textContent = body;
+			captureNoticeEl.appendChild(titleEl);
+			captureNoticeEl.appendChild(textEl);
+			captureNoticeEl.setAttribute('role', 'status');
+		};
+
+		const updateButtonStates = (status, clockStampingEnabled = true) => {
+			if (mutationInFlight) {
+				setButtonsLocked(true);
+				return;
+			}
 		const states = getEffectiveButtonStates(status, clockStampingEnabled);
+		// Contextual actions: only show what the user can do *right now*. Hiding the
+		// inapplicable actions (rather than showing them greyed-out) keeps the row
+		// unambiguous — there are never more than two live choices at once.
 		Object.entries(states).forEach(([id, enabled]) => {
-			const btn = document.getElementById(id);
+			const btn = el(id);
 			if (!btn) {
 				return;
 			}
-			const visible = enabled || (id !== 'dz-clock-in');
-			btn.hidden = !visible;
+			btn.hidden = !enabled;
 			btn.disabled = !enabled;
 			btn.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+			btn.classList.remove('btn--loading');
 		});
-		// Hide clock-in completely when stamping is off (not merely disabled).
-		const clockInBtn = document.getElementById('dz-clock-in');
-		if (clockInBtn && !clockStampingEnabled) {
-			clockInBtn.hidden = true;
-			clockInBtn.disabled = true;
-			clockInBtn.setAttribute('aria-disabled', 'true');
-		}
 	};
 
-	// ── Render functions ───────────────────────────────────────────────────────
-	const renderEmployee = (rawData) => {
-		const data = normaliseStatus(rawData);
-		const {
-			status,
-			workingTodayHours,
-			currentSessionDuration,
-			clockStampingEnabled,
-		} = data;
-		lastKnown = data;
+		const renderEmployee = (rawData) => {
+			const data = normaliseStatus(rawData);
+			const {
+				status,
+				workingTodayHours,
+				currentSessionDuration,
+				clockStampingEnabled,
+			} = data;
+			lastKnown = data;
 
-		// Status badge: visual indicator with data-status for CSS colour coding
-		if (statusBadgeEl) {
-			statusBadgeEl.dataset.status = status;
-			statusBadgeEl.textContent    = statusLabel(status);
-		}
+			if (statusBadgeEl) {
+				statusBadgeEl.dataset.status = status;
+				statusBadgeEl.textContent = statusLabel(status);
+			}
 
 		if (statusTextEl) {
-			const template = l10n.statusLine || 'Status: %1$s';
-			statusTextEl.textContent = template
-				.replace('%1$s', statusLabel(status));
+			// The badge already names the state, so this line carries *extra* context:
+			// when a session is running, show when it started ("Since 09:30").
+			if ((status === 'active' || status === 'break') && data.sessionStartFormatted) {
+				const template = l10n.sessionSince || 'Since %1$s';
+				statusTextEl.textContent = template.replace('%1$s', data.sessionStartFormatted);
+				statusTextEl.hidden = false;
+			} else {
+				statusTextEl.textContent = '';
+				statusTextEl.hidden = true;
+			}
 		}
 
-		if (statusIconEl) {
-			statusIconEl.innerHTML = statusIcon(status);
-			statusIconEl.setAttribute('aria-hidden', 'true');
-		}
+			if (statusIconEl) {
+				statusIconEl.innerHTML = statusIcon(status);
+				statusIconEl.setAttribute('aria-hidden', 'true');
+			}
 
-		if (workedTodayEl) {
-			workedTodayEl.textContent = `${formatHours(workingTodayHours)} h`;
-		}
+			if (workedTodayEl) {
+				workedTodayEl.textContent = `${formatHours(workingTodayHours)} h`;
+			}
 
-		if (sessionEl) {
-			sessionEl.textContent = formatDuration(currentSessionDuration);
-		}
+			if (sessionEl) {
+				sessionEl.textContent = formatDuration(currentSessionDuration);
+			}
 
-		if (statusCardEl) {
-			statusCardEl.dataset.status = status;
-		}
+			if (statusCardEl) {
+				statusCardEl.dataset.status = status;
+			}
 
-		updateButtonStates(status, clockStampingEnabled);
-		updateCaptureNotice(data);
-	};
+			updateButtonStates(status, clockStampingEnabled);
+			updateCaptureNotice(data);
+			startSessionTicker(currentSessionDuration, status);
+		};
 
-	// Clears and re-renders a people list (team or company overview).
-	const renderPeopleList = (target, rows, emptyMsg) => {
-		if (!target) {
-			return;
-		}
-
-		// Clear previous content safely (no innerHTML)
-		while (target.firstChild) {
-			target.removeChild(target.firstChild);
-		}
-
-		if (!Array.isArray(rows) || rows.length === 0) {
-			const msg = document.createElement('p');
-			msg.className   = 'dz-empty';
-			msg.textContent = emptyMsg || l10n.noEntriesFound || 'No entries found.';
-			target.appendChild(msg);
-			return;
-		}
-
-		const list = document.createElement('ul');
-		list.className = 'dz-list';
-		list.setAttribute('role', 'list');
-
-		rows.forEach((row) => {
-			const item = document.createElement('li');
-			item.className    = 'dz-list-item';
-			item.dataset.status = String(row.status || 'clocked_out');
-
-			// Badge
-			const badge = document.createElement('span');
-			badge.className       = 'dz-badge';
-			badge.dataset.status  = item.dataset.status;
-			badge.setAttribute('aria-hidden', 'true');
-			badge.textContent     = statusLabel(item.dataset.status);
-
-			// Text: "Alice: Working (3.25 h)"
-			const text = document.createElement('span');
-			text.className = 'dz-list-item__text';
-			const template = l10n.peopleRow || '%1$s: %2$s (%3$s h)';
-			text.textContent = template
-				.replace('%1$s', String(row.displayName || ''))
-				.replace('%2$s', statusLabel(item.dataset.status))
-				.replace('%3$s', parseFloat(row.workingTodayHours || 0).toFixed(2));
-
-			// Accessible label for screen readers (badge text is hidden)
-			item.setAttribute('aria-label',
-				String(row.displayName || '') + ': ' + statusLabel(item.dataset.status));
-
-			item.appendChild(badge);
-			item.appendChild(text);
-			list.appendChild(item);
-		});
-
-		target.appendChild(list);
-	};
-
-	// ── Data loading ───────────────────────────────────────────────────────────
-	const loadData = async () => {
-		setLoading(true);
-		if (!mutationInFlight) {
-			hideError();
-		}
-
-		// Employee status (always loaded)
-		try {
-			const resp = await api(config.employeeDataUrl);
-			if (resp.status === 401) {
-				showError(l10n.sessionExpired ||
-					'Your session has expired. Please refresh the page and try again.');
-				setLoading(false);
+		const renderPeopleList = (target, rows, emptyMsg) => {
+			if (!target) {
 				return;
 			}
-			if (resp.ok) {
-				const json = await resp.json();
-				if (json.success && json.data) {
-					renderEmployee(json.data);
+
+			while (target.firstChild) {
+				target.removeChild(target.firstChild);
+			}
+
+			if (!Array.isArray(rows) || rows.length === 0) {
+				const msg = document.createElement('p');
+				msg.className = 'dz-empty';
+				msg.textContent = emptyMsg || l10n.noEntriesFound || 'No entries found.';
+				target.appendChild(msg);
+				return;
+			}
+
+			const list = document.createElement('ul');
+			list.className = 'dz-list';
+			list.setAttribute('role', 'list');
+
+			rows.forEach((row) => {
+				const item = document.createElement('li');
+				item.className = 'dz-list-item';
+				item.dataset.status = String(row.status || 'clocked_out');
+
+				const badge = document.createElement('span');
+				badge.className = 'dz-badge';
+				badge.dataset.status = item.dataset.status;
+				badge.setAttribute('aria-hidden', 'true');
+				badge.textContent = statusLabel(item.dataset.status);
+
+				const text = document.createElement('span');
+				text.className = 'dz-list-item__text';
+				const template = l10n.peopleRow || '%1$s: %2$s (%3$s h)';
+				text.textContent = template
+					.replace('%1$s', String(row.displayName || ''))
+					.replace('%2$s', statusLabel(item.dataset.status))
+					.replace('%3$s', parseFloat(row.workingTodayHours || 0).toFixed(2));
+
+				item.setAttribute('aria-label',
+					String(row.displayName || '') + ': ' + statusLabel(item.dataset.status));
+
+				item.appendChild(badge);
+				item.appendChild(text);
+				list.appendChild(item);
+			});
+
+			target.appendChild(list);
+		};
+
+		const apiClient = window.AzcApi || null;
+
+		const fetchDesklet = async (url, method = 'GET') => {
+			const requestUrl = normalizeDeskletUrl(url);
+			if (!isSafeAppUrl(requestUrl)) {
+				return {
+					ok: false,
+					status: 0,
+					data: null,
+					error: l10n.statusLoadError || l10n.networkError || 'Could not load status.',
+				};
+			}
+			if (apiClient && typeof apiClient.fetch === 'function') {
+				return apiClient.fetch(requestUrl, { method, silent: true });
+			}
+			const requestToken = (() => {
+				if (window.OC?.requestToken) {
+					return window.OC.requestToken;
+				}
+				const meta = document.head.querySelector('meta[name="requesttoken"]');
+				return meta ? meta.getAttribute('content') : '';
+			})();
+			try {
+				const response = await fetch(requestUrl, {
+					method,
+					headers: {
+						Accept: 'application/json',
+						'requesttoken': requestToken,
+					},
+					credentials: 'same-origin',
+				});
+				let data = null;
+				const contentType = response.headers.get('content-type') || '';
+				if (contentType.includes('application/json')) {
+					try {
+						data = await response.json();
+					} catch (_e) {
+						data = null;
+					}
+				}
+				if (!response.ok) {
+					const error = (data && typeof data.error === 'string' && data.error)
+						|| l10n.networkError
+						|| 'Could not load status.';
+					return { ok: false, status: response.status, data, error };
+				}
+				return { ok: true, status: response.status, data, error: null };
+			} catch (_e) {
+				return {
+					ok: false,
+					status: 0,
+					data: null,
+					error: l10n.networkError || 'Could not load status. Please check your connection.',
+				};
+			}
+		};
+
+		const isSuccessPayload = (result) => {
+			if (!result || result.ok !== true) {
+				return false;
+			}
+			if (apiClient && typeof apiClient.isApiSuccess === 'function') {
+				return apiClient.isApiSuccess(result);
+			}
+			const body = result.data;
+			return !!(body && body.success !== false);
+		};
+
+		const loadData = async () => {
+			const employeeUrl = normalizeDeskletUrl(config.employeeDataUrl);
+			if (!isSafeAppUrl(employeeUrl)) {
+				showError(l10n.statusLoadError || l10n.networkError);
+				return;
+			}
+
+			setLoading(true);
+			if (!mutationInFlight) {
+				hideError();
+			}
+
+			let employeeLoaded = false;
+
+			try {
+				const result = await fetchDesklet(employeeUrl);
+				if (!result.ok) {
+					if (!mutationInFlight) {
+						if (result.status === 401 || result.status === 412 || result.status === 419) {
+							showError(l10n.sessionExpired
+								|| 'Your session has expired. Please refresh the page and try again.');
+						} else {
+							showError(result.error);
+						}
+					}
+				} else if (isSuccessPayload(result) && result.data?.data) {
+					renderEmployee(result.data.data);
 					updateLastRefreshed();
+					employeeLoaded = true;
+				} else if (!mutationInFlight) {
+					showError(result.error || l10n.statusLoadError || l10n.networkError);
+				}
+			} catch (_e) {
+				if (!mutationInFlight) {
+					showError(l10n.networkError
+						|| 'Could not load status. Please check your connection.');
 				}
 			}
-		} catch (_e) {
-			if (!mutationInFlight) {
-				showError(l10n.networkError ||
-					'Could not load status. Please check your connection.');
-			}
-		}
 
-		// Team overview (manager)
-		if (config.isManager && managerListEl) {
-			try {
-				const resp = await api(config.managerDataUrl);
-				if (resp.ok) {
-					const json = await resp.json();
-					if (json.success && json.data) {
+			if (employeeLoaded && config.isManager && managerListEl) {
+				const managerUrl = normalizeDeskletUrl(config.managerDataUrl);
+				if (isSafeAppUrl(managerUrl)) {
+				try {
+					const result = await fetchDesklet(managerUrl);
+					if (result.ok && isSuccessPayload(result) && result.data?.data) {
 						renderPeopleList(
 							managerListEl,
-							json.data.members || [],
-							l10n.noTeamMembers || 'No team members found.'
+							result.data.data.members || [],
+							l10n.noTeamMembers || 'No team members found.',
 						);
 					}
+				} catch (_e) {
+					// Non-critical section.
 				}
-			} catch (_e) {
-				// Non-critical: silently leave section empty
+				}
 			}
-		}
 
-		// Company overview (admin)
-		if (config.isAdmin && adminListEl) {
-			try {
-				const resp = await api(config.adminDataUrl);
-				if (resp.ok) {
-					const json = await resp.json();
-					if (json.success && json.data) {
+			if (employeeLoaded && config.isAdmin && adminListEl) {
+				const adminUrl = normalizeDeskletUrl(config.adminDataUrl);
+				if (isSafeAppUrl(adminUrl)) {
+				try {
+					const result = await fetchDesklet(adminUrl);
+					if (result.ok && isSuccessPayload(result) && result.data?.data) {
 						renderPeopleList(
 							adminListEl,
-							json.data.users || [],
-							l10n.noUsersFound || 'No users found.'
+							result.data.data.users || [],
+							l10n.noUsersFound || 'No users found.',
 						);
 					}
+				} catch (_e) {
+					// Non-critical section.
 				}
-			} catch (_e) {
-				// Non-critical: silently leave section empty
+				}
 			}
-		}
 
-		setLoading(false);
-	};
+			setLoading(false);
+		};
 
-	// ── Action wiring ──────────────────────────────────────────────────────────
-	const wireAction = (id, url) => {
-		const btn = document.getElementById(id);
-		if (!btn) {
-			return;
-		}
-
-		btn.addEventListener('click', async () => {
-			if (btn.disabled || mutationInFlight) {
+		const wireAction = (id, url) => {
+			const actionUrl = normalizeDeskletUrl(url);
+			const btn = el(id);
+			if (!btn || !isSafeAppUrl(actionUrl)) {
 				return;
 			}
 
-			mutationInFlight = true;
-			setButtonsLocked(true);
-			hideError();
-			hideFeedback();
-
-			try {
-				const resp = await api(url, 'POST');
-				const json = await resp.json();
-
-				if (!resp.ok || !json.success) {
-					const errMsg = json.error || l10n.actionFailed || 'Action failed';
-					if (resp.status === 403 && json.error_code === 'clock_stamping_disabled') {
-						await loadData();
-					}
-					showError(errMsg);
-					if (window.AzcMessaging?.announceAssertive) {
-						window.AzcMessaging.announceAssertive(errMsg);
-					} else {
-						announce(errMsg);
-					}
-					updateButtonStates(lastKnown.status, lastKnown.clockStampingEnabled);
+			btn.addEventListener('click', async () => {
+				if (btn.disabled || mutationInFlight) {
 					return;
 				}
 
-				if (json.status && typeof json.status === 'object') {
-					renderEmployee(json.status);
-					updateLastRefreshed();
-				} else {
-					await loadData();
+				mutationInFlight = true;
+				setButtonsLocked(true);
+				hideError();
+				hideFeedback();
+
+				try {
+					const result = await fetchDesklet(actionUrl, 'POST');
+					const body = result.data || {};
+
+					if (!isSuccessPayload(result)) {
+						const errMsg = result.error
+							|| body.error
+							|| l10n.actionFailed
+							|| 'Action failed';
+						if (result.status === 403 && body.error_code === 'clock_stamping_disabled') {
+							await loadData();
+						}
+						showError(errMsg);
+						if (window.AzcMessaging?.announceAssertive) {
+							window.AzcMessaging.announceAssertive(errMsg);
+						} else {
+							announce(errMsg);
+						}
+						updateButtonStates(lastKnown.status, lastKnown.clockStampingEnabled);
+						return;
+					}
+
+					if (body.status && typeof body.status === 'object') {
+						renderEmployee(body.status);
+						updateLastRefreshed();
+					} else {
+						await loadData();
+					}
+
+					const actionLabel = btn.textContent ? btn.textContent.trim() : (l10n.actionDone || 'Action');
+					const doneTemplate = l10n.actionDone || '%1$s successful';
+					const successMsg = doneTemplate.replace('%1$s', actionLabel);
+					showFeedback(successMsg);
+					announce(successMsg);
+				} catch (_e) {
+					const errMsg = l10n.networkError
+						|| 'Could not load status. Please check your connection.';
+					showError(errMsg);
+					announce(errMsg);
+					updateButtonStates(lastKnown.status, lastKnown.clockStampingEnabled);
+				} finally {
+					mutationInFlight = false;
+					updateButtonStates(lastKnown.status, lastKnown.clockStampingEnabled);
 				}
+			});
+		};
 
-				const actionLabel = btn.textContent ? btn.textContent.trim() : (l10n.actionDone || 'Action');
-				const doneTemplate = l10n.actionDone || '%1$s successful';
-				const successMsg = doneTemplate.replace('%1$s', actionLabel);
-				showFeedback(successMsg);
-				announce(successMsg);
-			} catch (_e) {
-				showError(l10n.networkError ||
-					'Could not load status. Please check your connection.');
-				announce(l10n.networkError || 'Could not load status. Please check your connection.');
-				updateButtonStates(lastKnown.status, lastKnown.clockStampingEnabled);
-			} finally {
-				mutationInFlight = false;
-				updateButtonStates(lastKnown.status, lastKnown.clockStampingEnabled);
-			}
+		if (retryBtn) {
+			retryBtn.addEventListener('click', () => {
+				hideError();
+				loadData();
+			});
+		}
+
+		wireAction('dz-clock-in', config.clockInUrl);
+		wireAction('dz-start-break', config.startBreakUrl);
+		wireAction('dz-end-break', config.endBreakUrl);
+		wireAction('dz-clock-out', config.clockOutUrl);
+
+		// Hide every action until the first successful status load confirms what
+		// the user may actually do. If the initial load fails we show only the
+		// error panel + retry, never a button that could fire an invalid action.
+		actionButtons.forEach((btn) => {
+			btn.hidden = true;
+			btn.disabled = true;
+			btn.setAttribute('aria-disabled', 'true');
 		});
-	};
 
-	wireAction('dz-clock-in',    config.clockInUrl);
-	wireAction('dz-start-break', config.startBreakUrl);
-	wireAction('dz-end-break',   config.endBreakUrl);
-	wireAction('dz-clock-out',   config.clockOutUrl);
+		loadData();
+		const refreshTimer = window.setInterval(loadData, 30000);
 
-	// Initial load + periodic refresh
-	loadData();
-	const refreshTimer = setInterval(loadData, 30000);
-
-	// Clean up interval on page unload to prevent orphaned timers
-	window.addEventListener('beforeunload', () => {
-		clearInterval(refreshTimer);
-	});
+		window.addEventListener('beforeunload', () => {
+			window.clearInterval(refreshTimer);
+			stopSessionTicker();
+		});
 	}
 
 	scheduleDeskletBoot();

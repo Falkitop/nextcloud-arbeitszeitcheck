@@ -3807,6 +3807,26 @@ OC.L10N.register(
 	"less" : "less",
 	"more" : "more",
 	"time tracking, arbeitszeit, compliance, German labor law" : "time tracking, arbeitszeit, compliance, German labor law",
-	"{count} employees" : "{count} employees"
+	"{count} employees" : "{count} employees",
+	"Employment end date (Austrittsdatum)" : "Employment end date (Austrittsdatum)",
+	"Employment period (for pro-rata vacation)" : "Employment period (for pro-rata vacation)",
+	"Employment start date (Eintrittsdatum)" : "Employment start date (Eintrittsdatum)",
+	"Employment start date must be on or before the employment end date." : "Employment start date must be on or before the employment end date.",
+	"Exact days" : "Exact days",
+	"First day of employment. Vacation for the year of hire is prorated from this date." : "First day of employment. Vacation for the year of hire is prorated from this date.",
+	"Full months (Zwölftelung, German default)" : "Full months (Zwölftelung, German default)",
+	"Full months: each calendar month touched by the employment counts as 1\/12 of the annual entitlement; a fraction of half a day or more is rounded up to a full day (BUrlG §5). Exact days: annual entitlement times worked days divided by days in the year. This is not legal advice — consult HR for your collective agreement." : "Full months: each calendar month touched by the employment counts as 1\/12 of the annual entitlement; a fraction of half a day or more is rounded up to a full day (BUrlG §5). Exact days: annual entitlement times worked days divided by days in the year. This is not legal advice — consult HR for your collective agreement.",
+	"Last day of employment. Leave empty for ongoing employment. Vacation for the year of leaving is prorated up to this date." : "Last day of employment. Leave empty for ongoing employment. Vacation for the year of leaving is prorated up to this date.",
+	"No entitlement this year: the employment period does not cover this calendar year." : "No entitlement this year: the employment period does not cover this calendar year.",
+	"Pro-rata vacation for partial years" : "Pro-rata vacation for partial years",
+	"Prorated for partial year: {prorated} of {full} days (daily method)." : "Prorated for partial year: {prorated} of {full} days (daily method).",
+	"Prorated for partial year: {prorated} of {full} days (employed {months} of 12 months)." : "Prorated for partial year: {prorated} of {full} days (employed {months} of 12 months).",
+	"Proration method" : "Proration method",
+	"Set the hire date (and leaving date, if any). When the employment does not cover the whole calendar year, the annual vacation entitlement is reduced proportionally. Leave both empty for the full annual entitlement." : "Set the hire date (and leaving date, if any). When the employment does not cover the whole calendar year, the annual vacation entitlement is reduced proportionally. Leave both empty for the full annual entitlement.",
+	"The employment end date must be on or after the employment start date." : "The employment end date must be on or after the employment start date.",
+	"When an employee joins or leaves during the year, the annual vacation entitlement is reduced to the part of the year actually worked. This only applies to employees who have an employment start and\/or end date set under Employees. Choose how the reduction is calculated." : "When an employee joins or leaves during the year, the annual vacation entitlement is reduced to the part of the year actually worked. This only applies to employees who have an employment start and\/or end date set under Employees. Choose how the reduction is calculated.",
+	"Reduced for your employment period this year: {prorated} of {full} days (employed {months} of 12 months)." : "Reduced for your employment period this year: {prorated} of {full} days (employed {months} of 12 months).",
+	"Reduced for your employment period this year: {prorated} of {full} days." : "Reduced for your employment period this year: {prorated} of {full} days.",
+	"You were not employed during this calendar year, so no vacation is granted for it." : "You were not employed during this calendar year, so no vacation is granted for it."
 	}
 );

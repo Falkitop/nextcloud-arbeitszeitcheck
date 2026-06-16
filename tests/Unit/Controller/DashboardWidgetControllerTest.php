@@ -56,7 +56,7 @@ class DashboardWidgetControllerTest extends TestCase {
 		$user = $this->createMock(IUser::class);
 		$user->method('getUID')->willReturn('u1');
 		$this->userSession->method('getUser')->willReturn($user);
-		$this->widgetDataService->method('getEmployeeWidgetData')->with('u1')->willReturn(['status' => 'active']);
+		$this->widgetDataService->method('getEmployeeStatusSummary')->with('u1')->willReturn(['status' => 'active']);
 
 		$response = $this->controller->employeeData();
 		$this->assertSame(Http::STATUS_OK, $response->getStatus());

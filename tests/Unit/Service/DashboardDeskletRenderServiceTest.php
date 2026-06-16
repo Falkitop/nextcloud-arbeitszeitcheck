@@ -42,5 +42,8 @@ class DashboardDeskletRenderServiceTest extends TestCase
 		$this->assertSame($config, $result['config']);
 		$this->assertIsString($result['workspaceHtml']);
 		$this->assertStringContainsString('data-arbeitszeitcheck-desklet', $result['workspaceHtml']);
+		$this->assertStringContainsString('dz-error-panel', $result['workspaceHtml']);
+		$this->assertStringContainsString('dz-retry', $result['workspaceHtml']);
+		$this->assertStringContainsString('dz-status-section', $result['workspaceHtml']);
 	}
 }

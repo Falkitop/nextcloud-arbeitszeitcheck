@@ -122,6 +122,23 @@ $eventTypes = is_array($_['eventTypes'] ?? null) ? $_['eventTypes'] : [];
 							</p>
 						</div>
 					</div>
+					<div class="azc-settings-subsection" role="group" aria-labelledby="vacation-proration-heading">
+						<h3 id="vacation-proration-heading" class="admin-settings-subsection__title"><?php p($l->t('Pro-rata vacation for partial years')); ?></h3>
+						<p class="form-help form-help--block" id="vacation-proration-intro">
+							<?php p($l->t('When an employee joins or leaves during the year, the annual vacation entitlement is reduced to the part of the year actually worked. This only applies to employees who have an employment start and/or end date set under Employees. Choose how the reduction is calculated.')); ?>
+						</p>
+						<div class="form-group">
+							<label for="vacationProrationMethod" class="form-label"><?php p($l->t('Proration method')); ?></label>
+							<?php $prorationMethod = (string)($settings['vacationProrationMethod'] ?? 'twelfths'); ?>
+							<select class="form-select" id="vacationProrationMethod" name="vacationProrationMethod" aria-describedby="vacation-proration-help">
+								<option value="twelfths" <?php echo $prorationMethod === 'daily' ? '' : 'selected'; ?>><?php p($l->t('Full months (Zwölftelung, German default)')); ?></option>
+								<option value="daily" <?php echo $prorationMethod === 'daily' ? 'selected' : ''; ?>><?php p($l->t('Exact days')); ?></option>
+							</select>
+							<p id="vacation-proration-help" class="form-help">
+								<?php p($l->t('Full months: each calendar month touched by the employment counts as 1/12 of the annual entitlement; a fraction of half a day or more is rounded up to a full day (BUrlG §5). Exact days: annual entitlement times worked days divided by days in the year. This is not legal advice — consult HR for your collective agreement.')); ?>
+							</p>
+						</div>
+					</div>
                     </div>
 				</section>
 

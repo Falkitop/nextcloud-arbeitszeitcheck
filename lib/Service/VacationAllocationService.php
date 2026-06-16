@@ -36,6 +36,7 @@ class VacationAllocationService
 		private HolidayService $holidayCalendarService,
 		private VacationEntitlementEngine $vacationEntitlementEngine,
 		private EntitlementSnapshotService $entitlementSnapshotService,
+		private VacationProrationService $vacationProrationService,
 	) {
 	}
 
@@ -150,12 +151,17 @@ class VacationAllocationService
 	public function getAnnualEntitlementDays(string $userId, ?\DateTimeInterface $asOfDate = null): float
 	{
 		try {
-			$resolved = $this->vacationEntitlementEngine->computeForDate($userId, $asOfDate ?? new \DateTimeImmutable('today'));
+			$asOf = $asOfDate ?? new \DateTimeImmutable('today');
+			$resolved = $this->vacationEntitlementEngine->computeForDate($userId, $asOf);
 			$days = (float)($resolved['days'] ?? 0.0);
 			if (!is_finite($days)) {
 				$days = 0.0;
 			}
-			return round(max(0.0, min(366.0, $days)), 2, PHP_ROUND_HALF_UP);
+			$days = round(max(0.0, min(366.0, $days)), 2, PHP_ROUND_HALF_UP);
+			// Reduce to the part of the year actually covered by employment
+			// (Zwölftelung / daily) when an employment period is configured.
+			$proration = $this->vacationProrationService->prorateForYear($userId, (int)$asOf->format('Y'), $days);
+			return (float)$proration['days'];
 		} catch (\Throwable $e) {
 			\OCP\Log\logger('arbeitszeitcheck')->error(
 				'VacationAllocationService::getAnnualEntitlementDays: engine failed, using safe default',
@@ -233,6 +239,8 @@ class VacationAllocationService
 	 * @return array{
 	 *   year: int,
 	 *   entitlement: float,
+	 *   entitlement_full_year: float,
+	 *   proration: array<string, mixed>,
 	 *   carryover_opening: float,
 	 *   carryover_remaining_after_approved: float,
 	 *   annual_remaining_after_approved: float,
@@ -260,7 +268,12 @@ class VacationAllocationService
 	): array {
 		$asOf = $asOf ?? new \DateTime('today');
 		$entitlementResolved = $this->vacationEntitlementEngine->computeForDate($userId, $asOf);
-		$annualEntitlement = (float)$entitlementResolved['days'];
+		$fullYearEntitlement = (float)$entitlementResolved['days'];
+		// Pro-rata reduction for partial employment years (mid-year join/leave).
+		// Driven solely by the per-user employment start/end dates; a no-op
+		// (returns the full entitlement) when none are set.
+		$proration = $this->vacationProrationService->prorateForYear($userId, $year, $fullYearEntitlement);
+		$annualEntitlement = (float)$proration['days'];
 		$carryoverOpening = $this->vacationYearBalanceMapper->getCarryoverDays($userId, $year);
 		$carryoverOpening = $this->applyCapToOpeningBalance($carryoverOpening);
 
@@ -355,9 +368,20 @@ class VacationAllocationService
 
 		$totalForNew = $annualRem + $carryoverUsable;
 
+		// Surface proration in the entitlement trace so the persisted snapshot
+		// (and every audit replay) records exactly how a partial-year number
+		// was derived. Only attach when proration actually applied to keep
+		// full-year traces byte-identical to the legacy shape.
+		$entitlementTrace = (array)$entitlementResolved['trace'];
+		if (!empty($proration['prorated']) || !($proration['employed_in_year'] ?? true)) {
+			$entitlementTrace['proration'] = $proration;
+		}
+
 		$result = [
 			'year' => $year,
 			'entitlement' => $annualEntitlement,
+			'entitlement_full_year' => round($fullYearEntitlement, 2),
+			'proration' => $proration,
 			'carryover_opening' => round($carryoverOpening, 4),
 			'carryover_remaining_after_approved' => round($carryoverRem, 4),
 			'annual_remaining_after_approved' => round($annualRem, 4),
@@ -369,14 +393,14 @@ class VacationAllocationService
 			'shortfall' => round($shortfall, 4),
 			'entitlement_source' => $entitlementResolved['source'],
 			'entitlement_rule_set_id' => $entitlementResolved['ruleSetId'],
-			'entitlement_trace' => $entitlementResolved['trace'],
+			'entitlement_trace' => $entitlementTrace,
 		];
 
 		if ($persistEntitlementSnapshot) {
 			$fingerprint = 'invalid';
 			try {
 				$enc = json_encode(
-					[$entitlementResolved['source'], $entitlementResolved['ruleSetId'], $entitlementResolved['trace'], $annualEntitlement],
+					[$entitlementResolved['source'], $entitlementResolved['ruleSetId'], $entitlementTrace, $annualEntitlement],
 					JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR
 				);
 				$fingerprint = hash('sha256', $enc);
@@ -384,6 +408,8 @@ class VacationAllocationService
 				// Extremely unlikely: non-encodable trace. Still persist numeric entitlement with stable placeholder hash.
 				$fingerprint = hash('sha256', (string)$annualEntitlement . '|' . (string)$entitlementResolved['source']);
 			}
+			// Persist the *effective* (prorated) entitlement so the snapshot is
+			// the legally meaningful figure actually granted for the year.
 			$this->entitlementSnapshotService->store(
 				$userId,
 				$year,
@@ -391,7 +417,7 @@ class VacationAllocationService
 				$annualEntitlement,
 				(string)$entitlementResolved['source'],
 				$entitlementResolved['ruleSetId'],
-				(array)$entitlementResolved['trace'],
+				$entitlementTrace,
 				'system',
 				$fingerprint
 			);
