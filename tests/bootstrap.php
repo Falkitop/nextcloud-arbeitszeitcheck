@@ -48,8 +48,9 @@ if ($base === null) {
 
 require_once $base;
 
-if (arbeitszeitcheck_phpunit_requests_integration_suite()) {
-	require __DIR__ . '/assert-nextcloud-upgraded.php';
+$integrationBootstrap = dirname(__DIR__, 3) . '/scripts/phpunit-integration-bootstrap.php';
+if (is_file($integrationBootstrap)) {
+	require_once $integrationBootstrap;
 }
 
 // Some environments (notably containerized Nextcloud images) don't ship the core test classes.
@@ -59,20 +60,4 @@ if (!class_exists(\Test\TestCase::class)) {
 	if (is_file($shim)) {
 		require_once $shim;
 	}
-}
-
-/**
- * True when PHPUnit is running the integration suite or an Integration test path.
- */
-function arbeitszeitcheck_phpunit_requests_integration_suite(): bool
-{
-	$argv = $_SERVER['argv'] ?? [];
-	foreach ($argv as $arg) {
-		if ($arg === 'integration'
-			|| str_contains($arg, 'tests/Integration')
-			|| str_contains($arg, 'Tests\\Integration')) {
-			return true;
-		}
-	}
-	return false;
 }

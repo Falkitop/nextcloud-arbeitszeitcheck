@@ -20,7 +20,10 @@
 		"phpunit/phpunit": "^9.5"
 	},
 	"scripts": {
-		"test": "phpunit",
+		"test": [
+			"@test:unit",
+			"@test:integration"
+		],
 		"test:docker": "bash ../../docker/run-app-phpunit.sh arbeitszeitcheck",
 		"test:security-role-gating:docker": "bash scripts/test-security-role-gating-docker.sh",
 		"test:unit": "phpunit --testsuite unit",
