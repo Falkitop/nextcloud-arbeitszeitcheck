@@ -1,3 +1,16 @@
+## 1.5.1 – 2026-06-18
+
+### Behoben
+
+- **Update auf 1.5.0 versetzte die gesamte Instanz in den Wartungsmodus** ([#24](https://github.com/aSoftwareByDesignRepository/nextcloud-arbeitszeitcheck/issues/24)): Die anteilige Urlaubsberechnung aus 1.5.0 fügte `VacationAllocationService` eine 9. Konstruktor-Abhängigkeit (`VacationProrationService`) hinzu, doch die Container-Factory in `Application.php` der veröffentlichten Version übergab weiterhin nur 8 Argumente. Beim `occ upgrade` löst Nextcloud die Reparaturschritte über den Container auf, der dabei transitiv `VacationAllocationService` erzeugt — das fehlende Argument verursachte einen `ArgumentCountError`, brach das Upgrade ab und ließ den Server im Wartungsmodus, bis die App deaktiviert wurde. Die Factory übergibt jetzt alle 9 Abhängigkeiten.
+
+### Geändert
+
+- **Das Sicherheitsnetz für die Dependency Injection wurde gehärtet, damit diese Art von Upgrade-Absturz nicht erneut ausgeliefert werden kann.** Dies war der zweite `ArgumentCountError` beim Upgrade (nach 1.4.2); die bisherige Prüfung validierte nur die in `info.xml` aufgeführten Reparaturschritt-Klassen, sodass eine *transitive* Abhängigkeit wie `VacationAllocationService` durchrutschte. Das Release-Gate (`scripts/check-repair-step-di.php`) hatte zudem einen schlummernden Fehler: Eine falsche Namespace-Pfadauflösung führte dazu, dass die Argument-Anzahl-Prüfung faktisch nie lief. Das Gate wurde neu geschrieben:
+  - es löst jetzt jede App-Klasse korrekt zu ihrer Quelldatei auf und
+  - prüft die Konstruktor-Argumentanzahl **jedes** in `Application.php` registrierten Dienstes (nicht nur der Reparaturschritte) mithilfe des PHP-Tokenizers, sodass mehrzeilige Factories und Constructor Property Promotion exakt berücksichtigt werden.
+  - Zwei neue automatisierte Wächter sichern dies ab: `ServiceContainerDiRegistrationTest` (statisch, reflexionsbasiert, alle registrierten Dienste) und `ContainerServiceResolutionIntegrationTest`, der alle registrierten Dienste über den echten Nextcloud-Container auflöst — genau jenen Weg, der beim Upgrade fehlschlägt.
+
 ## 1.5.0 – 2026-06-16
 
 ### Hinzugefügt

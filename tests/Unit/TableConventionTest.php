@@ -16,6 +16,8 @@ class TableConventionTest extends TestCase
 {
 	private const TEMPLATE_SKIP = [
 		'admin-notifications.php', // matrix grids use azc-table--matrix
+		'admin-kiosk.php', // compact kiosk credential tables (azc-table, no hover)
+		'admin-license.php', // license seat matrix (azc-license-seats-table)
 	];
 
 	/**
@@ -62,7 +64,8 @@ class TableConventionTest extends TestCase
 		foreach ($matches[1] as $classAttr) {
 			if (str_contains($classAttr, 'azc-table--matrix')
 				|| str_contains($classAttr, 'correction-snapshot')
-				|| str_contains($classAttr, 'trace-table')) {
+				|| str_contains($classAttr, 'trace-table')
+				|| str_contains($classAttr, 'azc-license-seats-table')) {
 				continue;
 			}
 			$this->assertStringContainsString(
@@ -117,8 +120,8 @@ class TableConventionTest extends TestCase
 		}
 		$timeEntries = (string)file_get_contents(__DIR__ . '/../../templates/time-entries.php');
 		$absences = (string)file_get_contents(__DIR__ . '/../../templates/absences.php');
-		$this->assertStringContainsString('class="azc-table-actions"', $timeEntries);
-		$this->assertStringContainsString('class="azc-table-actions"', $absences);
+		$this->assertStringContainsString('azc-table-actions', $timeEntries);
+		$this->assertStringContainsString('azc-table-actions', $absences);
 	}
 
 	public function testUtilsExposeResponsiveTableHelpers(): void

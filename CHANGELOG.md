@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.5.1 - 2026-06-18
+
+### Fixed
+
+- **Update to 1.5.0 threw the whole instance into maintenance mode** ([#24](https://github.com/aSoftwareByDesignRepository/nextcloud-arbeitszeitcheck/issues/24)): the 1.5.0 pro-rata feature added a 9th constructor dependency (`VacationProrationService`) to `VacationAllocationService`, but the published build's container factory in `Application.php` still passed only 8 arguments. During `occ upgrade` Nextcloud resolves repair steps through the container, which transitively builds `VacationAllocationService`, so the missing argument raised an `ArgumentCountError` and aborted the upgrade — leaving the server in maintenance mode until the app was disabled. The factory now passes all 9 dependencies.
+- **PHPUnit segfault in full unit suite** (~test 583): `DashboardDeskletRenderServiceTest` instantiated legacy `\OCP\Template` after hundreds of prior tests, triggering PHP segfault from polluted globals. Template rendering moved to `DashboardDeskletWorkspaceRenderer`; the unit test mocks it, and a dedicated integration test covers real template output.
+
+### Changed
+
+- **Hardened the dependency-injection safety net so this class of upgrade crash cannot ship again.** This was the second `ArgumentCountError` upgrade incident (after 1.4.2); the previous guard only validated the repair-step classes literally listed in `info.xml`, so a *transitive* dependency like `VacationAllocationService` slipped through. The release gate (`scripts/check-repair-step-di.php`) had an additional latent bug — a namespace path-resolution error meant its argument-count check silently never ran. The gate has been rewritten to:
+  - correctly resolve every app class to its source file, and
+  - validate the constructor arity of **every** service registered in `Application.php` (not just repair steps), using the PHP tokenizer so multi-line factories and promoted constructor properties are handled exactly.
+  - Two new automated guards back it up: `ServiceContainerDiRegistrationTest` (static, reflection-based, every registered service) and `ContainerServiceResolutionIntegrationTest`, which resolves all registered services through the real Nextcloud container — the exact path that fails during an upgrade.
+
 ## 1.5.0 - 2026-06-16
 
 ### Added

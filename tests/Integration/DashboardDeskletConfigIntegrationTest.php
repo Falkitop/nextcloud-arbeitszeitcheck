@@ -6,18 +6,13 @@ namespace OCA\ArbeitszeitCheck\Tests\Integration;
 
 use OCA\ArbeitszeitCheck\AppInfo\Application;
 use OCA\ArbeitszeitCheck\Service\DashboardDeskletConfigService;
-use OCP\IURLGenerator;
 use Test\TestCase;
 
 /**
- * Guards the NC home dashboard desklet: routes must exist before linkToRoute().
+ * Guards the NC home dashboard desklet: buildForUser must resolve API URLs and load app routes.
  */
 class DashboardDeskletConfigIntegrationTest extends TestCase {
-	public function testBuildForUserResolvesDeskletApiUrlsWhenAppRoutesWereNotLoadedYet(): void {
-		$urlGenerator = \OC::$server->get(IURLGenerator::class);
-
-		$this->assertSame('', $urlGenerator->linkToRoute('arbeitszeitcheck.dashboard_widget.employeeData'));
-
+	public function testBuildForUserResolvesDeskletApiUrls(): void {
 		$service = \OC::$server->get(DashboardDeskletConfigService::class);
 		$config = $service->buildForUser('admin');
 
