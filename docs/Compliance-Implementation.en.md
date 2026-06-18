@@ -106,7 +106,7 @@
 | Mechanism | Where configured | When it runs | Purpose |
 |-----------|------------------|--------------|---------|
 | **User setting** `auto_break_calculation` | **Settings** → automatic break calculation (stored per user) | Clock-in / live tracking (`TimeTrackingService`) | Server-side fallback when completing tracked time without enough break minutes |
-| **Form toggle** `#auto-break-enabled` | **Record working time** / edit form (default: on) | While typing on create/edit (`time-entry-form.js`) | Client-side insertion of ArbZG §4 break rows before save; user can disable to enter breaks manually |
+| **Form toggle** `#auto-break-enabled` | **Record working time** / edit form (default: off on create; on edit only if stored breaks were auto-generated) | While typing on create/edit (`time-entry-form.js`) | Client-side insertion of ArbZG §4 break rows before save; user can disable to enter breaks manually |
 
 Both are optional from a product perspective but improve §4 compliance. E2E tests that assert strict break gates may disable the **user setting** for the test account so the server does not auto-satisfy §4 during clock-out; the **form toggle** is independent.
 

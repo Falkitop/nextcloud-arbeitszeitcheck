@@ -23,6 +23,7 @@ $submitUrl = $mode === 'create'
 
 $timeEntryFormConfig = [
 	'breakIndex' => (int)($_['timeEntryFormBreakIndex'] ?? 1),
+	'autoBreakEnabled' => (bool)($_['timeEntryFormAutoBreakEnabled'] ?? false),
 	'maxDailyHours' => (float)($_['maxDailyHours'] ?? 10),
 	'maxBreaks' => 10,
 	'submitUrl' => $submitUrl,

@@ -467,12 +467,65 @@ require __DIR__ . '/common/user-display-timezone.php';
 
                         <fieldset class="time-entry-form-fieldset time-entry-form-fieldset--breaks">
                             <legend class="time-entry-form-fieldset__legend"><?php p($l->t('Breaks')); ?> <span class="form-optional"><?php p($l->t('(optional)')); ?></span></legend>
+                            <?php
+                            $existingBreaks = [];
+                            $autoBreakFormEnabled = false;
+                            if ($entry) {
+                                $breaksJson = $entry->getBreaks();
+                                if ($breaksJson !== null && $breaksJson !== '') {
+                                    $breaks = json_decode($breaksJson, true) ?? [];
+                                    foreach ($breaks as $break) {
+                                        if (!isset($break['start'], $break['end'])) {
+                                            continue;
+                                        }
+                                        try {
+                                            $breakStart = (new \DateTime($break['start']))->setTimezone($arbeitszeitCheckUserDisplayTz);
+                                            $breakEnd = (new \DateTime($break['end']))->setTimezone($arbeitszeitCheckUserDisplayTz);
+                                            $breakDurationSeconds = $breakEnd->getTimestamp() - $breakStart->getTimestamp();
+                                            if ($breakDurationSeconds < 900) {
+                                                continue;
+                                            }
+                                            $isAutomatic = !empty($break['automatic']);
+                                            if ($isAutomatic) {
+                                                $autoBreakFormEnabled = true;
+                                            }
+                                            $existingBreaks[] = [
+                                                'start' => $breakStart->format('H:i'),
+                                                'end' => $breakEnd->format('H:i'),
+                                                'automatic' => $isAutomatic,
+                                            ];
+                                        } catch (\Exception $e) {
+                                        }
+                                    }
+                                }
+                                if ($entry->getBreakStartTime() && $entry->getBreakEndTime()) {
+                                    $breakStart = (clone $entry->getBreakStartTime())->setTimezone($arbeitszeitCheckUserDisplayTz);
+                                    $breakEnd = (clone $entry->getBreakEndTime())->setTimezone($arbeitszeitCheckUserDisplayTz);
+                                    $breakDurationSeconds = $breakEnd->getTimestamp() - $breakStart->getTimestamp();
+                                    if ($breakDurationSeconds >= 900) {
+                                        $existingBreaks[] = [
+                                            'start' => $breakStart->format('H:i'),
+                                            'end' => $breakEnd->format('H:i'),
+                                            'automatic' => false,
+                                        ];
+                                    }
+                                }
+                            }
+                            if ($mode === 'create') {
+                                $autoBreakFormEnabled = false;
+                            }
+                            if ($existingBreaks === []) {
+                                $existingBreaks = [['start' => '', 'end' => '', 'automatic' => false]];
+                            }
+                            $_['timeEntryFormBreakIndex'] = count($existingBreaks);
+                            $_['timeEntryFormAutoBreakEnabled'] = $autoBreakFormEnabled;
+                            ?>
                             <div class="azc-callout azc-semantic-panel azc-semantic-panel--info time-entry-form__break-intro" role="note">
                                 <span class="azc-callout__icon azc-notif-icon-well" aria-hidden="true"><?php print_unescaped(IconCatalog::render('coffee', 'azc-callout__icon-svg')); ?></span>
                                 <p class="azc-callout__text"><?php p($l->t('German law: 30 min break from 6 h work, 45 min from 9 h. Enable automatic breaks or add times yourself.')); ?></p>
                             </div>
 
-                            <div class="auto-break-panel auto-break-panel--enabled azc-callout azc-semantic-panel azc-semantic-panel--success"
+                            <div class="auto-break-panel <?php p($autoBreakFormEnabled ? 'auto-break-panel--enabled' : 'auto-break-panel--disabled'); ?> azc-callout azc-semantic-panel azc-semantic-panel--success"
                                  role="group"
                                  aria-labelledby="auto-break-panel-title">
                                 <span class="azc-callout__icon azc-notif-icon-well" aria-hidden="true"><?php print_unescaped(IconCatalog::render('check', 'azc-callout__icon-svg')); ?></span>
@@ -482,16 +535,16 @@ require __DIR__ . '/common/user-display-timezone.php';
                                         <label class="form-toggle">
                                             <input type="checkbox"
                                                    id="auto-break-enabled"
-                                                   checked
+                                                   <?php if ($autoBreakFormEnabled): ?>checked<?php endif; ?>
                                                    aria-labelledby="auto-break-panel-title auto-break-toggle-label"
                                                    aria-describedby="auto-break-toggle-help auto-break-toggle-state">
                                             <span class="toggle-slider" aria-hidden="true"></span>
                                             <span id="auto-break-toggle-label" class="toggle-label"><?php p($l->t('Automatically add required breaks')); ?></span>
                                         </label>
                                         <span id="auto-break-toggle-state"
-                                              class="azc-status-pill auto-break-toggle__status azc-status-pill--on auto-break-toggle__status--on"
+                                              class="azc-status-pill auto-break-toggle__status <?php p($autoBreakFormEnabled ? 'azc-status-pill--on auto-break-toggle__status--on' : 'azc-status-pill--off auto-break-toggle__status--off'); ?>"
                                               role="status"
-                                              aria-live="polite"><?php p($l->t('Enabled')); ?></span>
+                                              aria-live="polite"><?php p($autoBreakFormEnabled ? $l->t('Enabled') : $l->t('Disabled')); ?></span>
                                     </div>
                                     <p id="auto-break-toggle-help" class="auto-break-panel__help"><?php p($l->t('Turn off only if you want to enter every break manually.')); ?></p>
                                 </div>
@@ -515,64 +568,11 @@ require __DIR__ . '/common/user-display-timezone.php';
                                     <span class="time-pair-matrix__colhead time-pair-matrix__colhead--action"><?php p($l->t('Actions')); ?></span>
                                 </div>
                             <div id="breaks-container">
-                                <?php
-                                // Load existing breaks from breaks JSON field
-                                $existingBreaks = [];
-                                if ($entry) {
-                                    $breaksJson = $entry->getBreaks();
-                                    if ($breaksJson !== null && $breaksJson !== '') {
-                                        $breaks = json_decode($breaksJson, true) ?? [];
-                                        foreach ($breaks as $break) {
-                                            if (isset($break['start']) && isset($break['end'])) {
-                                                try {
-                                                    // Render the editable break in the user's display TZ to match the
-                                                    // start/end time inputs above; AppLocalNaiveDateTimeNormalizer
-                                                    // converts back to storage TZ on submit.
-                                                    $breakStart = (new \DateTime($break['start']))->setTimezone($arbeitszeitCheckUserDisplayTz);
-                                                    $breakEnd = (new \DateTime($break['end']))->setTimezone($arbeitszeitCheckUserDisplayTz);
-                                                    $breakDurationSeconds = $breakEnd->getTimestamp() - $breakStart->getTimestamp();
-                                                    $minBreakDurationSeconds = 900; // 15 minutes
-
-                                                    // Only include breaks that are at least 15 minutes (ArbZG §4)
-                                                    if ($breakDurationSeconds >= $minBreakDurationSeconds) {
-                                                        $existingBreaks[] = [
-                                                            'start' => $breakStart->format('H:i'),
-                                                            'end' => $breakEnd->format('H:i')
-                                                        ];
-                                                    }
-                                                } catch (\Exception $e) {
-                                                    // Skip invalid break times
-                                                }
-                                            }
-                                        }
-                                    }
-                                    // Also check for single break (breakStartTime/breakEndTime) for backward compatibility
-                                    if ($entry->getBreakStartTime() && $entry->getBreakEndTime()) {
-                                        $breakStart = (clone $entry->getBreakStartTime())->setTimezone($arbeitszeitCheckUserDisplayTz);
-                                        $breakEnd = (clone $entry->getBreakEndTime())->setTimezone($arbeitszeitCheckUserDisplayTz);
-                                        $breakDurationSeconds = $breakEnd->getTimestamp() - $breakStart->getTimestamp();
-                                        $minBreakDurationSeconds = 900; // 15 minutes
-
-                                        if ($breakDurationSeconds >= $minBreakDurationSeconds) {
-                                            $existingBreaks[] = [
-                                                'start' => $breakStart->format('H:i'),
-                                                'end' => $breakEnd->format('H:i')
-                                            ];
-                                        }
-                                    }
-                                }
-
-                                // If no breaks exist, show one empty break field
-                                if (empty($existingBreaks)) {
-                                    $existingBreaks = [['start' => '', 'end' => '']];
-                                }
-
-                                $_['timeEntryFormBreakIndex'] = count($existingBreaks);
-
-                                foreach ($existingBreaks as $index => $break):
+                                <?php foreach ($existingBreaks as $index => $break):
+                                    $breakIsAutomatic = !empty($break['automatic']);
                                 ?>
-                                    <div class="break-entry" data-break-index="<?php p((string)$index); ?>">
-                                        <div class="time-pair-matrix__grid time-pair-matrix__grid--row">
+                                    <div class="break-entry" data-break-index="<?php p((string)$index); ?>"<?php if ($breakIsAutomatic): ?> data-auto-break="true"<?php endif; ?>>
+                                        <div class="time-pair-matrix__grid time-pair-matrix__grid--row<?php if ($breakIsAutomatic): ?> time-pair-matrix__grid--row--with-note<?php endif; ?>">
                                             <div class="form-group">
                                                 <label class="form-label time-pair-matrix__row-label" id="break-<?php p((string)$index); ?>-start-label">
                                                     <span class="form-label-icon" aria-hidden="true"><?php print_unescaped(IconCatalog::render('coffee', 'form-label-icon__svg')); ?></span>
@@ -641,12 +641,13 @@ require __DIR__ . '/common/user-display-timezone.php';
                                                     </div>
                                             </div>
                                             <div class="time-pair-matrix__action">
-                                                    <?php if ($index > 0): ?>
-                                                        <button type="button" class="azc-btn azc-btn--sm azc-btn--danger btn-remove-break" data-break-index="<?php p((string)$index); ?>" title="<?php p($l->t('Remove break')); ?>" aria-label="<?php p($l->t('Remove this break')); ?>">
-                                                            <?php p($l->t('Remove')); ?>
-                                                        </button>
-                                                    <?php endif; ?>
+                                                    <button type="button" class="azc-btn azc-btn--sm azc-btn--danger btn-remove-break" data-break-index="<?php p((string)$index); ?>" title="<?php p($l->t('Remove break')); ?>" aria-label="<?php p($l->t('Remove this break')); ?>">
+                                                        <?php p($l->t('Remove')); ?>
+                                                    </button>
                                             </div>
+                                            <?php if ($breakIsAutomatic): ?>
+                                                <p class="form-help auto-break-note" role="status"><small><?php p($l->t('Automatically added for German labor law compliance (ArbZG §4)')); ?></small></p>
+                                            <?php endif; ?>
                                         </div>
                                     </div>
                                 <?php endforeach; ?>

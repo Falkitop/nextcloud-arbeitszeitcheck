@@ -1007,7 +1007,7 @@ $timeEntryFormL10n['autoBreakAddedCompliance'] = TemplateL10n::translate(
 
 **UX structure:** Page header → timezone/callout blocks → **Summary** (live working/break hours + compliance status) → **Date and time** (24h selects, “Today”) → **Breaks (optional)** (info callout, auto-break toggle, break matrix) → **Note** → actions. Uses shared `time-pair-matrix` layout and Nextcloud theme CSS variables so light/dark/high-contrast themes stay readable.
 
-**Auto-break toggle (`#auto-break-enabled`, on by default):**
+**Auto-break toggle (`#auto-break-enabled`, opt-in on create; on edit only when stored breaks have `automatic: true`):**
 
 - When enabled, `time-entry-form.js` inserts or updates break rows to satisfy ArbZG §4 (30 min from 6 h work, 45 min from 9 h) before validation/submit.
 - Auto rows are marked `data-auto-break="true"`, styled in CSS, and annotated with `autoBreakNote` from the l10n bundle.

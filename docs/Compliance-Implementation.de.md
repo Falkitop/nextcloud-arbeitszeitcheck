@@ -106,7 +106,7 @@
 | Mechanismus | Konfiguration | Wann aktiv | Zweck |
 |-------------|---------------|------------|--------|
 | **Benutzereinstellung** `auto_break_calculation` | **Einstellungen** → automatische Pausenberechnung (pro Benutzer) | Beim Stempeln / Live-Erfassung (`TimeTrackingService`) | Serverseitiger Fallback beim Abschluss, wenn zu wenig Pausenminuten erfasst wurden |
-| **Formular-Schalter** `#auto-break-enabled` | Formular **Arbeitszeit erfassen** / Bearbeiten (Standard: an) | Während der Eingabe (`time-entry-form.js`) | Clientseitiges Einfügen von Pausenzeilen nach ArbZG §4 vor dem Speichern; abschaltbar für manuelle Pauseneingabe |
+| **Formular-Schalter** `#auto-break-enabled` | Formular **Arbeitszeit erfassen** / Bearbeiten (Standard: aus bei Neuanlage; bei Bearbeitung nur an, wenn gespeicherte Pausen `automatic: true` haben) | Während der Eingabe (`time-entry-form.js`) | Clientseitiges Einfügen von Pausenzeilen nach ArbZG §4 vor dem Speichern; abschaltbar für manuelle Pauseneingabe |
 
 Beide sind produktseitig optional, erhöhen aber die §4-Nachweisbarkeit. E2E-Tests mit striktem Pausen-Gate können die **Benutzereinstellung** für das Testkonto deaktivieren; der **Formular-Schalter** ist davon unabhängig.
 

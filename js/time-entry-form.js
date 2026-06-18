@@ -72,6 +72,7 @@ class TimeEntryFormManager {
 		this.breakIndex = this.formConfig.breakIndex != null ? this.formConfig.breakIndex : 1;
 		this.syncBreakIndexFromDom();
 		this.formSubmitted = false;
+		this.userDismissedAutoBreak = false;
 		this.maxWorkingHours = this.formConfig.maxDailyHours != null ? this.formConfig.maxDailyHours : 10;
 		this.maxBreaks = this.formConfig.maxBreaks != null ? this.formConfig.maxBreaks : 10;
 
@@ -79,6 +80,7 @@ class TimeEntryFormManager {
 	}
 
 	init() {
+		this.initAutoBreakToggleFromConfig();
 		this.setupTimeInputs();
 		this.setupBreakManagement();
 		this.setupExistingBreakEntries();
@@ -87,15 +89,35 @@ class TimeEntryFormManager {
 		this.setupFormValidation();
 		this.setupFormSubmission();
 
-		// Initial summary + auto-breaks when the form is pre-filled (create/edit)
+		// Initial summary; auto-breaks only when the user opted in (toggle on, not dismissed).
 		setTimeout(() => {
 			if (this.hasFormData()) {
-				if (this.autoBreakToggle && this.autoBreakToggle.checked) {
+				if (this.shouldRunAutoBreakCalculation()) {
 					this.handleAutoBreakCalculation({ notify: false });
 				}
 				this.updateTimeSummary();
 			}
 		}, 100);
+	}
+
+	/**
+	 * Sync toggle with server-rendered create/edit state (opt-in on create; edit preserves stored intent).
+	 */
+	initAutoBreakToggleFromConfig() {
+		if (!this.autoBreakToggle) {
+			return;
+		}
+		if (typeof this.formConfig.autoBreakEnabled === 'boolean') {
+			this.autoBreakToggle.checked = this.formConfig.autoBreakEnabled;
+		}
+		this.userDismissedAutoBreak = !this.autoBreakToggle.checked;
+		this.updateAutoBreakToggleStatus();
+	}
+
+	shouldRunAutoBreakCalculation() {
+		return this.autoBreakToggle
+			&& this.autoBreakToggle.checked
+			&& !this.userDismissedAutoBreak;
 	}
 
 	setupExistingBreakEntries() {
@@ -144,7 +166,7 @@ class TimeEntryFormManager {
 			this.dateInput.setAttribute('aria-invalid', 'false');
 			this.dateInput.classList.remove('form-input--error');
 			this.validateDate();
-			if (this.autoBreakToggle && this.autoBreakToggle.checked) {
+			if (this.shouldRunAutoBreakCalculation()) {
 				this.handleAutoBreakCalculation({ notify: false });
 			}
 			this.updateTimeSummary();
@@ -223,7 +245,7 @@ class TimeEntryFormManager {
 	handleAutoBreakCalculation(options = {}) {
 		const notify = options.notify !== false;
 
-		if (!this.autoBreakToggle || !this.autoBreakToggle.checked) {
+		if (!this.shouldRunAutoBreakCalculation()) {
 			return;
 		}
 
@@ -509,8 +531,10 @@ class TimeEntryFormManager {
 			this.autoBreakToggle.addEventListener('change', () => {
 				this.updateAutoBreakToggleStatus();
 				if (this.autoBreakToggle.checked) {
+					this.userDismissedAutoBreak = false;
 					this.handleAutoBreakCalculation({ notify: true });
 				} else {
+					this.userDismissedAutoBreak = true;
 					this.removeAutoAddedBreaks();
 					if (window.OC && OC.Notification) {
 						OC.Notification.showTemporary(
@@ -702,16 +726,14 @@ class TimeEntryFormManager {
 
 		const actionCell = document.createElement('div');
 		actionCell.className = 'time-pair-matrix__action';
-		if (index > 0) {
-			const removeBtn = document.createElement('button');
-			removeBtn.type = 'button';
-			removeBtn.className = 'azc-btn azc-btn--sm azc-btn--danger btn-remove-break';
-			removeBtn.setAttribute('data-break-index', index);
-			removeBtn.title = t('removeBreak');
-			removeBtn.setAttribute('aria-label', t('removeThisBreak'));
-			removeBtn.textContent = t('remove');
-			actionCell.appendChild(removeBtn);
-		}
+		const removeBtn = document.createElement('button');
+		removeBtn.type = 'button';
+		removeBtn.className = 'azc-btn azc-btn--sm azc-btn--danger btn-remove-break';
+		removeBtn.setAttribute('data-break-index', index);
+		removeBtn.title = t('removeBreak');
+		removeBtn.setAttribute('aria-label', t('removeThisBreak'));
+		removeBtn.textContent = t('remove');
+		actionCell.appendChild(removeBtn);
 
 		formGrid.appendChild(startGroup);
 		formGrid.appendChild(endGroup);
@@ -770,11 +792,22 @@ class TimeEntryFormManager {
 	removeBreakEntry(button) {
 		const index = button.getAttribute('data-break-index');
 		const breakEntry = this.breaksContainer.querySelector(`[data-break-index="${index}"]`);
-		if (breakEntry) {
-			breakEntry.remove();
-			this.updateTimeSummary();
-			this.validateTimes();
+		if (!breakEntry) {
+			return;
 		}
+
+		if (breakEntry.hasAttribute('data-auto-break')) {
+			this.userDismissedAutoBreak = true;
+		}
+
+		breakEntry.remove();
+
+		if (this.breaksContainer.querySelectorAll('.break-entry').length === 0) {
+			this.addBreakEntry();
+		}
+
+		this.updateTimeSummary();
+		this.validateTimes();
 	}
 
 	setupDateValidation() {
@@ -782,7 +815,7 @@ class TimeEntryFormManager {
 
 		this.dateInput.addEventListener('blur', () => {
 			this.validateDate();
-			if (this.autoBreakToggle && this.autoBreakToggle.checked) {
+			if (this.shouldRunAutoBreakCalculation()) {
 				this.handleAutoBreakCalculation({ notify: false });
 			}
 			this.updateTimeSummary();
@@ -1056,17 +1089,13 @@ class TimeEntryFormManager {
 			statusClass = 'warning';
 			statusText = t('complianceApproachingMax');
 		} else if (!hasRequiredBreak && requiredBreakHours > 0) {
-			// Check if we have auto-generated breaks that should fulfill requirements
-			const hasAutoBreak = this.breaksContainer ?
-				this.breaksContainer.querySelector('.break-entry[data-auto-break]') : false;
+			const hasAutoBreak = this.breaksContainer
+				? this.breaksContainer.querySelector('.break-entry[data-auto-break]')
+				: false;
 
-			if (hasAutoBreak) {
-				// Auto-break exists but calculation shows insufficient breaks
-				// This shouldn't happen, but handle gracefully
+			if (hasAutoBreak && this.shouldRunAutoBreakCalculation()) {
 				statusClass = 'warning';
 				statusText = t('complianceRecalculatingBreak');
-				// Trigger recalculation
-				setTimeout(() => this.handleAutoBreakCalculation({ notify: false }), 100);
 			} else {
 				statusClass = 'warning';
 				statusText = t('complianceBreakNotMet');
@@ -1186,7 +1215,7 @@ class TimeEntryFormManager {
 		this.clearValidationErrors();
 
 		// If auto-breaks are enabled, ensure they're created before validation
-		if (this.autoBreakToggle && this.autoBreakToggle.checked) {
+		if (this.shouldRunAutoBreakCalculation()) {
 			this.handleAutoBreakCalculation({ notify: false });
 			
 			// Clear any previous validation errors on break fields
@@ -1396,7 +1425,7 @@ class TimeEntryFormManager {
 			this.updateAllHiddenInputs();
 
 			// Calculate and ensure auto-breaks are in place before submission
-			if (this.autoBreakToggle && this.autoBreakToggle.checked) {
+			if (this.shouldRunAutoBreakCalculation()) {
 				this.ensureAutoBreaksForSubmission();
 			}
 
@@ -1599,7 +1628,7 @@ class TimeEntryFormManager {
 	}
 
 	ensureAutoBreaksForSubmission() {
-		if (!this.autoBreakToggle || !this.autoBreakToggle.checked) {
+		if (!this.shouldRunAutoBreakCalculation()) {
 			return;
 		}
 		// Reuse live calculation so submission matches what the user saw in the summary
