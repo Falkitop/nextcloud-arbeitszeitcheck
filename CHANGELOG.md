@@ -39,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Data loss after Nextcloud upgrade:** `UninstallDropTables` preserves tables and settings on disable (pass 1); full cleanup runs only on app removal (pass 2). Fixes auto-disable during server upgrades wiping data when the app is re-enabled.
+- **Data loss after Nextcloud upgrade:** `UninstallRepairFlow` distinguishes disable from removal — tables and settings are preserved on disable (including auto-disable during server upgrades); full cleanup runs only on explicit app removal.
 
 ## 1.3.24 - 2026-06-04
 
